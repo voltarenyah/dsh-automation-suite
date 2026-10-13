@@ -361,8 +361,14 @@ dotnet restore controller\TiaOpennessV17Min.Controller.csproj --source huawei
 runtime resolution 解析。裸 checkout 里跑测试需要一次性链接：
 
 ```powershell
-npm run link:runtime    # 把 harness 的 dsh-tools / cordis / schemastery 链到 node_modules
+pnpm run link:runtime              # 从已安装 app 的 app.asar 抽取运行时并链到 node_modules
+pnpm run link:runtime -- --force   # 无视缓存，按当前宿主版本重抽
 ```
+
+抽取来源是**已安装 app 自己的 `resources/app.asar`**，也就是宿主正在用的那份运行时，
+按 `dependencies` + `peerDependencies` 求闭包后解包到 `<DSH_HOME>/plugin-runtime`，
+并记下宿主版本；宿主升级后下次运行会自动重抽。找不到安装位置时可用环境变量
+`DSH_APP_ASAR` 指定 asar，或用 `DSH_HOME` 指向另一个 harness home。
 
 （这些链接只用于本地开发与测试，不会被打包，也不影响已安装插件的行为。）
 
@@ -426,7 +432,9 @@ docs/FUNCTIONAL-TEST.md 真实项目功能测试步骤
 docs/verification.md    section 8 验证清单逐条核对 + 待人工验证步骤
 docs/decisions.md       技术取舍记录（被否方案与理由）
 docs/coverage-matrix.html  折叠式能力覆盖矩阵（生成物，随代码更新；见 scripts/coverage/）
-scripts/link-dsh-runtime.mjs  本地开发/测试用：链接 harness 运行时包
+scripts/link-dsh-runtime.mjs  本地开发/测试用：把运行时包链到 node_modules
+scripts/dsh-runtime-cache.mjs 从已安装 app 的 app.asar 抽取运行时闭包到 <DSH_HOME>/plugin-runtime
+scripts/asar-read.mjs         最小 asar 读取器（供上一条使用）
 scripts/coverage/       覆盖矩阵的数据、快照抽取与生成/校验脚本
 .tools/asar.cjs        开发工具：无依赖读取 Electron app.asar（不属于插件运行时）
 ```

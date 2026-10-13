@@ -365,3 +365,36 @@ The block name 'FB_Array_Handling' is invalid. An object with this name or this 
 
 **教训**：**能观察到的事实**与**对工具的归因**必须分开写；归因需要证据。文件已重命名
 （`compare-exports.ps1`、`EXPORT-COMPARISON.md`），旧的 `-Vci` 参数改为 `-Other`。
+
+---
+
+## D19. 测试用运行时包：改从 `app.asar` 按运行版本抽取（取代 D2 的来源）
+
+**背景**：D2 的"已知局限"是测试链到 `~/.dsh/profiles/node_modules` 的副本
+（`dsh-tools 0.1.5-rc.2`），而宿主实际跑 `0.2.0-rc.2`。`docs/ECOSYSTEM-COMPAT.md` §5.2
+记下了该副本随后被 `npm install` 的缓存回收删空（`_npx` 缓存内容消失），于是 5 个测试文件
+全部无法启动。
+
+**决定**：新增 `scripts/asar-read.mjs`（最小 asar 读取器）与 `scripts/dsh-runtime-cache.mjs`
+（闭包抽取）。`link:runtime` 现在**优先**从已安装 app 自己的 `resources/app.asar` 里，
+按 `dependencies` **加** `peerDependencies` 计算闭包（32 个包 / 约 8 MB / 0.9 s），解包到
+`<DSH_HOME>/plugin-runtime`，再把仓库的 `node_modules/@deepseek-ai/*` 链到那里。
+`runtime.json` 记下宿主版本，版本变化时自动重抽。
+
+**为什么必须走 peer**：harness 包之间普遍以 peer 互相声明，而且**加载期就 import** ——
+`@deepseek-ai/dsh-tools` 一进 `lib/index.js` 就取 `@deepseek-ai/dsh-scope`。只跟
+`dependencies` 会得到一个"看起来完整、第一次 import 就炸"的缓存（已实测踩到）。
+
+**为什么不再用 `~/.dsh/profiles/*/node_modules`**：那是 0.1.5-rc.2（`cosmokit` 1.8.3，
+宿主是 1.8.5）。用它等于**用错版本验收**。现在它只作为兜底候选，排在抽取缓存之后。
+
+**顺带消除的风险**：链接现在指向 `~/.dsh/plugin-runtime`（我们自己拥有、且只含真实目录），
+不再指向 DSH 安装目录里的包，所以 §5.1 那类"跟进 junction 的删除会毁掉目标"的事故无法再
+经由 `node_modules/@deepseek-ai/*` 传导到 DSH 自身。`linkRuntime` 的 `--force` 也改为：
+目标是 junction/symlink 时只 `unlink`，绝不递归下降。
+
+**结果**：`pnpm test` 从"5 个文件全部无法启动"变为 **45 测试 / 44 通过 / 0 失败 / 1 跳过**，
+且验的是宿主真实版本 `0.2.0-rc.2`。
+
+**与 `ECOSYSTEM-COMPAT` §5.2 建议 A+C 的关系**：实现的就是那条路线；唯一差别是没按
+"整段 `@deepseek-ai` 作用域一起解包"，而是精确抽取闭包（32 包 vs 289 包），实测足够。

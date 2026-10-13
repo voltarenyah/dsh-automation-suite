@@ -5,6 +5,7 @@
   "scripts": {
     "build": "pnpm -r build",
     "typecheck": "pnpm -r typecheck",
+    "test": "pnpm -r test",
     "clean:build": "node scripts/clean-build.mjs"
   },
   "devDependencies": {
