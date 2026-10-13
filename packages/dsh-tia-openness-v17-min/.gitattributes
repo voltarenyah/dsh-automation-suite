@@ -17,6 +17,11 @@
 *.cjs   text eol=lf
 # Generated, byte-compared by scripts/coverage/build-matrix.mjs --check.
 *.html  text eol=lf
+# Vendored upstream skills and their license, byte-compared (sha256 + size) by
+# scripts/knowledge/build-skills.mjs --check. Without an explicit `eol=lf` a
+# `core.autocrlf=true` checkout rewrites the license to CRLF and the check fails
+# on a fresh clone.
+*.txt   text eol=lf
 
 # Binaries are never normalized.
 *.exe   binary

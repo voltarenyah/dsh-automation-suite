@@ -10,6 +10,9 @@
  *          close_project / controller_      transaction per write, read-back
  *          status                           verification after every write,
  *   lifecycle: ctx.effect owns the child    structured JSON results
+ *   knowledge: the vendored Openness skill set, served as one bundled skill
+ *              (see `skills.ts`); registered only when the composition has a
+ *              skill registry, so its absence never blocks the tools
  *
  * The controller is spawned on demand, serializes operations because Openness is
  * not thread safe, and is terminated by the effect disposer when the plugin
@@ -23,6 +26,7 @@ import { existsSync } from 'node:fs'
 
 import { Config, resolveConfig, type PluginConfig } from './config.js'
 import { ControllerProcess, resolveControllerPath, type LogSink } from './controller.js'
+import { registerSkillProvider } from './skills.js'
 import { registerTools, type ToolDependencies } from './tools.js'
 
 /** Plugin identity; the loader uses it as the entry id in the profile tree. */
@@ -69,6 +73,12 @@ export function apply(ctx: Context, config?: Partial<PluginConfig>): void {
   }
 
   const registered = registerTools(ctx, dependencies)
+
+  // The knowledge base is optional by design: `ctx.inject` only starts this
+  // child plugin once the skill registry exists, so a profile without
+  // `@deepseek-ai/dsh-skill` keeps the six tools and never blocks on a service
+  // that is not there. See `skills.ts`.
+  registerSkillProvider(ctx, log)
 
   let startup: Promise<boolean> | null = null
   if (exePath.length === 0 || !existsSync(exePath)) {

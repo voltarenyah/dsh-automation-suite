@@ -293,6 +293,17 @@ async function runOperation(dependencies, operation, params, signal) {
     };
 }
 /**
+ * Appended to every tool description of this plugin.
+ *
+ * The knowledge base ships as a bundled skill (`skills.ts`), and a skill is
+ * only useful if the model connects it to the work at hand. The session catalog
+ * already lists it, but the tool list is the one surface the model always reads
+ * immediately before calling these tools, and the package's own
+ * `AGENTS.md` never reaches an agent working in somebody else's project. Hence
+ * one short pointer here rather than a paragraph in a file nobody loads.
+ */
+const KNOWLEDGE_HINT = 'Troubleshooting: load the bundled `tia-openness` skill (Openness symptom→reference index) instead of guessing.';
+/**
  * Registers every tool of this plugin on `ctx.tools`. The framework owns the
  * registrations, so their disposers are not managed here.
  *
@@ -302,7 +313,7 @@ export function registerTools(ctx, dependencies) {
     const { verbose } = dependencies;
     const registered = [];
     const register = (definition) => {
-        ctx.tools.register(definition);
+        ctx.tools.register({ ...definition, description: `${definition.description} ${KNOWLEDGE_HINT}` });
         registered.push(definition.name);
     };
     register(defineTool({

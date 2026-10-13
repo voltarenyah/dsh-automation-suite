@@ -1,8 +1,37 @@
 # Third-party notices
 
-This plugin's C# controller is built against **Siemens AG** NuGet packages. Nothing
-else in this repository is third-party code: the TypeScript plugin and the C#
-controller sources are MIT (see [LICENSE](LICENSE)).
+Two kinds of Siemens material ship with this plugin: the **Openness knowledge base** copied from
+[`siemens/tia-portal-ai-extensions`](https://github.com/siemens/tia-portal-ai-extensions) (first section below),
+and the **NuGet packages** the C# controller is built against (second section). Everything else — the TypeScript
+plugin, the C# controller sources, this repository's own docs — is MIT (see [LICENSE](LICENSE)).
+
+## Openness knowledge base (`skills/`)
+
+`skills/` is a **verbatim copy** of the upstream Openness skill set, served to the model as one bundled skill by
+`src/skills.ts` (see [`skills/README.md`](skills/README.md)).
+
+| | |
+|---|---|
+| Upstream | <https://github.com/siemens/tia-portal-ai-extensions> (`openness_development/skills/`) |
+| Vendored revision | `b5c7041648dc10f9225ef082306ade6c335b8771` |
+| License | **MIT**, `Copyright (c) 2026 Siemens AG` — upstream `LICENSE` (`LICENSES/MIT.txt`, `REUSE.toml` declares every path MIT) |
+| Copied | 31 directories, `openness_development/skills/<name>/SKILL.md`, **byte-identical**; `skills/LICENSE.siemens.txt` is the upstream `LICENSE` |
+| Not copied | `tia-addin-scaffold` (AddIn / packaged-EXE scaffolding plus its `assets/templates` and `references`): this plugin drives blocks through one fixed controller and never hosts an AddIn. Recorded under `excluded` in `skills/UPSTREAM.json` |
+| This repository's own work | `skills/tia-openness/SKILL.md` (the routing index), `skills/README.md`, the generated `skills/UPSTREAM.json`, and `scripts/knowledge/build-skills.mjs` |
+| Integrity | every vendored file is recorded with its SHA-256 in `skills/UPSTREAM.json`; `npm run skills:check` re-verifies it offline and runs inside `npm run check` |
+
+Why this satisfies MIT: the copyright notice and the license text ship with the copy
+(`skills/LICENSE.siemens.txt`, this file, and `skills/UPSTREAM.json` all name Siemens AG and the revision), the
+files are **unmodified** — so there is no derivative-work question — and attribution travels inside the files
+themselves. The material is not sold; it is shipped as documentation inside a free plugin.
+
+What the copy does **not** claim: the upstream skills describe TIA Portal **V21**-era Openness (modular
+assemblies, SIMATIC SD `.s7dcl`/`.s7res`, the LTS chain restart). This plugin implements a **V17** subset, so an
+upstream statement is evidence about Openness, never evidence about this plugin. Capability claims about this
+plugin live in [`README.md`](README.md) §10 and `docs/`.
+
+Siemens, SIMATIC, STEP 7 and TIA Portal are trademarks of Siemens AG. This project is not affiliated with or
+endorsed by Siemens AG.
 
 ## Siemens packages
 
@@ -85,6 +114,7 @@ contributes no binaries at all.
 
 ## Official sources
 
+* Openness knowledge base: <https://github.com/siemens/tia-portal-ai-extensions>
 * Reference package: <https://www.nuget.org/packages/Siemens.Collaboration.Net.TiaPortal.Packages.Openness>
 * Resolver: <https://www.nuget.org/packages/Siemens.Collaboration.Net.TiaPortal.Openness.Resolver>
 * Resolver documentation (SIOS): <https://support.industry.siemens.com/cs/ww/en/view/109815895>

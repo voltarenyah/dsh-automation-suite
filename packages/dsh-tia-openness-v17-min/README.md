@@ -53,7 +53,7 @@
 |---|---|
 | TypeScript 构建 / typecheck | ✅ 0 错误 |
 | C# 控制器编译（对着本机真实 V17 `Siemens.Engineering.dll`） | ✅ 0 Warning / 0 Error |
-| 自动化测试 `npm test` | ✅ **45 项：44 通过 / 0 失败 / 1 跳过**（跳过项为"控制器未构建"的降级路径） |
+| 自动化测试 `npm test` | ✅ **54 项：53 通过 / 0 失败 / 1 跳过**（跳过项为"控制器未构建"的降级路径；其中 9 项覆盖 §4.4 知识库，含 3 项对**真实** skill 注册表的集成测试） |
 | C# 控制器自检（无 TIA） | ✅ **14/14**（含"启动时不加载 Openness 程序集"与"Siemens 解析器包可用"） |
 | Openness 环境探测（DLL 版本 / 位数 / 用户组） | ✅ `17.0.0.0` / x64 / 已在 `Siemens TIA Openness` 组 |
 | 安装进真实 DSH 宿主的加载 / 卸载验证 | ✅ **已验证（真实宿主）**：独立 `DSH_HOME` + 测试 profile 启动真实宿主 → 控制器子进程出现（`apply` 执行、`ctx.effect` 持有）；宿主结束 → 子进程自行退出，无残留。`~/.dsh` 未被修改 |
@@ -220,6 +220,33 @@ plugin_manager(action: "install_bundle", target: "C:\\Users\\Ansel\\dsh-automati
 - **编译**：编译结果作为数据返回（`state`/`errorCount`/`warningCount`/`messages`），
   编译报错**不是**工具错误，而是让模型据此修正。
 
+### 4.4 知识库：随包出货的 Openness skill（`skills/`）
+
+插件把上游 Siemens 的 Openness skill 集
+（[`siemens/tia-portal-ai-extensions`](https://github.com/siemens/tia-portal-ai-extensions)，MIT，
+commit `b5c7041`）**逐字**打进包里，并注册成模型可见的**一个** skill `tia-openness`：
+
+- **它是什么**：一张「症状 / 任务 → 该读哪个文件」的路由表（独占访问、事务、Simatic ML 往返、
+  块组层级、编译、licensing/防火墙、线程、崩溃定位、性能……）。31 个上游文件（每个 4–23 KB）
+  作为**资源**放在 `skills/<name>/SKILL.md`，模型按需用 `read` 分段读取 ——
+  所以知识库**不占常驻上下文**，只在真正用到时付费。
+- **为什么只注册一个**：会话目录是每个会话都要付的持久消息，描述上限 500 字符；31 条目录项会让
+  每个（哪怕与 TIA 无关的）会话都替它买单。路由 skill 只占一行，同时把绝对 base directory 交给模型。
+- **怎么注册**：`src/skills.ts` 通过 `ctx.inject(['skills'], …)` 注册 bundled provider；
+  `skills` **没有**被放进模块级 `inject`，所以未挂 skill 注册表的 profile 里 6 个工具照常可用。
+  两条都有单测守着：`test/06-skills.test.mjs` 用替身注册表，`test/07-skills-registry.test.mjs`
+  用**真实**的 `@deepseek-ai/dsh-skill` 注册表（含"卸载后目录项消失"）。
+- **模型一定会看到它**：每个工具的 description 末尾都带一句
+  ``Troubleshooting: load the bundled `tia-openness` skill …``，会话目录里也有同名条目。
+- **口径**：上游是 **V21** 时代的语义（modular assemblies、`.s7dcl`/`.s7res`、LTS 链重启），
+  本插件是 **V17** 子集 —— 上游回答"Openness 能不能做"，本插件的能力边界仍以
+  [§10](#10-已知边界) 与 `docs/` 为准。
+- **维护**：`npm run skills:build`（按 pinned commit 重新取上游）/ `npm run skills:check`
+  （离线校验 sha256、目录清单、上游依赖图、路由 skill 的体积与引用；已并入 `npm run check`）。
+  为什么知识库不放 `docs/`，以及细节与合规说明，见 [`docs/KNOWLEDGE-BASE.md`](docs/KNOWLEDGE-BASE.md)、
+  [`skills/README.md`](skills/README.md)、[`AGENTS.md`](AGENTS.md) §2 与
+  [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md)。
+
 ---
 
 ## 5. 安全设计
@@ -322,6 +349,8 @@ npm run test:controller  # 只跑 C# 控制器自检
 | `03-controller-protocol.test.mjs` | **协议测试**：握手、白名单拒绝、参数校验、`project_not_open`、ASCII 转义、进度帧、请求串行化、队列上限；用 stub 控制器覆盖**卡死超时→终止→重启**、请求中途退出、协议版本不匹配、stdout 噪声（这一组还捕获并回归了一个真实的 bug：被替换的旧子进程的迟到 `exit` 事件会清掉新子进程引用，导致进程泄漏） |
 | `04-tools.test.mjs` | **工具语义**：每个工具发送的参数与默认值（写入类默认 dry-run）、只发送白名单操作、`controller_status` 不触碰控制器、渲染文本包含错误码/提示/诊断 |
 | `05-controller-cli.test.mjs` | **C# 控制器**：`--self-test` 14 项检查全绿；Openness 探测与用户组；`--version`/`--help`；命令行输出重定向为结构化帧；`--param` 重复值成数组 |
+| `06-skills.test.mjs` | **知识库（替身注册表）**：`ctx.inject(['skills'], …)` 注册；没有 skills 服务的 profile 仍加载 6 个工具；目录只多一条且 description ≤ 500；`get()` 正文无 frontmatter、引用的每个上游文件都存在、正文 < 8192；vendored 树与 `UPSTREAM.json` 一致；每个工具描述都指向该 skill |
+| `07-skills-registry.test.mjs` | **知识库（真实注册表）**：把 `@deepseek-ai/dsh-skill` 的真实 `SkillRegistry` 挂到裸 cordis context 上，验证 candidate 被真实校验接受、重名注册被拒、`get()` 能加载、`renderSkillContent` 带上 base directory、卸载插件后目录项消失 |
 
 C# 控制器自检（无需 TIA Portal，14 项）：
 
@@ -413,9 +442,14 @@ src/
   config.ts            Schemastery 配置 schema + 归一化（所有字段有默认值）
   controller.ts        C# 控制器的生命周期、NDJSON 帧、串行化、超时与终止
   protocol.ts          线路类型 + 容错帧解析 + 统一结果信封
+  skills.ts            知识库：把 skills/ 注册成一个 bundled skill（ctx.inject(['skills'], …)）
   tools.ts             6 个 defineTool 定义（模型可见描述）与渲染
   errors.ts            ToolFailure（传输层错误）
   dsh-runtime.d.ts     本插件用到的 DSH 运行时类型（离线可构建）
+skills/                随包出货的 Openness 知识库：31 个上游 SKILL.md（逐字，MIT）+ 路由 skill（见 §4.4）
+  tia-openness/SKILL.md  本仓库维护：症状→文件路由表（< 8192 字符）
+  UPSTREAM.json        生成物：上游 commit、逐文件 sha256、许可证、被排除项
+  LICENSE.siemens.txt  上游 MIT 许可证全文（随副本出货的合规要求）
 controller/
   Program.cs           入口：参数解析、stdio 服务循环、一次性 CLI、self-test
   Protocol.cs          帧常量、操作白名单、结构化异常、诊断与变更日志
@@ -428,6 +462,7 @@ controller/
 test/                  node:test 测试套件
 test-profile/          试跑材料：三层验证指南 + 两个脚本 + --patch 叠加层（不改默认 profile）
 docs/PROTOCOL.md       线路协议与错误码（权威描述）
+docs/KNOWLEDGE-BASE.md 知识库在哪、为什么不放 docs/、怎么更新（见 §4.4）
 docs/FUNCTIONAL-TEST.md 真实项目功能测试步骤
 docs/verification.md    section 8 验证清单逐条核对 + 待人工验证步骤
 docs/decisions.md       技术取舍记录（被否方案与理由）
@@ -436,6 +471,7 @@ scripts/link-dsh-runtime.mjs  本地开发/测试用：把运行时包链到 nod
 scripts/dsh-runtime-cache.mjs 从已安装 app 的 app.asar 抽取运行时闭包到 <DSH_HOME>/plugin-runtime
 scripts/asar-read.mjs         最小 asar 读取器（供上一条使用）
 scripts/coverage/       覆盖矩阵的数据、快照抽取与生成/校验脚本
+scripts/knowledge/build-skills.mjs  知识库同步（联网重取上游）与离线校验（--check）
 .tools/asar.cjs        开发工具：无依赖读取 Electron app.asar（不属于插件运行时）
 ```
 
@@ -471,5 +507,7 @@ scripts/coverage/       覆盖矩阵的数据、快照抽取与生成/校验脚�
 - huahaizo/tia-portal-openness-ai —— "注册解析器 → 加载 DLL → 业务逻辑" 的控制器分层思路
 
 明确未使用：TiaCommander 的任何代码；Siemens Skills 仓库中的 C# 代码。
+唯一被复制过来的上游内容是**文档**：Openness skill 集（§4.4）按 MIT 逐字 vendor，
+附上游许可证全文与逐文件 sha256，代码一行未取。
 
 许可证：MIT（见 `LICENSE`）。

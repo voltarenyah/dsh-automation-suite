@@ -110,6 +110,12 @@ export function linkRuntime({ force = false, quiet = false } = {}) {
     }
   }
 
+  // Make the cache current before falling back to anything else. It is the only
+  // source guaranteed to match the harness version the app actually runs, and a
+  // package that the cache is missing would otherwise be answered by an older
+  // projection under `~/.dsh/profiles` (or by nothing at all) without a word.
+  tryCache()
+
   for (const packageName of PACKAGES) {
     const target = join(scope, packageName)
 

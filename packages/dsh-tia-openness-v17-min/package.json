@@ -19,6 +19,7 @@
     "lib",
     "cordis.patch.yml",
     "controller/bin",
+    "skills",
     "README.md",
     "THIRD_PARTY_NOTICES.md",
     "docs"
@@ -47,9 +48,11 @@
     "matrix:extract": "node scripts/coverage/extract-sources.mjs",
     "matrix:build": "node scripts/coverage/build-matrix.mjs",
     "matrix:check": "node scripts/coverage/build-matrix.mjs --check",
+    "skills:build": "node scripts/knowledge/build-skills.mjs",
+    "skills:check": "node scripts/knowledge/build-skills.mjs --check",
     "test": "node --test --test-reporter=spec \"test/*.test.mjs\"",
     "test:controller": "controller/bin/TiaOpennessV17Min.Controller.exe --self-test",
-    "check": "npm run build && npm test && npm run matrix:check"
+    "check": "npm run build && npm test && npm run matrix:check && npm run skills:check"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",

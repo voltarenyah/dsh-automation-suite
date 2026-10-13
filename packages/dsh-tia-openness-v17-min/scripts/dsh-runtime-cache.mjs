@@ -35,8 +35,18 @@ import { readAsarFile, readAsarIndex, unpackedDirFor } from './asar-read.mjs'
  * The root packages to extract, as fully scoped npm names.
  * `link-dsh-runtime.mjs` derives the bare names it links locally from this list,
  * so the two can never drift apart.
+ *
+ * `@deepseek-ai/dsh-skill` is here for the tests, not for the plugin: the
+ * knowledge base is registered onto the *real* skill registry
+ * (see `test/07-skills-registry.test.mjs`), and validating the candidate shape
+ * against a hand-written stand-in would prove nothing about the real one.
  */
-export const RUNTIME_ROOTS = ['@deepseek-ai/dsh-tools', '@deepseek-ai/cordis', '@deepseek-ai/schemastery']
+export const RUNTIME_ROOTS = [
+  '@deepseek-ai/dsh-tools',
+  '@deepseek-ai/cordis',
+  '@deepseek-ai/schemastery',
+  '@deepseek-ai/dsh-skill',
+]
 
 /** Directory, inside the archive, that holds the harness's hoisted node_modules. */
 const ARCHIVE_MODULES = 'dsh/node_modules'
@@ -224,12 +234,20 @@ export function ensureRuntimeCache({ quiet = false, force = false } = {}) {
   }
 
   const cached = readCacheMarker()
-  if (
-    !force &&
+  // A cache is reusable when it was extracted from this app *and* still covers
+  // every root this package needs. The version alone is not enough: adding a
+  // root keeps the same app version while the new package stays absent, and
+  // `link-dsh-runtime.mjs` would then silently fall back to an older projection
+  // under `~/.dsh/profiles` — the wrong-version hazard this module exists to
+  // avoid. Coverage (not an exact roots match) is what makes several packages
+  // with different root sets share one cache without needless re-extraction.
+  const covered = new Set(cached?.packages ?? [])
+  const coversRoots =
     cached !== null &&
-    cached.version === version &&
-    existsSync(join(runtimeCacheDir(), 'node_modules'))
-  ) {
+    RUNTIME_ROOTS.every(
+      (name) => covered.has(name) && existsSync(join(runtimeCacheDir(), 'node_modules', name, 'package.json')),
+    )
+  if (!force && cached !== null && cached.version === version && coversRoots) {
     return { ok: true, dir: runtimeCacheDir(), version, archive: cached.archive, files: 0, extracted: [] }
   }
 

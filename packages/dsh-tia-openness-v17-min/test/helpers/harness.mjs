@@ -58,21 +58,31 @@ export async function loadControllerModule() {
 /**
  * A minimal stand-in for the parts of `ctx` this plugin uses.
  *
+ * @param {{ skills?: boolean }} [options] - `skills: false` models a profile
+ *   that does not mount the skill registry: `ctx.inject(['skills'], …)` then
+ *   never runs its callback, which is the state the plugin must survive.
  * @returns {{
  *   ctx: object,
  *   definitions: object[],
  *   logs: Array<[string, string, string]>,
+ *   skillProviders: object[],
+ *   injectedServices: string[][],
  *   unload: () => Promise<void>,
  *   registered: () => string[],
  * }}
  */
-export function createTestContext() {
+export function createTestContext(options = {}) {
+  const { skills = true } = options
   /** @type {object[]} */
   const definitions = []
   /** @type {Array<[string, string, string]>} */
   const logs = []
   /** @type {Array<() => unknown>} */
   const disposers = []
+  /** @type {object[]} providers registered through the stand-in skill registry */
+  const skillProviders = []
+  /** @type {string[][]} every service list handed to `ctx.inject` */
+  const injectedServices = []
 
   const logger = (scope) => ({
     debug: (message) => logs.push(['debug', scope, String(message)]),
@@ -80,6 +90,15 @@ export function createTestContext() {
     warn: (message) => logs.push(['warn', scope, String(message)]),
     error: (message) => logs.push(['error', scope, String(message)]),
   })
+
+  const skillRegistry = {
+    registerProvider(create) {
+      skillProviders.push(create({ signal: new AbortController().signal, invalidate: () => {} }))
+      // The registration is owned by the injected child plugin, which the
+      // framework disposes; the stand-in only has to hand the provider back.
+      return () => {}
+    },
+  }
 
   const ctx = {
     tools: {
@@ -101,12 +120,24 @@ export function createTestContext() {
       disposers.push(undo)
       return undo
     },
+    /**
+     * Faithful in the one way that matters here: the callback runs only once
+     * the named service exists. The stand-in has no service graph, so the
+     * service either is mounted (callback now) or never appears (no callback).
+     */
+    inject(services, callback) {
+      injectedServices.push([...services])
+      if (skills && services.includes('skills')) callback({ ...ctx, skills: skillRegistry })
+      return () => {}
+    },
   }
 
   return {
     ctx,
     definitions,
     logs,
+    skillProviders,
+    injectedServices,
     registered: () => definitions.map((definition) => definition.name),
     /** Runs every disposer in reverse registration order, as cordis does. */
     async unload() {
@@ -203,10 +234,11 @@ export const controllerAvailable = existsSync(controllerExe)
  *
  * @param {import('node:test').TestContext} t - the test context providing `after`.
  * @param {object} [config] - profile config handed to `apply`.
+ * @param {{ skills?: boolean }} [options] - context options (see {@link createTestContext}).
  */
-export async function withPlugin(t, config = {}) {
+export async function withPlugin(t, config = {}, options = {}) {
   const plugin = await loadPlugin()
-  const harness = createTestContext()
+  const harness = createTestContext(options)
   t.after(async () => {
     await harness.unload()
   })
