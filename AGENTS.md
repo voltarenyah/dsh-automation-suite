@@ -159,3 +159,35 @@ pwsh -NoProfile -File scripts\start-env.ps1
   编译大项目文档记的是"常需 10 分钟以上"。在 profile 的 `cordis.patch.yml` 里覆盖即可。
 - ⚠️ 用 `-Reset` 或手删该 home 时，**必须**用 `cmd /c rmdir /s /q`：里面 `link:` 与 pnpm 的
   junction 指向仓库和 pnpm store，跟进式递归删除会毁掉目标（见第 3 节）。
+
+### 触发约定
+
+使用者说「**启动 App**」（或同义的一句话，例如"起一下环境"）时，就是要在仓库根执行：
+
+```powershell
+pwsh -NoProfile -File scripts\start-env.ps1
+```
+
+跑完把 DSH 打印的带 token URL 报给他。默认端口 `3092`；若被占用，脚本会直接报出占用进程，
+此时先确认那是不是已经在跑的同一个实例（是则不必再启），否则换 `-Port 0` 或先停掉旧的。
+
+**启动前先看一眼是否已在跑**，避免起出第二个实例：
+
+```powershell
+Get-NetTCPConnection -State Listen -LocalPort 3092 -ErrorAction SilentlyContinue |
+  ForEach-Object { Get-Process -Id $_.OwningProcess }
+```
+
+### 怎么判断启动成功
+
+1. 控制台出现 `dsh web: http://127.0.0.1:<port>/?token=…`，且浏览器自动打开；
+2. 该端口有监听（上面那条命令能查到 `DeepSeek Harness`）；
+3. **插件真的加载了**的硬证据：出现 `TiaOpennessV17Min.Controller` 子进程
+   （`Get-Process TiaOpennessV17Min.Controller`）—— 说明 `apply()` 执行过、`ctx.effect`
+   持有子进程。没看到它，就是插件没加载，别急着怀疑 TIA。
+
+### 怎么停
+
+在该实例的窗口里 `Ctrl+C`。窗口已丢时：`Stop-Process -Id <harness pid> -Force`，
+控制器会随后读到 stdin EOF 自行退出；用 `Get-Process TiaOpennessV17Min.Controller`
+确认已无残留。**不要**用会跟进链接的递归删除去清那个 home（见第 3 节）。
