@@ -131,7 +131,7 @@ net localgroup "Siemens TIA Openness"
 用内置的插件管理器（Web 侧边栏 Plugins 页，或 Creator 模式下的 `plugin_manager` 工具）：
 
 ```
-plugin_manager(action: "install_bundle", target: "C:\\Users\\Ansel\\dsh-plugin\\TIAOpennessV17Min")
+plugin_manager(action: "install_bundle", target: "C:\\Users\\Ansel\\dsh-automation-suite\\packages\\dsh-tia-openness-v17-min")
 ```
 
 或直接在 profile 的 patch 层里加一行（`~/.dsh/profiles/<profile>/cordis.patch.yml`）：

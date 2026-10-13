@@ -15,6 +15,17 @@ scripts/     Monorepo 级工具脚本
 
 新增插件时直接在 `packages/` 下建目录，不需要再走迁移流程。
 
+### 唯一开发位置与历史归档
+
+插件的**唯一开发位置**是本仓库的 `packages/dsh-tia-openness-v17-min`。原独立仓库已归档为
+`C:\Users\Ansel\dsh-plugin\TIAOpennessV17Min.archived` —— **不要再改它、不要往里提交**。
+
+- 归档目录保留了迁移前的 **10 个提交**（分支 `feat/siemens-nuget`，HEAD `cfa1244`）与干净的
+  `git status`。monorepo 里的插件是**压平导入**的（单个初始提交），插件的历史只在那里：
+  `git -C C:\Users\Ansel\dsh-plugin\TIAOpennessV17Min.archived log --oneline`
+- 迁移是**无损单向**的：曾逐文件比对哈希，归档目录里没有任何本仓库缺的文件（0 个）。
+- 需要把历史接进本仓库属于重写历史的操作，要做单独规划，别顺手做。
+
 ### bundle 包名与 patch 名必须逐字一致（强制）
 
 DSH 的解析机制有两条独立路径，**两者都靠包名**：

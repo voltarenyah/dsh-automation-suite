@@ -13,7 +13,7 @@
 
 ```powershell
 $dsh = "$env:LOCALAPPDATA\Programs\DeepSeek Harness\resources\runtime\cli\bin\dsh.cmd"
-$repo = 'C:\Users\Ansel\dsh-plugin\TIAOpennessV17Min'
+$repo = 'C:\Users\Ansel\dsh-automation-suite\packages\dsh-tia-openness-v17-min'
 ```
 
 ---

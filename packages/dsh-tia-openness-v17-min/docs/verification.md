@@ -177,12 +177,12 @@ controller\bin\TiaOpennessV17Min.Controller.exe --self-test
 > 副本或非关键 profile 上做；桌面 profile 是启动时组合，通常需要重启 DSH 才生效。
 
 1. 安装（二选一）：
-   - 插件管理器：`plugin_manager(action: "install_bundle", target: "C:\\Users\\Ansel\\dsh-plugin\\TIAOpennessV17Min")`
+   - 插件管理器：`plugin_manager(action: "install_bundle", target: "C:\\Users\\Ansel\\dsh-automation-suite\\packages\\dsh-tia-openness-v17-min")`
    - 或手工在 `~/.dsh/profiles/<profile>/cordis.patch.yml` 追加：
      ```yaml
      - insert:
          - id: tia-openness-v17-min
-           name: dsh-tia-openness-v17-min
+           name: '@voltarenyah/dsh-tia-openness-v17-min'
      ```
 2. 确认加载：重启 DSH 后
    ```powershell
