@@ -26,6 +26,18 @@ scripts/     Monorepo 级工具脚本
 - 迁移是**无损单向**的：曾逐文件比对哈希，归档目录里没有任何本仓库缺的文件（0 个）。
 - 需要把历史接进本仓库属于重写历史的操作，要做单独规划，别顺手做。
 
+### 第三方插件是 vendor 副本，包名不加 scope
+
+`packages/dsh-tool-git` 不是本仓原创代码，而是上游
+[`lxj808624/dsh-tool-git`](https://github.com/lxj808624/dsh-tool-git) `v0.1.3` 的**压平 vendor 副本**，
+**包名刻意保持上游的 `dsh-tool-git`（不加 scope）**。因此：
+
+- `package.json` 的 `name` 与 `cordis.patch.yml` 的 `insert[].name` **都**是 `dsh-tool-git`
+  （不以 `@` 开头，YAML 里不需要引号）；改任一处必须同步另一处；
+- 它**不能**以同名发布到 npm（`dsh-tool-git` 已被上游占用），要发布得先决定是改 scope 还是只出 tarball；
+- 它的开发期约定与 TIA 包**不完全相同**（多了 `src/dsh-runtime.d.ts`、tsdown 的 `deps.neverBundle`），
+  见 `packages/dsh-tool-git/AGENTS.md`，不要按 TIA 包的印象去改它。
+
 ### bundle 包名与 patch 名必须逐字一致（强制）
 
 DSH 的解析机制有两条独立路径，**两者都靠包名**：
@@ -91,25 +103,40 @@ pnpm run clean:build      # 清构建产物（只碰 lib/ dist/）
 ## 4. 测试与验收
 
 ```powershell
-pnpm test          # 插件单测：45 个，44 通过 / 0 失败 / 1 跳过（跳过项见测试文件内说明）
+pnpm test          # 全仓：TIA 54 项（53 通过 / 1 跳过）+ dsh-tool-git 33 项全通过
 pnpm -r build
 pnpm -r typecheck
 ```
 
-单测需要真实的 `@deepseek-ai/{dsh-tools,cordis,schemastery}`。裸 checkout 首次运行时
-`test/helpers/harness.mjs` 会自动触发抽取：
+两个插件用**不同的测试运行器**，`pnpm -r test` 会把两者都跑到：
+
+| 包 | 运行器 | 命令 |
+|---|---|---|
+| `dsh-tia-openness-v17-min` | `node:test` | `node --test test/*.test.mjs` |
+| `dsh-tool-git` | `vitest` | `vitest run` |
+
+单测都需要**真实的** `@deepseek-ai/*` 运行时（不是 stub）。裸 checkout 首次运行时，
+两个包的测试自举会各自自动触发抽取；也可以手动：
 
 ```powershell
 pnpm --filter @voltarenyah/dsh-tia-openness-v17-min run link:runtime
+pnpm --filter dsh-tool-git run link:runtime
 ```
 
-它从**已安装 app 自己的 `resources/app.asar`** 里，按 `dependencies` + `peerDependencies`
-求闭包（32 个包 / 约 8 MB / <1 s），解包到 `<DSH_HOME>/plugin-runtime`，再 junction 到仓库。
+两者都从**已安装 app 自己的 `resources/app.asar`** 里求闭包（约 32 个包 / 8 MB / <1 s），
+解包到 `<DSH_HOME>/plugin-runtime`，再 junction 到各自包的 `node_modules/@deepseek-ai/`。
 `runtime.json` 记下宿主版本，宿主升级后自动重抽。环境变量覆盖：`DSH_APP_ASAR`（asar 路径）、
 `DSH_HOME`（harness home）。
 
+**抽取出来的运行时不含 `.d.ts`**（app 的生产构建剥掉了类型声明），所以两个包各自手写了一份
+环境声明来喂 `tsc`：`packages/*/src/dsh-runtime.d.ts`。抽取的 `RUNTIME_ROOTS` 与手写声明
+**都按包而异**（`dsh-tool-git` 多一个 `dsh-system-prompt`，且需要 `oneOf` 的特殊处理），
+改一个包时别照抄另一个包。
+
 **版本必须对齐运行中的宿主**：手动把来源指回 `~/.dsh/profiles/*/node_modules` 会验到旧版本
 （那里是 0.1.5-rc.2，宿主是 0.2.0-rc.2），等于用错版本验收。见 `docs/decisions.md` D19。
+这条不是理论风险：那份投影安装里的 `@deepseek-ai/dsh-tools` 实际是一个指向 `npm-cache/_npx`
+的**悬空 junction**，读不到任何东西。
 
 profile 组合的端到端验收：
 
@@ -117,7 +144,16 @@ profile 组合的端到端验收：
 dsh --profile dsh-automation-suite --dump-config
 ```
 
-预期结尾出现 `# == @voltarenyah/dsh-tia-openness-v17-min` 与其 `name:` 行。
+预期结尾出现（每个本地插件 3 行，共 1265 行 = 官方 web 组合 1259 + 3 × 2）：
+
+```yaml
+# == @voltarenyah/dsh-tia-openness-v17-min
+- id: tia-openness-v17-min
+  name: '@voltarenyah/dsh-tia-openness-v17-min'
+# == dsh-tool-git
+- id: tool-git
+  name: dsh-tool-git
+```
 
 装 tarball 的验收链路：
 
@@ -128,22 +164,33 @@ dsh --profile <临时 profile> --dump-config     # 含你的插件行 = 通过�
 ```
 
 强于 `--dump-config` 的一条：`dsh --profile <p> --dump-config-schema`，若输出里出现该插件的
-Config 字段（如 `opennessDir`），说明模块被**真实 import 并读取了 schema**。注意该命令本身
-在未装任何插件的 `web` profile 上也返回 exit 1（DSH 既有问题，与插件无关）。
+Config 字段（如 `opennessDir`，或 git 插件的 `destructivePolicy`），说明模块被**真实 import
+并读取了 schema**。注意该命令本身在未装任何插件的 `web` profile 上也返回 exit 1 —— 那 4 条
+`unrecognized Loader tree carrier` 错误落在官方 `dsh-agent-preset` 的 4 个行上（`/179`–`/182`），
+与插件无关，**不要**把它当成插件问题去查。
 
 ---
 
 ## 5. 其它踩过的坑
 
 - `pnpm pack` 对 `@scope/name` 产出的文件名是 `scope-name-<version>.tgz`（剥掉 `@`、`/`→`-`），
-  **不要**在脚本里硬编码 `@scope-` 前缀。
-- 根 `package.json` 声明 `packageManager: pnpm@9.12.0`，但本机实际使用的是随 DSH 分发的
-  pnpm 11.7.0（`resources/runtime/pnpm/bin/pnpm.mjs`）。锁文件由 11.7.0 生成。
+  **不要**在脚本里硬编码 `@scope-` 前缀。不带 scope 的包就是 `<name>-<version>.tgz`。
+- **本机同时存在两个 pnpm 身份，别把它们搞混**：
+  - 随 DSH 分发的 `resources/runtime/pnpm/bin/pnpm.mjs` 本身是 **11.7.0**，但根 `package.json`
+    声明了 `packageManager: pnpm@9.12.0`，所以**在仓库根跑它时会自动切到 9.12.0** ——
+    锁文件是 `lockfileVersion: '9.0'`，`node_modules/.modules.yaml` 里写着 `packageManager: pnpm@9.12.0`。
+    因此 pnpm 10/11 专有的配置键（`allowBuilds`、`minimumReleaseAge`、`onlyBuiltDependencies` 的
+    新位置）在本仓**不生效**，不要照搬 pnpm 11 的写法。
+  - 物化出来的 profile 目录里**没有** `packageManager` 字段，所以 `dsh plugin --profile <p> install`
+    跑的是那个 **11.7.0**（实测输出 `Done in … using pnpm v11.7.0`）。
 - **在 JS 块注释里写 glob 会截断注释**：`profiles/*/node_modules` 里的 `*/` 会提前结束
   `/** … */`，剩下半句被当成代码，报出与真实位置无关的语法错误。写路径用
   `profiles/<profile>/node_modules`，或转义成 `*\/`。
 - 从 `cmd.exe` / `Start-Process` 调 `dsh.cmd` 时，安装路径里的空格会被 cmd 剥掉引号
   （`'…\DeepSeek' is not recognized`）。用 PowerShell 的调用运算符 `& $dsh`。
+- **`tsdown` 会把能解析到的包打进产物**。插件对 `@deepseek-ai/*` 的 import 必须在构建期保持外部，
+  否则产物里会塞进一份私有的宿主运行时。`dsh-tool-git` 用 `deps: { neverBundle: true }` 钉住这一点；
+  详细机理与验收口径见 `packages/dsh-tool-git/AGENTS.md`。新增插件时同样要显式声明。
 
 ---
 
@@ -156,9 +203,12 @@ pwsh -NoProfile -File scripts\start-env.ps1
 ```
 
 - 默认 `DSH_HOME=%USERPROFILE%\dsh-suite-env`，**不碰日常 `~/.dsh`**；删掉该目录即完全回退。
-- 默认 `-Mode link`：把 `packages/dsh-tia-openness-v17-min` 以 `link:` 链进 profile，验的是
+- 默认 `-Mode link`：把**蓝图里指到 `packages/` 的每个本地插件**以 `link:` 链进 profile，验的是
   **当前工作树**（每次启动会先 `pnpm -r build`，所以改完 `src/` 直接重启即可）；
-  `-Mode pack` 改为 `pnpm pack` 出 tarball 再装，验**真实交付物**。
+  `-Mode pack` 改为逐个 `pnpm pack` 出 tarball 再装，验**真实交付物**。
+- **要部署哪些插件不写死在脚本里**：`Get-LocalPlugins` 读蓝图 `dsh.profile.bundles`，凡是能在
+  `packages/` 下按 `package.json` 的 `name` 匹配到的条目都算本地插件（带 scope 与不带 scope 同一套逻辑）。
+  所以新增插件只要建目录 + 把包名写进蓝图 bundles，本脚本无需改动。
 - 本机 `pnpm` 与 `dsh` **都不在 PATH 上**（`node` 在），脚本自己从 DSH 安装目录解析它们；
   可用 `$env:DSH_APP_ROOT` 覆盖安装目录。
 - 其它开关：`-DshHome`、`-Port`（默认 3092，`0` 为随机）、`-Restart`、`-NoOpen`、`-Reset`、`-SkipBuild`。

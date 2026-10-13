@@ -12,6 +12,7 @@
 | `@deepseek-ai/dsh-base` | DSH 基础层（会话、工具注册表、LLM……） |
 | `@deepseek-ai/dsh-web-app` | Web 应用层 —— 没有它这个 profile 启动后没有 app 可跑 |
 | `@voltarenyah/dsh-tia-openness-v17-min` | 本发行版的第一个插件 |
+| `dsh-tool-git` | 结构化 Git 工具族 + 破坏性命令闸门（vendor 自上游 `lxj808624/dsh-tool-git` v0.1.3） |
 
 `dsh-web-app` 是**超出最初清单额外加的**：只列 `dsh-base` 的话 profile 能 `--dump-config`，
 但没有任何 app 可启动。官方 `web` 模板就是 `dsh-base` + `dsh-web-app`。
@@ -66,10 +67,16 @@ $dst = "$env:USERPROFILE\.dsh\profiles\dsh-automation-suite"
 New-Item -ItemType Directory -Force $dst | Out-Null
 Copy-Item .\package.json,.\cordis.patch.yml,.\pnpm-workspace.yaml $dst
 
-# 2. 把 workspace:^ 换成 tarball 的 file: 路径
-$tgz = "<repo>\packages\dsh-tia-openness-v17-min\voltarenyah-dsh-tia-openness-v17-min-0.1.0.tgz"
+# 2. 把每个 workspace:^ 换成对应 tarball 的 file: 路径（每个插件一条）
+$repo = "<repo>"
+$tarballs = @{
+  '@voltarenyah/dsh-tia-openness-v17-min' = "$repo\packages\dsh-tia-openness-v17-min\voltarenyah-dsh-tia-openness-v17-min-0.1.0.tgz"
+  'dsh-tool-git'                          = "$repo\packages\dsh-tool-git\dsh-tool-git-0.1.3.tgz"
+}
 $pkg = Get-Content "$dst\package.json" -Raw | ConvertFrom-Json
-$pkg.dependencies.'@voltarenyah/dsh-tia-openness-v17-min' = "file:$($tgz -replace '\\','/')"
+foreach ($name in $tarballs.Keys) {
+  $pkg.dependencies.$name = "file:$($tarballs[$name] -replace '\\','/')"
+}
 $pkg | ConvertTo-Json -Depth 10 | Set-Content "$dst\package.json"
 
 # 3. 装并验证
@@ -77,7 +84,11 @@ dsh plugin --profile dsh-automation-suite install
 dsh --profile dsh-automation-suite --dump-config
 ```
 
-这条流程已实测通过：输出 **1262 行 = 官方 web 组合的 1259 行 + 插件行 3 行**，exit 0。
+这条流程已实测通过：输出 **1265 行 = 官方 web 组合的 1259 行 + 每个插件行 3 行 × 2**，exit 0。
+
+> ⚠️ 第 2 步的 tarball 文件名不要硬编码 `@scope-` 前缀：`pnpm pack` 对 `@scope/name` 产出的是
+> `scope-name-<version>.tgz`（剥掉 `@`、`/`→`-`），对不带 scope 的包就是 `dsh-tool-git-0.1.3.tgz`。
+> 目录里可能同时躺着多个历史 tarball，脚本另行用 `packages/*/*.tgz` 取最新一个更稳。
 
 ### C. 发布之后
 
@@ -94,6 +105,9 @@ dsh --profile dsh-automation-suite --dump-config
 预期结尾出现：
 
 ```yaml
+# == dsh-tool-git
+- id: tool-git
+  name: dsh-tool-git
 # == @voltarenyah/dsh-tia-openness-v17-min
 - id: tia-openness-v17-min
   name: '@voltarenyah/dsh-tia-openness-v17-min'

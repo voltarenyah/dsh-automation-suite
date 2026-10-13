@@ -1,0 +1,60 @@
+{
+  "name": "dsh-tool-git",
+  "description": "Structured, safe Git tool family for DeepSeek Harness: status/diff/log/branch/stage/commit/stash/show/fetch/pull/remote/checkout with a destructive-command guard.",
+  "version": "0.1.3",
+  "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/lxj808624/dsh-tool-git.git"
+  },
+  "homepage": "https://github.com/lxj808624/dsh-tool-git",
+  "bugs": {
+    "url": "https://github.com/lxj808624/dsh-tool-git/issues"
+  },
+  "main": "lib/index.mjs",
+  "types": "lib/types/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./lib/types/index.d.ts",
+      "default": "./lib/index.mjs"
+    },
+    "./src/*": "./src/*",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "lib",
+    "src",
+    "cordis.patch.yml",
+    "README.md",
+    "README.zh.md"
+  ],
+  "engines": {
+    "node": "^22.19.0 || >=24.0.0"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json && tsdown",
+    "typecheck": "tsc -p tsconfig.json && tsc -p tsconfig.test.json --noEmit",
+    "test": "vitest run",
+    "link:runtime": "node scripts/link-dsh-runtime.mjs",
+    "prepare": "tsdown --config tsdown.prepare.config.ts"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.0",
+    "tsdown": "^0.22.2",
+    "typescript": "^5.9.0",
+    "vitest": "^3.2.0"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  },
+  "keywords": [
+    "dsh",
+    "dsh-plugin",
+    "deepseek-harness",
+    "git",
+    "tool"
+  ],
+  "license": "MIT"
+}

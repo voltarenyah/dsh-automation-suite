@@ -10,6 +10,10 @@
   环境是**自包含**的：用自己的 $HOME 作为 DSH_HOME，不碰你日常的 ~/.dsh。
   删掉那个目录就等于完全回退。
 
+  要部署哪些插件不写死在这里：脚本读蓝图 profile\<名字>\package.json 的
+  dsh.profile.bundles，凡是能在 packages\ 下按包名找到的条目都算本地插件。
+  所以新增插件只需在 packages\ 建目录并把包名写进蓝图的 bundles，本脚本无需改动。
+
 .PARAMETER DshHome
   独立 DSH_HOME 的路径。默认 %USERPROFILE%\dsh-suite-env。
 
@@ -66,12 +70,38 @@ function Fail([string]$t, [string]$hint = '') {
 
 $repo = Split-Path -Parent $PSScriptRoot
 $blueprint = Join-Path $repo "profile\$Profile"
-$pluginDir = Join-Path $repo 'packages\dsh-tia-openness-v17-min'
 $profileDir = Join-Path $DshHome "profiles\$Profile"
 $manifest = Join-Path $profileDir 'package.json'
 
 if (-not (Test-Path $blueprint)) { Fail "找不到蓝图目录: $blueprint" 'profile\<名字> 必须存在；-Profile 决定用哪个蓝图。' }
-if (-not (Test-Path $pluginDir)) { Fail "找不到插件目录: $pluginDir" }
+
+<#
+  蓝图 dsh.profile.bundles 里指向本仓 packages\ 的那些条目，就是要部署的本地插件。
+
+  按 package.json 的 name 匹配，而不是按目录名 —— 带 scope（@scope/name）与不带 scope
+  的包于是走同一条逻辑，新增插件只要在 packages\ 下建目录、并把包名写进蓝图的 bundles
+  就会被这里自动带上，不需要改本脚本。顺序沿用 bundles 的顺序。
+#>
+function Get-LocalPlugins([string]$BlueprintDir) {
+  $byName = @{}
+  foreach ($dir in Get-ChildItem (Join-Path $repo 'packages') -Directory) {
+    $candidate = Join-Path $dir.FullName 'package.json'
+    if (-not (Test-Path $candidate)) { continue }
+    $byName[(Get-Content $candidate -Raw | ConvertFrom-Json).name] = $dir.FullName
+  }
+
+  $blueprintPkg = Get-Content (Join-Path $BlueprintDir 'package.json') -Raw | ConvertFrom-Json
+  $local = @()
+  foreach ($bundle in @($blueprintPkg.dsh.profile.bundles)) {
+    if ($byName.ContainsKey($bundle)) { $local += [pscustomobject]@{ Name = $bundle; Dir = $byName[$bundle] } }
+  }
+  return $local
+}
+
+$plugins = @(Get-LocalPlugins $blueprint)
+if ($plugins.Count -eq 0) {
+  Fail "蓝图 $Profile 的 dsh.profile.bundles 里没有任何一条指向 packages\ 下的插件" '本脚本只部署本仓的插件；官方 bundle 由 dsh 自己解析。'
+}
 
 # ----------------------------------------------------------------- 解析工具链
 # dsh 与 pnpm 都不在 PATH 上：两者都从 DSH 安装目录解析。
@@ -95,6 +125,7 @@ Say "仓库      : $repo"
 Say "DSH 安装  : $appRoot"
 Say "DSH_HOME  : $DshHome"
 Say "profile   : $Profile   (mode=$Mode, port=$Port)"
+Say "本地插件  : $($plugins.Name -join ', ')"
 Say ''
 
 # ----------------------------------------------------------------- 构建
@@ -121,31 +152,44 @@ if (-not (Test-Path $manifest)) {
 }
 
 # ------------------------------------------------------------- 依赖：link / pack
-$spec = if ($Mode -eq 'link') {
-  "link:$($pluginDir -replace '\\', '/')"
-} else {
-  Step '打包插件（pnpm pack）'
-  Invoke-Pnpm @('pack') $pluginDir
-  $tgz = Get-ChildItem (Join-Path $pluginDir '*.tgz') | Sort-Object LastWriteTime -Descending | Select-Object -First 1
-  if (-not $tgz) { Fail 'pnpm pack 没有产出 tarball' }
-  Say "    $($tgz.Name)"
-  "file:$($tgz.FullName -replace '\\', '/')"
+$env:DSH_HOME = $DshHome
+$pkg = Get-Content $manifest -Raw | ConvertFrom-Json
+$dirty = $false
+
+foreach ($plugin in $plugins) {
+  $name = $plugin.Name
+
+  if ($Mode -eq 'link') {
+    # link: 指向工作树 —— 每次启动前都跑过 pnpm -r build，所以验的是当前代码。
+    $spec = "link:$($plugin.Dir -replace '\\', '/')"
+  } else {
+    Step "打包插件（pnpm pack）: $name"
+    Invoke-Pnpm @('pack') $plugin.Dir
+    $tgz = Get-ChildItem (Join-Path $plugin.Dir '*.tgz') | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+    if (-not $tgz) { Fail "pnpm pack 没有产出 tarball: $($plugin.Dir)" }
+    Say "    $($tgz.Name)"
+    $spec = "file:$($tgz.FullName -replace '\\', '/')"
+  }
+
+  # 带 scope 的包名天然是多一层目录，Join-Path 对两种形式都成立。
+  $installed = Test-Path (Join-Path $profileDir "node_modules\$name\package.json")
+  $current = $pkg.dependencies.$name
+
+  if ($current -ne $spec -or -not $installed) {
+    Step "设置依赖: $name"
+    Say "    -> $spec"
+    $pkg.dependencies | Add-Member -NotePropertyName $name -NotePropertyValue $spec -Force
+    $dirty = $true
+  } else {
+    Say "已就绪，依赖未变: $name"
+  }
 }
 
-$pkg = Get-Content $manifest -Raw | ConvertFrom-Json
-$name = '@voltarenyah/dsh-tia-openness-v17-min'
-$installed = Test-Path (Join-Path $profileDir "node_modules\$name\package.json")
-$current = $pkg.dependencies.$name
-
-if ($current -ne $spec -or -not $installed) {
-  Step "设置依赖并安装: $spec"
-  $pkg.dependencies | Add-Member -NotePropertyName $name -NotePropertyValue $spec -Force
+if ($dirty) {
   $pkg | ConvertTo-Json -Depth 10 | Set-Content $manifest
-  $env:DSH_HOME = $DshHome
+  Step '安装 profile 依赖（dsh plugin install）'
   & $dsh plugin --profile $Profile install
   if ($LASTEXITCODE -ne 0) { Fail "dsh plugin install 失败（退出码 $LASTEXITCODE）" }
-} else {
-  Say "插件已就绪，依赖未变（$spec）"
 }
 
 # ----------------------------------------------------------------- 端口检查
@@ -179,6 +223,7 @@ Say ''
 Step '启动（浏览器会自动打开；Ctrl+C 停止）'
 Say '   首次进入：设置 → Models 填 API key；或用首次运行弹窗 "Save and continue"。'
 Say '   验收 TIA 工具前，建议先在设置里把 requestTimeoutMs 调大（见 profile 的 cordis.patch.yml 注释）。'
+Say '   git_* 工具由 dsh-tool-git 提供；破坏性 git 命令默认被拒（destructivePolicy: deny）。'
 Say ''
 
 $env:DSH_HOME = $DshHome

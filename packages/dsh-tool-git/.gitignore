@@ -1,0 +1,11 @@
+node_modules/
+.pnpm-store/
+.npm-cache/
+lib/
+*.tsbuildinfo
+.dsh-home/
+
+# stray tsc test artifacts
+tests/*.js
+tests/*.d.ts
+tests/*.map
