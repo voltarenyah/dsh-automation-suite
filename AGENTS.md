@@ -133,3 +133,29 @@ Config 字段（如 `opennessDir`），说明模块被**真实 import 并读取�
   `profiles/<profile>/node_modules`，或转义成 `*\/`。
 - 从 `cmd.exe` / `Start-Process` 调 `dsh.cmd` 时，安装路径里的空格会被 cmd 剥掉引号
   （`'…\DeepSeek' is not recognized`）。用 PowerShell 的调用运算符 `& $dsh`。
+
+---
+
+## 6. 本地验收环境（独立 DSH_HOME，一条命令）
+
+把"按蓝图物化 profile + 装插件 + 起服务 + 带 token 开浏览器"收成一条命令：
+
+```powershell
+pwsh -NoProfile -File scripts\start-env.ps1
+```
+
+- 默认 `DSH_HOME=%USERPROFILE%\dsh-suite-env`，**不碰日常 `~/.dsh`**；删掉该目录即完全回退。
+- 默认 `-Mode link`：把 `packages/dsh-tia-openness-v17-min` 以 `link:` 链进 profile，验的是
+  **当前工作树**（每次启动会先 `pnpm -r build`，所以改完 `src/` 直接重启即可）；
+  `-Mode pack` 改为 `pnpm pack` 出 tarball 再装，验**真实交付物**。
+- 本机 `pnpm` 与 `dsh` **都不在 PATH 上**（`node` 在），脚本自己从 DSH 安装目录解析它们；
+  可用 `$env:DSH_APP_ROOT` 覆盖安装目录。
+- 其它开关：`-DshHome`、`-Port`（默认 3092，`0` 为随机）、`-NoOpen`、`-Reset`、`-SkipBuild`。
+- 启动后 `dsh` 会打印带 token 的 URL；**不加 `--no-open` 时它会自动用默认浏览器打开**。
+  token 每次启动都换、不落盘，裸地址会 401。
+- 首次进入要由使用者自己配模型：**设置 → Models 填 API key**（或首次运行弹窗
+  "Add an API key to get started"）。凭据落在该 home 的 `.credentials.yaml`，与日常 home 无关。
+- 验收 TIA 工具前先把 `requestTimeoutMs` 调大：默认 300000（5 分钟），而实测导出 237 块要 87 s、
+  编译大项目文档记的是"常需 10 分钟以上"。在 profile 的 `cordis.patch.yml` 里覆盖即可。
+- ⚠️ 用 `-Reset` 或手删该 home 时，**必须**用 `cmd /c rmdir /s /q`：里面 `link:` 与 pnpm 的
+  junction 指向仓库和 pnpm store，跟进式递归删除会毁掉目标（见第 3 节）。
