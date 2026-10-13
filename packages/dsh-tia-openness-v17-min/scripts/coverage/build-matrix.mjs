@@ -37,6 +37,19 @@ const PATH_SEP = ' > '
 // ---------------------------------------------------------------------------
 
 /**
+ * Collapses CRLF to LF.
+ *
+ * Every comparison in this script goes through it, because `.gitattributes`
+ * pins `*.cs` to CRLF: the code a checkout holds is the same code, but not the
+ * same bytes, depending on whether the working copy was ever re-checked-out.
+ * A fingerprint or a staleness check that depended on that would fail on every
+ * fresh clone.
+ */
+export function normalizeEol(text) {
+  return text.replace(/\r\n/g, '\n')
+}
+
+/**
  * Replaces comments and string literals with spaces so that a word-boundary
  * search cannot match prose. Keeps offsets irrelevant (we only count).
  */
@@ -104,7 +117,7 @@ function readSources() {
 
   const fingerprint = createHash('sha256')
   for (const file of [...csFiles, ...tsFiles, join(REPO, 'scripts', 'coverage', 'matrix-data.mjs')]) {
-    fingerprint.update(relative(REPO, file)).update('\0').update(readFileSync(file)).update('\0')
+    fingerprint.update(relative(REPO, file)).update('\0').update(normalizeEol(readFileSync(file, 'utf8'))).update('\0')
   }
 
   return { csFiles, tsFiles, csText, tsRaw, fingerprint: fingerprint.digest('hex').slice(0, 16) }
@@ -1050,12 +1063,12 @@ function main() {
 
   const findings = [...built.errors, ...checks.errors, ...built.warnings, ...checks.warnings]
   if (check) {
-    // Line endings are normalized before comparing: the generated file is LF
-    // (`.gitattributes` pins `*.html` to `eol=lf`), but a checkout or an editor
-    // that rewrites it as CRLF must not be reported as stale content.
-    const normalize = (text) => text.replace(/\r\n/g, '\n')
+    // Line endings are normalized before comparing (see `normalizeEol`): the
+    // generated file is LF (`.gitattributes` pins `*.html` to `eol=lf`), but a
+    // checkout or an editor that rewrites it as CRLF must not be reported as
+    // stale content.
     const current = existsSync(out) ? readFileSync(out, 'utf8') : null
-    const stale = current === null || normalize(current) !== normalize(html)
+    const stale = current === null || normalizeEol(current) !== normalizeEol(html)
     if (stale) {
       process.stderr.write(`✗ ${relative(REPO, out)} is stale. Run: npm run matrix:build\n`)
     }
