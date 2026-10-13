@@ -87,13 +87,22 @@ export function linkRuntime({ force = false, quiet = false } = {}) {
   return { linked, present, missing }
 }
 
-/** @returns {string[]} the runtime packages that are still unresolvable. */
+/**
+ * The runtime packages this package still has to link.
+ *
+ * A package counts as unresolved as soon as its local link is missing, whether
+ * or not a source can be found: the callers use this to decide whether to link
+ * at all, so "a source exists" must not answer the question. Reporting an
+ * available-but-unlinked package as resolved would skip linking and surface a
+ * bare module-resolution error instead of the actionable message below.
+ *
+ * @returns {string[]} the runtime packages that are not linked into this package yet.
+ */
 export function unresolvedRuntimePackages() {
   const packageRoot = dirname(dirname(fileURLToPath(import.meta.url)))
   return PACKAGES.filter((packageName) => {
     const local = join(packageRoot, 'node_modules', '@deepseek-ai', packageName, 'package.json')
-    if (existsSync(local)) return false
-    return findSource(packageName) === null
+    return !existsSync(local)
   })
 }
 
