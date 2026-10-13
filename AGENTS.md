@@ -150,7 +150,7 @@ pwsh -NoProfile -File scripts\start-env.ps1
   `-Mode pack` 改为 `pnpm pack` 出 tarball 再装，验**真实交付物**。
 - 本机 `pnpm` 与 `dsh` **都不在 PATH 上**（`node` 在），脚本自己从 DSH 安装目录解析它们；
   可用 `$env:DSH_APP_ROOT` 覆盖安装目录。
-- 其它开关：`-DshHome`、`-Port`（默认 3092，`0` 为随机）、`-NoOpen`、`-Reset`、`-SkipBuild`。
+- 其它开关：`-DshHome`、`-Port`（默认 3092，`0` 为随机）、`-Restart`、`-NoOpen`、`-Reset`、`-SkipBuild`。
 - 启动后 `dsh` 会打印带 token 的 URL；**不加 `--no-open` 时它会自动用默认浏览器打开**。
   token 每次启动都换、不落盘，裸地址会 401。
 - 首次进入要由使用者自己配模型：**设置 → Models 填 API key**（或首次运行弹窗
@@ -165,13 +165,17 @@ pwsh -NoProfile -File scripts\start-env.ps1
 使用者说「**启动 App**」（或同义的一句话，例如"起一下环境"）时，就是要在仓库根执行：
 
 ```powershell
-pwsh -NoProfile -File scripts\start-env.ps1
+pwsh -NoProfile -File scripts\start-env.ps1 -Restart
 ```
 
-跑完把 DSH 打印的带 token URL 报给他。默认端口 `3092`；若被占用，脚本会直接报出占用进程，
-此时先确认那是不是已经在跑的同一个实例（是则不必再启），否则换 `-Port 0` 或先停掉旧的。
+`-Restart` 让这条命令**永远可用**：端口上已有实例就先停掉它再起，所以"改完代码 → 启动 App"
+是一步，不需要手工先停。它只停 `DeepSeek Harness` —— 占用者不是它就报错退出，不会误杀别的进程。
 
-**启动前先看一眼是否已在跑**，避免起出第二个实例：
+跑完把 DSH 打印的带 token URL 报给他（URL 会出现在那个新开的控制台窗口里，浏览器也会自动打开）。
+想换个端口就加 `-Port`。
+
+**故意不加 `-Restart`** 时，端口被占用会直接报错并指出占用进程 —— 这是"我只想确认它是不是已经在跑"
+的用法，用来避免无意中重启掉正在用的实例：
 
 ```powershell
 Get-NetTCPConnection -State Listen -LocalPort 3092 -ErrorAction SilentlyContinue |

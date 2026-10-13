@@ -30,6 +30,10 @@
 .PARAMETER Reset
   先删掉现有的 profile 目录再按蓝图重建（会先请你确认）。
 
+.PARAMETER Restart
+  若目标端口上已经跑着一个 DeepSeek Harness 实例，先停掉它再启动 —— 开发循环用这个：
+  改完代码直接 `-Restart`。占用者不是 DeepSeek Harness 时**不会**动它，只会报错退出。
+
 .PARAMETER NoOpen
   不自动打开浏览器（默认会打开，并把带 token 的 URL 交给浏览器）。
 
@@ -46,6 +50,7 @@ param(
   [ValidateSet('link', 'pack')][string]$Mode = 'link',
   [switch]$SkipBuild,
   [switch]$Reset,
+  [switch]$Restart,
   [switch]$NoOpen
 )
 
@@ -147,8 +152,25 @@ if ($current -ne $spec -or -not $installed) {
 if ($Port -ne 0) {
   $busy = Get-NetTCPConnection -State Listen -LocalPort $Port -ErrorAction SilentlyContinue
   if ($busy) {
-    $who = Get-Process -Id $busy[0].OwningProcess -ErrorAction SilentlyContinue
-    Fail "端口 $Port 已被占用（pid $($busy[0].OwningProcess) $($who.ProcessName)）" '换一个 -Port，或先停掉那个实例再启动。'
+    $holder = $busy[0].OwningProcess
+    $who = Get-Process -Id $holder -ErrorAction SilentlyContinue
+    # 只停自己人：占用者必须是 DeepSeek Harness，否则 -Restart 也不动它。
+    if ($Restart -and $who -and $who.ProcessName -eq 'DeepSeek Harness') {
+      Step "端口 $Port 上已有实例（pid $holder），按 -Restart 先停掉它"
+      Stop-Process -Id $holder -Force
+      $deadline = (Get-Date).AddSeconds(30)
+      while ((Get-Date) -lt $deadline) {
+        Start-Sleep -Milliseconds 500
+        if (-not (Get-NetTCPConnection -State Listen -LocalPort $Port -ErrorAction SilentlyContinue)) { break }
+      }
+      if (Get-NetTCPConnection -State Listen -LocalPort $Port -ErrorAction SilentlyContinue) {
+        Fail "停掉 pid $holder 之后端口 $Port 仍被占用"
+      }
+      Say '    已停止，端口已释放'
+    } else {
+      $hint = if ($Restart) { '占用者不是 DeepSeek Harness，-Restart 不会动它。' } else { '换一个 -Port，或加 -Restart 停掉旧实例。' }
+      Fail "端口 $Port 已被占用（pid $holder $($who.ProcessName)）" $hint
+    }
   }
 }
 
