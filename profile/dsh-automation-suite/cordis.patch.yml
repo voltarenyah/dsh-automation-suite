@@ -1,0 +1,14 @@
+# 本 profile 的用户 patch 层，在所有 bundle 层之后应用。
+#
+# 顶层是 loader patch 条目的 YAML 数组：按 id 覆盖 config、disable 某行，或 insert 新行。
+# bundle 自带的 patch 只插入自己的行并给出默认值，所有环境相关的设置都归这里。
+#
+# 例如给 TIA Openness 插件放大超时：
+#
+#   - id: tia-openness-v17-min
+#     config:
+#       requestTimeoutMs: 600000
+#       opennessDir: 'C:\Program Files\Siemens\Automation\Portal V17\PublicAPI\V17'
+#
+# 保持为空数组表示不覆盖任何东西。
+[]
