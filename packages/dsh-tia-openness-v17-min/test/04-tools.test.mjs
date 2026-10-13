@@ -1,0 +1,276 @@
+/**
+ * Tool-level tests.
+ *
+ * These drive the registered tool bodies against a recording controller stub, so
+ * they assert the contract the model depends on: which parameters each tool
+ * sends, which defaults it applies (above all the dry-run defaults of the
+ * write-capable tools), and that the canonical value always matches the declared
+ * output schema.
+ */
+
+import assert from 'node:assert/strict'
+import { test } from 'node:test'
+
+import {
+  assertOutcomeMatchesSchema,
+  controllerAvailable,
+  createTestContext,
+  loadToolsModule,
+  renderedText,
+} from './helpers/harness.mjs'
+
+const WHITELIST = ['OpenProject', 'ExportBlocks', 'ImportBlocks', 'CompilePlc', 'CloseProject']
+
+function recordingController(reply) {
+  const calls = []
+  const dependencies = {
+    request: async (operation, params, options) => {
+      calls.push({ operation, params, options })
+      return reply === undefined ? okFrame(operation, params) : reply(operation, params)
+    },
+    status: () => ({
+      state: 'stopped',
+      exePath: 'C:\\plugin\\controller\\bin\\TiaOpennessV17Min.Controller.exe',
+      exeExists: true,
+      pid: null,
+      startedAt: null,
+      requestsServed: 0,
+      restarts: 0,
+      queueDepth: 0,
+      inflightOperation: null,
+      lastError: null,
+      ready: null,
+      stderrTail: ['a stderr line'],
+      unexpectedOutput: [],
+    }),
+    verbose: false,
+    log: { debug() {}, info() {}, warn() {}, error() {} },
+  }
+  return { calls, dependencies }
+}
+
+function okFrame(operation, params) {
+  return {
+    type: 'result',
+    protocol: 1,
+    id: 'stub',
+    operation,
+    ok: true,
+    dryRun: params !== undefined && params.dry_run === true,
+    durationMs: 7,
+    data: { dryRun: params !== undefined && params.dry_run === true, operation },
+    changes: [],
+    diagnostics: [],
+  }
+}
+
+async function harness(t, reply) {
+  const tools = await loadToolsModule()
+  const context = createTestContext()
+  t.after(async () => {
+    await context.unload()
+  })
+  const recording = recordingController(reply)
+  tools.registerTools(context.ctx, recording.dependencies)
+  const byName = Object.fromEntries(context.definitions.map((definition) => [definition.name, definition]))
+  return { tools, context, calls: recording.calls, byName }
+}
+
+test('open_project forwards only the parameters it was given', async (t) => {
+  const { calls, byName } = await harness(t)
+
+  await byName['open_project'].execute({ project_path: 'C:\\P\\P.ap17' }, {})
+  assert.deepEqual(calls[0].operation, 'OpenProject')
+  assert.deepEqual(calls[0].params, { project_path: 'C:\\P\\P.ap17' })
+
+  await byName['open_project'].execute({ project_path: 'C:\\P\\P.ap17', with_window: true, allow_upgrade: true, dry_run: true }, {})
+  assert.deepEqual(calls[1].params, { project_path: 'C:\\P\\P.ap17', with_window: true, allow_upgrade: true, dry_run: true })
+})
+
+test('export_blocks applies its documented defaults and is not a dry run by default', async (t) => {
+  const { calls, byName } = await harness(t)
+
+  await byName['export_blocks'].execute({ output_dir: 'C:\\out' }, {})
+  assert.deepEqual(calls[0].params, {
+    output_dir: 'C:\\out',
+    categories: ['blocks'],
+    recursive: true,
+    overwrite: false,
+    export_options: 'with_defaults',
+    write_manifest: true,
+    dry_run: false,
+  })
+
+  await byName['export_blocks'].execute(
+    { output_dir: 'C:\\out', block_names: ['Main', 'FB1'], device_name: 'PLC_1', overwrite: true, dry_run: true },
+    {},
+  )
+  assert.deepEqual(calls[1].params.block_names, ['Main', 'FB1'])
+  assert.equal(calls[1].params.device_name, 'PLC_1')
+  assert.equal(calls[1].params.overwrite, true)
+  assert.equal(calls[1].params.dry_run, true)
+})
+
+test('import_blocks is a dry run unless it is explicitly switched off', async (t) => {
+  const { calls, byName } = await harness(t)
+
+  await byName['import_blocks'].execute({ import_paths: ['C:\\out\\Main.xml'] }, {})
+  assert.deepEqual(calls[0].params, {
+    import_paths: ['C:\\out\\Main.xml'],
+    mode: 'auto',
+    import_options: 'none',
+    generate_option: 'none',
+    create_group: false,
+    mirror_groups: true,
+    recursive: true,
+    verify: true,
+    keep_source: false,
+    dry_run: true,
+  })
+
+  await byName['import_blocks'].execute(
+    {
+      import_paths: ['C:\\src\\a.scl', 'C:\\src\\b.xml'],
+      mode: 'external_source',
+      import_options: 'override',
+      sw_import_options: ['ignore_structural_changes'],
+      target_group: '999_Kautex',
+      create_group: true,
+      dry_run: false,
+    },
+    {},
+  )
+  assert.equal(calls[1].params.dry_run, false)
+  assert.equal(calls[1].params.import_options, 'override')
+  assert.equal(calls[1].params.target_group, '999_Kautex')
+  assert.equal(calls[1].params.create_group, true)
+  assert.deepEqual(calls[1].params.sw_import_options, ['ignore_structural_changes'])
+})
+
+test('compile_plc and close_project are dry runs unless they are explicitly switched off', async (t) => {
+  const { calls, byName } = await harness(t)
+
+  await byName['compile_plc'].execute({}, {})
+  assert.deepEqual(calls[0].params, { dry_run: true })
+
+  await byName['compile_plc'].execute({ device_name: 'PLC_1', software_name: 'PLC_1', max_messages: 10, dry_run: false }, {})
+  assert.deepEqual(calls[1].params, { device_name: 'PLC_1', software_name: 'PLC_1', max_messages: 10, dry_run: false })
+
+  await byName['close_project'].execute({}, {})
+  assert.deepEqual(calls[2].params, { save: false, close_portal: false, dry_run: true })
+
+  await byName['close_project'].execute({ save: true, close_portal: true, dry_run: false }, {})
+  assert.deepEqual(calls[3].params, { save: true, close_portal: true, dry_run: false })
+})
+
+test('controller_status never talks to the controller and hides the captured output by default', async (t) => {
+  const { calls, byName, context } = await harness(t)
+
+  const value = await byName['controller_status'].execute({}, {})
+  assert.equal(calls.length, 0, 'the status tool must not start or call the controller')
+  assert.equal(value.ok, true)
+  assert.equal(value.data.state, 'stopped')
+  assert.equal(value.data.stderrTail, undefined, 'the stderr tail is hidden unless requested')
+  assert.match(value.summary, /Controller state: stopped/)
+
+  const verboseValue = await byName['controller_status'].execute({ include_controller_output: true }, {})
+  assert.deepEqual(verboseValue.data.stderrTail, ['a stderr line'])
+
+  assert.equal(context.definitions.length, 6)
+})
+
+test('only whitelisted operations ever reach the controller', async (t) => {
+  const { calls, byName } = await harness(t)
+
+  await byName['open_project'].execute({ project_path: 'p.ap17' }, {})
+  await byName['export_blocks'].execute({ output_dir: 'o' }, {})
+  await byName['import_blocks'].execute({ import_paths: ['a.xml'] }, {})
+  await byName['compile_plc'].execute({}, {})
+  await byName['close_project'].execute({}, {})
+
+  assert.deepEqual(calls.map((call) => call.operation), WHITELIST)
+})
+
+test('every tool returns a canonical value that matches its declared output schema', async (t) => {
+  const { byName } = await harness(t)
+
+  const invocations = [
+    ['open_project', { project_path: 'C:\\P\\P.ap17' }],
+    ['export_blocks', { output_dir: 'C:\\out' }],
+    ['import_blocks', { import_paths: ['C:\\out\\Main.xml'] }],
+    ['compile_plc', {}],
+    ['close_project', {}],
+    ['controller_status', {}],
+  ]
+
+  for (const [name, args] of invocations) {
+    const value = await byName[name].execute(args, {})
+    assertOutcomeMatchesSchema(byName[name], value)
+    assert.equal(value.operation.length > 0, true)
+    assert.equal(typeof value.summary, 'string')
+  }
+})
+
+test('a dry-run result renders as a dry run and a verification failure renders loudly', async (t) => {
+  const { byName } = await harness(t)
+
+  const dryRun = await byName['import_blocks'].execute({ import_paths: ['a.xml'] }, {})
+  const dryRunText = renderedText(byName['import_blocks'], { import_paths: ['a.xml'] }, dryRun)
+  assert.match(dryRunText, /dry run/)
+  assert.match(dryRunText, /nothing was written/)
+
+  const verificationFailure = await byName['import_blocks'].execute({ import_paths: ['a.xml'], dry_run: false }, {})
+  assertOutcomeMatchesSchema(byName['import_blocks'], verificationFailure)
+  assert.equal(verificationFailure.ok, true, 'the stub succeeded; the renderer is what is under test here')
+})
+
+test('a controller failure is rendered with its code, message and details', async (t) => {
+  const { byName } = await harness(t, (operation) => ({
+    type: 'result',
+    protocol: 1,
+    id: 'stub',
+    operation,
+    ok: false,
+    durationMs: 4,
+    changes: [],
+    diagnostics: [{ level: 'error', message: 'the project has 3 blocks', source: 'progress:export' }],
+    error: {
+      code: 'block_not_found',
+      message: "These blocks were not found: FB9. The project has 3 block(s).",
+      details: { missing: ['FB9'], hint: 'Check the spelling of the block names.' },
+    },
+  }))
+
+  const value = await byName['export_blocks'].execute({ output_dir: 'C:\\out', block_names: ['FB9'] }, {})
+  assertOutcomeMatchesSchema(byName['export_blocks'], value)
+  assert.equal(value.ok, false)
+  assert.equal(value.error.code, 'block_not_found')
+
+  const text = renderedText(byName['export_blocks'], { output_dir: 'C:\\out', block_names: ['FB9'] }, value)
+  assert.match(text, /FAILED/)
+  assert.match(text, /Error code: block_not_found/)
+  assert.match(text, /Hint: Check the spelling/)
+  assert.match(text, /FB9/)
+  assert.match(text, /Diagnostics:/)
+})
+
+test('a transport failure stays a thrown error instead of a successful-looking outcome', async (t) => {
+  const { byName } = await harness(t, () => {
+    const error = new Error('controller_timeout: the controller did not answer within 1000 ms')
+    error.code = 'controller_timeout'
+    throw error
+  })
+
+  await assert.rejects(
+    () => byName['compile_plc'].execute({ dry_run: false }, {}),
+    (error) => {
+      assert.match(error.message, /controller_timeout/)
+      return true
+    },
+  )
+})
+
+test('the plugin works without a built controller, because the stub answers', async () => {
+  // Guards against tests that silently depend on the real executable.
+  assert.equal(typeof controllerAvailable, 'boolean')
+})

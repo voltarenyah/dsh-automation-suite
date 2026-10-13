@@ -1,0 +1,24 @@
+# Keep line endings deterministic across the repository.
+* text=auto
+
+# Windows-only scripting and C# sources stay CRLF-friendly.
+*.cs    text eol=crlf
+*.csproj text eol=crlf
+*.ps1   text eol=crlf
+*.config text eol=crlf
+
+# Everything else is authored with LF.
+*.ts    text eol=lf
+*.mjs   text eol=lf
+*.js    text eol=lf
+*.json  text eol=lf
+*.yml   text eol=lf
+*.md    text eol=lf
+*.cjs   text eol=lf
+# Generated, byte-compared by scripts/coverage/build-matrix.mjs --check.
+*.html  text eol=lf
+
+# Binaries are never normalized.
+*.exe   binary
+*.dll   binary
+*.pdb   binary

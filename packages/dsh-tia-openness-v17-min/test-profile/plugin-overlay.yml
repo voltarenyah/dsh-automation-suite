@@ -1,0 +1,18 @@
+# 临时 overlay：把本插件插入到任何 profile 的组合里，但不修改 profile 文件。
+#
+# 用法（不写任何 profile，`--patch` 是叠加层）：
+#   dsh --profile web --patch .\test-profile\plugin-overlay.yml --dump-config
+#   dsh --profile web --patch .\test-profile\plugin-overlay.yml <app 参数>
+#
+# 说明：
+#   * 这里只声明"插入哪一行"，不含任何环境相关配置；控制器路径、超时等
+#     都可以在下面 config 里按需覆盖（全部有默认值，可整块省略）。
+#   * 模块名 @voltarenyah/dsh-tia-openness-v17-min 必须能从被启动的 profile 解析到
+#     （见 test-profile/README.md 的两种装法：link: 安装，或用绝对路径）。
+- insert:
+    - id: tia-openness-v17-min
+      name: '@voltarenyah/dsh-tia-openness-v17-min'
+      # config:
+      #   requestTimeoutMs: 600000        # 大项目导入/编译放大超时
+      #   logControllerOutput: true       # 把控制器 stdout/stderr 转进 DSH 日志
+      #   verboseResults: true            # 工具结果附带完整控制器 payload

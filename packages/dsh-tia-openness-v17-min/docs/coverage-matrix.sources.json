@@ -1,0 +1,3324 @@
+{
+  "schema": 1,
+  "extractedAt": "2026-10-13T04:54:52.527Z",
+  "tia": {
+    "majorVersion": 17,
+    "portalRoot": "C:\\Program Files\\Siemens\\Automation\\Portal V17",
+    "opennessDir": "C:\\Program Files\\Siemens\\Automation\\Portal V17\\PublicAPI\\V17"
+  },
+  "api": {
+    "opennessDir": "C:\\Program Files\\Siemens\\Automation\\Portal V17\\PublicAPI\\V17",
+    "assembly": "C:\\Program Files\\Siemens\\Automation\\Portal V17\\PublicAPI\\V17\\Siemens.Engineering.dll",
+    "assemblyBytes": 1521664,
+    "xml": "C:\\Program Files\\Siemens\\Automation\\Portal V17\\PublicAPI\\V17\\Siemens.Engineering.xml",
+    "xmlSha256": "60fbd152de403b022eceedce973250ff9f49a0b9aca5bdc6367342a4553a5210",
+    "typeCount": 1335,
+    "memberCount": 16022,
+    "namespaceCount": 63,
+    "namespaces": {
+      "Siemens.Engineering": [
+        "AttachingEventArgs",
+        "AuthenticationEventArgs",
+        "AuthenticationTypeProvider",
+        "ConfirmationChoices",
+        "ConfirmationEventArgs",
+        "ConfirmationIcon",
+        "ConfirmationResult",
+        "EngineeringAttributeAccessMode",
+        "EngineeringAttributeInfo",
+        "EngineeringCompositionInfo",
+        "EngineeringCreateRelevance",
+        "EngineeringCreationInfo",
+        "EngineeringCreationParameterInfo",
+        "EngineeringDelegateInvocationException",
+        "EngineeringException",
+        "EngineeringInvocationInfo",
+        "EngineeringInvocationParameterInfo",
+        "EngineeringNotSupportedException",
+        "EngineeringObjectDisposedException",
+        "EngineeringOutOfMemoryException",
+        "EngineeringRuntimeException",
+        "EngineeringSecurityException",
+        "EngineeringServiceInfo",
+        "EngineeringTargetInvocationException",
+        "EngineeringUserAbortException",
+        "ExceptionMessageData",
+        "ExclusiveAccess",
+        "ExportOptions",
+        "FunctionRightNotFoundException",
+        "HistoryEntry",
+        "HistoryEntryComposition",
+        "IEngineeringAssociation",
+        "IEngineeringComposition",
+        "IEngineeringCompositionOrObject",
+        "IEngineeringInstance",
+        "IEngineeringObject",
+        "IEngineeringObjectAssociation",
+        "IEngineeringRoot",
+        "IEngineeringService",
+        "IEngineeringServiceProvider",
+        "IShowable",
+        "ISystemObject",
+        "ITransactionSupport",
+        "ImportOptions",
+        "Language",
+        "LanguageAssociation",
+        "LanguageComposition",
+        "LanguageSettings",
+        "LicenseNotFoundException",
+        "MultilingualText",
+        "MultilingualTextItem",
+        "MultilingualTextItemComposition",
+        "NonRecoverableException",
+        "NotificationEventArgs",
+        "NotificationIcon",
+        "OpenMode",
+        "Project",
+        "ProjectArchivationMode",
+        "ProjectBase",
+        "ProjectComposition",
+        "ProjectOpenMode",
+        "ProjectTextResult",
+        "ProjectTextResultState",
+        "TiaPortal",
+        "TiaPortalAccessLevel",
+        "TiaPortalMode",
+        "TiaPortalProcess",
+        "TiaPortalProduct",
+        "TiaPortalSession",
+        "TiaPortalTrustAuthority",
+        "Transaction",
+        "UmacCredentials",
+        "UmacDelegate",
+        "UmacUserType",
+        "UsedProduct",
+        "UsedProductComposition"
+      ],
+      "Siemens.Engineering.AdvancedProtection": [
+        "ProtectionProviderBase"
+      ],
+      "Siemens.Engineering.Cax": [
+        "CaxImportOptions",
+        "CaxProvider"
+      ],
+      "Siemens.Engineering.Compare": [
+        "CompareResult",
+        "CompareResultElement",
+        "CompareResultElementComposition",
+        "CompareResultState"
+      ],
+      "Siemens.Engineering.Compiler": [
+        "CompileProvider",
+        "CompilerResult",
+        "CompilerResultMessage",
+        "CompilerResultMessageComposition",
+        "CompilerResultState",
+        "ICompilable"
+      ],
+      "Siemens.Engineering.Connection": [
+        "ConfigurationAddress",
+        "ConfigurationAddressComposition",
+        "ConfigurationGateway",
+        "ConfigurationGatewayComposition",
+        "ConfigurationMode",
+        "ConfigurationModeComposition",
+        "ConfigurationPcInterface",
+        "ConfigurationPcInterfaceComposition",
+        "ConfigurationSubnet",
+        "ConfigurationSubnetComposition",
+        "ConfigurationTargetInterface",
+        "ConfigurationTargetInterfaceComposition",
+        "ConnectionConfiguration",
+        "IConfiguration"
+      ],
+      "Siemens.Engineering.CustomIdentity": [
+        "CustomIdentityNotFoundException",
+        "CustomIdentityProvider"
+      ],
+      "Siemens.Engineering.Download": [
+        "DownloadConfigurationDelegate",
+        "DownloadOptions",
+        "DownloadProvider",
+        "DownloadResult",
+        "DownloadResultMessage",
+        "DownloadResultMessageComposition",
+        "DownloadResultState",
+        "RHDownloadProvider"
+      ],
+      "Siemens.Engineering.Download.Configurations": [
+        "ActiveTestCanBeAborted",
+        "ActiveTestCanBeAbortedSelections",
+        "ActiveTestCanPreventDownload",
+        "ActiveTestCanPreventDownloadSelections",
+        "AlarmTextLibrariesDownload",
+        "AlarmTextLibrariesDownloadSelections",
+        "AllBlocksDownload",
+        "AllBlocksDownloadSelections",
+        "BlockBindingPassword",
+        "CheckBeforeDownload",
+        "ConsistentBlocksDownload",
+        "ConsistentBlocksDownloadSelections",
+        "DataBlockReinitialization",
+        "DataBlockReinitializationSelections",
+        "DifferentTargetConfiguration",
+        "DifferentTargetConfigurationSelections",
+        "DowngradeTargetDevice",
+        "DownloadCertificate",
+        "DownloadCheckConfiguration",
+        "DownloadConfiguration",
+        "DownloadPasswordConfiguration",
+        "DownloadSelectionConfiguration",
+        "ExpandDownload",
+        "ExpandDownloadSelections",
+        "FitHmiComponents",
+        "InitializeMemory",
+        "InitializeMemorySelections",
+        "LoadIdentificationData",
+        "LoadIdentificationDataSelections",
+        "ModuleReadAccessPassword",
+        "ModuleWriteAccessPassword",
+        "OverwriteHmiData",
+        "OverwriteSystemData",
+        "OverwriteSystemDataSelections",
+        "OverwriteTargetLanguages",
+        "PlcMasterSecretPassword",
+        "ProtectionLevelChanged",
+        "ProtectionLevelChangedSelections",
+        "ResetModule",
+        "ResetModuleSelections",
+        "StartBackupModules",
+        "StartBackupModulesSelections",
+        "StartDriveDownloadCheckConfiguration",
+        "StartModules",
+        "StartModulesSelections",
+        "StopHSystem",
+        "StopHSystemOrModule",
+        "StopHSystemOrModuleSelections",
+        "StopHSystemSelections",
+        "StopModules",
+        "StopModulesSelections",
+        "SwitchBackupToPrimary",
+        "SwitchBackupToPrimarySelections",
+        "TurnOffSequence",
+        "UpgradeTargetDevice",
+        "WaitOnReboot",
+        "WaitOnRebootSelections"
+      ],
+      "Siemens.Engineering.FingerprintData": [
+        "FingerprintDataItem",
+        "FingerprintDataItemComposition",
+        "FingerprintDataProvider",
+        "FingerprintDataResult"
+      ],
+      "Siemens.Engineering.HW": [
+        "AM1InputsActiveInputs",
+        "AM1InputsInputSignal",
+        "AM1InputsResponseToOpenCircuit",
+        "AM1LowerTripLevelActiveStatus",
+        "AM1LowerTripLevelResponse",
+        "AM1LowerWarningLevelActiveStatus",
+        "AM1LowerWarningLevelResponse",
+        "AM1OutputsOutputSignal",
+        "AM1UpperTripLevelActiveStatus",
+        "AM1UpperTripLevelResponse",
+        "AM1UpperWarningLevelActiveStatus",
+        "AM1UpperWarningLevelResponse",
+        "AM2InputsActiveInputs",
+        "AM2InputsInputSignal",
+        "AM2InputsResponseToOpenCircuit",
+        "AM2LowerTripLevelActiveStatus",
+        "AM2LowerTripLevelResponse",
+        "AM2LowerWarningLevelActiveStatus",
+        "AM2LowerWarningLevelResponse",
+        "AM2OutputsOutputSignal",
+        "AM2UpperTripLevelActiveStatus",
+        "AM2UpperTripLevelResponse",
+        "AM2UpperWarningLevelActiveStatus",
+        "AM2UpperWarningLevelResponse",
+        "Activation",
+        "ActivePowerLowerTripLevelResponse",
+        "ActivePowerLowerWarningLevelResponse",
+        "ActivePowerUpperWarningLevelResponse",
+        "Address",
+        "AddressAssociation",
+        "AddressComposition",
+        "AddressContext",
+        "AddressIoType",
+        "AmplifierBoost",
+        "ApplicationControlFunction",
+        "ApplicationControllerActive",
+        "AsiProfileID",
+        "AsiProfileID1",
+        "AsiProfileIO",
+        "BaseFrequency",
+        "BasicType",
+        "BasicUnitInputsDebouncingTimes",
+        "BaudRate",
+        "BehaviorOfCounterValueAfterCaptureDI0",
+        "BehaviorOfCounterValueAfterCaptureDI1",
+        "BehaviorOfCounterValueAfterCaptureDI2",
+        "BehaviorOfDI4",
+        "BehaviorOfDI5",
+        "BehaviorOfDI6",
+        "BehaviorOfDI7",
+        "BlockingCurrent",
+        "BoostCurrent",
+        "Brightness",
+        "BusPowerSupplyActive",
+        "BusProfile",
+        "CableLength",
+        "CableLocking",
+        "CableLockingFeedback",
+        "CableName",
+        "Calculator2OperatingMode",
+        "Calculator2Operator",
+        "Calculator3Operator1",
+        "Calculator3Operator2",
+        "Calculator3Operator3",
+        "Calculator3Priority1",
+        "Calculator3Priority2",
+        "Calculator3Priority3",
+        "Calculator4Operator1",
+        "Calculator4Operator2",
+        "Calculator4Operator3",
+        "Calculator4Priority1",
+        "Calculator4Priority2",
+        "Calculator4Priority3",
+        "Category",
+        "Channel",
+        "ChannelAssignment",
+        "ChannelComposition",
+        "ChannelConfiguration",
+        "ChannelIoType",
+        "ChannelType",
+        "ChannelTypeForIO",
+        "ChargingStandard",
+        "ChatterMonitoring",
+        "Classification",
+        "CodeType",
+        "CommunicationLoad",
+        "CompatibilityMode3UF50BasicType",
+        "CompatibilityMode3UF50Mode",
+        "ComputerNameIdenticalToPcStationName",
+        "ConfigurationDQOrDIGroup0",
+        "ConfigurationDQOrDIGroup1",
+        "ConfigurationDQOrDIGroup2",
+        "ConnectionType",
+        "ContactorFeedback",
+        "ControlFunctionCurrentMeasuringModuleInstalled",
+        "ControlFunctionFeedbackCLOSEDFC",
+        "ControlFunctionFeedbackON",
+        "ControlFunctionFeedbackOPENFO",
+        "ControlFunctionForward",
+        "ControlFunctionForwardFast",
+        "ControlFunctionOFF",
+        "ControlFunctionReverse",
+        "ControlFunctionReverseFast",
+        "ControlFunctionTorqueCLOSEDTC",
+        "ControlFunctionTorqueOPENTO",
+        "ControlStationModeSelectorS1",
+        "ControlStationModeSelectorS2",
+        "CosPhiLowerTripLevelResponse",
+        "CosPhiLowerWarningLevelResponse",
+        "CountDirection",
+        "CountDirectionDQ0",
+        "CountDirectionDQ1",
+        "CountDirectionForSynchronization",
+        "CounterConfiguration",
+        "CounterMode",
+        "CurrentDelayTime",
+        "CurrentLimitsLowerTripLevelResponse",
+        "CurrentLimitsLowerWarningLevelResponse",
+        "CurrentLimitsUpperTripLevelResponse",
+        "CurrentLimitsUpperWarningLevelResponse",
+        "CurrentMeasurement",
+        "CurrentTransformerForL1L2L3AndNeutralConductor",
+        "CurrentTransformerSecondaryCurrent",
+        "CyclicSendDataFloatValuesByte10to13",
+        "CyclicSendDataFloatValuesByte14to17",
+        "CyclicSendDataFloatValuesByte2to5",
+        "CyclicSendDataFloatValuesByte6to9",
+        "DIMode",
+        "DMInputsDebouncingTimes",
+        "DPMasterMode",
+        "DQMode",
+        "DataBits",
+        "DataFlowControl",
+        "DataFormat",
+        "DelayTimeForLimitMonitoring",
+        "DensityUnit",
+        "Device",
+        "DeviceComposition",
+        "DeviceGroup",
+        "DeviceImpl",
+        "DeviceItem",
+        "DeviceItemAssociation",
+        "DeviceItemClassifications",
+        "DeviceItemComposition",
+        "DeviceItemImpl",
+        "DeviceSystemGroup",
+        "DeviceUserGroup",
+        "DeviceUserGroupComposition",
+        "DhcpSupportedMode",
+        "Diag_HighErrorLimit",
+        "Diag_HighWarningLimit",
+        "Diag_LowErrorLimit",
+        "Diag_LowWarningLimit",
+        "DiagnosticParameterMode",
+        "DiagnosticsCPlug",
+        "DiagnosticsCycleCounter",
+        "DiagnosticsCycleCounterPilotValves",
+        "DiagnosticsGroup",
+        "DiagnosticsInterrupt",
+        "DiagnosticsNoSupplyVoltage",
+        "DiagnosticsOverflow",
+        "DiagnosticsPort1",
+        "DiagnosticsPort2",
+        "DiagnosticsPort3",
+        "DiagnosticsPort4",
+        "DiagnosticsRedundantPowerSupply",
+        "DiagnosticsShortCircuitActive",
+        "DiagnosticsShortCircuitToGround",
+        "DiagnosticsShortCircuitToLplus",
+        "DiagnosticsUnderflow",
+        "DiagnosticsWireBreak",
+        "DiagnosticsWireBreakLimit",
+        "DigitalInputDirection",
+        "DisplayAsiModuleDiagnostics",
+        "DisplayAutoLogOffTime",
+        "DisplayDefaultLanguage",
+        "DisplayTimeToEnergySavingMode",
+        "DisplayTimeToStandbyMode",
+        "DisplayUpdateInterval",
+        "DpOperatingMode",
+        "DpProtocolMode",
+        "DriveEnableOutput",
+        "DriveReadyInput",
+        "DryRunningProtectionBehavior",
+        "EMGroundFaultResponse",
+        "EMGroundFaultSensorFaultResponse",
+        "EMTripLevelActiveStatus",
+        "EMTripLevelResponse",
+        "EMWarningActiveStatus",
+        "EMWarningLevelResponse",
+        "EdgeSelection",
+        "EdgeSelectionDI0",
+        "EdgeSelectionDI1",
+        "EdgeSelectionDI2",
+        "EdgeSelectionReferenceSwitch",
+        "EffectiveDirection",
+        "EncoderEvaluation",
+        "EncoderType",
+        "EndValueEnergyCounter",
+        "ExternalFault1ActiveStatus",
+        "ExternalFault1Response",
+        "ExternalFault1Type",
+        "ExternalFault2ActiveStatus",
+        "ExternalFault2Response",
+        "ExternalFault2Type",
+        "ExternalFault3ActiveStatus",
+        "ExternalFault3Response",
+        "ExternalFault3Type",
+        "ExternalFault4ActiveStatus",
+        "ExternalFault4Response",
+        "ExternalFault4Type",
+        "ExternalFault5ActiveStatus",
+        "ExternalFault5Response",
+        "ExternalFault5Type",
+        "ExternalFault6ActiveStatus",
+        "ExternalFault6Response",
+        "ExternalFault6Type",
+        "Failsafe_Activated",
+        "Failsafe_ActivatedLightTest",
+        "Failsafe_BehaviorAfterChannelFault",
+        "Failsafe_ChannelFailureAcknowledge",
+        "Failsafe_ChatterMonitoring",
+        "Failsafe_ControlOfOutput",
+        "Failsafe_DiagnosisWireBreak",
+        "Failsafe_DisableDarkTestFor48Hours",
+        "Failsafe_DisableDarkTestMaxSIL2_CAT3_PLd",
+        "Failsafe_DiscrepancyBehavior",
+        "Failsafe_DiscrepancyMonitoring",
+        "Failsafe_DiscrepancyTimeUnlimited",
+        "Failsafe_FCRCSeed",
+        "Failsafe_FCapabilityActivated",
+        "Failsafe_FCheckSeqNr",
+        "Failsafe_FCheckiPar",
+        "Failsafe_FParVersion",
+        "Failsafe_FPassivation",
+        "Failsafe_FSIL",
+        "Failsafe_F_CRC_Length",
+        "Failsafe_InputDelay",
+        "Failsafe_InterferenceFrequencySuppression",
+        "Failsafe_ManualAssignmentFIODBNumber",
+        "Failsafe_MaxReadbackTimeLightTestAndDarkTest",
+        "Failsafe_MaximumTestPeriod",
+        "Failsafe_MeasuringRange",
+        "Failsafe_OutputType",
+        "Failsafe_ReintegrationAfterChannelFault",
+        "Failsafe_ReintegrationAfterDiscrepancyError",
+        "Failsafe_SensorEvaluation",
+        "Failsafe_SensorSupply",
+        "Failsafe_SequenceMonitoring",
+        "Failsafe_ShortCircuitDiagnosticActive",
+        "Failsafe_ShortCircuitTestDuration",
+        "Failsafe_ShortCircuitTestInterval",
+        "Failsafe_ShortCircuitTest_0",
+        "Failsafe_ShortCircuitTest_1",
+        "Failsafe_ShortCircuitTest_2",
+        "Failsafe_ShortCircuitTest_3",
+        "Failsafe_ShortCircuitTest_4",
+        "Failsafe_ShortCircuitTest_5",
+        "Failsafe_ShortCircuitTest_6",
+        "Failsafe_ShortCircuitTest_7",
+        "Failsafe_Smoothing",
+        "Failsafe_StartupTest",
+        "Failsafe_UnitValue",
+        "FeedbackValue",
+        "FilterFrequency",
+        "FloatingMeanValueFilterActive",
+        "ForceTableAccessRule",
+        "ForceTableAccessRuleComposition",
+        "ForcedValues",
+        "FrequencyForCapture",
+        "FunctionDI",
+        "FunctionDI0",
+        "FunctionDI1",
+        "FunctionDI2",
+        "FunctionInputS1",
+        "FunctionInputS2",
+        "FunctionInputS3",
+        "GateControlActive",
+        "GenerateDeviceNamesAutomatically",
+        "HardwareInterrupt",
+        "HardwareInterruptActive",
+        "HardwareInterruptFallingEdgeActive",
+        "HardwareInterruptRisingEdgeActive",
+        "HardwareObject",
+        "HardwareResource",
+        "HighErrorLimit",
+        "HighLimitCurrent",
+        "HighWarningLimit",
+        "HscDI0",
+        "HscDI1",
+        "HscDQ1",
+        "HwEnable",
+        "HwIdentifier",
+        "HwIdentifierAssociation",
+        "HwIdentifierComposition",
+        "IHardwareCompareTarget",
+        "IIRLowPassFilterActive",
+        "ISyncDomainParticipant",
+        "ISyncDomainParticipantAssociation",
+        "IdentificationMode",
+        "Input1Action",
+        "Input1Level",
+        "Input1Signal",
+        "Input2Action",
+        "Input2Level",
+        "Input2Signal",
+        "Input3Action",
+        "Input3Level",
+        "Input3Signal",
+        "InputA",
+        "InputB",
+        "InputDI0",
+        "InputDI1",
+        "InputDelay",
+        "InputDelayDI4",
+        "InputDelayDI5",
+        "InputDelayDI6",
+        "InputDelayDI7",
+        "InputN",
+        "InputOrOutputType",
+        "InspectionOrBackupLevel",
+        "InspectionOrBackupLevelPort1",
+        "InspectionOrBackupLevelPort2",
+        "InspectionOrBackupLevelPort3",
+        "InspectionOrBackupLevelPort4",
+        "InterfaceOperatingModes",
+        "InterfaceStandard",
+        "InterfaceType",
+        "InterferenceFrequencySuppression",
+        "InternalGroundFaultTripResponse",
+        "InternalGroundFaultWarningResponse",
+        "IoConnector",
+        "IoConnectorAssociation",
+        "IoConnectorComposition",
+        "IoController",
+        "IoControllerComposition",
+        "IoSystem",
+        "IoSystemAssociation",
+        "IpProtocolSelection",
+        "IsochronousTiToCalculationMode",
+        "LengthOfIORange",
+        "LevelSelection",
+        "LimitMonitor1ActiveStatus",
+        "LimitMonitor1Type",
+        "LimitMonitor2ActiveStatus",
+        "LimitMonitor2Type",
+        "LimitMonitor3ActiveStatus",
+        "LimitMonitor3Type",
+        "LimitMonitor4ActiveStatus",
+        "LimitMonitor4Type",
+        "LimitMonitor5ActiveStatus",
+        "LimitMonitor5Type",
+        "LimitMonitor6ActiveStatus",
+        "LimitMonitor6Type",
+        "LimitMonitoringActive",
+        "LimitSwitch",
+        "LimitValueType",
+        "LineFrequency",
+        "LinkAggregationFrameDistribution",
+        "LinkAggregationLacpStatus",
+        "LinkAggregationPortState",
+        "LinkAggregationVlanMode",
+        "LoadType",
+        "LowErrorLimit",
+        "LowLimitCurrent",
+        "LowWarningLimit",
+        "LowerCurrentWarningLimit",
+        "MacRtLicensePurchased",
+        "MainCountingDirection",
+        "MassFlowUnit",
+        "MassValue",
+        "MasterSecretConfiguration",
+        "MaximumBufferedReceivedFrames",
+        "MeasuredVariable",
+        "MeasuringInput",
+        "MeasuringTemperatureCoefficient",
+        "MediaRedundancyRole",
+        "MediumAttachmentType",
+        "Mode",
+        "ModuleDistribution",
+        "ModuleUseFromUserProgram",
+        "ModuleVariant",
+        "ModuloAxis",
+        "MonitoringWindow",
+        "MonoflopTime",
+        "MotorHeating",
+        "MotorProtectionClass",
+        "MotorProtectionReset",
+        "MotorProtectionResponseToPrewarning",
+        "MotorProtectionResponseToTripLevel",
+        "MotorProtectionStalledRotorResponse",
+        "MotorProtectionTypeOfLoad",
+        "MotorProtectionUnbalanceResponse",
+        "MrpDomain",
+        "MrpDomainComposition",
+        "NetType",
+        "NeutralConductorCurrentTransformerSecondaryCurrent",
+        "NoValveVoltageOrEvsActive",
+        "Node",
+        "NodeAssociation",
+        "NodeComposition",
+        "NonVolatileElement1Type",
+        "NonVolatileElement2Type",
+        "NonVolatileElement3Type",
+        "NonVolatileElement4Type",
+        "NotchFilterActive",
+        "NumberOfSequences",
+        "OPDFaults",
+        "OPDKeepIlluminationOnFor",
+        "OPDLanguage",
+        "OPDProfiles",
+        "OPDReturnToOperationsDisplayAfter",
+        "OPDWarnings",
+        "OpcUaMinimumSamplingInterval",
+        "OpcUaPurchasedLicense",
+        "OpcUaRequiredLicense",
+        "OpcUaSecurityPolicies",
+        "OpcUaServerCertificateSettings",
+        "OpcUaUser",
+        "OpcUaUserComposition",
+        "OperatingHoursMonitoringResponse",
+        "OperatingMode",
+        "OperatingRange",
+        "OperatingRangeOutput",
+        "OperatingType",
+        "OperatingTypeAndRange",
+        "OperatingTypeOutput",
+        "OperationalProtectionOffResponsePositioner",
+        "OperationalProtectionOffStandardFunctionsType",
+        "OutputA",
+        "OutputB",
+        "OutputFilterDown",
+        "OutputFilterUp",
+        "ParameterAssignmentOfPnInterfaceByHigherLevelIoController",
+        "ParameterSettings",
+        "Parity",
+        "PcInterfaceAssignmentMode",
+        "PcStationType",
+        "PhysicalQuantity",
+        "PilotValve",
+        "PlcProtectionAccessLevel",
+        "PnDnsConfigNameResolve",
+        "PortConfiguration",
+        "PortMode",
+        "PortModePort1",
+        "PortModePort2",
+        "PortModePort3",
+        "PortModePort4",
+        "PotentialGroup",
+        "PowerFailureMonitoringType",
+        "PreConfigurationForDIDQ",
+        "PreferenceDirection",
+        "PressureIndicator",
+        "PressureMeasurement",
+        "PressureOutsideTheDefinedRangeActive",
+        "PrewarningLimitForMotorHeating",
+        "Priority",
+        "ProDiagUsedLicenses",
+        "ProcessDataMode",
+        "ProcessDataVariant",
+        "ProcessValue",
+        "ProtectionUnitForSummarizeOfSecurityEvents",
+        "ProtocolCompatibility",
+        "PulseOutput",
+        "PulsePauseOnReversalOfDirection",
+        "PulseStretching",
+        "PulseWidthModulationFrequency",
+        "PulseWidthModulationTimePeriod",
+        "PwmOutputFormat",
+        "ReactionToCountingLimit",
+        "ReactionToCpuStop",
+        "ReactionToCpuStopforDQ1",
+        "ReactionToError",
+        "ReactionToGateStart",
+        "ReactionToSignalN",
+        "ReceiveLineInitialState",
+        "ReferenceJunction",
+        "ReferenceSwitchInput",
+        "RelationMeasuredVariable",
+        "ResetWhenCountingLimitIsViolated",
+        "ResponseToOverload",
+        "ResponseToOvershoot",
+        "ResponseToPrewarning",
+        "ResponseToResidualCurrentDetection",
+        "ResponseToThermalMotorModelAtRestart",
+        "RetentiveDataMemoryUsage",
+        "ReverseCurrentDirection",
+        "RtClass",
+        "RunCurrent",
+        "RunningCurrentIncreaseTime",
+        "SafetyRelatedTrippingReset",
+        "SafetyRelatedTrippingResponse",
+        "SelectLevel",
+        "SelectLevelDI0",
+        "SelectLevelDI1",
+        "SelectLevelDI2",
+        "SensorType",
+        "SerialProtocolMode",
+        "SetOutputDO",
+        "SetOutputDQ0",
+        "SetOutputDQ1",
+        "SharedDeviceCopyOfModule",
+        "SignalConditioning1Type",
+        "SignalConditioning2Type",
+        "SignalConditioning3Type",
+        "SignalConditioning4Type",
+        "SignalConditioning5Type",
+        "SignalConditioning6Type",
+        "SignalDelaySelection",
+        "SignalEvaluation",
+        "SignalSelectionForReferenceMark0",
+        "SignalType",
+        "SimocodeAnalogConnections",
+        "SimocodeDigitalConnections",
+        "SizeLengthField",
+        "Smoothing",
+        "Snmpv1Orv2cReadOnly",
+        "Snmpv1TrapsActive",
+        "Software",
+        "SourceCycleTime",
+        "StandardVolumeFlow",
+        "StandardVolumeUnit",
+        "StartDetectionOfAReceivedFrame",
+        "StartupActionAfterPowerOn",
+        "StartupComparisonPresetToActualModule",
+        "StateSignalFailureActive",
+        "StateSignalFunctionControlActive",
+        "StateSignalMaintenanceActive",
+        "StateSignalOutOfSpecificationActive",
+        "StepResolution",
+        "StopBits",
+        "StopCurrent",
+        "StopTimeOperatingHoursMonitoringResponse",
+        "SubCategory",
+        "SubmoduleSlotNumber",
+        "Subnet",
+        "SubnetComposition",
+        "SubstituteValue",
+        "SubstituteValueDQ0",
+        "SubstituteValueDQ1",
+        "SubstituteValueDQA",
+        "SubstituteValueDQB",
+        "SwitchingCycleCounterActuatorInclDiagnostics",
+        "SwitchingCycleCounterPilotValveInclDiagnostics",
+        "SwitchingFrequencyOverdrive",
+        "SyncDomain",
+        "SyncDomainComposition",
+        "SyncRole",
+        "SynchronizationFrequency",
+        "SyslogClientActive",
+        "SystemPowerSupplyExternal",
+        "TM1InputsActiveSensors",
+        "TM1InputsResponseToSensorFaultOutOfRange",
+        "TM1InputsSensorType",
+        "TM1TripLevelResponse",
+        "TM1WarningLevelResponse",
+        "TM2InputsActiveSensors",
+        "TM2InputsResponseToSensorFaultOutOfRange",
+        "TM2InputsSensorType",
+        "TM2TripLevelResponse",
+        "TM2WarningLevelResponse",
+        "TemperatureShutdown",
+        "TemperatureUnit",
+        "Terminal0Function",
+        "Terminal16Function",
+        "Terminal17Function",
+        "Terminal18Function",
+        "Terminal19Function",
+        "Terminal1Function",
+        "Terminal20Function",
+        "Terminal21Function",
+        "Terminal22Function",
+        "Terminal23Function",
+        "Terminal24Function",
+        "Terminal25Function",
+        "Terminal26Function",
+        "Terminal27Function",
+        "Terminal28Function",
+        "Terminal29Function",
+        "Terminal2Function",
+        "Terminal30Function",
+        "Terminal31Function",
+        "Terminal3Function",
+        "Terminal4Function",
+        "Terminal5Function",
+        "Terminal6Function",
+        "Terminal7Function",
+        "TestPositionFeedbackTPFStandardFunctionsType",
+        "TestResponse",
+        "ThermistorResponseToSensorFault",
+        "ThermistorResponseToTripLevel",
+        "TimeBaseForVelocityMeasurement",
+        "TimeOfDayDaylightSavingTimeStartHour",
+        "TimeOfDayDaylightSavingTimeStartMonth",
+        "TimeOfDayDaylightSavingTimeStartWeek",
+        "TimeOfDayDaylightSavingTimeStartWeekday",
+        "TimeOfDayLocalTimeZone",
+        "TimeOfDayStandardTimeStartHour",
+        "TimeOfDayStandardTimeStartMonth",
+        "TimeOfDayStandardTimeStartWeek",
+        "TimeOfDayStandardTimeStartWeekday",
+        "TimeOfDayTimeIntervalOnDp",
+        "TimeOfDayTypeOfSynchronizationOnDp",
+        "TimeSynchronizationNtp",
+        "Timer1Type",
+        "Timer2Type",
+        "Timer3Type",
+        "Timer4Type",
+        "Timer5Type",
+        "Timer6Type",
+        "TraceTriggerEdge",
+        "TransferArea",
+        "TransferAreaComposition",
+        "TransferAreaDirection",
+        "TransferAreaMappingRule",
+        "TransferAreaMappingRuleComposition",
+        "TransferAreaType",
+        "TransmissionRate",
+        "TransmissionRateAndDuplex",
+        "TrippingClass",
+        "TypeInputS1",
+        "TypeInputS2",
+        "TypeInputS3",
+        "TypeOfConsumerLoad",
+        "UnitsOfMeasure",
+        "UpperCurrentWarningLimit",
+        "View",
+        "VirtualSubType",
+        "VirtualType",
+        "VoltageDisplay",
+        "VoltageLowerTripLevelResponse",
+        "VoltageLowerWarningLevelActiveStatus",
+        "VoltageLowerWarningLevelResponse",
+        "VoltageState",
+        "VoltageTypeOfLoadForVoltageCosPhiAndPower",
+        "VolumeFlowUnit",
+        "VolumeUnit",
+        "WatchAndForceTableAccess",
+        "WatchTableAccessRule",
+        "WatchTableAccessRuleComposition",
+        "WatchdogBusPLCFaultReset",
+        "WebserverEntryPage",
+        "WebserverUser",
+        "WebserverUserComposition",
+        "WebserverUserPermissions",
+        "WithBlockCheck"
+      ],
+      "Siemens.Engineering.HW.CustomDataTypes": [
+        "StructuredData",
+        "StructuredDataComposition",
+        "TableData"
+      ],
+      "Siemens.Engineering.HW.Extensions": [
+        "PlugLocation"
+      ],
+      "Siemens.Engineering.HW.Features": [
+        "AddressController",
+        "AddressControllerAssociation",
+        "DeviceFeature",
+        "DeviceItemFeature",
+        "DisplayProtection",
+        "FrontPanelDisplay",
+        "GsdDevice",
+        "GsdDeviceItem",
+        "HardwareFeature",
+        "HwIdentifierController",
+        "HwIdentifierControllerAssociation",
+        "IGsdObject",
+        "ImConnection",
+        "ModuleDescriptionUpdater",
+        "MrpDomainOwner",
+        "NetworkInterface",
+        "NetworkInterfaceAssociation",
+        "NetworkPort",
+        "NetworkPortAssociation",
+        "OpcUaUserManagement",
+        "PcInterfaceAssignment",
+        "PlcAccessLevelProvider",
+        "PlcMasterSecretConfigurator",
+        "SoftwareContainer",
+        "SubnetFeature",
+        "SubnetOwner",
+        "SyncDomainOwner",
+        "WatchAndForceTableAccessManager",
+        "WebDBGenerateOptions",
+        "WebserverUserDefinedPages",
+        "WebserverUserManagement"
+      ],
+      "Siemens.Engineering.HW.Systemdiagnostics.Settings": [
+        "SystemdiagnosticsSettingsDataProvider",
+        "SystemdiagnosticsSettingsExportImportResult",
+        "SystemdiagnosticsSettingsExportImportResultState"
+      ],
+      "Siemens.Engineering.HW.Utilities": [
+        "CardReaderPscProvider",
+        "HardwareUtility",
+        "HardwareUtilityComposition",
+        "ModuleInformationProvider",
+        "OpcUaExportProvider"
+      ],
+      "Siemens.Engineering.Hmi": [
+        "HmiTarget"
+      ],
+      "Siemens.Engineering.Hmi.Alarm": [
+        "AlarmAcknowledgementModel",
+        "AlarmAlertAcknowledgement",
+        "AlarmBlockAlignment",
+        "DeadbandMode",
+        "DelayTimeUnit",
+        "LimitMode",
+        "ProcessValueBlockId",
+        "SystemBlockDateFormat",
+        "SystemBlockDurationFormat",
+        "SystemBlockId",
+        "SystemBlockNumberFormat",
+        "SystemBlockTimeFormat",
+        "SystemEventTypes",
+        "TriggerMode",
+        "UserTextBlockId"
+      ],
+      "Siemens.Engineering.Hmi.Communication": [
+        "Connection",
+        "ConnectionComposition"
+      ],
+      "Siemens.Engineering.Hmi.Cycle": [
+        "Cycle",
+        "CycleComposition"
+      ],
+      "Siemens.Engineering.Hmi.Faceplate": [
+        "FaceplateLibraryType",
+        "FaceplateLibraryTypeVersion"
+      ],
+      "Siemens.Engineering.Hmi.Globalization": [
+        "MultiLingualGraphic",
+        "MultiLingualGraphicComposition"
+      ],
+      "Siemens.Engineering.Hmi.Logging": [
+        "AcquisitionMode",
+        "AnalogProcessingMethod",
+        "BinaryProcessingMethod",
+        "CompressedProcessingMethod",
+        "CompressedTagProcessingMethod",
+        "DataSourceMode",
+        "HysteresisMode",
+        "LimitScope",
+        "LogHandlingAtRestart",
+        "LoggingMethod",
+        "LoggingSettingType",
+        "SegmentSize",
+        "StorageLocation",
+        "StorageMediaForAudit",
+        "SupplyingTags",
+        "TimePeriod"
+      ],
+      "Siemens.Engineering.Hmi.MenuToolbar": [
+        "ToolbarAlignment"
+      ],
+      "Siemens.Engineering.Hmi.Recipe": [
+        "RecipeCommunicationType",
+        "RecipeDataType",
+        "RecipeSizeType",
+        "StorageMedia"
+      ],
+      "Siemens.Engineering.Hmi.Report": [
+        "AlarmBackStyle",
+        "AlarmBorderStyle",
+        "AlarmSorting",
+        "AreaStyle",
+        "AuditTrailBackStyle",
+        "AuditTrailBorderStyle",
+        "ControlViewTextContent",
+        "DialogType",
+        "PageFormat",
+        "PageOrientation",
+        "PageRangeType",
+        "PrintConfigurationTimeRangeUnit",
+        "RecipeBackStyle",
+        "RecipeBorderStyle",
+        "RecipeColumnId",
+        "RecipeDrawMode",
+        "RecipeRecipeSelection",
+        "RecipeRecordSelection",
+        "ScreenControlViewType",
+        "TimeRangeType",
+        "UnitStyle"
+      ],
+      "Siemens.Engineering.Hmi.RuntimeScripting": [
+        "CScriptLibraryType",
+        "CScriptLibraryTypeVersion",
+        "VBScript",
+        "VBScriptComposition",
+        "VBScriptFolder",
+        "VBScriptLibraryType",
+        "VBScriptLibraryTypeVersion",
+        "VBScriptSystemFolder",
+        "VBScriptUserFolder",
+        "VBScriptUserFolderComposition"
+      ],
+      "Siemens.Engineering.Hmi.Screen": [
+        "Screen",
+        "ScreenComposition",
+        "ScreenFolder",
+        "ScreenGlobalElements",
+        "ScreenLibraryType",
+        "ScreenLibraryTypeVersion",
+        "ScreenOverview",
+        "ScreenPopup",
+        "ScreenPopupComposition",
+        "ScreenPopupFolder",
+        "ScreenPopupSystemFolder",
+        "ScreenPopupUserFolder",
+        "ScreenPopupUserFolderComposition",
+        "ScreenSlidein",
+        "ScreenSlideinComposition",
+        "ScreenSlideinSystemFolder",
+        "ScreenSystemFolder",
+        "ScreenTemplate",
+        "ScreenTemplateComposition",
+        "ScreenTemplateFolder",
+        "ScreenTemplateSystemFolder",
+        "ScreenTemplateUserFolder",
+        "ScreenTemplateUserFolderComposition",
+        "ScreenUserFolder",
+        "ScreenUserFolderComposition",
+        "SlideinType",
+        "StyleLibraryType",
+        "StyleLibraryTypeVersion",
+        "StyleSheetLibraryType",
+        "StyleSheetLibraryTypeVersion",
+        "VisibilityModes"
+      ],
+      "Siemens.Engineering.Hmi.Tag": [
+        "HmiUdtLibraryType",
+        "HmiUdtLibraryTypeVersion",
+        "Tag",
+        "TagComposition",
+        "TagFolder",
+        "TagSystemFolder",
+        "TagTable",
+        "TagTableComposition",
+        "TagUserFolder",
+        "TagUserFolderComposition"
+      ],
+      "Siemens.Engineering.Hmi.TextGraphicList": [
+        "GraphicList",
+        "GraphicListComposition",
+        "TextList",
+        "TextListComposition"
+      ],
+      "Siemens.Engineering.Library": [
+        "CorporateGlobalLibrary",
+        "GlobalLibrary",
+        "GlobalLibraryComposition",
+        "GlobalLibraryInfo",
+        "GlobalLibraryType",
+        "ILibrary",
+        "LibraryArchivationMode",
+        "ProjectLibrary",
+        "SystemGlobalLibrary",
+        "UserGlobalLibrary"
+      ],
+      "Siemens.Engineering.Library.MasterCopies": [
+        "IMasterCopySource",
+        "IMasterCopyTarget",
+        "MasterCopy",
+        "MasterCopyAssociation",
+        "MasterCopyComposition",
+        "MasterCopyContentDescription",
+        "MasterCopyContentDescriptionComposition",
+        "MasterCopyFolder",
+        "MasterCopyMode",
+        "MasterCopySystemFolder",
+        "MasterCopyUserFolder",
+        "MasterCopyUserFolderComposition"
+      ],
+      "Siemens.Engineering.Library.Types": [
+        "CleanUpMode",
+        "ConsistencyStatus",
+        "DeleteUnusedVersionsMode",
+        "ForceUpdateMode",
+        "HarmonizeProjectOptions",
+        "IInstanceSearchScope",
+        "ILibraryTypeInstantiationTarget",
+        "ILibraryTypeOrFolderSelection",
+        "IUpdateProjectScope",
+        "LibraryType",
+        "LibraryTypeComposition",
+        "LibraryTypeFolder",
+        "LibraryTypeInstanceInfo",
+        "LibraryTypeSystemFolder",
+        "LibraryTypeUserFolder",
+        "LibraryTypeUserFolderComposition",
+        "LibraryTypeVersion",
+        "LibraryTypeVersionAssociation",
+        "LibraryTypeVersionComposition",
+        "LibraryTypeVersionState",
+        "StructureConflictResolutionMode",
+        "UpdateCheckMode",
+        "UpdateCheckResult",
+        "UpdateCheckResultMessage",
+        "UpdateCheckResultMessageComposition"
+      ],
+      "Siemens.Engineering.MC.DriveConfiguration": [
+        "DriveObject",
+        "DriveObjectCategory",
+        "DriveObjectCollection",
+        "DriveObjectComposition",
+        "Telegram",
+        "TelegramComposition",
+        "TelegramId",
+        "TelegramPart",
+        "TelegramType"
+      ],
+      "Siemens.Engineering.MC.Drives": [
+        "DriveObject",
+        "DriveObjectComposition",
+        "DriveObjectContainer",
+        "DriveParameter",
+        "DriveParameterComposition",
+        "OnlineDriveObject",
+        "OnlineDriveObjectComposition",
+        "OnlineDriveObjectContainer",
+        "Telegram",
+        "TelegramComposition"
+      ],
+      "Siemens.Engineering.MC.Drives.DFI": [
+        "Commissioning",
+        "ConfigurationEntry",
+        "ConfigurationEntryComposition",
+        "DriveDomainFunctions",
+        "DriveFunctionInterface",
+        "DriveObjectActivation",
+        "DriveObjectFunctions",
+        "DriveObjectType",
+        "DriveObjectTypeComposition",
+        "DriveObjectTypeHandler",
+        "EncoderConfiguration",
+        "HardwareProjection",
+        "MotorConfiguration",
+        "OnlineDriveFunctionInterface"
+      ],
+      "Siemens.Engineering.MC.Drives.Enums": [
+        "AbsoluteIncrementalFlag",
+        "DriveObjectActivationState",
+        "EncoderInterface",
+        "EncoderType",
+        "MotorType",
+        "ResetMode",
+        "RotaryLinearFlag",
+        "TelegramType"
+      ],
+      "Siemens.Engineering.Multiuser": [
+        "LocalSession",
+        "LocalSessionComposition",
+        "LocalSessionInfo",
+        "LockStateProvider",
+        "MarkState",
+        "MarkStateInfo",
+        "Marking",
+        "MarkingComposition",
+        "MarkingService",
+        "Markings",
+        "MultiuserException",
+        "MultiuserProject",
+        "ProjectServer",
+        "ProjectServerComposition",
+        "Protocol",
+        "ServerProjectInfo",
+        "SessionCreationMode"
+      ],
+      "Siemens.Engineering.Online": [
+        "OnlineConfigurationDelegate",
+        "OnlineProvider",
+        "OnlineState",
+        "RHOnlineProvider"
+      ],
+      "Siemens.Engineering.Online.Configurations": [
+        "OnlineConfiguration",
+        "OnlineConfigurationSelection",
+        "OnlinePasswordConfiguration",
+        "OnlineReadAccessPassword",
+        "TlsVerificationConfiguration",
+        "TlsVerificationConfigurationSelection"
+      ],
+      "Siemens.Engineering.Private": [
+        "ApplicationExitCode",
+        "ProcessHelper"
+      ],
+      "Siemens.Engineering.SW": [
+        "Fingerprint",
+        "FingerprintId",
+        "FingerprintProvider",
+        "ISoftwareCompareTarget",
+        "PlcChecksumProvider",
+        "PlcSoftware",
+        "SWImportOptions"
+      ],
+      "Siemens.Engineering.SW.Alarm": [
+        "AlarmClassDataProvider",
+        "AlarmClassExportImportResult",
+        "AlarmClassExportImportResultMessage",
+        "AlarmClassExportImportResultMessageComposition",
+        "AlarmClassExportImportResultState",
+        "PlcAlarmTextListProvider",
+        "PlcAlarmTextProvider",
+        "PlcAlarmTextXlsxExportOption",
+        "PlcAlarmTextXlsxResult",
+        "PlcAlarmTextXlsxResultState",
+        "TextListXlsxResult",
+        "TextListXlsxResultState"
+      ],
+      "Siemens.Engineering.SW.Alarm.Exceptions": [
+        "TextListNotFoundException"
+      ],
+      "Siemens.Engineering.SW.Blocks": [
+        "ArrayDB",
+        "BlockType",
+        "CodeBlock",
+        "CodeBlockLibraryType",
+        "CodeBlockLibraryTypeVersion",
+        "DataBlock",
+        "FB",
+        "FC",
+        "GlobalDB",
+        "InstanceDB",
+        "InterfaceSnapshot",
+        "MemoryLayout",
+        "OB",
+        "OBDataExchangeMode",
+        "OBExecution",
+        "OBTimeMode",
+        "PlcBlock",
+        "PlcBlockComposition",
+        "PlcBlockGroup",
+        "PlcBlockProtectionProvider",
+        "PlcBlockSystemGroup",
+        "PlcBlockUserGroup",
+        "PlcBlockUserGroupComposition",
+        "PlcSystemBlockGroup",
+        "PlcSystemBlockGroupComposition",
+        "ProgrammingLanguage",
+        "Supervision",
+        "SupervisionComposition"
+      ],
+      "Siemens.Engineering.SW.Blocks.Exceptions": [
+        "DataBlockCreationNotAllowedException"
+      ],
+      "Siemens.Engineering.SW.Blocks.Interface": [
+        "Member",
+        "MemberComposition",
+        "PlcBlockInterface"
+      ],
+      "Siemens.Engineering.SW.ExternalSources": [
+        "GenerateBlockOption",
+        "GenerateOptions",
+        "IGenerateSource",
+        "PlcExternalSource",
+        "PlcExternalSourceComposition",
+        "PlcExternalSourceGroup",
+        "PlcExternalSourceSystemGroup",
+        "PlcExternalSourceUserGroup",
+        "PlcExternalSourceUserGroupComposition"
+      ],
+      "Siemens.Engineering.SW.OpcUa": [
+        "OpcUaCommunicationGroup",
+        "OpcUaProvider",
+        "ReferenceNamespace",
+        "ReferenceNamespaceComposition",
+        "ServerInterface",
+        "ServerInterfaceComposition",
+        "ServerInterfaceGroup",
+        "SimaticInterface",
+        "SimaticInterfaceComposition"
+      ],
+      "Siemens.Engineering.SW.Supervision": [
+        "SupervisionProvider",
+        "SupervisionSettingsExportImportResult",
+        "SupervisionSettingsExportImportResultMessage",
+        "SupervisionSettingsExportImportResultMessageComposition",
+        "SupervisionSettingsExportImportResultState",
+        "SupervisionSettingsProvider",
+        "SupervisionXlsxResult",
+        "SupervisionXlsxResultState"
+      ],
+      "Siemens.Engineering.SW.Tags": [
+        "PlcConstant",
+        "PlcSystemConstant",
+        "PlcSystemConstantComposition",
+        "PlcTag",
+        "PlcTagComposition",
+        "PlcTagTable",
+        "PlcTagTableComposition",
+        "PlcTagTableGroup",
+        "PlcTagTableSystemGroup",
+        "PlcTagTableUserGroup",
+        "PlcTagTableUserGroupComposition",
+        "PlcUserConstant",
+        "PlcUserConstantComposition"
+      ],
+      "Siemens.Engineering.SW.TechnologicalObjects": [
+        "TechnologicalInstanceDB",
+        "TechnologicalInstanceDBAssociation",
+        "TechnologicalInstanceDBComposition",
+        "TechnologicalInstanceDBGroup",
+        "TechnologicalInstanceDBSystemGroup",
+        "TechnologicalParameter",
+        "TechnologicalParameterComposition"
+      ],
+      "Siemens.Engineering.SW.TechnologicalObjects.Motion": [
+        "AxisEncoderHardwareConnectionInterface",
+        "AxisEncoderHardwareConnectionInterfaceComposition",
+        "AxisHardwareConnectionProvider",
+        "CamDataFormat",
+        "CamDataFormatSeparator",
+        "CamDataSupport",
+        "ConnectOption",
+        "ConveyorTrackingLeadingValues",
+        "EncoderHardwareConnectionProvider",
+        "MeasuringInputHardwareConnectionProvider",
+        "OutputCamHardwareConnectionProvider",
+        "OutputCamMeasuringInputContainer",
+        "SynchronousAxisMasterValues",
+        "TorqueHardwareConnectionInterface"
+      ],
+      "Siemens.Engineering.SW.Types": [
+        "PlcStruct",
+        "PlcSystemTypeGroup",
+        "PlcSystemTypeGroupComposition",
+        "PlcType",
+        "PlcTypeComposition",
+        "PlcTypeGroup",
+        "PlcTypeLibraryType",
+        "PlcTypeLibraryTypeVersion",
+        "PlcTypeSystemGroup",
+        "PlcTypeUserGroup",
+        "PlcTypeUserGroupComposition"
+      ],
+      "Siemens.Engineering.SW.Units": [
+        "PlcUnit",
+        "PlcUnitComposition",
+        "PlcUnitProvider",
+        "PlcUnitRelation",
+        "PlcUnitRelationComposition",
+        "PlcUnitSystemGroup",
+        "UnitAccessType",
+        "UnitRelationType"
+      ],
+      "Siemens.Engineering.SW.WatchAndForceTables": [
+        "PlcForceTable",
+        "PlcForceTableComposition",
+        "PlcForceTableEntry",
+        "PlcTableCommentEntry",
+        "PlcTableCommentEntryComposition",
+        "PlcWatchAndForceTableDisplayFormat",
+        "PlcWatchAndForceTableGroup",
+        "PlcWatchAndForceTablePreDefinedTrigger",
+        "PlcWatchAndForceTableSystemGroup",
+        "PlcWatchAndForceTableUserGroup",
+        "PlcWatchAndForceTableUserGroupComposition",
+        "PlcWatchTable",
+        "PlcWatchTableComposition",
+        "PlcWatchTableEntry"
+      ],
+      "Siemens.Engineering.Safety": [
+        "AssignmentOfBlockNumbers",
+        "BlockNumbersManagementMode",
+        "GlobalSettings",
+        "RuntimeGroup",
+        "RuntimeGroupComposition",
+        "SafetyAdministration",
+        "SafetyPrintout",
+        "SafetyPrintoutFilePrinter",
+        "SafetyPrintoutOption",
+        "SafetySettings",
+        "SafetySignature",
+        "SafetySignatureComposition",
+        "SafetySignatureProvider",
+        "SafetySignatureType",
+        "SafetySystemVersion"
+      ],
+      "Siemens.Engineering.Security": [
+        "Certificate",
+        "CertificateComposition",
+        "CertificateExportFormat",
+        "CertificateTemplate",
+        "CertificateUsage",
+        "LocalCertificateManager",
+        "LocalCertificateStore",
+        "SignatureAlgorithm",
+        "SubjectAlternativeName",
+        "SubjectAlternativeNameComposition",
+        "SubjectAlternativeNameType"
+      ],
+      "Siemens.Engineering.Settings": [
+        "TiaPortalSetting",
+        "TiaPortalSettingComposition",
+        "TiaPortalSettingsFolder",
+        "TiaPortalSettingsFolderComposition"
+      ],
+      "Siemens.Engineering.Umac": [
+        "AuthenticationType",
+        "CustomDeviceFunctionRight",
+        "CustomDeviceFunctionRightComposition",
+        "CustomRole",
+        "CustomRoleComposition",
+        "DeviceFunctionRight",
+        "DeviceFunctionRightAssociation",
+        "EngineeringFunctionRight",
+        "EngineeringFunctionRightAssociation",
+        "EngineeringFunctionRightComposition",
+        "ProjectUser",
+        "ProjectUserComposition",
+        "Role",
+        "RoleAssociation",
+        "SystemDeviceFunctionRight",
+        "SystemDeviceFunctionRightComposition",
+        "SystemRole",
+        "SystemRoleComposition",
+        "UmacConfigurator",
+        "UmacDevice",
+        "UmcAuthenticationEventArgs",
+        "UmcCredentials",
+        "UmcServer",
+        "UmcServerConfigurator",
+        "UmcUser",
+        "UmcUserComposition",
+        "UmcUserGroup",
+        "UmcUserGroupComposition",
+        "UmcUserGroupInfo",
+        "UmcUserInfo",
+        "User"
+      ],
+      "Siemens.Engineering.Upload": [
+        "StationUploadProvider",
+        "UploadConfigurationDelegate",
+        "UploadResult",
+        "UploadResultMessage",
+        "UploadResultMessageComposition",
+        "UploadResultState"
+      ],
+      "Siemens.Engineering.Upload.Configurations": [
+        "ModuleReadAccessPassword",
+        "ModuleWriteAccessPassword",
+        "PasswordReadAccess",
+        "UploadConfiguration",
+        "UploadMissingProducts",
+        "UploadMissingProductsSelections",
+        "UploadPasswordConfiguration",
+        "UploadSelectionConfiguration"
+      ],
+      "Siemens.Engineering.VersionControl": [
+        "CompareState",
+        "IndividualObjectCompareDetails",
+        "IndividualObjectCompareResult",
+        "IndividualObjectSynchronizationStatus",
+        "SynchronizationMode",
+        "VersionControlInterface",
+        "Workspace",
+        "WorkspaceComposition",
+        "WorkspaceGroup",
+        "WorkspaceMapping",
+        "WorkspaceMappingComposition",
+        "WorkspaceSystemGroup",
+        "WorkspaceUserGroup",
+        "WorkspaceUserGroupComposition"
+      ]
+    }
+  },
+  "manual": {
+    "source": "C:\\Program Files\\Siemens\\Automation\\Portal V17\\Help\\en-US\\TIAPortalOpennessenUS.chm",
+    "sourceSha256": "053f64229005290483bcdb08145ed96d20d8e55fc595450d582a26379f925f87",
+    "tocSha256": "b2e39d9b7c7a7a98cdd4dee6d36b3e15fc1e5854f25a491a044aa93e69facee8",
+    "entryCount": 445,
+    "toc": [
+      {
+        "title": "Openness: Automating creation of projects",
+        "children": [
+          {
+            "title": "Security note",
+            "children": []
+          },
+          {
+            "title": "What's new in TIA Portal Openness?",
+            "children": []
+          },
+          {
+            "title": "Basics",
+            "children": [
+              {
+                "title": "Requirements for TIA Portal Openness",
+                "children": []
+              },
+              {
+                "title": "Installation",
+                "children": [
+                  {
+                    "title": "Installing TIA Portal Openness",
+                    "children": []
+                  },
+                  {
+                    "title": "Adding users to the \"Siemens TIA Openness\" user group",
+                    "children": []
+                  },
+                  {
+                    "title": "Accessing the TIA Portal",
+                    "children": []
+                  }
+                ]
+              },
+              {
+                "title": "Openness tasks",
+                "children": [
+                  {
+                    "title": "Applications",
+                    "children": []
+                  },
+                  {
+                    "title": "Export/import",
+                    "children": []
+                  }
+                ]
+              },
+              {
+                "title": "Object list",
+                "children": []
+              },
+              {
+                "title": "Setting attributes of Blocks, DBs & UDTs",
+                "children": []
+              },
+              {
+                "title": "Standard libraries",
+                "children": []
+              },
+              {
+                "title": "Notes on performance of TIA Portal Openness",
+                "children": []
+              }
+            ]
+          },
+          {
+            "title": "Introduction",
+            "children": []
+          },
+          {
+            "title": "Configurations",
+            "children": []
+          },
+          {
+            "title": "TIA Portal Openness API",
+            "children": [
+              {
+                "title": "Introduction",
+                "children": []
+              },
+              {
+                "title": "Programming steps",
+                "children": []
+              },
+              {
+                "title": "TIA Portal Openness object model",
+                "children": []
+              },
+              {
+                "title": "Blocks and types of the TIA Portal Openness object model",
+                "children": []
+              },
+              {
+                "title": "Hierarchy of hardware objects of the object model",
+                "children": []
+              },
+              {
+                "title": "Information about installed TIA Portal Openness versions",
+                "children": []
+              },
+              {
+                "title": "Example program",
+                "children": []
+              },
+              {
+                "title": "Use of the code examples",
+                "children": []
+              },
+              {
+                "title": "General functions",
+                "children": [
+                  {
+                    "title": "TIA Portal Openness IntelliSense support",
+                    "children": []
+                  },
+                  {
+                    "title": "Connecting to the TIA Portal",
+                    "children": []
+                  },
+                  {
+                    "title": "TIA Portal Openness firewall",
+                    "children": []
+                  },
+                  {
+                    "title": "Event handlers",
+                    "children": []
+                  },
+                  {
+                    "title": "Program-controlled acknowledgement of dialogs with system events",
+                    "children": []
+                  },
+                  {
+                    "title": "Terminating the connection to the TIA Portal",
+                    "children": []
+                  },
+                  {
+                    "title": "Diagnostic interfaces on TIA Portal",
+                    "children": []
+                  },
+                  {
+                    "title": "Exclusive access",
+                    "children": []
+                  },
+                  {
+                    "title": "Dynamic behaviours",
+                    "children": []
+                  },
+                  {
+                    "title": "Working with associations",
+                    "children": []
+                  },
+                  {
+                    "title": "Working with compositions",
+                    "children": []
+                  },
+                  {
+                    "title": "Verifying object equality",
+                    "children": []
+                  },
+                  {
+                    "title": "Read operations for attributes",
+                    "children": []
+                  },
+                  {
+                    "title": "Transaction handling",
+                    "children": []
+                  },
+                  {
+                    "title": "Creating a DirectoryInfo/FileInfo object",
+                    "children": []
+                  },
+                  {
+                    "title": "Self-description support for attributes, navigators, actions, and services",
+                    "children": []
+                  }
+                ]
+              },
+              {
+                "title": "Functions for projects and project data",
+                "children": [
+                  {
+                    "title": "Opening a project",
+                    "children": []
+                  },
+                  {
+                    "title": "Creating a project",
+                    "children": []
+                  },
+                  {
+                    "title": "Accessing general settings of the TIA Portal",
+                    "children": []
+                  },
+                  {
+                    "title": "Archiving and Retrieving a project",
+                    "children": []
+                  },
+                  {
+                    "title": "Accessing read-only TIA Portal project",
+                    "children": []
+                  },
+                  {
+                    "title": "Accessing languages",
+                    "children": []
+                  },
+                  {
+                    "title": "Determining the object structure and attributes",
+                    "children": []
+                  },
+                  {
+                    "title": "Access software target",
+                    "children": []
+                  },
+                  {
+                    "title": "Accessing and enumerating multilingual texts",
+                    "children": []
+                  },
+                  {
+                    "title": "Updating project property simulation support",
+                    "children": []
+                  },
+                  {
+                    "title": "Read project related attributes",
+                    "children": []
+                  },
+                  {
+                    "title": "Deleting project graphics",
+                    "children": []
+                  },
+                  {
+                    "title": "Compiling a project",
+                    "children": []
+                  },
+                  {
+                    "title": "Saving a project",
+                    "children": []
+                  },
+                  {
+                    "title": "Closing a project",
+                    "children": []
+                  }
+                ]
+              },
+              {
+                "title": "Functions for Connections",
+                "children": [
+                  {
+                    "title": "Configurable attributes of a port-to-port connection",
+                    "children": []
+                  }
+                ]
+              },
+              {
+                "title": "Functions on libraries",
+                "children": [
+                  {
+                    "title": "Functions for objects and instances",
+                    "children": []
+                  },
+                  {
+                    "title": "Accessing global libraries",
+                    "children": []
+                  },
+                  {
+                    "title": "Accessing global library languages",
+                    "children": []
+                  },
+                  {
+                    "title": "Opening libraries",
+                    "children": []
+                  },
+                  {
+                    "title": "Enumerating open libraries",
+                    "children": []
+                  },
+                  {
+                    "title": "Saving and closing libraries",
+                    "children": []
+                  },
+                  {
+                    "title": "Archiving and retrieving a library",
+                    "children": []
+                  },
+                  {
+                    "title": "Creating global libraries",
+                    "children": []
+                  },
+                  {
+                    "title": "Accessing folders in a library",
+                    "children": []
+                  },
+                  {
+                    "title": "Accessing types",
+                    "children": []
+                  },
+                  {
+                    "title": "Accessing type versions",
+                    "children": []
+                  },
+                  {
+                    "title": "Accessing blocks located in library",
+                    "children": []
+                  },
+                  {
+                    "title": "Accessing instances",
+                    "children": []
+                  },
+                  {
+                    "title": "Accessing master copies",
+                    "children": []
+                  },
+                  {
+                    "title": "Create master copy from a project in library",
+                    "children": []
+                  },
+                  {
+                    "title": "Create an object from a master copy",
+                    "children": []
+                  },
+                  {
+                    "title": "Copying master copies",
+                    "children": []
+                  },
+                  {
+                    "title": "Determining out-of-date type instances",
+                    "children": []
+                  },
+                  {
+                    "title": "Updating the project",
+                    "children": []
+                  },
+                  {
+                    "title": "Updating a library",
+                    "children": []
+                  },
+                  {
+                    "title": "Deleting library content",
+                    "children": []
+                  }
+                ]
+              },
+              {
+                "title": "Functions for accessing devices, networks and connections",
+                "children": [
+                  {
+                    "title": "Open the \"Devices & networks\" editor",
+                    "children": []
+                  },
+                  {
+                    "title": "Querying PLC and HMI targets",
+                    "children": []
+                  },
+                  {
+                    "title": "Accessing attributes of an address object",
+                    "children": []
+                  },
+                  {
+                    "title": "Accessing the channels of a module",
+                    "children": []
+                  }
+                ]
+              },
+              {
+                "title": "Functions on networks",
+                "children": [
+                  {
+                    "title": "Creating a subnet",
+                    "children": []
+                  },
+                  {
+                    "title": "Accessing subnets",
+                    "children": []
+                  },
+                  {
+                    "title": "Accessing internal subnets",
+                    "children": []
+                  },
+                  {
+                    "title": "Get type identifier of subnets",
+                    "children": []
+                  },
+                  {
+                    "title": "Accessing attributes of a subnet",
+                    "children": []
+                  },
+                  {
+                    "title": "Deleting a global subnet",
+                    "children": []
+                  },
+                  {
+                    "title": "Enumerate all participants of a subnet",
+                    "children": []
+                  },
+                  {
+                    "title": "Enumerate IO systems of a subnet",
+                    "children": []
+                  },
+                  {
+                    "title": "Accessing nodes",
+                    "children": []
+                  },
+                  {
+                    "title": "Accessing attributes of a node",
+                    "children": []
+                  },
+                  {
+                    "title": "Connecting a node to a subnet",
+                    "children": []
+                  },
+                  {
+                    "title": "Disconnect a node from a subnet",
+                    "children": []
+                  },
+                  {
+                    "title": "Creating an IO system",
+                    "children": []
+                  },
+                  {
+                    "title": "Accessing the attributes of an IO system",
+                    "children": []
+                  },
+                  {
+                    "title": "Connecting an IO connector to an IO system",
+                    "children": []
+                  },
+                  {
+                    "title": "Get master system or IO system of an interface",
+                    "children": []
+                  },
+                  {
+                    "title": "Get an IO Controller",
+                    "children": []
+                  },
+                  {
+                    "title": "Get an IO Connector",
+                    "children": []
+                  },
+                  {
+                    "title": "Disconnecting an IO connector from an IO system or a DP mastersystem",
+                    "children": []
+                  },
+                  {
+                    "title": "Accessing attributes of a DP mastersystem",
+                    "children": []
+                  },
+                  {
+                    "title": "Accessing attributes of a profinet io system",
+                    "children": []
+                  },
+                  {
+                    "title": "Deleting a DP master system",
+                    "children": []
+                  },
+                  {
+                    "title": "Deleting a profinet io system",
+                    "children": []
+                  },
+                  {
+                    "title": "Creating a DP master system",
+                    "children": []
+                  },
+                  {
+                    "title": "Accessing port interconnection information of port device item",
+                    "children": []
+                  },
+                  {
+                    "title": "Attributes of port inter-connection",
+                    "children": []
+                  },
+                  {
+                    "title": "Accessing the attributes of a port",
+                    "children": []
+                  },
+                  {
+                    "title": "Enumerate DP master systems of a subnet",
+                    "children": []
+                  },
+                  {
+                    "title": "Enumerate assigned IO connectors",
+                    "children": []
+                  },
+                  {
+                    "title": "Connecting a DP IO connector to a DP master system",
+                    "children": []
+                  },
+                  {
+                    "title": "Accessing AS-i profile and parameter attributes for virtual slaves",
+                    "children": []
+                  }
+                ]
+              },
+              {
+                "title": "Functions on devices",
+                "children": [
+                  {
+                    "title": "Mandatory attributes of devices",
+                    "children": []
+                  },
+                  {
+                    "title": "Get type identifier of devices and device items",
+                    "children": []
+                  },
+                  {
+                    "title": "Set App ID on device and device Items",
+                    "children": []
+                  },
+                  {
+                    "title": "Get App ID on device and device Items",
+                    "children": []
+                  },
+                  {
+                    "title": "Remove App ID on device and device items",
+                    "children": []
+                  },
+                  {
+                    "title": "Creating a device",
+                    "children": []
+                  },
+                  {
+                    "title": "Enumerating devices",
+                    "children": []
+                  },
+                  {
+                    "title": "Accessing devices",
+                    "children": []
+                  },
+                  {
+                    "title": "Deleting a device",
+                    "children": []
+                  }
+                ]
+              },
+              {
+                "title": "Functions on device items",
+                "children": [
+                  {
+                    "title": "Mandatory attributes of device items",
+                    "children": []
+                  },
+                  {
+                    "title": "Creating and plugging a device item",
+                    "children": []
+                  },
+                  {
+                    "title": "Moving device items into another slot",
+                    "children": []
+                  },
+                  {
+                    "title": "Copying a device item",
+                    "children": []
+                  },
+                  {
+                    "title": "Deleting a device item",
+                    "children": []
+                  },
+                  {
+                    "title": "Enumerate device items",
+                    "children": []
+                  },
+                  {
+                    "title": "Accessing device items",
+                    "children": []
+                  },
+                  {
+                    "title": "Accessing device item as interface",
+                    "children": []
+                  },
+                  {
+                    "title": "Accessing attributes of an I/O device interface",
+                    "children": []
+                  },
+                  {
+                    "title": "Accessing attributes of IoController",
+                    "children": []
+                  },
+                  {
+                    "title": "Accessing attributes of IoConnector",
+                    "children": []
+                  },
+                  {
+                    "title": "Accessing address controller",
+                    "children": []
+                  },
+                  {
+                    "title": "Accessing addresses",
+                    "children": []
+                  },
+                  {
+                    "title": "Accessing hardware identifiers",
+                    "children": []
+                  },
+                  {
+                    "title": "Accessing hardware identifier controller",
+                    "children": []
+                  },
+                  {
+                    "title": "Accessing channels of device items",
+                    "children": []
+                  },
+                  {
+                    "title": "Creating and exporting psc file",
+                    "children": []
+                  },
+                  {
+                    "title": "Connection handling for extension racks",
+                    "children": []
+                  }
+                ]
+              },
+              {
+                "title": "Functions for accessing the data of an HMI device",
+                "children": [
+                  {
+                    "title": "Screens",
+                    "children": [
+                      {
+                        "title": "Creating user-defined screen folders",
+                        "children": []
+                      },
+                      {
+                        "title": "Deleting a screen from a folder",
+                        "children": []
+                      },
+                      {
+                        "title": "Deleting a screen template from a folder",
+                        "children": []
+                      },
+                      {
+                        "title": "Deleting all screens from a folder",
+                        "children": []
+                      }
+                    ]
+                  },
+                  {
+                    "title": "Cycles",
+                    "children": [
+                      {
+                        "title": "Deleting a cycle",
+                        "children": []
+                      }
+                    ]
+                  },
+                  {
+                    "title": "Text lists",
+                    "children": [
+                      {
+                        "title": "Deleting a text list",
+                        "children": []
+                      }
+                    ]
+                  },
+                  {
+                    "title": "Graphic lists",
+                    "children": [
+                      {
+                        "title": "Deleting a graphic list",
+                        "children": []
+                      }
+                    ]
+                  },
+                  {
+                    "title": "Connections",
+                    "children": [
+                      {
+                        "title": "Deleting a connection",
+                        "children": []
+                      }
+                    ]
+                  },
+                  {
+                    "title": "Tag table",
+                    "children": [
+                      {
+                        "title": "Creating user-defined folders for HMI tags",
+                        "children": []
+                      },
+                      {
+                        "title": "Enumerating tags of an HMI tag table",
+                        "children": []
+                      },
+                      {
+                        "title": "Deleting an individual tag from an HMI tag table",
+                        "children": []
+                      },
+                      {
+                        "title": "Deleting a tag table from a folder",
+                        "children": []
+                      }
+                    ]
+                  },
+                  {
+                    "title": "VB scripts",
+                    "children": [
+                      {
+                        "title": "Creating user-defined script folders",
+                        "children": []
+                      },
+                      {
+                        "title": "Deleting a VB script from a folder",
+                        "children": []
+                      }
+                    ]
+                  },
+                  {
+                    "title": "Deleting a user-defined folder of an HMI device",
+                    "children": []
+                  }
+                ]
+              },
+              {
+                "title": "Functions for accessing the data of a PLC device",
+                "children": [
+                  {
+                    "title": "Determining the status of a PLC",
+                    "children": []
+                  },
+                  {
+                    "title": "Accessing parameters of an online connection",
+                    "children": []
+                  },
+                  {
+                    "title": "Accessing fingerprint for quick station compare",
+                    "children": []
+                  },
+                  {
+                    "title": "Accessing CM DP as DP slave and transfer area",
+                    "children": []
+                  },
+                  {
+                    "title": "Setting PLC online of R/H system",
+                    "children": []
+                  },
+                  {
+                    "title": "Accessing software container from primary PLC of R/H system",
+                    "children": []
+                  },
+                  {
+                    "title": "Downloading PLCs of R/H System",
+                    "children": []
+                  },
+                  {
+                    "title": "Functions for downloading data to PLC device",
+                    "children": [
+                      {
+                        "title": "Downloading PC System",
+                        "children": []
+                      },
+                      {
+                        "title": "Downloading hardware and software components to PLC device",
+                        "children": []
+                      },
+                      {
+                        "title": "Running and stopping PLC",
+                        "children": []
+                      },
+                      {
+                        "title": "Supporting callbacks",
+                        "children": []
+                      },
+                      {
+                        "title": "Protecting PLC through password",
+                        "children": []
+                      },
+                      {
+                        "title": "Handling PLC block binding passwords",
+                        "children": []
+                      }
+                    ]
+                  },
+                  {
+                    "title": "Functions for accessing PLC service",
+                    "children": [
+                      {
+                        "title": "Access level setting",
+                        "children": []
+                      },
+                      {
+                        "title": "Accessing OPC UA server interface",
+                        "children": []
+                      },
+                      {
+                        "title": "Accessing Software Checksum",
+                        "children": []
+                      },
+                      {
+                        "title": "Assigning PC interface",
+                        "children": []
+                      }
+                    ]
+                  },
+                  {
+                    "title": "Uploading hardware, software and files to PLC device",
+                    "children": []
+                  },
+                  {
+                    "title": "Comparing PLC software",
+                    "children": []
+                  },
+                  {
+                    "title": "Comparing PLC hardware",
+                    "children": []
+                  },
+                  {
+                    "title": "Establishing or disconnecting the online connection to the PLC",
+                    "children": []
+                  },
+                  {
+                    "title": "Assigning project language to PLC",
+                    "children": []
+                  },
+                  {
+                    "title": "Assigning watch & force tables for web server and PLC display",
+                    "children": []
+                  },
+                  {
+                    "title": "Accessing web server and OPC UA user management",
+                    "children": []
+                  },
+                  {
+                    "title": "Accessing domain settings",
+                    "children": []
+                  },
+                  {
+                    "title": "Setting a display password",
+                    "children": []
+                  },
+                  {
+                    "title": "Supporting IP Accessibility",
+                    "children": []
+                  },
+                  {
+                    "title": "Updating module description",
+                    "children": []
+                  },
+                  {
+                    "title": "Managing certificate",
+                    "children": []
+                  },
+                  {
+                    "title": "Blocks",
+                    "children": [
+                      {
+                        "title": "Querying the \"Program blocks\" group",
+                        "children": []
+                      },
+                      {
+                        "title": "Querying the system group for system blocks",
+                        "children": []
+                      },
+                      {
+                        "title": "Enumerating system subgroups",
+                        "children": []
+                      },
+                      {
+                        "title": "Enumerating user-defined block groups",
+                        "children": []
+                      },
+                      {
+                        "title": "Enumerating all blocks",
+                        "children": []
+                      },
+                      {
+                        "title": "Querying information of a block/user data type",
+                        "children": []
+                      },
+                      {
+                        "title": "Setting and removing protections from a block",
+                        "children": []
+                      },
+                      {
+                        "title": "Deleting block",
+                        "children": []
+                      },
+                      {
+                        "title": "Creating group for blocks",
+                        "children": []
+                      },
+                      {
+                        "title": "Deleting group for blocks",
+                        "children": []
+                      },
+                      {
+                        "title": "Accessing attributes of all blocks",
+                        "children": []
+                      },
+                      {
+                        "title": "Creating a ProDiag-FB",
+                        "children": []
+                      },
+                      {
+                        "title": "Accessing supervisions and properties of ProDiag-FB",
+                        "children": []
+                      },
+                      {
+                        "title": "Reading ProDiag-FB blocks and attributes",
+                        "children": []
+                      },
+                      {
+                        "title": "Adding an external file",
+                        "children": []
+                      },
+                      {
+                        "title": "Generate source from block",
+                        "children": []
+                      },
+                      {
+                        "title": "Generating blocks from source",
+                        "children": []
+                      },
+                      {
+                        "title": "Generating from source of known source format",
+                        "children": []
+                      },
+                      {
+                        "title": "Deleting user data type",
+                        "children": []
+                      },
+                      {
+                        "title": "Deleting an external file",
+                        "children": []
+                      },
+                      {
+                        "title": "Starting the block editor",
+                        "children": []
+                      },
+                      {
+                        "title": "Changing blocks using fingerprints",
+                        "children": []
+                      },
+                      {
+                        "title": "Generating/deleting blocks for user defined pages",
+                        "children": []
+                      },
+                      {
+                        "title": "Writing access for OB block priority attribute",
+                        "children": []
+                      },
+                      {
+                        "title": "Generating block/UDT from external source file in specific user group",
+                        "children": []
+                      }
+                    ]
+                  },
+                  {
+                    "title": "Tags and Tag tables",
+                    "children": [
+                      {
+                        "title": "Starting the \"PLC Tags\" editor",
+                        "children": []
+                      },
+                      {
+                        "title": "Querying system groups for PLC tags",
+                        "children": []
+                      },
+                      {
+                        "title": "Creating PLC tag table",
+                        "children": []
+                      },
+                      {
+                        "title": "Enumerating user-defined groups for PLC tags",
+                        "children": []
+                      },
+                      {
+                        "title": "Creating user-defined groups for PLC tags",
+                        "children": []
+                      },
+                      {
+                        "title": "Deleting user-defined groups for PLC tags",
+                        "children": []
+                      },
+                      {
+                        "title": "Enumerating PLC tag tables in a folder",
+                        "children": []
+                      },
+                      {
+                        "title": "Querying information from a PLC tag table",
+                        "children": []
+                      },
+                      {
+                        "title": "Reading the time of the last changes of a PLC tag table",
+                        "children": []
+                      },
+                      {
+                        "title": "Deleting a PLC tag table from a group",
+                        "children": []
+                      },
+                      {
+                        "title": "Enumerating PLC tags",
+                        "children": []
+                      },
+                      {
+                        "title": "Accessing PLC tags",
+                        "children": []
+                      },
+                      {
+                        "title": "Accessing PLC constants",
+                        "children": []
+                      }
+                    ]
+                  },
+                  {
+                    "title": "Functions for software units",
+                    "children": [
+                      {
+                        "title": "Working with software unit",
+                        "children": []
+                      },
+                      {
+                        "title": "Accessing software unit",
+                        "children": []
+                      },
+                      {
+                        "title": "Accessing software unit underlying objects",
+                        "children": []
+                      },
+                      {
+                        "title": "Accessing to existing relations of a unit",
+                        "children": []
+                      },
+                      {
+                        "title": "Updating software unit properties",
+                        "children": []
+                      },
+                      {
+                        "title": "Publishing software unit object",
+                        "children": []
+                      },
+                      {
+                        "title": "Adding external sources in units",
+                        "children": []
+                      },
+                      {
+                        "title": "Units as mastercopies",
+                        "children": []
+                      },
+                      {
+                        "title": "Updating existing relations & create/delete relations",
+                        "children": []
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "title": "Functions for Version Control Interface",
+                "children": [
+                  {
+                    "title": "Accessing VCI system group in project",
+                    "children": []
+                  },
+                  {
+                    "title": "Enumerating user groups in VCI group",
+                    "children": []
+                  },
+                  {
+                    "title": "Creating VCI user group in VCI group",
+                    "children": []
+                  },
+                  {
+                    "title": "Updating VCI group properties",
+                    "children": []
+                  },
+                  {
+                    "title": "Deleting VCI user group",
+                    "children": []
+                  },
+                  {
+                    "title": "Enumerating VCI workspaces in VCI group",
+                    "children": []
+                  },
+                  {
+                    "title": "Creating VCI workspace in VCI group",
+                    "children": []
+                  },
+                  {
+                    "title": "Updating VCI workspace properties",
+                    "children": []
+                  },
+                  {
+                    "title": "Deleting VCI workspace",
+                    "children": []
+                  },
+                  {
+                    "title": "Enumerating VCI workspace mappings in VCI",
+                    "children": []
+                  },
+                  {
+                    "title": "Creating VCI workspace mapping in VCI workspace",
+                    "children": []
+                  },
+                  {
+                    "title": "Updating VCI workspace mapping properties",
+                    "children": []
+                  },
+                  {
+                    "title": "Deleting VCI workspace mapping",
+                    "children": []
+                  },
+                  {
+                    "title": "Synchronizing a workspace mapping",
+                    "children": []
+                  }
+                ]
+              },
+              {
+                "title": "Functions support for Multiuser",
+                "children": [
+                  {
+                    "title": "Getting project server connection from TIA Portal Setting",
+                    "children": []
+                  },
+                  {
+                    "title": "Adding a project to server",
+                    "children": []
+                  },
+                  {
+                    "title": "Getting server projects",
+                    "children": []
+                  },
+                  {
+                    "title": "Getting available local sessions",
+                    "children": []
+                  },
+                  {
+                    "title": "Creating a local session",
+                    "children": []
+                  },
+                  {
+                    "title": "Deleting local session from server",
+                    "children": []
+                  },
+                  {
+                    "title": "Opening local/exclusive session",
+                    "children": []
+                  },
+                  {
+                    "title": "Opening server project",
+                    "children": []
+                  },
+                  {
+                    "title": "Checking marked objects",
+                    "children": []
+                  },
+                  {
+                    "title": "Closing local session",
+                    "children": []
+                  },
+                  {
+                    "title": "Commiting/discarding server project changes",
+                    "children": []
+                  },
+                  {
+                    "title": "Getting lockstate provider",
+                    "children": []
+                  },
+                  {
+                    "title": "Checking project locked",
+                    "children": []
+                  },
+                  {
+                    "title": "Getting lock owner",
+                    "children": []
+                  },
+                  {
+                    "title": "Checking session UptoDate",
+                    "children": []
+                  }
+                ]
+              },
+              {
+                "title": "Functions on OPC",
+                "children": [
+                  {
+                    "title": "Configuring OPC UA server secure communication protocol",
+                    "children": []
+                  },
+                  {
+                    "title": "Setting OPC UA security policy",
+                    "children": []
+                  }
+                ]
+              },
+              {
+                "title": "Openness for CP 1604/CP 1616/CP 1626",
+                "children": []
+              },
+              {
+                "title": "Openness transfer areas for PnPn coupler",
+                "children": []
+              },
+              {
+                "title": "Openness virtual modules/submodules for ET 200SP PN HF",
+                "children": []
+              },
+              {
+                "title": "Exceptions",
+                "children": [
+                  {
+                    "title": "Handling exceptions",
+                    "children": []
+                  }
+                ]
+              },
+              {
+                "title": "F-related Openness",
+                "children": [
+                  {
+                    "title": "F-related Openness",
+                    "children": []
+                  },
+                  {
+                    "title": "SafetyModificationsPossible",
+                    "children": []
+                  },
+                  {
+                    "title": "UsernameForFChangeHistory",
+                    "children": []
+                  },
+                  {
+                    "title": "SafetySignatureProvider",
+                    "children": []
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "title": "Export/import",
+            "children": [
+              {
+                "title": "Overview",
+                "children": [
+                  {
+                    "title": "Basic principles of importing/exporting",
+                    "children": []
+                  },
+                  {
+                    "title": "Field of application for Import/Export",
+                    "children": []
+                  },
+                  {
+                    "title": "Version Specific Simatic ML Import",
+                    "children": []
+                  },
+                  {
+                    "title": "Editing the XML file",
+                    "children": []
+                  },
+                  {
+                    "title": "Exporting configuration data",
+                    "children": []
+                  },
+                  {
+                    "title": "Importing configuration data",
+                    "children": []
+                  }
+                ]
+              },
+              {
+                "title": "Import/export of project data",
+                "children": [
+                  {
+                    "title": "Project graphics",
+                    "children": [
+                      {
+                        "title": "Exporting/importing graphics",
+                        "children": []
+                      },
+                      {
+                        "title": "Exporting all graphics of a project",
+                        "children": []
+                      },
+                      {
+                        "title": "Importing graphics to a project",
+                        "children": []
+                      }
+                    ]
+                  },
+                  {
+                    "title": "Project texts",
+                    "children": [
+                      {
+                        "title": "Export of project texts",
+                        "children": []
+                      },
+                      {
+                        "title": "Import of project texts",
+                        "children": []
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "title": "Importing/exporting data of an HMI device",
+                "children": [
+                  {
+                    "title": "Structure of an XML file",
+                    "children": []
+                  },
+                  {
+                    "title": "Structure of the data for importing/exporting",
+                    "children": []
+                  },
+                  {
+                    "title": "Cycles",
+                    "children": [
+                      {
+                        "title": "Exporting cycles",
+                        "children": []
+                      },
+                      {
+                        "title": "Importing cycles",
+                        "children": []
+                      }
+                    ]
+                  },
+                  {
+                    "title": "Tag tables",
+                    "children": [
+                      {
+                        "title": "Exporting HMI tag tables",
+                        "children": []
+                      },
+                      {
+                        "title": "Importing HMI tag table",
+                        "children": []
+                      },
+                      {
+                        "title": "Exporting an individual tag from an HMI tag table",
+                        "children": []
+                      },
+                      {
+                        "title": "Importing an individual tag into an HMI tag table",
+                        "children": []
+                      },
+                      {
+                        "title": "Special considerations for the export/import of HMI tags",
+                        "children": []
+                      }
+                    ]
+                  },
+                  {
+                    "title": "VB scripts",
+                    "children": [
+                      {
+                        "title": "Exporting VB scripts",
+                        "children": []
+                      },
+                      {
+                        "title": "Exporting VB scripts from a folder",
+                        "children": []
+                      },
+                      {
+                        "title": "Importing VB scripts",
+                        "children": []
+                      }
+                    ]
+                  },
+                  {
+                    "title": "Text lists",
+                    "children": [
+                      {
+                        "title": "Exporting text lists from an HMI device",
+                        "children": []
+                      },
+                      {
+                        "title": "Importing a text list into an HMI device",
+                        "children": []
+                      },
+                      {
+                        "title": "Advanced XML formats for export/import of text lists",
+                        "children": []
+                      }
+                    ]
+                  },
+                  {
+                    "title": "Graphic lists",
+                    "children": [
+                      {
+                        "title": "Exporting graphic lists",
+                        "children": []
+                      },
+                      {
+                        "title": "Importing a graphic list",
+                        "children": []
+                      }
+                    ]
+                  },
+                  {
+                    "title": "Connections",
+                    "children": [
+                      {
+                        "title": "Exporting connections",
+                        "children": []
+                      },
+                      {
+                        "title": "Importing connections",
+                        "children": []
+                      }
+                    ]
+                  },
+                  {
+                    "title": "Screens",
+                    "children": [
+                      {
+                        "title": "Overview of exportable screen objects",
+                        "children": []
+                      },
+                      {
+                        "title": "Exporting all screens of an HMI device",
+                        "children": []
+                      },
+                      {
+                        "title": "Exporting a screen from a screen folder",
+                        "children": []
+                      },
+                      {
+                        "title": "Importing screens to an HMI device",
+                        "children": []
+                      },
+                      {
+                        "title": "Exporting permanent areas",
+                        "children": []
+                      },
+                      {
+                        "title": "Importing permanent areas",
+                        "children": []
+                      },
+                      {
+                        "title": "Exporting all screen templates of an HMI device",
+                        "children": []
+                      },
+                      {
+                        "title": "Exporting screen templates from a folder",
+                        "children": []
+                      },
+                      {
+                        "title": "Importing screen templates",
+                        "children": []
+                      },
+                      {
+                        "title": "Exporting a pop-up screen",
+                        "children": []
+                      },
+                      {
+                        "title": "Importing a pop-up screen",
+                        "children": []
+                      },
+                      {
+                        "title": "Exporting a slide-in screen",
+                        "children": []
+                      },
+                      {
+                        "title": "Importing a slide-in screen",
+                        "children": []
+                      },
+                      {
+                        "title": "Exporting a screen with a faceplate instance",
+                        "children": []
+                      },
+                      {
+                        "title": "Importing a screen with a faceplate instance",
+                        "children": []
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "title": "Export/Import Watch & Force Table",
+                "children": []
+              },
+              {
+                "title": "Importing/exporting data of a PLC device",
+                "children": [
+                  {
+                    "title": "Blocks",
+                    "children": [
+                      {
+                        "title": "XML structure of the block interface section",
+                        "children": []
+                      },
+                      {
+                        "title": "Changes of the object model and XML file format",
+                        "children": []
+                      },
+                      {
+                        "title": "Exporting DBs with snapshots",
+                        "children": []
+                      },
+                      {
+                        "title": "Exporting blocks with know-how protection",
+                        "children": []
+                      },
+                      {
+                        "title": "Export/Import of SCL blocks",
+                        "children": []
+                      },
+                      {
+                        "title": "Export/Import of structured types of SCL blocks",
+                        "children": []
+                      },
+                      {
+                        "title": "Export/Import of SCL call blocks",
+                        "children": []
+                      },
+                      {
+                        "title": "Export/Import multilingual comments in SCL",
+                        "children": []
+                      },
+                      {
+                        "title": "Exporting failsafe blocks",
+                        "children": []
+                      },
+                      {
+                        "title": "Exporting system blocks",
+                        "children": []
+                      },
+                      {
+                        "title": "Exporting GRAPH blocks with multi-language text",
+                        "children": []
+                      },
+                      {
+                        "title": "Importing block",
+                        "children": []
+                      },
+                      {
+                        "title": "Exporting blocks",
+                        "children": []
+                      },
+                      {
+                        "title": "Importing blocks/UDT with open reference",
+                        "children": []
+                      },
+                      {
+                        "title": "Importing blocks/UDT for structural change object",
+                        "children": []
+                      },
+                      {
+                        "title": "Export/Import of unit specific publishing attribute of blocks and types",
+                        "children": []
+                      },
+                      {
+                        "title": "Creating Instance DB",
+                        "children": []
+                      },
+                      {
+                        "title": "Accessing DB value parameter without export",
+                        "children": []
+                      }
+                    ]
+                  },
+                  {
+                    "title": "Tag tables",
+                    "children": [
+                      {
+                        "title": "Exporting PLC tag tables",
+                        "children": []
+                      },
+                      {
+                        "title": "Importing PLC tag table",
+                        "children": []
+                      },
+                      {
+                        "title": "Exporting an individual tag or constant from a PLC tag table",
+                        "children": []
+                      },
+                      {
+                        "title": "Importing an individual tag or constant into a PLC tag table",
+                        "children": []
+                      }
+                    ]
+                  },
+                  {
+                    "title": "Exporting user data type",
+                    "children": []
+                  },
+                  {
+                    "title": "Importing user data type",
+                    "children": []
+                  },
+                  {
+                    "title": "Export of data in OPC UA XML format",
+                    "children": []
+                  }
+                ]
+              },
+              {
+                "title": "Importing/exporting hardware data",
+                "children": [
+                  {
+                    "title": "AML file format",
+                    "children": []
+                  },
+                  {
+                    "title": "Pruned AML",
+                    "children": []
+                  },
+                  {
+                    "title": "Overview of the objects and parameters of the CAx import/export",
+                    "children": []
+                  },
+                  {
+                    "title": "Structure of the CAx data for importing/exporting",
+                    "children": []
+                  },
+                  {
+                    "title": "AML type identifiers",
+                    "children": []
+                  },
+                  {
+                    "title": "Export/Import of base unit Information via AML",
+                    "children": []
+                  },
+                  {
+                    "title": "Export/Import AML with extension rack connection",
+                    "children": []
+                  },
+                  {
+                    "title": "Connection handling for extension racks",
+                    "children": []
+                  },
+                  {
+                    "title": "Export of CAx data",
+                    "children": []
+                  },
+                  {
+                    "title": "Import of CAx data",
+                    "children": []
+                  },
+                  {
+                    "title": "Export/Import of sub modules",
+                    "children": []
+                  },
+                  {
+                    "title": "Import CAx data without logical address",
+                    "children": []
+                  },
+                  {
+                    "title": "Exceptions during import and export of CAx data",
+                    "children": []
+                  },
+                  {
+                    "title": "Round trip exchange of devices and modules",
+                    "children": []
+                  },
+                  {
+                    "title": "Import AML ignoring unknown artifacts",
+                    "children": []
+                  },
+                  {
+                    "title": "Export/Import topology",
+                    "children": []
+                  },
+                  {
+                    "title": "Import of device with Library references",
+                    "children": []
+                  },
+                  {
+                    "title": "Export of a device object",
+                    "children": []
+                  },
+                  {
+                    "title": "Import of a device object",
+                    "children": []
+                  },
+                  {
+                    "title": "Export/Import of device with set address",
+                    "children": []
+                  },
+                  {
+                    "title": "Export/Import of device with channels",
+                    "children": []
+                  },
+                  {
+                    "title": "Export of device item objects",
+                    "children": []
+                  },
+                  {
+                    "title": "Import of device item objects",
+                    "children": []
+                  },
+                  {
+                    "title": "Export/Import of GSD/GSDML based devices and device items",
+                    "children": []
+                  },
+                  {
+                    "title": "Export/Import device configuration with virtual interface",
+                    "children": []
+                  },
+                  {
+                    "title": "Export/Import of subnets",
+                    "children": []
+                  },
+                  {
+                    "title": "Export/Import of IO-systems",
+                    "children": []
+                  },
+                  {
+                    "title": "Export/Import of multilingual comments",
+                    "children": []
+                  },
+                  {
+                    "title": "Export/Import ET200 SP/ET200 AL devices with extension rack connections",
+                    "children": []
+                  },
+                  {
+                    "title": "Export/Import of ARE APC Drive 1.2.0",
+                    "children": []
+                  },
+                  {
+                    "title": "AML AR APC Attribute Support",
+                    "children": [
+                      {
+                        "title": "Export/Import of PLC tags",
+                        "children": []
+                      },
+                      {
+                        "title": "Export/Import of RH/PLC",
+                        "children": []
+                      },
+                      {
+                        "title": "Export/Import AML with customized tag and deviceitems",
+                        "children": []
+                      },
+                      {
+                        "title": "Export/Import of FailSafe PLC",
+                        "children": []
+                      },
+                      {
+                        "title": "Export/Import of Failsafe IO",
+                        "children": []
+                      },
+                      {
+                        "title": "Export/Import vendor specific attribute",
+                        "children": []
+                      }
+                    ]
+                  },
+                  {
+                    "title": "AML attributes versus TIA Portal Openness attributes",
+                    "children": []
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "title": "Major Changes",
+            "children": [
+              {
+                "title": "Major changes in TIA Portal Openness V16",
+                "children": []
+              },
+              {
+                "title": "Major changes in TIA Portal Openness V15.1",
+                "children": []
+              },
+              {
+                "title": "Major changes in TIA Portal Openness V15",
+                "children": []
+              },
+              {
+                "title": "Major changes in V14 SP1",
+                "children": [
+                  {
+                    "title": "Major changes in V14 SP1",
+                    "children": []
+                  },
+                  {
+                    "title": "Major changes in the object model",
+                    "children": []
+                  },
+                  {
+                    "title": "Changes on pilot functionality",
+                    "children": []
+                  },
+                  {
+                    "title": "Changes for export and import",
+                    "children": [
+                      {
+                        "title": "Changes for export and import",
+                        "children": []
+                      },
+                      {
+                        "title": "Changes in API",
+                        "children": []
+                      },
+                      {
+                        "title": "Schema extension",
+                        "children": []
+                      },
+                      {
+                        "title": "Schema changes",
+                        "children": []
+                      },
+                      {
+                        "title": "Behaviour changes",
+                        "children": []
+                      },
+                      {
+                        "title": "Block attribute changes",
+                        "children": []
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "title": "Major changes in V14",
+                "children": [
+                  {
+                    "title": "Major changes of the object model",
+                    "children": []
+                  },
+                  {
+                    "title": "Before updating an application to TIA Portal Openness V14",
+                    "children": []
+                  },
+                  {
+                    "title": "Major string changes",
+                    "children": []
+                  },
+                  {
+                    "title": "Import of files generated with TIA Portal Openness V13 SP1 and previous",
+                    "children": []
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}

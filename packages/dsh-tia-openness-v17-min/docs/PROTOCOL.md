@@ -1,0 +1,277 @@
+# Controller protocol (revision 1)
+
+The plugin talks to `TiaOpennessV17Min.Controller.exe` over stdin/stdout using
+newline-delimited JSON: **one JSON object per line, UTF-8, in both directions**.
+This file is the authoritative description of that channel and of the error
+vocabulary; `src/protocol.ts` and `controller/Protocol.cs` implement it.
+
+Revision 1 is the only revision. A frame carries `"protocol": 1`; the plugin
+refuses a controller that reports a different number
+(`controller_protocol_mismatch`), and vice versa.
+
+## Transport
+
+- The controller writes a **ready** frame as its first line and then serves
+  requests until stdin reaches end of file.
+- Requests and results are correlated by an opaque `id` chosen by the plugin
+  (a UUID). The controller echoes it verbatim.
+- **Requests are serialized.** Openness objects are not thread safe, so the
+  controller reads one line, finishes the operation, and only then reads the next.
+  The plugin enforces the same rule on its side, with a bounded queue
+  (`maxQueue`, default 8).
+- **Closing stdin is the shutdown path.** The controller then closes the open
+  project, disposes the TIA Portal instance it started, writes a final `result`
+  frame and exits 0. The plugin waits `shutdownGraceMs`, then terminates the
+  process and finally `SIGKILL`s it if needed.
+- Progress and log frames may appear at any time and carry their own `id` when
+  they belong to a request.
+- Any output that is not a JSON object (for example a .NET runtime warning) is
+  collected as a diagnostic instead of being treated as a frame.
+- Requests are serialized with every non-ASCII code point escaped, so the channel
+  is independent of the console code page the child inherited.
+
+## Frames
+
+### `ready` — first line, once
+
+```json
+{
+  "type": "ready",
+  "protocol": 1,
+  "controller": "TiaOpennessV17Min.Controller",
+  "controllerVersion": "0.1.0",
+  "pid": 12345,
+  "startedAt": "2026-01-01T10:00:00.000Z",
+  "runtime": "4.0.30319.42000",
+  "framework": ".NET Framework 4.8.9345.0",
+  "processArchitecture": "x64",
+  "userName": "operator",
+  "machineName": "WS-01",
+  "openness": {
+    "opennessDir": "C:\\Program Files\\Siemens\\Automation\\Portal V17\\PublicAPI\\V17",
+    "assemblyPath": "…\\Siemens.Engineering.dll",
+    "available": true,
+    "fileVersion": "1700.7.501.6",
+    "assemblyVersion": "17.0.0.0",
+    "processorArchitecture": "MSIL",
+    "probeDirectories": ["…"]
+  },
+  "opennessUserGroup": { "group": "Siemens TIA Openness", "isMember": true },
+  "operations": ["OpenProject", "ExportBlocks", "ImportBlocks", "CompilePlc", "CloseProject"],
+  "notes": ["…"]
+}
+```
+
+`openness.available = false` adds `reason` (`not_found`, `bad_image`, `unreadable`)
+and `message`. The ready frame **never** loads `Siemens.Engineering.dll`; the
+probe only reads file metadata, which is what lets the controller start — and
+report a precise reason — on a machine without TIA Portal.
+
+### Request — one line per call
+
+```json
+{ "id": "8f1c…", "operation": "ExportBlocks", "params": { "output_dir": "C:\\out" } }
+```
+
+- `type` is optional and must be `"operation"` when present.
+- `operation` must be one of the five whitelisted names; anything else is
+  `unsupported_operation` and is never dispatched.
+- `params` is an operation-specific object. Unknown keys are ignored; a key of the
+  wrong type is `invalid_params`.
+
+### `result` — exactly one per request
+
+```json
+{
+  "type": "result",
+  "protocol": 1,
+  "id": "8f1c…",
+  "operation": "ExportBlocks",
+  "ok": true,
+  "dryRun": false,
+  "startedAt": "…",
+  "durationMs": 812,
+  "data": { "…operation specific…" },
+  "changes": [{ "kind": "file", "target": "C:\\out\\Main.xml", "action": "created", "detail": "Main" }],
+  "diagnostics": [{ "level": "info", "message": "…", "source": "progress:export" }]
+}
+```
+
+On failure the same frame carries `ok: false` and:
+
+```json
+{
+  "error": {
+    "code": "verification_failed",
+    "message": "The import was committed, but reading the blocks back …",
+    "details": { "verification": { "passed": false, "missing": ["FB9"] }, "hint": "…" }
+  }
+}
+```
+
+`data` may still be present on failure when the operation produced a meaningful
+partial result (for example the export file list when verification failed).
+
+### `progress`
+
+```json
+{ "type": "progress", "id": "8f1c…", "phase": "import", "message": "Importing FB_Motor.xml", "time": "…" }
+```
+
+Progress frames keep a long operation observable. They do **not** extend the
+plugin's hard deadline: Openness calls cannot be cancelled, so a request that
+exceeds `requestTimeoutMs` is abandoned by terminating the controller.
+
+### `log`
+
+Controller-level notes that belong to no request (shutdown notes, warnings).
+
+## Operations and their `params`
+
+### `OpenProject`
+
+| param | type | default | meaning |
+|---|---|---|---|
+| `project_path` | string | — | absolute path of the `.ap17` file |
+| `with_window` | bool | `false` | attach to a running TIA Portal, or start a visible one |
+| `allow_upgrade` | bool | `false` | allow TIA to upgrade and rewrite an older project |
+| `dry_run` | bool | `false` | validate only; do not open |
+
+`data`: `projectName`, `projectPath`, `upgraded`, `withUserInterface`,
+`openDurationMs`, `isModified`, `plcSoftware{count,items[]}`, `blockSummary`.
+
+### `ExportBlocks`
+
+| param | type | default | meaning |
+|---|---|---|---|
+| `output_dir` | string | — | target directory (created when missing) |
+| `block_names` | string[] | all | block names; an unknown name fails with `block_not_found` |
+| `categories` | string[] | `["blocks"]` | object families: `blocks`, `types` (PLC types / UDTs), `tag_tables` |
+| `type_names` | string[] | all | optional name filter for PLC types |
+| `tag_table_names` | string[] | all | optional name filter for tag tables |
+| `device_name` / `software_name` | string | auto | PLC selection when the project has several |
+| `recursive` | bool | `true` | include user groups |
+| `overwrite` | bool | `false` | replace existing files |
+| `export_options` | enum | `with_defaults` | `none` \| `with_defaults` \| `with_read_only` |
+| `write_manifest` | bool | `true` | write `_tia-openness-manifest.json` |
+| `dry_run` | bool | `false` | list the files that would be written |
+
+`data`: `device`, `software`, `outputDir`, `exportOptions`, `blockCount`,
+`summary{exported,skipped,failed}`, `files[]{name,group,file,bytes,sha256,verified,declaredName,…}`,
+`manifest` (path).
+
+### `ImportBlocks`
+
+| param | type | default | meaning |
+|---|---|---|---|
+| `import_paths` | string[] | — | files or directories (`*.xml`, `*.scl`, `*.stl`, `*.db`, `*.udt`, `*.txt`, `*.src`) |
+| `mode` | enum | `auto` | `auto` \| `simatic_ml` \| `external_source` |
+| `import_options` | enum | `none` | `none` (fails on an existing block) \| `override` |
+| `sw_import_options` | enum[] | `[]` | `ignore_structural_changes`, `ignore_missing_referenced_objects`, `ignore_unit_attributes` |
+| `generate_option` | enum | `none` | external sources: `none` \| `keep_on_error` |
+| `device_name` / `software_name` | string | auto | PLC selection |
+| `recursive` | bool | `true` | scan directories recursively |
+| `verify` | bool | `true` | read the block composition back after committing |
+| `keep_source` | bool | `false` | keep the external source in the project |
+| `target_group` | string | root | user-group path to import into, e.g. `999_Kautex` or `A/B`. Import evaluates name/number collisions across the whole PLC, so a block that lives in a user group must be imported back into that group — `ImportOptions.Override` cannot overwrite it from the root (`group_not_found` when the group is missing and `create_group` is off) |
+| `create_group` | bool | `false` | create a missing `target_group` instead of failing |
+| `mirror_groups` | bool | `true` | for a directory input, derive each file's group from its subdirectory (the layout an export writes); a missing group falls back to the root group with a warning |
+| `categories` | string[] | all | import only these families; a Simatic ML file is classified by its XML element (`SW.Blocks.*`, `SW.Types.*`, `SW.Tags.PlcTagTable`) |
+| `dry_run` | bool | **`true`** | validate and report only |
+
+`data`: `device`, `software`, `mode`, `importOptions`, `swImportOptions`,
+`generateOption`, `keepSource`, `createGroup`, `mirrorGroups`, `targetGroup`,
+`dryRun`, `fileCount`, `plan[]{file,format,category,blockName,blockKind,existsInProject,action,exactTarget,targetGroup,existingGroup?,groupMismatch?}`,
+`conflicts[]`, and after a real run `committed`, `applied[]{file,blockName,targetGroup,status}`,
+`failureCount`, `failures[]`, `verification{}`.
+
+`verification.blocks[]` also carries `expectedGroup` and a `group:` entry in
+`differences` when the block ended up somewhere else.
+
+`verification`: `{ passed, checked, confirmedCount, missing[], advisoryNotConfirmed[],
+blocks[]{name,found,group,attributes,modifiedDateBefore/After,replacedExisting,changed,differences[]},
+method: "read_back_block_composition", message }`.
+
+### `CompilePlc`
+
+| param | type | default | meaning |
+|---|---|---|---|
+| `device_name` / `software_name` | string | auto | PLC selection |
+| `max_messages` | int | `200` | cap on returned compiler messages |
+| `dry_run` | bool | **`true`** | list the blocks instead of compiling |
+
+`data`: `device`, `software`, `state` (`Success`/`Information`/`Warning`/`Error`),
+`errorCount`, `warningCount`, `messageCount`, `messagesTruncated`,
+`messages[]{level,path,description,dateTime}`, `durationMs`. Compile errors are
+data, not a tool failure.
+
+### `CloseProject`
+
+| param | type | default | meaning |
+|---|---|---|---|
+| `save` | bool | `false` | save before closing (otherwise unsaved changes are discarded) |
+| `close_portal` | bool | `false` | also shut down the TIA Portal instance the controller started |
+| `dry_run` | bool | **`true`** | report what would happen |
+
+`data`: `projectName`, `projectPath`, `saved`, `isModifiedBeforeClose`, `closed`,
+`portalClosed`.
+
+## Error codes
+
+| code | raised when | typical fix |
+|---|---|---|
+| `unsupported_operation` | the request named anything outside the whitelist | use one of the five operations |
+| `unsupported_frame` | `type` was not `operation` | send a request frame |
+| `invalid_params` | a parameter is missing or has the wrong type | read `error.message`, it names the parameter and the allowed values |
+| `invalid_file` | an import file is not well-formed Simatic ML / a supported source | check the file and `mode` |
+| `openness_unavailable` | `Siemens.Engineering.dll` was not found | install TIA Portal V17 or set `opennessDir` |
+| `openness_load_failed` | the assembly exists but cannot be used | check x64 and the installation |
+| `project_not_found` | the project file does not exist | check `project_path` |
+| `project_not_open` | an operation needs an open project | call `OpenProject` first |
+| `project_already_open` | a project is already open | call `CloseProject` first |
+| `project_open_failed` | TIA refused to open the project | for an older project pass `allow_upgrade` |
+| `project_save_failed`, `project_close_failed` | save/close failed | see `error.details` |
+| `plc_software_not_found`, `plc_software_ambiguous` | PLC selection failed | pass `device_name` / `software_name` (the message lists the candidates) |
+| `block_not_found` | a requested block does not exist | `error.details.available` lists every block |
+| `export_failed`, `import_failed`, `compile_failed` | the Openness call failed | see `error.details.hint` (access denied, licence, …) |
+| `verification_failed` | the write happened but the read-back did not confirm it | inspect `data.verification` / `data.files` |
+| `transaction_failed` | exclusive access could not be acquired | another Openness client holds the project |
+| `compile_provider_unavailable` | no `ICompilable` service | the project has no compilable PLC |
+| `internal_error` | unexpected exception | `error.details.exceptionType` |
+
+Transport failures are raised by the plugin, not by the controller, and are
+thrown as errors rather than returned as an `ok: false` outcome:
+
+| code | meaning |
+|---|---|
+| `controller_not_found` | the executable is missing (build it or set `controllerPath`) |
+| `controller_spawn_failed` | the executable could not be started |
+| `controller_handshake_timeout` | no ready frame within `startupTimeoutMs` |
+| `controller_protocol_mismatch` | the executable speaks another protocol revision |
+| `controller_timeout` | no answer within `requestTimeoutMs`; the controller was terminated |
+| `controller_cancelled` | the caller's abort signal fired; the controller was terminated |
+| `controller_exited` | the controller exited mid-request (`details.stderr`) |
+| `controller_write_failed` | the request could not be written to the pipe |
+| `controller_busy` | more than `maxQueue` requests are queued |
+| `controller_restarted` | the controller was replaced while starting |
+
+## Command line (for operators and CI)
+
+```
+TiaOpennessV17Min.Controller.exe [--stdio] [--openness-dir <dir>]
+TiaOpennessV17Min.Controller.exe --operation <Name> [--param k=v]... [--params-json <json>] [--pretty]
+TiaOpennessV17Min.Controller.exe --self-test [--pretty]
+TiaOpennessV17Min.Controller.exe --version | --help
+```
+
+- One-shot mode prints exactly one result frame and exits 0 on success, 2 on a
+  structured failure, 1 when the self test fails. A frame is always a single line
+  unless `--pretty` was requested.
+- Repeated `--param key=value` for the same key builds an array; `true`, `false`
+  and integers are converted, everything else stays a string. `--params-json`
+  takes a complete parameter object instead.
+- `--self-test` needs no TIA Portal and asserts that starting the controller does
+  **not** load `Siemens.Engineering.dll`.
+
+Environment: `TIA_OPENNESS_V17_DIR` (Openness folder),
+`TIA_OPENNESS_V17_MIN_CONTROLLER` (controller executable, read by the plugin).

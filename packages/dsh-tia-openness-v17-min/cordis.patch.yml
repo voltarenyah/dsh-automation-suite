@@ -1,0 +1,17 @@
+# Bundle patch of @voltarenyah/dsh-tia-openness-v17-min.
+#
+# A bundle patch is applied as one layer of the hosting profile's composition, in
+# the order given by package.json `dsh.profile.bundles`. It only inserts this
+# plugin's own row; the profile (or the user) owns every setting, so the same
+# bundle works in any profile:
+#
+#   - id: tia-openness-v17-min
+#     name: '@voltarenyah/dsh-tia-openness-v17-min'
+#     config:
+#       opennessDir: 'C:\Program Files\Siemens\Automation\Portal V17\PublicAPI\V17'
+#       requestTimeoutMs: 300000
+#
+# Every config field has a default; omitting `config` entirely is supported.
+- insert:
+    - id: tia-openness-v17-min
+      name: '@voltarenyah/dsh-tia-openness-v17-min'
