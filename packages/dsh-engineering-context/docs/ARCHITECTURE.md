@@ -338,22 +338,30 @@ interface AccessListResult extends AccessCallResult {
 `stale: true` + 工件时间 + "指纹未刷新"的原因；**绝不**静默拿旧数据当现状
 （[`docs/architecture.md`](../../../docs/architecture.md) §5.4「失效可感知」）。
 
-### 5.4 版本层（A8）
+### 5.4 版本层（A8）—— ✅ P1 已实现
 
 **照抄 `dsh-tool-git` 的 shell-free 风格**（`packages/dsh-tool-git/src/runner.ts`）：
 `execFile` + 显式参数数组、`-c core.quotepath=false`、`--no-optional-locks`、
 `GIT_TERMINAL_PROMPT=0`、`GIT_ASKPASS=true`、`GIT_CONFIG_NOSYSTEM=1`、`windowsHide`。
+实现在 [`src/git.ts`](../src/git.ts)，对外只经 `eng_version`。
 
-与本仓已有 git 工具的区别（这是 A8 的答案）：**这一层不注册成工具**。
-git 的调用全在插件代码里，路径来自插件自己解析的 workspace，**模型不参与** ——
+与本仓已有 git 工具的区别（这是 A8 的答案）：**这一层不注册成工具** ——
+git 的调用全在插件代码里，路径来自插件自己解析的 workspace，**模型不参与**，
 没有"忘带参数、路径给错"的空间。
 
-**一条硬规则：`.ap17` 永不进 git。** 二进制工程文件进 VCS 只能得到"变了/没变"（
-[`docs/vision.md`](../../../docs/vision.md) §3.3）。进 git 的是**导出物 + 基线**，
-这样 `eng_version diff` 才是"工程意义上的差异"。
+**一条硬规则：`.ap17` 永不进 git。** 二进制工程文件进 VCS 只能得到"变了/没变"
+（[`docs/vision.md`](../../../docs/vision.md) §3.3）。进 git 的是**导出物 + 工程状态**，
+由 `.gitignore` 强制，并由测试里的 `decoy.ap17` 验证真的被排除。
 
-版本操作（内部，按需暴露为 `eng_version` 的 `action`）：`commit` / `log` / `show` / `diff` /
-`materialize`（把某版本物化成导出物，供族 3 解析）/ `current`（HEAD + dirty）。
+**已实现的动作**：`current`（HEAD / 分支 / 未提交改动）、`commit`（导出树 + `_dsh-eng/<id>`，
+默认 dry-run）、`log`、`diff`（默认给文件名与状态计数，`full: true` 时把完整 patch 写成工件）。
+
+**尚未实现**：`show`（单次提交的详情）与 `materialize`（把某版本物化成导出物供族 3 解析）——
+后者是 P2/P3 与族 3 的接口，等图那边要了再做。
+
+**两条实现期定下的契约**（[`decisions.md`](decisions.md) P1-1 / P1-4）：
+`runGit` 的非零退出是**数据**（"这里不是仓库"是状态，不是异常），只有找不到可执行文件才抛；
+以及**绝不** `init` / `force` / 改历史 / `push` —— 仓库不存在时给状态并让用户自己建。
 
 ### 5.5 工程变更台账（期望二 / B8）
 
@@ -429,10 +437,11 @@ git 的调用全在插件代码里，路径来自插件自己解析的 workspace
 表达不完整（`action='commit'` 才需要 `message`）。若你更看重 schema 精确性，拆成
 `eng_version_commit` / `eng_version_log` 即可（+2 工具 ≈ +1k 常驻）。
 
-> **P0 现状（已实现）**：只注册 **`eng_status` / `eng_project` / `eng_scope`** 三个。
-> `eng_scope` 目前只有 `select` / `clear`（分支与版本随 P1）；`eng_changes` / `eng_export` /
-> `eng_version` / `eng_context` 都还没实现。实现期的取舍见 [`decisions.md`](decisions.md)
-> 的「P0 实现期的决定」。
+> **当前实现（P0 + P1）**：注册 **`eng_status` / `eng_project` / `eng_scope` / `eng_version`** 四个。
+> `eng_scope` 只有 `select` / `clear`（分支与版本由 `eng_version` 报告，切换分支不在本插件职责内）；
+> `eng_version` 实现了 `current` / `commit` / `log` / `diff`（`show` 与 `materialize` 未做）；
+> `eng_changes` / `eng_export` / `eng_context` 尚未实现。实现期的取舍见 [`decisions.md`](decisions.md)
+> 的「P0 实现期的决定」与「P1 实现期的决定」。
 
 ### 6.1 返回契约示例（`eng_changes`）
 
@@ -594,7 +603,7 @@ packages/dsh-engineering-context/
 | 期 | 做什么 | 依赖 | 独立交付的价值 | 状态 |
 |---|---|---|---|---|
 | **P0** | 作用域 + 工程注册表（`eng_status` / `eng_project` / `eng_scope`） | 纯 FS + 宿主 registry | "我现在在哪个工程的哪一版" —— **不需要 TIA** | ✅ **已实现**（37 项测试通过） |
-| **P1** | 版本层（`eng_version`）+ 导出物入库 | git | 导出的文本源终于有分支与历史 | ⬜ |
+| **P1** | 版本层（`eng_version`）+ 导出物入库 | git | 导出的文本源终于有分支与历史 | ✅ **已实现**（7 项测试，真实 git 临时仓库） |
 | **P2** | 变更引擎（`eng_changes` / `eng_export`）+ 增量闭环 | 缝 A ✅ 已就绪（族 1 的 `engineeringAccess`）；指纹可得性已由**用户在另一代码库**验证 | D6/D9 的工作循环 | ⬜ |
 | **P3** | 变更台账（`eng_context`）+ 项目级 skill + 对族 3 暴露 `ctx.engineeringScope` | P2 | 期望二 | ⬜ |
 

@@ -33,6 +33,12 @@ export type EngineeringErrorCode =
   | 'target_exists'
   /** The requested action is not implemented in this phase. */
   | 'unsupported'
+  /** The workspace is not inside a git repository (the plugin never creates one). */
+  | 'repository_not_found'
+  /** The configured git executable could not be started. */
+  | 'git_not_found'
+  /** git ran and failed; `details.stderr` carries its message. */
+  | 'git_failed'
 
 /**
  * A failure with a stable code and machine-readable details.

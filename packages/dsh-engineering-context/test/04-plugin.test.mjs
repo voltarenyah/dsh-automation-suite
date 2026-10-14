@@ -35,7 +35,7 @@ test('apply registers every tool in a stable order and reports it once', () => {
   )
   const info = logs.filter((entry) => entry.level === 'info')
   assert.equal(info.length, 1)
-  assert.match(info[0].message, /Registered 3 engineering-context tools/u)
+  assert.match(info[0].message, /Registered 4 engineering-context tools/u)
 })
 
 test('apply works with no config block at all', () => {

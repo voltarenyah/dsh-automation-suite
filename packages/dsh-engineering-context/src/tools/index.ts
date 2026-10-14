@@ -16,9 +16,10 @@ import type { ToolDependencies } from './deps.js'
 import { projectTool } from './project.js'
 import { scopeTool } from './scope.js'
 import { statusTool } from './status.js'
+import { versionTool } from './version.js'
 
 /** The tools this build registers, in registration order. */
-export const TOOL_NAMES = ['eng_status', 'eng_project', 'eng_scope'] as const
+export const TOOL_NAMES = ['eng_status', 'eng_project', 'eng_scope', 'eng_version'] as const
 
 /** One of the registered tool names. */
 export type ToolName = (typeof TOOL_NAMES)[number]
@@ -33,7 +34,7 @@ export type ToolName = (typeof TOOL_NAMES)[number]
  * @returns the definitions, in registration order.
  */
 export function toolDefinitions(dependencies: ToolDependencies): ToolDefinition[] {
-  return [statusTool(dependencies), projectTool(dependencies), scopeTool(dependencies)]
+  return [statusTool(dependencies), projectTool(dependencies), scopeTool(dependencies), versionTool(dependencies)]
 }
 
 /**

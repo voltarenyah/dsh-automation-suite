@@ -3,11 +3,11 @@
 DeepSeek Harness 插件（**插件族 2 · 工程上下文管理**）：在一个 workspace 里管住
 **"现在谈的是哪个工程、哪一版"**，并维护该 workspace 的**工程注册表**。
 
-> **实现状态：P0 已完成。**
-> 已实现：作用域解析、工程注册表、3 个工作流工具。
-> 未实现：版本层（P1）、指纹变更检测（P2，需要族 1 的服务缝）、变更台账（P3）。
+> **实现状态：P0 与 P1 已完成。**
+> 已实现：作用域解析、工程注册表、版本层（内部 git），4 个工作流工具。
+> 未实现：指纹变更检测（P2，需要族 1 的 `engineeringAccess` 服务 —— 该服务**已就绪**）、变更台账（P3）。
 > 设计文档在 [`docs/`](docs/)：`ARCHITECTURE.md`（核心架构）、`PATH-RULES.md`（路径规则）、
-> `decisions.md`（技术取舍，含 P0 实现期的决定）。
+> `decisions.md`（技术取舍，含 P0/P1 实现期的决定）。
 
 ---
 
@@ -23,16 +23,19 @@ DeepSeek Harness 插件（**插件族 2 · 工程上下文管理**）：在一�
 因此"新会话只能访问自己 workspace 下的工程"是**结构性**成立：每次调用都从 cwd 重新解析，
 且任何越界路径一律拒绝（`path_outside_workspace`）。
 
-## 2. 工具（3 个）
+## 2. 工具（4 个）
 
 | 工具 | 回答什么问题 | 写？ |
 |---|---|---|
 | `eng_status` | 我在哪个 workspace / 哪个工程 / 哪个版本？路径存在吗？这个构建有哪些能力？ | 否 |
 | `eng_project` | `list` / `register` / `adopt`（把源 `.ap17` 复制成工作副本）/ `forget`（只注销，不删文件） | 是 |
 | `eng_scope` | `select` / `clear`：显式切换"当前工程"（D5 要求显式、可追溯） | 是（仅指针） |
+| `eng_version` | `current`（现在在哪一版、什么没提交）/ `commit`（导出树 + 工程状态入库）/ `log` / `diff`（两版之间变了哪些文件，可选把完整 patch 落盘成工件） | 是（git） |
 
-**dry-run 规则**（刻意不统一）：**加信息**（`list` / `register`）立即生效，因为 `forget` 可撤销；
-**删或覆盖信息**（`adopt`、`forget`）默认 `dry_run: true`，需要显式 `dry_run: false`。
+**两条 dry-run 规则**（刻意不统一）：
+
+- **加信息**立即生效（`list` / `register`），因为 `forget` 可撤销；
+- **删、覆盖或写历史**默认 `dry_run: true`，需要显式 `dry_run: false`（`adopt`、`forget`、`eng_version commit`）。
 
 ## 3. 目录布局（本插件写入的全部位置）
 
@@ -56,6 +59,7 @@ DeepSeek Harness 插件（**插件族 2 · 工程上下文管理**）：在一�
 | `projectsDirName` | `projects` | 工程内容目录（workspace 内） |
 | `stateDirName` | `_dsh-eng` | 插件状态目录（workspace 内） |
 | `requireWorkspace` | `true` | 越界路径是否拒绝；只有测试会设 false |
+| `gitPath` | `git` | 版本层调用的 git 可执行文件（名字或路径；永远以参数数组调用，不经 shell） |
 
 两个目录名必须是**单个路径段**：含分隔符、`..`、Windows 保留字符或保留设备名
 （`nul`、`com1`…）时**回退到默认值**，而不是被重新解释。

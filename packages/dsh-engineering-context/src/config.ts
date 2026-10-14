@@ -27,6 +27,12 @@ export interface PluginConfig {
    * Only a test harness has a reason to set it to false.
    */
   requireWorkspace: boolean
+  /**
+   * The git executable the version layer invokes. A name is resolved on PATH.
+   * The plugin never runs git through a shell, so this can never become a command
+   * line (decisions.md D8).
+   */
+  gitPath: string
 }
 
 /** Default values, applied both by the schema and by {@link resolveConfig}. */
@@ -34,6 +40,7 @@ export const configDefaults: PluginConfig = {
   projectsDirName: 'projects',
   stateDirName: '_dsh-eng',
   requireWorkspace: true,
+  gitPath: 'git',
 }
 
 /** Schemastery configuration schema for the plugin consumer. */
@@ -41,6 +48,7 @@ export const Config = Schema.object({
   projectsDirName: Schema.string().default(configDefaults.projectsDirName),
   stateDirName: Schema.string().default(configDefaults.stateDirName),
   requireWorkspace: Schema.boolean().default(configDefaults.requireWorkspace),
+  gitPath: Schema.string().default(configDefaults.gitPath),
 })
 
 /**
@@ -92,7 +100,27 @@ export function resolveConfig(config?: Partial<PluginConfig>): PluginConfig {
     stateDirName: segment(source.stateDirName, configDefaults.stateDirName),
     requireWorkspace:
       typeof source.requireWorkspace === 'boolean' ? source.requireWorkspace : configDefaults.requireWorkspace,
+    // Deliberately not `segment()`: an executable may be given as a path. It is
+    // passed to execFile as a single argument, never to a shell, so a path here
+    // carries no injection risk.
+    gitPath: executable(source.gitPath, configDefaults.gitPath),
   }
+}
+
+/**
+ * An executable name or path: any non-empty string, trimmed.
+ *
+ * Unlike a directory name it may contain separators — pointing at a specific `git`
+ * binary is legitimate — because the value only ever reaches `execFile` as one
+ * argument and never a shell.
+ *
+ * @param value - whatever the caller supplied.
+ * @param fallback - the default when the value is unusable.
+ */
+function executable(value: unknown, fallback: string): string {
+  if (typeof value !== 'string') return fallback
+  const trimmed = value.trim()
+  return trimmed.length === 0 ? fallback : trimmed
 }
 
 /**

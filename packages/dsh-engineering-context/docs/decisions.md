@@ -462,3 +462,80 @@ P1 填值时不必让模型重新学。结果里同时给出 `phases.pending`，
 
 **回退**：若将来控制器加了 offset，把 `listObjects` 改成真正的分页即可；
 `truncated` 字段保留（分页也需要它来表示"还有更多"）。
+
+---
+
+## P1 实现期的决定（实现「版本层」时定的）
+
+> 与 P0 同级：同样按"最保守 + 可逆"取舍。P1 的交付边界见
+> [`ARCHITECTURE.md`](ARCHITECTURE.md) §5.4 与 §10。
+
+### P1-1 · `runGit` 的非零退出是**数据**，不是异常 ✅
+
+**事实（实现时被测试逼出来的）**：第一版 `runGit` 对任何非零退出都 `reject`，
+于是"这个目录不是 git 仓库"（`rev-parse --show-toplevel` 退出码 128）变成了异常 ——
+而它其实是一个**状态**，跟 `rev-parse --verify HEAD` 在未诞生分支上的失败一样。
+
+**决定**：`runGit` 一律 **resolve** 并带回退出码，`runGitChecked` 才是"非零即抛"。
+只有两种情形仍然 `reject`：找不到可执行文件（`ENOENT`，根本没有结果可解释）、调用被中止。
+
+**为什么值得记**：这条契约决定了后续所有调用方怎么写。谁想读状态就用 `runGit` +
+自判退出码，谁想要求成功就用 `runGitChecked` —— 混用会让"没有仓库"这种正常情况看起来像崩溃。
+
+**验证**：`test/05-version.test.mjs` 第一项就是"非仓库 workspace 报状态、不炸、并且**没有**被
+插件初始化"（还断言 `.git` 不存在）。
+
+### P1-2 · 只版本化「导出物 + 工程状态」，`.ap17` 永不入库 ✅
+
+**决定**：`eng_version` 计算的路径集合固定为
+`projects/<id>/export` 与 `_dsh-eng/<id>` 两项，**不接受调用方指定路径**（D8 的同一思路：
+参数在代码里拼好）。
+
+**理由**：`.ap17` 是二进制，进 git 只能得到"变了/没变"（[`docs/vision.md`](../../../docs/vision.md) §3.3）；
+而"导出物 + 基线"才是可比对、可进历史的派生视图。**由 `.gitignore` 强制**，且测试里放了一个
+`decoy.ap17` 验证它真的被排除（`test/05-version.test.mjs`：`ls-files` 里不含任何 `.ap17`）。
+
+**连带**：`work/` 与 `source/` 根本不在这两个路径里，所以工作副本与源项目天然不入库。
+
+### P1-3 · `commit` 默认 dry-run，必须显式 `dry_run: false` **且**给出 message ✅
+
+**决定**：`eng_version action=commit` 默认只给计划（列出会提交的路径与改动）；
+真正提交需要 `dry_run: false` **并且** `message` 非空，否则 `invalid_argument`。
+
+**理由**：与 P0-4 的规则一致 —— 提交是在**写历史**，是这一层里最难随手撤销的动作。
+"加信息"（例如 `register`）可以立即生效，但"写历史"不该在两次调用都懒的时候发生。
+
+**回退**：把默认翻过来只需改一处判断；但那时要在工具描述里写清"默认会提交"。
+
+### P1-4 · 绝不 `init` / `force` / 改历史 / push ✅
+
+**决定**：本插件**从不** `git init`（D13）。仓库不存在时：`current` 报状态并**告诉用户自己建**
+（给出 `git init` 的位置），`commit` / `diff` 返回 `repository_not_found`。
+仓库根**在 workspace 之外**时照样工作，但结果里**必须警告**（那次提交与无关内容共享历史）。
+
+**边界**：只跑 `rev-parse` / `branch` / `status` / `log` / `diff` / `add` / `commit`；
+没有 `push`、没有 `--force`、没有 `reset`、没有 `rebase`。
+
+**验证**：测试第一项断言非仓库 workspace 里 `.git` **不存在**（也就是没有被悄悄创建）。
+
+### P1-5 · 完整 patch 落盘成工件，不进上下文 ✅
+
+**决定**：`action=diff` 默认只回"改了哪些文件 + 状态计数 + `--stat` 摘要"；
+`full: true` 时把完整 patch 写到 `_dsh-eng/<id>/diffs/<from>..<to>.patch` 并返回**路径**。
+
+**理由**：ARCHITECTURE §6 的 R2 —— 一个真实导出树的 diff 是 MB 级，
+而框架的 Pruner 会把超长结果**从中间剪掉**（剪掉的正好是中间那批数据）。
+写文件 + 给路径，模型要用时自己 `read`（带 offset/limit）。
+
+**一处按需扩展**：`_dsh-eng/<id>/diffs/` 是 P1 新增的状态子目录，
+`PATH-RULES.md` §8 的"可以删"列表里它属于可重建项。
+
+### P1-6 · 未跟踪文件按**文件**报，但有界 ✅
+
+**决定**：`git status` 用 `--untracked-files=all`，所以 `current` 报的是
+`?? projects/pei/export/FB_Motor.xml` 而不是一整个 `?? projects/pei/export/`；
+同时结果里 **`uncommitted` 截到 20 条**，另给 `uncommittedCount` 作为完整计数。
+
+**理由**：目录级输出会**藏掉**调用方真正想知道的东西（哪些文件出现了）；
+而首次导出一个真实项目是上千个未跟踪文件，全量塞进结果同样不可接受。
+"计数 + 前 N + 明确的总数"是这两者之间唯一诚实的折中（同 R4）。
