@@ -360,7 +360,15 @@ V17 子集需实测确认；该包 `docs/EXTENDED-SURFACE.md` 已在接线 `incl
 - 该包的 `.gitignore` **必须覆盖 `engine/bin/` 与 `engine/obj/`**：第一次建包时只忽略了
   `lib/`、`node_modules/`、`*.log`，此时 `git add -A` 会把 .NET 构建产物一起提交。
 
-**待验证**：拍平到单一命名空间后是否发生类型撞名（由 `dotnet build` 判定，见待办清单）。
+**已验证（2026-10-15）**：12 个文件拍平到单一命名空间 `EngineeringGraph.Engine` 后**没有撞名** ——
+`dotnet build` **0 error / 0 warning**；全包 37 个顶层类型声明中**没有重名**。
+同一次构建还跑通了 `--self-test`，这是编译证明不了的两件事：**原生 `e_sqlite3` 在运行期确实加载成功**
+（SQLite 往返：写图 → 读回 → 2 节点 / 1 边），以及**真实导出物能被解析成图** ——
+crawl 模式 7/7 个 fixture、**72 节点 / 153 边**，节点种类覆盖
+`Project` / `OB` / `FB` / `FC` / `Network` / `Instruction` / `Variable` / `Global DB` / `Instance DB` /
+`DB Member` / `UDT` / `UDT Member` / `Data Type` / `PLC Tag` / `IO Address`。
+另外核过：12 个文件的正文**逐个等于**对来源文件施加同一条可逆变换的结果（纯变换，无夹带）；
+包内**没有**残留对来源库其他工程的引用（`Contracts.*` 等）与绝对路径。
 
 ---
 
@@ -404,4 +412,4 @@ V17 子集需实测确认；该包 `docs/EXTENDED-SURFACE.md` 已在接线 `incl
 | 7 | contentHash 兜底必须归一化（剥 `<DocumentInfo>`/`<Created>`）才可用作变更键 | D13 |
 | 8 | 族 3 取指纹的路径：消费族 2 的变更集（默认）还是自己经族 1 `engineeringAccess` 服务 | D13（A10） |
 | 9 | DSH 按 agent 隐藏工具的确切机制（子 agent preset 如何排除操作层工具） | D16（B16） |
-| 10 | 族 3 把 12 个文件拍平到单一命名空间后是否撞名（`dotnet build` 判定） | D17 |
+| 10 | ~~族 3 把 12 个文件拍平到单一命名空间后是否撞名~~ → **✅ 已验证无撞名**（`dotnet build` 0 error / 0 warning，37 个顶层类型无重名） | D17 |
