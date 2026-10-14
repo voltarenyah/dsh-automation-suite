@@ -291,7 +291,7 @@ TIA 包那套（`tsc` 出 `lib/`，`node:test` 跑真实运行时）已经够用
 
 **回退**：删掉 `.gitignore` 里那一行、重建并提交，即与 TIA 包一致。
 
-### P0-3 · 不跑 `pnpm install`；lockfile 暂不更新 🟡
+### P0-3 · 不跑 `pnpm install`；lockfile 暂不更新 ⛔ 已被 P0-14 取代
 
 **决定**：声明好 `devDependencies`，但**不在本仓执行 `pnpm install`**；
 本地验证靠 `scripts/link-dsh-runtime.mjs` 建**项目内**的链接。
@@ -404,3 +404,34 @@ P1 填值时不必让模型重新学。结果里同时给出 `phases.pending`，
 
 **理由**：既然不跑 `pnpm install`（P0-3），`<pkg>/node_modules/.bin` 与 PATH 都不可靠；
 而且 `lib/` 不提交（P0-2），`pnpm -r test` 必须先构建才能跑测试。一条命令、无隐藏前提。
+
+### P0-14 · 跑 `pnpm install` 更新 lockfile；链接脚本退回"只管运行时" ✅
+
+**背景**：P0-3 的前提（"本工作树不能跑 `pnpm install`"）在用户确认可以跑之后不再成立。
+
+**做了什么**：
+
+1. 在仓库根执行 `pnpm install --prefer-offline`（自动切到 9.12.0）。
+   `pnpm-lock.yaml` 现在有本包的 importer（`packages/dsh-engineering-context:`）。
+2. **实测否定了 P0-3 的担心**：安装**没有** prune 掉兄弟包的 `@deepseek-ai/*` 手工链接
+   （TIA 4 条、tool-git 4 条、本包 3 条，install 前后一致）；
+   `dsh-tool-git` 的 `prepare` 也按预期跑了，产物仍是 **57.78 kB**（说明它的
+   `deps.neverBundle: true` 没被破坏）。
+3. `scripts/link-dsh-runtime.mjs` 退回**只管 `@deepseek-ai/*`**：typescript 与 `@types`
+   交给 `pnpm install`。
+
+**为什么必须退回（第一次 install 真的失败了，留下教训）**：P0-3 期间脚本为了"不跑 install
+也能编译"，把 `@types` 直接 junction 到**兄弟包的 `node_modules/@types`**。结果是
+`pnpm install` 在给 TIA 包重新链接 `@types/node` 时以
+`ENOENT: no such file or directory, unlink '…\dsh-tia-openness-v17-min\node_modules\@types\node'`
+中断 —— pnpm 无法替换一个**别的 workspace 项目正伸手进去**的目录。
+
+> **结论（写给所有包）**：手工链接**只能指向本包之外的"只读来源"**（如
+> `<DSH_HOME>/plugin-runtime`），**绝不能指向另一个 workspace 包的 `node_modules`**。
+> 后者会让 pnpm 的链接阶段失败，而且失败点在**别人**的目录里，很难看出是自己的错。
+
+**处置**：用 `cmd /c rmdir`（只删链接、不跟进目标）移除那个 `@types` 链接，
+`pnpm install` 随即成功；`node_modules` 里的 `typescript` 与 `@types/node` 现在由 pnpm 管理。
+
+**验证（install 之后实测）**：`pnpm -r test` 三个包全绿 ——
+本包 37/37（无跳过）、TIA 62 项（61 通过 / 1 跳过）、`dsh-tool-git` 33/33。

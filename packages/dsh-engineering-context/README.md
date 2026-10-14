@@ -73,8 +73,9 @@ node scripts/tsc.mjs -p tsconfig.json --noEmit # 只做类型检查
 
 - **构建形态**：`tsc` 编译到 `lib/`，测试用 `node:test`（与 `dsh-tia-openness-v17-min` 一致）。
   `lib/` 目前**不提交**（见 `docs/decisions.md` P0-2）。
-- **不要**为了方便在本仓跑 `pnpm install`：它会顺带 prune 兄弟包手工创建的
-  `@deepseek-ai/*` 链接（原因与补救见 `docs/decisions.md` P0-3）。
+- **依赖由 `pnpm install` 提供**（在仓库根跑一次）。`scripts/link-dsh-runtime.mjs` 只负责
+  `@deepseek-ai/*`（宿主运行时）—— 它**绝不**去链 `typescript` / `@types`：那样做会让 pnpm
+  无法重新链接兄弟包的 `node_modules`（实测事故与教训见 `docs/decisions.md` P0-14）。
 - `scripts/link-dsh-runtime.mjs` **从不抽取**运行时缓存 —— 那个目录在仓库之外、无法用 git 恢复。
 
 ## 6. 边界

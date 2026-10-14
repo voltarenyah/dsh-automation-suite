@@ -1,23 +1,21 @@
 /**
- * Make a bare checkout of this package resolvable, without running a workspace
- * install.
+ * Make the harness runtime resolvable from this checkout.
  *
- * An installed plugin needs none of this: the profile's runtime resolution maps
- * `@deepseek-ai/*` to the harness's own copies, and the profile install provides
- * the dev dependencies. A bare checkout needs both, so this script creates
- * junctions under this package's `node_modules/`:
+ * An installed plugin never needs this: the profile's runtime resolution maps
+ * `@deepseek-ai/*` to the harness's own copies. A bare checkout does, because the
+ * plugin imports `@deepseek-ai/dsh-tools`, `@deepseek-ai/cordis` and
+ * `@deepseek-ai/schemastery` exactly like a published plugin does — and the test
+ * suite deliberately runs against that **real** runtime, never a stub.
  *
- *   1. `@deepseek-ai/{dsh-tools,cordis,schemastery}` — the harness runtime the
- *      plugin imports exactly like a published plugin does, and which the test
- *      suite runs against for real (never a stub).
- *   2. `typescript` and `@types` — the two packages `tsc` needs, taken from the
- *      copies this repository already has. `pnpm install` would be the normal
- *      way to get them; it is skipped on purpose here (docs/decisions.md P0-3),
- *      because a workspace install in a shared working tree also prunes the
- *      hand-made `@deepseek-ai/*` links of the sibling packages.
+ * The dev dependencies (`typescript`, `@types/node`) are **not** this script's
+ * business: `pnpm install` at the repository root provides them. An earlier
+ * revision of this script linked them by hand, including a junction into the
+ * sibling TIA package's `node_modules/@types`; that broke `pnpm install`, which
+ * cannot relink a directory another project is reaching into. Runtime-only is
+ * both simpler and the only thing that cannot fight the package manager.
  *
- * This script **never writes outside this package**, and in particular it never
- * extracts the harness runtime: the sibling package's extractor deletes and
+ * This script **never writes outside this package**. In particular it never
+ * extracts the runtime cache: the sibling package's extractor deletes and
  * rebuilds `<DSH_HOME>/plugin-runtime`, which lives outside the repository and
  * cannot be recovered with git. This one only reads that cache, and fails with
  * instructions when a package is missing.
@@ -59,8 +57,8 @@ export function packageRoot() {
  *
  * The installed app's extracted cache comes first: it is the only source
  * guaranteed to match the harness version the app actually runs. The projection
- * folders under `profiles/` are kept as a last resort and may be stale — the
- * root AGENTS.md records an incident where a projection pointed at a dangling
+ * folders under `profiles/` are kept as a last resort and may be stale — the root
+ * AGENTS.md records an incident where such a projection was a dangling
  * `npm-cache` junction.
  *
  * @returns {string[]} candidate `@deepseek-ai` directories.
@@ -75,44 +73,9 @@ export function runtimeCandidates() {
   ]
 }
 
-/**
- * The development packages `tsc` needs, with the copies this repository
- * already has, best source first.
- *
- * `@types` is a *scope* directory, not a package: it has no `package.json` of
- * its own, which is why the entries below carry a `kind`.
- *
- * @param {string} repoRoot - the monorepo root.
- * @returns {{ name: string, kind: 'package' | 'scope', sources: string[] }[]} links to create.
- */
-function developmentLinks(repoRoot) {
-  return [
-    { name: 'typescript', kind: 'package', sources: [join(repoRoot, 'node_modules', 'typescript')] },
-    {
-      name: '@types',
-      kind: 'scope',
-      sources: [
-        join(repoRoot, 'packages', 'dsh-tia-openness-v17-min', 'node_modules', '@types'),
-        join(repoRoot, 'packages', 'dsh-tool-git', 'node_modules', '@types'),
-      ],
-    },
-  ]
-}
-
-function findSource(entry) {
-  for (const candidate of entry.sources) {
-    if (entry.kind === 'package') {
-      if (existsSync(join(candidate, 'package.json'))) return candidate
-      continue
-    }
-    // A scope is usable when it exists and actually holds a package.
-    if (!existsSync(candidate)) continue
-    try {
-      if (readdirSync(candidate).some((child) => existsSync(join(candidate, child, 'package.json')))) return candidate
-    } catch {
-      // Unreadable directory: treat as absent.
-    }
-  }
+/** @returns {string | null} the first candidate that really holds this package. */
+function findPackageSource(candidates) {
+  for (const candidate of candidates) if (existsSync(join(candidate, 'package.json'))) return candidate
   return null
 }
 
@@ -132,24 +95,24 @@ function removeLink(target) {
 }
 
 /**
- * Link one package (or scope directory) into this package's `node_modules`.
+ * Link one runtime package into this package's `node_modules`.
  *
  * @returns {'present' | 'linked' | 'missing' | 'skipped'}
  */
-function linkOne(root, entry, force) {
-  const target = join(root, 'node_modules', ...entry.name.split('/'))
+function linkOne(root, name, sources, force) {
+  const target = join(root, 'node_modules', ...name.split('/'))
   if (existsSync(target)) {
     if (!force) return 'present'
     const stats = lstatSync(target)
     // A real directory is somebody's install: refuse to delete it rather than
     // guess. A link is always ours to replace.
     if (!stats.isSymbolicLink()) {
-      console.warn(`kept ${entry.name}: it is a real directory, not a link — remove it yourself if you want it relinked`)
+      console.warn(`kept ${name}: it is a real directory, not a link — remove it yourself if you want it relinked`)
       return 'skipped'
     }
     removeLink(target)
   }
-  const source = findSource(entry)
+  const source = findPackageSource(sources)
   if (source === null) return 'missing'
   mkdirSync(dirname(target), { recursive: true })
   symlinkSync(source, target, process.platform === 'win32' ? 'junction' : 'dir')
@@ -157,32 +120,22 @@ function linkOne(root, entry, force) {
 }
 
 /**
- * Link everything this package needs.
+ * Link every runtime package this plugin needs.
  *
  * @param {{ force?: boolean, quiet?: boolean }} [options]
- * @returns {{ linked: string[], present: string[], missing: string[], skipped: string[], missingRuntime: string[] }}
+ * @returns {{ linked: string[], present: string[], missing: string[], skipped: string[] }}
  */
 export function linkRuntime({ force = false, quiet = false } = {}) {
   const root = packageRoot()
-  const repoRoot = dirname(dirname(root))
   const scope = join(root, 'node_modules', '@deepseek-ai')
   mkdirSync(scope, { recursive: true })
 
-  const result = { linked: [], present: [], missing: [], skipped: [], missingRuntime: [] }
-  const runtime = RUNTIME_ROOTS.map((name) => ({
-    name,
-    kind: /** @type {'package'} */ ('package'),
-    sources: runtimeCandidates().map((directory) => join(directory, name.replace('@deepseek-ai/', ''))),
-  }))
-  const runtimeNames = new Set(runtime.map((entry) => entry.name))
-
-  for (const entry of [...runtime, ...developmentLinks(repoRoot)]) {
-    const outcome = linkOne(root, entry, force)
-    if (outcome === 'missing' && runtimeNames.has(entry.name)) result.missingRuntime.push(entry.name)
-    result[outcome === 'missing' ? 'missing' : outcome === 'skipped' ? 'skipped' : outcome].push(entry.name)
-    if (!quiet && outcome === 'linked') {
-      console.log(`linked ${entry.name} -> ${findSource(entry)}`)
-    }
+  const result = { linked: [], present: [], missing: [], skipped: [] }
+  for (const name of RUNTIME_ROOTS) {
+    const sources = runtimeCandidates().map((directory) => join(directory, name.replace('@deepseek-ai/', '')))
+    const outcome = linkOne(root, name, sources, force)
+    result[outcome === 'missing' ? 'missing' : outcome === 'skipped' ? 'skipped' : outcome].push(name)
+    if (!quiet && outcome === 'linked') console.log(`linked ${name} -> ${findPackageSource(sources)}`)
   }
   return result
 }
@@ -192,27 +145,15 @@ const invokedDirectly =
   import.meta.url === new URL(`file://${process.argv[1].replace(/\\/g, '/')}`).href
 
 if (invokedDirectly) {
-  const force = process.argv.includes('--force')
-  const result = linkRuntime({ force })
+  const result = linkRuntime({ force: process.argv.includes('--force') })
   if (result.missing.length > 0) {
-    const lines = [`\nCould not resolve: ${result.missing.join(', ')}`]
-    if (result.missingRuntime.length > 0) {
-      lines.push(
-        `Harness runtime searched in: ${runtimeCandidates().join(', ')}`,
-        'Install DeepSeek Harness and/or set DSH_HOME to its home folder. This script never extracts the runtime cache, ' +
-          'because that directory is outside the repository. To (re)build the cache, run the sibling package\'s extractor ' +
-          'deliberately: pnpm --filter @voltarenyah/dsh-tia-openness-v17-min run link:runtime',
-      )
-    }
-    const missingDevelopment = result.missing.filter((name) => !result.missingRuntime.includes(name))
-    if (missingDevelopment.length > 0) {
-      lines.push(
-        `Development packages not found (${missingDevelopment.join(', ')}). Run "pnpm install" at the repository root — ` +
-          'that is the normal way to get them; this script only avoids it while a workspace install in a shared working ' +
-          "tree would also prune the sibling packages' hand-made runtime links.",
-      )
-    }
-    console.error(`${lines.join('\n')}\n`)
+    console.error(
+      `\nCould not resolve: ${result.missing.join(', ')}\n` +
+        `Harness runtime searched in: ${runtimeCandidates().join(', ')}\n` +
+        'Install DeepSeek Harness and/or set DSH_HOME to its home folder. This script never extracts the runtime ' +
+        "cache, because that directory is outside the repository. To (re)build the cache, run the sibling package's " +
+        'extractor deliberately: pnpm --filter @voltarenyah/dsh-tia-openness-v17-min run link:runtime\n',
+    )
     process.exit(1)
   }
   const scope = join(packageRoot(), 'node_modules', '@deepseek-ai')

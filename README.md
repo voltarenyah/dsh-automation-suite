@@ -574,7 +574,7 @@ packages/
     controller/                    C# 控制器（x64 / .NET Framework 4.8）
       bin/                         已构建产物 TiaOpennessV17Min.Controller.exe（+ .exe.config）
     skills/                        随包出货的 Openness 知识库：31 个上游 SKILL.md（逐字）+ 路由 skill
-    test/                          node:test 套件（54 项：53 通过 / 1 跳过）
+    test/                          node:test 套件（62 项：61 通过 / 1 跳过）
     docs/                          协议、决策记录、真实项目实测、覆盖矩阵、功能测试指南
     test-profile/                  试跑材料：三层验证指南 + 脚本，不改默认 profile
   dsh-tool-git/                    vendor 副本（上游 lxj808624/dsh-tool-git v0.1.3，MIT）
@@ -619,12 +619,13 @@ pnpm test                 # 全仓测试
 pnpm run clean:build      # 清构建产物（只碰 lib/ dist/）
 ```
 
-两个插件用**不同的测试运行器**，`pnpm -r test` 会把两者都跑到：
+两个插件用**不同的测试运行器**，`pnpm -r test` 会把三者都跑到：
 
 | 包 | 运行器 | 测试规模 |
 |---|---|---|
-| `dsh-tia-openness-v17-min` | `node:test`（`node --test test/*.test.mjs`） | 54 项：53 通过 / 1 跳过（跳过项是"控制器未构建"的降级路径） |
+| `dsh-tia-openness-v17-min` | `node:test`（`node --test test/*.test.mjs`） | 62 项：61 通过 / 1 跳过（跳过项是"控制器未构建"的降级路径） |
 | `dsh-tool-git` | `vitest`（`vitest run`） | 33 项全通过 |
+| `@voltarenyah/dsh-engineering-context` | `node:test`（`node scripts/run-tests.mjs`，先构建再跑） | 37 项全通过 |
 
 单测都需要**真实的** `@deepseek-ai/*` 运行时（不是 stub）。裸 checkout 首次运行时，
 两个包的测试自举会各自自动触发抽取；也可以手动：

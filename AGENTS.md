@@ -138,7 +138,7 @@ pnpm run clean:build      # 清构建产物（只碰 lib/ dist/）
 ## 4. 测试与验收
 
 ```powershell
-pnpm test          # 全仓：TIA 54 项（53 通过 / 1 跳过）+ dsh-tool-git 33 项 + engineering-context 37 项
+pnpm test          # 全仓：TIA 62 项（61 通过 / 1 跳过）+ dsh-tool-git 33 项 + engineering-context 37 项
 pnpm -r build
 pnpm -r typecheck
 ```
@@ -165,10 +165,11 @@ pnpm --filter @voltarenyah/dsh-engineering-context run link:runtime
 `runtime.json` 记下宿主版本，宿主升级后自动重抽。环境变量覆盖：`DSH_APP_ASAR`（asar 路径）、
 `DSH_HOME`（harness home）。
 
-⚠️ `dsh-engineering-context` 的链接脚本**刻意不同**：它**从不抽取**，只读已存在的
+⚠️ `dsh-engineering-context` 的链接脚本只链 `@deepseek-ai/*`，且**从不抽取**：它只读已存在的
 `<DSH_HOME>/plugin-runtime`，缺包就报错并让你去跑兄弟包的抽取器。理由：抽取会删除并重建
-一个**在仓库之外、无法用 git 恢复**的目录。它还顺带链接 `typescript` / `@types`（因为本包
-不跑 `pnpm install`，理由见该包 `docs/decisions.md` P0-3）。
+一个**在仓库之外、无法用 git 恢复**的目录。它的依赖（`typescript` / `@types/node`）由
+`pnpm install` 提供 —— **手工链接绝不能指向另一个 workspace 包的 `node_modules`**，
+否则 pnpm 的链接阶段会以 ENOENT 失败（实测事故见该包 `docs/decisions.md` P0-14）。
 
 **抽取出来的运行时不含 `.d.ts`**（app 的生产构建剥掉了类型声明），所以各包各自手写了一份
 环境声明来喂 `tsc`：`packages/*/src/dsh-runtime.d.ts`。抽取的 `RUNTIME_ROOTS` 与手写声明

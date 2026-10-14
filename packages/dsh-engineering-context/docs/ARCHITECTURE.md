@@ -540,7 +540,8 @@ packages/dsh-engineering-context/
 
 **另外两条本包特有的纪律**（都写进了 `decisions.md`）：
 `link:runtime` 脚本**从不抽取**运行时缓存（那在仓库之外、不可 git 恢复，P0-8）；
-**不要**在本工作树跑 `pnpm install`（会 prune 兄弟包的手工链接，P0-3）。
+**依赖一律走 `pnpm install`**，脚本只链 `@deepseek-ai/*` —— 手工链到别的包的 `node_modules`
+会让 `pnpm install` 失败（P0-14 的实测事故）。
 
 **一个省钱的设计**：**不要 import `@deepseek-ai/dsh-workspace`**，只用
 `ctx.get('workspaceRegistry')` 按名取服务（先例：`dsh-workspace` 自己就是
