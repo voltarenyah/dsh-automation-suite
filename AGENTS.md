@@ -138,32 +138,39 @@ pnpm run clean:build      # 清构建产物（只碰 lib/ dist/）
 ## 4. 测试与验收
 
 ```powershell
-pnpm test          # 全仓：TIA 54 项（53 通过 / 1 跳过）+ dsh-tool-git 33 项全通过
+pnpm test          # 全仓：TIA 54 项（53 通过 / 1 跳过）+ dsh-tool-git 33 项 + engineering-context 37 项
 pnpm -r build
 pnpm -r typecheck
 ```
 
-两个插件用**不同的测试运行器**，`pnpm -r test` 会把两者都跑到：
+三个插件用**两种测试运行器**，`pnpm -r test` 会把三者都跑到：
 
 | 包 | 运行器 | 命令 |
 |---|---|---|
 | `dsh-tia-openness-v17-min` | `node:test` | `node --test test/*.test.mjs` |
 | `dsh-tool-git` | `vitest` | `vitest run` |
+| `dsh-engineering-context` | `node:test` | `node scripts/run-tests.mjs`（**先构建再跑**，因为它不提交 `lib/`） |
 
 单测都需要**真实的** `@deepseek-ai/*` 运行时（不是 stub）。裸 checkout 首次运行时，
-两个包的测试自举会各自自动触发抽取；也可以手动：
+各包的测试自举会各自自动触发抽取；也可以手动：
 
 ```powershell
 pnpm --filter @voltarenyah/dsh-tia-openness-v17-min run link:runtime
 pnpm --filter dsh-tool-git run link:runtime
+pnpm --filter @voltarenyah/dsh-engineering-context run link:runtime
 ```
 
-两者都从**已安装 app 自己的 `resources/app.asar`** 里求闭包（约 32 个包 / 8 MB / <1 s），
+前两者从**已安装 app 自己的 `resources/app.asar`** 里求闭包（约 32 个包 / 8 MB / <1 s），
 解包到 `<DSH_HOME>/plugin-runtime`，再 junction 到各自包的 `node_modules/@deepseek-ai/`。
 `runtime.json` 记下宿主版本，宿主升级后自动重抽。环境变量覆盖：`DSH_APP_ASAR`（asar 路径）、
 `DSH_HOME`（harness home）。
 
-**抽取出来的运行时不含 `.d.ts`**（app 的生产构建剥掉了类型声明），所以两个包各自手写了一份
+⚠️ `dsh-engineering-context` 的链接脚本**刻意不同**：它**从不抽取**，只读已存在的
+`<DSH_HOME>/plugin-runtime`，缺包就报错并让你去跑兄弟包的抽取器。理由：抽取会删除并重建
+一个**在仓库之外、无法用 git 恢复**的目录。它还顺带链接 `typescript` / `@types`（因为本包
+不跑 `pnpm install`，理由见该包 `docs/decisions.md` P0-3）。
+
+**抽取出来的运行时不含 `.d.ts`**（app 的生产构建剥掉了类型声明），所以各包各自手写了一份
 环境声明来喂 `tsc`：`packages/*/src/dsh-runtime.d.ts`。抽取的 `RUNTIME_ROOTS` 与手写声明
 **都按包而异**（`dsh-tool-git` 多一个 `dsh-system-prompt`，且需要 `oneOf` 的特殊处理），
 改一个包时别照抄另一个包。

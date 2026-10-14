@@ -15,7 +15,7 @@
 | # | 插件族 | 对应层 | 状态 | 落地位置 |
 |---|---|---|---|---|
 | **1** | 工控软件接口插件族（**软件版本 × 能力层级**：V17/V18… × min/std/pro） | ① 接入层 | 🟡 已有 **V17 × min** 成员 | `packages/dsh-tia-openness-v17-min` |
-| **2** | 工程上下文管理插件 | 作用域（横向） | ⬜ 未开始（**设计已定稿**） | `packages/dsh-engineering-context`（当前只有文档） |
+| **2** | 工程上下文管理插件 | 作用域（横向） | 🟡 **部分实现**（P0：作用域 + 工程注册表，3 个工具；未登记进蓝图） | `packages/dsh-engineering-context` |
 | **3** | 工程知识图谱管理插件 | ② 语义层 | ⬜ 未开始 | 待定 |
 
 ```
@@ -25,7 +25,7 @@
    ⬜ V18+ 同轴                              │
         ▲                                    │
         └─────────── ② 工程上下文管理插件 ────┘
-                        ⬜ 决定作用域，可先做最小版
+                        🟡 P0 作用域+注册表
 ```
 
 ---
@@ -109,20 +109,41 @@
 
 ---
 
-## 3. 插件族 2 · 工程上下文管理插件 ⬜ 未开始（**设计已定稿**）
+## 3. 插件族 2 · 工程上下文管理插件 🟡
 
 **职责**：面对用户的**多个 TIA 项目 × 多个分支 × 多个历史版本**，管理工程上下文，
 使得会话中就某个工程问题对话时，工具能暴露出**恰当的工程上下文**。
 
-> **设计状态：✅ 已定稿（2026-10-14）；实现：⬜ 未开始。**
-> 落地位置 `packages/dsh-engineering-context`，当前**只有文档、没有 `package.json`**
-> —— 刻意如此：蓝图 `dsh.profile.bundles` 里多一个名字，`scripts/start-env.ps1`
-> 就会去链一个不存在的包。设计见该包
-> [`docs/ARCHITECTURE.md`](../packages/dsh-engineering-context/docs/ARCHITECTURE.md)、
+> **状态：设计 ✅ 已定稿；P0（作用域 + 工程注册表）🟡 已实现（37 项单测通过）；P1–P3 ⬜ 未开始。**
+> 落地位置 `packages/dsh-engineering-context`。**尚未登记进 profile 蓝图**（刻意：蓝图里多一个
+> 名字而 `packages/` 下找不到对应包时，`scripts/start-env.ps1` 会直接失败），所以现在没有任何
+> profile 会加载它；验证方式是 `node scripts/run-tests.mjs`（或 `pnpm --filter
+> @voltarenyah/dsh-engineering-context run check`）。
+> 设计见该包 [`docs/ARCHITECTURE.md`](../packages/dsh-engineering-context/docs/ARCHITECTURE.md)、
 > [`docs/PATH-RULES.md`](../packages/dsh-engineering-context/docs/PATH-RULES.md)、
 > [`docs/decisions.md`](../packages/dsh-engineering-context/docs/decisions.md)；
 > 发行版级结论见 [`decisions.md`](decisions.md) **D12**。
-> 下表**状态列仍按"实现进度"记**（⬜ = 未开始）——设计定稿不等于实现开始。
+
+### 已实现（P0，有单测证据）
+
+| 能力 | 状态 | 证据 |
+|---|---|---|
+| 作用域解析：会话工作目录 → workspace / 工程 / 分支 / 版本 四元组 | ✅ | `packages/dsh-engineering-context/src/scope.ts`、`src/workspace.ts`；`test/03-tools.test.mjs`（含"未登记 workspace"三档） |
+| 工程注册表：`register` / `list` / `adopt` / `forget`（`_dsh-eng/projects.json`，原子写、防御性读） | ✅ | `src/registry.ts`、`src/tools/project.ts`；`test/02-registry.test.mjs`、`test/03-tools.test.mjs` |
+| 显式作用域切换：`eng_scope` 的 `select` / `clear`（唯一指针，可追溯） | ✅ | `src/tools/scope.ts`、`test/03-tools.test.mjs` |
+| 越界路径一律拒绝（`realpath` 包含性校验，不串味） | ✅ | `src/paths.ts`、`test/01-paths.test.mjs`（含兄弟目录同前缀、`..` 逃逸） |
+| 工具面三个，结果有界（列表封顶 20、细节封顶 40 行） | ✅ | `src/tools/outcome.ts`；`test/04-plugin.test.mjs`（真实运行时的 schema 校验） |
+
+### 缺口（P1–P3）
+
+| 缺口 | 影响 | 备注 |
+|---|---|---|
+| **没有版本层** | 分支/历史/工程级 diff 都没有；四元组里 `branch`=`null`、`version`=`kind:'none'` | P1；A8 已定为"插件内部 `execFile(git)`" |
+| **没有变更检测** | 期望一（识别工程文件是否被更改）与 D6/D9 的工作循环都未落地 | P2；**前置**：V17 指纹实测 + 族 1 的服务缝（D12 第 3 条） |
+| **没有变更台账** | 期望二（「待办清单」式上下文）未落地 | P3 |
+| **没有随包 skill** | D4 三问目前写在工具描述里，没有随包知识库 | P3（与项目级 skill / A12 一起做） |
+| **`adopt` 只做字节复制** | 不是 TIA 侧「另存」，工程正开着时副本可能过期 | P0-7；缝 A 落地后改为经族 1 触发另存 |
+| **未登记进蓝图** | 终端用户还不能用；只有单测与 `pnpm --filter` 验证 | 等你看过 P0 再决定是否加 `dsh.profile.bundles` |
 
 ### 三条期望
 
@@ -136,11 +157,11 @@
 
 | # | 工作项 | 产出 | 状态 |
 |---|---|---|---|
-| 1 | **workspace 模型**：新建 workspace → 其下起 session → 源项目**另存**进 workspace → 导出源文件到项目路径（D5） | workspace 与路径规则 | ⬜ |
-| 2 | **路径契约**：workspace 里"放什么、怎么放"的字段级定义 | 路径规范 | ⬜ |
+| 1 | **workspace 模型**：**认领**宿主已有的 workspace（`ctx.workspaceRegistry`，不自建）→ 其下起 session → 源项目**另存**进 workspace → 导出源文件到项目路径（D5） | workspace 与路径规则 | ✅ P0（单测） |
+| 2 | **路径契约**：workspace 里"放什么、怎么放"的字段级定义 | 路径规范 | ✅ P0（`PATH-RULES.md` 定稿 + 越界校验实现） |
 | 3 | **变更识别**：用 TIA 指纹（`FingerprintProvider`）判断块有无变化；分面可区分"改的是哪一部分"（D6） | 变更检测 | ⬜ |
 | 4 | **版本模型**：以 git 管理分支与历史版本，定义"当前版本"如何解析 | 版本解析 | ⬜ |
-| 5 | **工程作用域**：session ↔ workspace 绑定，显式可查、可切、可追溯（D5） | 作用域标识 | ⬜ |
+| 5 | **工程作用域**：session ↔ workspace 绑定，显式可查、可切、可追溯（D5） | 作用域标识 | ✅ P0（`eng_status` / `eng_scope`） |
 | 6 | **变更上下文载体**：Todo 清单式的工具，承接本次会话的工程变更 | 变更清单 | ⬜ |
 | 7 | **工作副本物化**：把某个版本变成可解析的导出物，供插件族 3 使用 | 版本 → 导出物 | ⬜ |
 | 8 | **工作循环**：改 `.ap17` → 指纹比对 → **只导出变化的块** → 更新图（D9） | 增量刷新 | ⬜ |
@@ -148,13 +169,13 @@
 | 10 | **对象交叉关联**：以 **TIA 导出物携带的唯一 id** 作身份键，跨版本对应（D7） | 对象身份与关联 | ⬜ |
 | 11 | 接入 git 底层能力（复用现有工具族 / git 库 / 命令行 —— 见 **A8**） | 版本操作接口 | ⬜ |
 
-> **设计定稿带来的口径修正**（详见 `packages/dsh-engineering-context/docs/`）：
+> **设计与 P0 实现带来的口径修正**（详见 `packages/dsh-engineering-context/docs/`）：
 > 第 **1** 项**不再是"新建 workspace"** —— 宿主已有 `ctx.workspaceRegistry` 承载 D5 的 workspace 模型，
-> 本族只**认领**它（作用域根 = `session.header.cwd`），产出改为"工程注册表 + 路径规则"；
-> 第 **2** 项的字段级定义已定稿（该包 `PATH-RULES.md` §8）；
+> 本族只**认领**它（作用域根 = `session.header.cwd`），产出是"工程注册表 + 路径规则"，已实现；
+> 第 **2** 项的字段级定义已定稿并落成越界校验（该包 `PATH-RULES.md` §8 / `src/paths.ts`）；
 > 第 **11** 项已按 **A8** 定为"插件内部 `execFile(git)`，不向模型暴露 git 原语"。
-> 第 3、5、6、8 项的实现方式（变更引擎 / 作用域四元组 / 变更台账 / 增量闭环）也在该包文档里定死，
-> 但那几项**仍然依赖真机实测**（V17 指纹），所以状态列保持 ⬜。
+> 第 3、6、8 项的实现方式（变更引擎 / 变更台账 / 增量闭环）在该包文档里定死，
+> 但仍**依赖真机实测与族 1 的服务缝**（V17 指纹），所以状态列保持 ⬜。
 
 ### 计划中的验收口径
 

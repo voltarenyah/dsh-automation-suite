@@ -166,12 +166,12 @@ PLC 对象增删改、监视表与软件单元、F 相关服务、编译与关�
 | 插件族 | 目标 | 状态 |
 |---|---|---|
 | **1 工控软件接口插件** | 把工控软件暴露的能力整体变成 LLM 的能力范围（含配套文档） | 🟡 **V17 × min**（块·UDT·标签表）；std/pro 能力层级与 V18+ 待补 |
-| **2 工程上下文管理插件** | 管住多项目 × 多分支 × 多版本，让答案对得上版本、也看得懂用户意图 | ⬜ 未开始（**设计已定稿**；仅有通用 git 工具） |
+| **2 工程上下文管理插件** | 管住多项目 × 多分支 × 多版本，让答案对得上版本、也看得懂用户意图 | 🟡 **部分实现**：P0 作用域 + 工程注册表（3 个工具，37 项单测）；版本层/变更检测/变更台账未做，且**尚未登记进蓝图** |
 | **3 工程知识图谱管理插件** | 准确翻译 XML 中的 PLC 语法，XML → 图数据库 → 按需给出工程细节 | ⬜ 未开始 |
 
 逐项进度、缺口与验收口径见 [`docs/roadmap.md`](docs/roadmap.md)；
-已定的取舍见 [`docs/decisions.md`](docs/decisions.md)，**30 条待决策问题在
-[`docs/open-questions.md`](docs/open-questions.md)**（可直接编辑填写答复）。
+已定的取舍见 [`docs/decisions.md`](docs/decisions.md)，**34 条待决策问题在
+[`docs/open-questions.md`](docs/open-questions.md)**（已答 16 条，可直接编辑填写答复）。
 **路线图是方向性说明，不是承诺**；已实现与规划中的能力在本文档里始终分开陈述。
 
 ---
@@ -182,6 +182,7 @@ PLC 对象增删改、监视表与软件单元、F 相关服务、编译与关�
 |---|---|---|---|
 | `@voltarenyah/dsh-tia-openness-v17-min` | 插件 bundle | 0.1.0 | **26 个工具**：工程生命周期与工程数据 8（`create_project` / `save_project` / `archive_project` / `project_info` / `project_languages` / `project_texts` / `update_project` / `portal_settings`）、PLC 设备数据 9（`list_plc_objects` / `create_plc_objects` / `delete_plc_objects` / `write_tags` / `set_block_attributes` / `protect_blocks` / `generate_source` / `watch_and_force_tables` / `software_units`）、F 相关 3（`safety_status` / `set_safety_settings` / `safety_signatures`）、块读写主线 5 + `controller_status`；外加 1 个随包出货的知识库 skill。v0.2 的 20 个新操作**尚未在真实项目上验证**（见该包 `docs/VERIFICATION-PLAN.md`） |
 | `dsh-tool-git` | 插件 bundle（vendor） | 0.1.3 | **12 个工具**：`git_status` / `git_diff` / `git_log` / `git_branch` / `git_stage` / `git_commit` / `git_stash` / `git_show` / `git_fetch` / `git_pull` / `git_remote` / `git_checkout`；外加破坏性命令闸门 |
+| `@voltarenyah/dsh-engineering-context` | 插件 bundle（**尚未登记进蓝图**） | 0.1.0 | **P0：3 个工具**（`eng_status` / `eng_project` / `eng_scope`）—— 作用域解析（会话工作目录 → workspace / 工程 / 分支 / 版本）与工程注册表（`_dsh-eng/projects.json`）。**未实现**：版本层、指纹变更检测、变更台账。因为它不在 `dsh.profile.bundles` 里，所以**不出现在任何会话的工具面**中（下面的 38 个不变）；验证方式是 `pnpm --filter @voltarenyah/dsh-engineering-context run check` |
 | `profile/dsh-automation-suite` | profile 蓝图 | 0.1.0 | 把官方 Web 组合（`dsh-base` + `dsh-web-app`）与上面两个插件叠成一个可直接启动的 profile |
 | `scripts/start-env.ps1` | 启动器 | — | 一条命令完成"物化 profile + 装插件 + 起服务 + 带 token 开浏览器" |
 | `scripts/clean-build.mjs` | 工具 | — | 只清理 `lib/`、`dist/`，遇链接只 unlink、不递归下降 |
@@ -581,7 +582,10 @@ packages/
     src/safety.ts                  tools/pre-execute 破坏性命令闸门
     tests/                         vitest 套件（33 项）
     README.md / README.zh.md       上游 README（英/中）
-  dsh-engineering-context/         工程上下文管理插件（插件族 2）：**当前只有设计文档，尚未实现**
+  dsh-engineering-context/         工程上下文管理插件（插件族 2）：**P0 已实现，未登记进蓝图**
+    src/                           作用域解析、工程注册表、3 个工作流工具（tsc → lib/）
+    test/                          node:test 套件（37 项，跑真实运行时）
+    scripts/                       link-dsh-runtime.mjs / tsc.mjs / run-tests.mjs
     docs/                          ARCHITECTURE.md / PATH-RULES.md / decisions.md
 profile/
   dsh-automation-suite/            发行版的 profile 蓝图
@@ -803,7 +807,8 @@ TIA 排障第一步永远是让模型调：
 | [`docs/open-questions.md`](docs/open-questions.md) | **开放问题（34 条）**：A 部分 17 条会阻塞动手（含 A14–A17 工具面问题），B 部分 17 条影响细节与验收口径；已答 16 条 |
 | [`docs/roadmap.md`](docs/roadmap.md) | **路线图与现状**：按三个插件族逐项记录进度、缺口、验收口径 |
 | [`docs/tool-surface.md`](docs/tool-surface.md) | **工具面重设计（调研 + 提案）**：现状体检（26 工具 1:1、20 行渲染上限、~14k tokens 常驻目录）、用户工作流清单、目标工具面与返回契约、从哪一步开始 |
-| [`packages/dsh-engineering-context/docs/`](packages/dsh-engineering-context/docs/) | 工程上下文管理插件（**插件族 2**）的设计（**尚未实现**）：`ARCHITECTURE.md`（核心架构、作用域模型、变更引擎、工具面）、`PATH-RULES.md`（workspace 内路径规则）、`decisions.md`（该包技术取舍与夜间自主决定） |
+| [`packages/dsh-engineering-context/README.md`](packages/dsh-engineering-context/README.md) | 工程上下文管理插件（**插件族 2**）的用法、配置与开发命令（**P0 已实现**：作用域 + 工程注册表） |
+| [`packages/dsh-engineering-context/docs/`](packages/dsh-engineering-context/docs/) | 该族的设计与取舍：`ARCHITECTURE.md`（核心架构、作用域模型、变更引擎、工具面）、`PATH-RULES.md`（workspace 内路径规则）、`decisions.md`（编号决策 D1–D14、夜间自主决定 N1–N7、**P0 实现期的决定 P0-1–P0-13**） |
 | [`profile/dsh-automation-suite/README.md`](profile/dsh-automation-suite/README.md) | 蓝图的组成、三种部署方式、验收方式 |
 | [`packages/dsh-tia-openness-v17-min/README.md`](packages/dsh-tia-openness-v17-min/README.md) | TIA 插件的完整说明（验证状态、协议、工具、错误码、V17 API 要点） |
 | [`packages/dsh-tia-openness-v17-min/docs/`](packages/dsh-tia-openness-v17-min/docs/) | `PROTOCOL.md`（线路协议权威描述）、`decisions.md`（技术取舍）、`REAL-RUN.md`（真实项目实测）、`FUNCTIONAL-TEST.md`、`verification.md`（验证清单）、`ECOSYSTEM-COMPAT.md`（生态兼容与事故记录） |
