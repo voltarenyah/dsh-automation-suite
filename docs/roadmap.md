@@ -15,7 +15,7 @@
 | # | 插件族 | 对应层 | 状态 | 落地位置 |
 |---|---|---|---|---|
 | **1** | 工控软件接口插件族（**软件版本 × 能力层级**：V17/V18… × min/std/pro） | ① 接入层 | 🟡 已有 **V17 × min** 成员 | `packages/dsh-tia-openness-v17-min` |
-| **2** | 工程上下文管理插件 | 作用域（横向） | 🟡 **部分实现**（P0：作用域 + 工程注册表，3 个工具；**已登记进蓝图**） | `packages/dsh-engineering-context` |
+| **2** | 工程上下文管理插件 | 作用域（横向） | 🟡 **部分实现**（P0 作用域 + 工程注册表；P1 版本层；4 个工具；**已登记进蓝图**） | `packages/dsh-engineering-context` |
 | **3** | 工程知识图谱管理插件 | ② 语义层 | ⬜ 未开始 | 待定 |
 
 ```
@@ -127,7 +127,7 @@
 > [`docs/decisions.md`](../packages/dsh-engineering-context/docs/decisions.md)；
 > 发行版级结论见 [`decisions.md`](decisions.md) **D12**。
 
-### 已实现（P0，有单测证据）
+### 已实现（P0 + P1，有单测证据）
 
 | 能力 | 状态 | 证据 |
 |---|---|---|
@@ -135,13 +135,14 @@
 | 工程注册表：`register` / `list` / `adopt` / `forget`（`_dsh-eng/projects.json`，原子写、防御性读） | ✅ | `src/registry.ts`、`src/tools/project.ts`；`test/02-registry.test.mjs`、`test/03-tools.test.mjs` |
 | 显式作用域切换：`eng_scope` 的 `select` / `clear`（唯一指针，可追溯） | ✅ | `src/tools/scope.ts`、`test/03-tools.test.mjs` |
 | 越界路径一律拒绝（`realpath` 包含性校验，不串味） | ✅ | `src/paths.ts`、`test/01-paths.test.mjs`（含兄弟目录同前缀、`..` 逃逸） |
-| 工具面三个，结果有界（列表封顶 20、细节封顶 40 行） | ✅ | `src/tools/outcome.ts`；`test/04-plugin.test.mjs`（真实运行时的 schema 校验） |
+| **版本层（P1）**：`eng_version` 的 `current` / `commit` / `log` / `diff`；只版本化导出物 + 工程状态，`.ap17` 由 `.gitignore` 挡在库外（测试里有 decoy 验证）；commit 默认 dry-run；绝不 init/force/push | ✅ | `src/git.ts`、`src/tools/version.ts`；`test/05-version.test.mjs`（7 项，真实 git 临时仓库） |
+| 工具面四个，结果有界（列表封顶 20、细节封顶 40 行；diff 的全量 patch 落盘成工件） | ✅ | `src/tools/outcome.ts`；`test/04-plugin.test.mjs`（真实运行时的 schema 校验） |
 
-### 缺口（P1–P3）
+### 缺口（P2–P3）
 
 | 缺口 | 影响 | 备注 |
 |---|---|---|
-| **没有版本层** | 分支/历史/工程级 diff 都没有；四元组里 `branch`=`null`、`version`=`kind:'none'` | P1；A8 已定为"插件内部 `execFile(git)`" |
+| ~~**没有版本层**~~ | ✅ **P1 已实现** | 仍未做：`show`（单次提交详情）与 `materialize`（把某版本物化成导出物给族 3） |
 | **没有变更检测** | 期望一（识别工程文件是否被更改）与 D6/D9 的工作循环都未落地 | P2；**两个前置都已就绪**：族 1 的 `engineeringAccess` 服务已实现（D20 / §2 已实现表），指纹可得性由**用户在另一代码库**验证过（**用户侧证据，不是本仓实测**） |
 | **没有变更台账** | 期望二（「待办清单」式上下文）未落地 | P3 |
 | **没有随包 skill** | D4 三问目前写在工具描述里，没有随包知识库 | P3（与项目级 skill / A12 一起做） |
