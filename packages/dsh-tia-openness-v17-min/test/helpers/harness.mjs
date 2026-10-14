@@ -88,6 +88,10 @@ export async function loadToolsModule() {
   return await import(`../../lib/tools.js?t=${Date.now()}${Math.random()}`)
 }
 
+export async function loadAccessModule() {
+  return await import(`../../lib/access.js?t=${Date.now()}${Math.random()}`)
+}
+
 export async function loadControllerModule() {
   return await import(`../../lib/controller.js?t=${Date.now()}${Math.random()}`)
 }
@@ -147,6 +151,9 @@ export function createTestContext(options = {}) {
     },
   }
 
+  /** Service instances registered through `ctx.reflect.provide`. */
+  const services = new Map()
+
   const ctx = {
     tools: {
       register(definition) {
@@ -172,10 +179,42 @@ export function createTestContext(options = {}) {
      * the named service exists. The stand-in has no service graph, so the
      * service either is mounted (callback now) or never appears (no callback).
      */
-    inject(services, callback) {
-      injectedServices.push([...services])
-      if (skills && services.includes('skills')) callback({ ...ctx, skills: skillRegistry })
+    inject(services2, callback) {
+      injectedServices.push([...services2])
+      if (skills && services2.includes('skills')) callback({ ...ctx, skills: skillRegistry })
       return () => {}
+    },
+    /**
+     * The fiber seam a cordis `Service` needs.
+     *
+     * The runtime registers a service by calling
+     * `ctx.reflect.provide(name, this, check)` from inside the owning fiber's
+     * effect (`cordis/lib/index.js:1770-1784`), so a stand-in without `reflect`
+     * cannot construct one — which is exactly what this models now that the
+     * plugin exposes `engineeringAccess`.
+     */
+    fiber: {
+      effect(execute) {
+        const disposer = execute()
+        const undo = typeof disposer === 'function' ? disposer : () => {}
+        disposers.push(undo)
+        return undo
+      },
+    },
+    reflect: {
+      provide(name, value) {
+        if (services.has(name)) throw new Error(`service "${name}" has already been registered`)
+        services.set(name, value)
+        // cordis exposes a service as a property on the context it was provided in.
+        ctx[name] = value
+        return ctx.fiber.effect(() => () => {
+          services.delete(name)
+          delete ctx[name]
+        })
+      },
+    },
+    get(name) {
+      return services.get(name)
     },
   }
 
@@ -183,6 +222,7 @@ export function createTestContext(options = {}) {
     ctx,
     definitions,
     logs,
+    services,
     skillProviders,
     injectedServices,
     registered: () => definitions.map((definition) => definition.name),

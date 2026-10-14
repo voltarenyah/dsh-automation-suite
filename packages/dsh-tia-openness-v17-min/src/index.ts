@@ -30,6 +30,7 @@ import { existsSync } from 'node:fs'
 
 import { Config, resolveConfig, type PluginConfig } from './config.js'
 import { ControllerProcess, resolveControllerPath, type LogSink } from './controller.js'
+import { EngineeringAccess, ENGINEERING_ACCESS_SERVICE } from './access.js'
 import { registerSkillProvider } from './skills.js'
 import { registerTools, type ToolDependencies } from './tools.js'
 
@@ -78,6 +79,13 @@ export function apply(ctx: Context, config?: Partial<PluginConfig>): void {
 
   const registered = registerTools(ctx, dependencies)
 
+  // The seam the engineering-context plugin (family 2) consumes: fingerprints and
+  // exports can only be obtained with a project open, and this is the plugin
+  // allowed to talk to TIA Portal. Constructing the service registers it on this
+  // context and ties it to this plugin's fiber, so unloading this plugin removes
+  // the service again. See `access.ts` and docs/decisions.md D12.
+  const access = new EngineeringAccess(ctx, dependencies)
+
   // The knowledge base is optional by design: `ctx.inject` only starts this
   // child plugin once the skill registry exists, so a profile without
   // `@deepseek-ai/dsh-skill` keeps the six tools and never blocks on a service
@@ -85,14 +93,17 @@ export function apply(ctx: Context, config?: Partial<PluginConfig>): void {
   registerSkillProvider(ctx, log)
 
   let startup: Promise<boolean> | null = null
+  const exposed = `exposing the ${access.name} service (${ENGINEERING_ACCESS_SERVICE}) for the engineering-context plugin`
   if (exePath.length === 0 || !existsSync(exePath)) {
     log.warn(
-      `The TIA Openness controller was not found at ${exePath} (resolved from ${source}). The tools are registered but ` +
-        'every call will fail with controller_not_found until it is built with "npm run build:controller" or ' +
-        'controllerPath points at the executable. TIA Portal V17 and Windows x64 are required.',
+      `The TIA Openness controller was not found at ${exePath} (resolved from ${source}). The tools are registered ` +
+        `(${exposed}) but every call will fail with controller_not_found until it is built with ` +
+        '"npm run build:controller" or controllerPath points at the executable. TIA Portal V17 and Windows x64 are required.',
     )
   } else {
-    log.info(`Registered ${registered.length} TIA Portal V17 tools (${registered.join(', ')}); controller: ${exePath}`)
+    log.info(
+      `Registered ${registered.length} TIA Portal V17 tools (${registered.join(', ')}), ${exposed}; controller: ${exePath}`,
+    )
     // Pay the process start and Openness probe cost now, but keep a failure here
     // non-fatal: the plugin must still load on a machine without TIA Portal, and
     // the tools report the structured reason instead.

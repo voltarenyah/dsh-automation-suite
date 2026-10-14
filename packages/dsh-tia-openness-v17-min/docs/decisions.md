@@ -197,8 +197,8 @@ DSH 自身实现与参考 skill），**不属于**插件运行时，也不被 `p
   `Api.Global.Openness().Initialize(tiaMajorVersion: 17)` 初始化）；
 - 显式钉住 `Siemens.Collaboration.Net.OperatingSystem.Windows` **3.0.1725521661**，
   消除 NU1603（Resolver 1.1 声明的那个依赖版本 Siemens 已不再发布）；
-- **保留** [AssemblyResolver.cs](controller/AssemblyResolver.cs) 作为**最后手段**，
-  并新增 [OpennessBootstrap.cs](controller/OpennessBootstrap.cs) 负责惰性初始化 + 诊断 + 兜底注册。
+- **保留** [AssemblyResolver.cs](../controller/AssemblyResolver.cs) 作为**最后手段**，
+  并新增 [OpennessBootstrap.cs](../controller/OpennessBootstrap.cs) 负责惰性初始化 + 诊断 + 兜底注册。
 
 **理由（实测证据，非推测）**
 
@@ -398,3 +398,53 @@ The block name 'FB_Array_Handling' is invalid. An object with this name or this 
 
 **与 `ECOSYSTEM-COMPAT` §5.2 建议 A+C 的关系**：实现的就是那条路线；唯一差别是没按
 "整段 `@deepseek-ai` 作用域一起解包"，而是精确抽取闭包（32 包 vs 289 包），实测足够。
+
+---
+
+## D20. 给插件族 2 暴露 `engineeringAccess` 服务（发行版 D12 的"缝 A"）
+
+**背景**：工程上下文插件（族 2）需要**指纹**才能做工程级变更检测（发行版 D6），而指纹只能
+在工程打开时经 Openness 读到。族 2 的边界又明确规定"不与工控软件对话"—— 所以它只能**要**，
+不能自己做。发行版 [`docs/decisions.md`](../../../docs/decisions.md) **D12** 因此定下"缝 A"：
+由本插件注册一个可选服务，族 2 按名取用、缺席即降级。
+
+**决定**：新增 [`src/access.ts`](../src/access.ts)，`apply` 里构造 `EngineeringAccess`
+（cordis `Service` 子类，名字 `engineeringAccess`），暴露五个方法：
+
+| 方法 | 对应控制器操作 | 说明 |
+|---|---|---|
+| `status()` | 无（只读 `controller_status` 的快照） | 报告"值不值得试"：可执行文件在不在、Openness 探没探过；**从不启动控制器** |
+| `openProject(path, opts)` | `OpenProject` | 与 `open_project` 工具同参；`allowUpgrade` 默认 false（唯一不可逆的写） |
+| `closeProject(opts)` | `CloseProject` | **`dryRun` 是必填参数**，见下 |
+| `listObjects(query)` | `ListPlcObjects` | 把每族的 `{count,items,truncated}` 信封**摊平**成一行一对象；默认 `max_items=1000` |
+| `exportObjects(query)` | `ExportBlocks` | 与 `export_blocks` 工具同参；只写文件，不动工程 |
+
+**四条刻意的设计**：
+
+1. **与工具走同一条代码路径**：每个方法都构造与对应工具**相同**的操作与参数，并复用
+   `runOperation`。两个面（模型面 / 服务面）因此不可能在默认值或错误形状上互相漂移。
+2. **失败语义沿用 D4**：操作级失败（TIA 拒绝、块不存在）返回 `ok:false` + 结构化 `error`；
+   传输级失败（找不到 exe、超时、协议不匹配）**抛出** —— 由调用方决定怎么大声报告。
+3. **`closeProject` 的 `dryRun` 必填**：工具的默认是 dry-run，而服务调用方是代码。
+   让它显式写下意图，比替它在任一方向上默认更安全（写错要么什么都没干，要么丢掉未保存的改动）。
+4. **`listObjects` 默认抬高 `max_items` 到 1000，并如实报告 `truncated`**：
+   控制器的 `max_items` **只能截断、没有 offset**
+   （`controller/OpennessHost.Plc.cs:152,166`：继续累加 `total` 但停止添加 items），
+   所以"翻页取下一页"根本不存在。抬高上限 + 如实说"没取全"是唯一正确做法，
+   调用方看到 `truncated` 就带更大的值重试。
+
+**为什么不走别的缝**（发行版 D12 已论证，这里只记结论）：让族 2 用 `ctx.tools.execute`
+间接调工具，会受 A15（原子工具可能默认隐藏）影响，且解析是**按可见性**的；纯文件契约则把
+"谁触发指纹"推回给模型编排。服务缝两者都不占。
+
+**代价与边界**：本插件因此多了一个对外契约面 —— 改 `access.ts` 的方法签名/参数属于**跨包
+破坏性变更**，要同时改该包的 `ARCHITECTURE.md` §5.3 与族 2 的镜像声明。
+服务**不新增任何 C# 能力**：五个方法全部落在已有的白名单操作上（`OPENNESS_OPERATIONS` 仍是 25 条、
+工具仍是 26 个，`matrix:check` 因此不受影响）。
+
+**验证**：[`test/08-access-service.test.mjs`](../test/08-access-service.test.mjs) 9 项 ——
+`apply` 注册服务且卸载后消失、五个方法各自发出的操作与参数、families 摊平与 `truncated` 传播、
+指纹的 `{id,value}` 与 `{id,error}` 两种形态、`closeProject` 缺 `dryRun` 抛 `TypeError`、
+操作失败作为数据返回而传输失败抛出。另：`test/helpers/harness.mjs` 的替身 ctx 补上了
+`fiber` / `reflect.provide` / `get`，否则真实 `Service` 无法在替身上构造（这是这次改动**修掉的
+一个测试基建缺口**，不是放宽断言）。
