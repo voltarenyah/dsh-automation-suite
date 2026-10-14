@@ -1,0 +1,767 @@
+# dsh-automation-suite
+
+> **DeepSeek Harness 的自动化发行版**：一份 profile 蓝图 + 两个插件，让 `dsh` 里的模型
+> 能直接读写 **TIA Portal V17** 的 PLC 程序块，并以结构化、默认安全的方式操作 **Git**。
+>
+> An unofficial DeepSeek Harness distribution: a profile blueprint plus two plugins that
+> give the model verified TIA Portal V17 Openness block access and a structured,
+> guard-railed Git tool family.
+
+![license](https://img.shields.io/badge/license-MIT-blue)
+![plugins](https://img.shields.io/badge/plugins-2-4D6BFE)
+![tools](https://img.shields.io/badge/tools-18-4D6BFE)
+![node](https://img.shields.io/badge/node-%E2%89%A522.19-339933?logo=node.js&logoColor=white)
+![platform](https://img.shields.io/badge/TIA%20plugin-Windows%20only-0078D4?logo=windows&logoColor=white)
+
+> ⚠️ **非官方项目**：与 DeepSeek（DeepSeek Harness 的发行方）无关，与 Siemens 也无隶属关系。
+> `dsh-tool-git` 是上游 [`lxj808624/dsh-tool-git`](https://github.com/lxj808624/dsh-tool-git)
+> 的 vendor 副本（MIT），出处与差异见 [§15](#15-许可证与第三方)。
+
+---
+
+## 目录
+
+1. [这是什么](#1-这是什么)
+2. [它要解决的问题](#2-它要解决的问题)
+3. [交付内容一览](#3-交付内容一览)
+4. [功能是怎么实现的](#4-功能是怎么实现的)
+5. [环境要求](#5-环境要求)
+6. [快速开始](#6-快速开始)
+7. [交互使用](#7-交互使用)
+8. [配置](#8-配置)
+9. [仓库结构](#9-仓库结构)
+10. [开发](#10-开发)
+11. [验收](#11-验收)
+12. [故障排查](#12-故障排查)
+13. [已知边界](#13-已知边界)
+14. [安全红线](#14-安全红线)
+15. [许可证与第三方](#15-许可证与第三方)
+16. [文档索引](#16-文档索引)
+
+---
+
+## 1. 这是什么
+
+在 DSH 里，一个"发行版"不是单个包，而是两样东西的组合：
+
+| 组成 | 在本仓里的位置 | 作用 |
+|---|---|---|
+| **profile 蓝图** | `profile/dsh-automation-suite/` | 声明"一个 profile 目录应该长什么样"：装哪些 bundle、按什么顺序叠加 |
+| **插件（bundle）** | `packages/*` | 真正提供能力的模块，运行在 DSH 宿主进程里 |
+
+蓝图**不是** bundle，它要物化成 `~/.dsh/profiles/<name>/` 之后才被 `dsh` 当作 profile 使用。
+本仓没有把发行版做成"一个巨型插件"，而是做成**可拆的组合**：
+
+- 想要整套 → 按蓝图物化 profile，一次拿到全部能力（[§6](#6-快速开始)）；
+- 只想要其中一个 → `packages/` 下的每个包都是**可独立安装的 bundle**，
+  `dsh plugin --profile <p> add <包名或 tarball>` 即可。
+
+本仓是 **Monorepo**：`packages/*` 放插件，`profile/*` 放蓝图，`scripts/` 放 Monorepo 级工具，
+`docs/*` 放发行版层面的文档。
+
+> **当前状态：这套方案的雏形。** 仓库今天跑得通的是价值链条的**第一层**（把内容从工程软件里
+> 取出来、写回去）以及管理层的一件通用工具（git）；**语义层尚未开始**。分层方案、
+> 每层的职责与已实现/规划中的边界，见 [§2](#2-它要解决的问题)、
+> [`docs/vision.md`](docs/vision.md) 与 [`docs/roadmap.md`](docs/roadmap.md)。
+
+---
+
+## 2. 它要解决的问题
+
+工业控制领域的 **PLC 项目文件无法被 LLM 很好地访问、理解与操作**：TIA Portal 的 `.ap17`、
+以及各家的专有工程格式，把程序结构、调用关系与工程要素锁在专用工程软件里。文本模型
+既**读不到**、也**读不懂**（没有结构化语义），更**不敢改**（改完无法验证是否成立）。
+于是它在工控领域能提供的帮助极其有限。
+
+打通这条链路要**分层**做，每一层解锁下一层：
+
+| 层 | 要做什么 | 交给下一层什么 | 现状 |
+|---|---|---|---|
+| **① 接入层**<br>打通工具障碍 | 通过工控软件预留的接口（TIA Openness 等）把程序源文件**取出来**、改完**写回去** | 程序源文件（Simatic ML / SCL / STL） | 🟡 部分实现：TIA V17 的块读写、工程数据、PLC 对象增删改与 F 相关接口已接通（26 个工具）；其中 v0.2 新增的 20 个操作待真机验证 |
+| **② 语义层**<br>让模型读懂 | 解析源文件、**还原工程信息与要素**，转换成 LLM 擅长处理的格式 | 可推理的工程上下文 | ⬜ 未实现：目前把 XML 原样交给模型 |
+| **③ 管理与协作层**<br>补齐软件短板 | 在工程软件预留的**项目级**接口之上，做它本身没有的能力 | 项目级工作流与建议 | 🟡 只有通用 git 工具，尚未与 PLC 项目打通 |
+
+**本发行版就是这条链路的载体**：它由**多个插件**组成，每个插件负责其中一个方面。
+层的划分与设计原则见 [`docs/vision.md`](docs/vision.md)，插件的职责边界与契约见
+[`docs/architecture.md`](docs/architecture.md)，逐项进度见 [`docs/roadmap.md`](docs/roadmap.md)。
+
+### 目标插件构成
+
+| # | 插件族 | 对应层 | 负责什么 | 现状 |
+|---|---|---|---|---|
+| **1** | **工控软件接口插件族**<br>（以 TIA 为例即 `tia-openness`；按**软件版本 × 能力层级**切分：V17/V18… × **min/std/pro**） | ① 接入层 | 与工控软件对接、**读写工程对象**；为后续分析提供**素材**与**验证工具**；并**附带文档**说清每个能力"何时调用 / 怎么调用 / 调用后的数据怎么用" | 🟡 已有 **V17 × min**（定位是验证基础功能） |
+| **2** | **工程上下文管理插件** | 作用域（横向） | 管住用户的**多个 TIA 项目 × 多个分支 × 多个历史版本**；对工程对象做优化适配（路径内容、变更识别与跟进）；用**「待办清单」式工具承载工程变更上下文**，在合适的时候交给 LLM 辅助判断用户意图；版本间变更明确易读、工程对象可交叉关联 | ⬜ 规划中 |
+| **3** | **工程知识图谱管理插件** | ② 语义层 | **准确翻译 XML 中的 PLC 语法**（兼容性强）：解析工程源文件 → **建立图数据库** → 暴露接口给出工程细节 | ⬜ 规划中 |
+
+编号沿用需求的表述顺序，**不代表实现顺序**；依赖关系与建议顺序见 [`docs/roadmap.md`](docs/roadmap.md) §5。
+每个插件族的定位、期望与边界见 [`docs/architecture.md`](docs/architecture.md) §4。
+
+### ① 接入层：先打通工具层面的障碍
+
+工控程序的一切都在专用软件里，所以第一步只能是**用它自己预留的接口**把内容取出来。
+本仓已实现的一段是 TIA Portal V17 Openness：工程生命周期与工程数据、PLC 块/类型/标签表读写、
+PLC 对象增删改、监视表与软件单元、F 相关服务、编译与关闭项目，且写入走白名单 + 事务 + 写后读回验证（细节见 [§4.2](#42-tia-插件两层架构--白名单控制器)）。
+这一层的关键不是"能调通 API"，而是**把不可能暴露给模型的任意代码执行，压缩成一组数据化操作**。
+
+### ② 语义层：把工程信息还给它
+
+导出物只是**文件**（XML、SCL、STL），不是**工程语义**。要让它对模型有用，还需要解析这些源文件、
+还原出工程信息与要素 —— 块、块的调用关系、数据类型（UDT）、标签表、I/O、组层级 ——
+再把它们转换成 LLM 擅长处理的格式（结构化、可导航、按需展开），而不是把几十 MB 的 XML
+整个塞进上下文。**这一层做完，模型才谈得上给出程序诊断、分析与编写方面的建议。**
+
+### ③ 管理与协作层：补齐软件短板，管好"在谈哪一版"
+
+工程软件本身往往缺项目级能力，最典型的就是**版本管理**：TIA Portal 没有项目级 VCS，
+而 `.ap17` 是二进制工程文件，直接丢进 git 只能得到"变了 / 没变"。可行的路子是
+"**导出为文本源 → 交给外部工具（git）做版本管理 → 需要时再导回**"，并让模型帮忙生成
+有意义的差异说明与提交。
+
+这一层还要回答一个更容易被忽略的问题：**现在谈的是哪个项目的哪个分支的哪个版本**。
+一个用户的资产通常是"多项目 × 多分支 × 多版本"，没有作用域，答案可能对、却对不上版本。
+这条链路每一环都依赖前两层：没有①取不出文本、也写不回去；没有②得到的只是文本 diff
+而不是**工程变更**（改了哪个块、影响了谁）。
+
+### 今天已经能做什么
+
+上面两层还在路上，但**接入层这一段已经可用**，配合管理层里的通用 git 工具，
+今天就能完成下面两件事。
+
+#### 场景 A —— 用自然语言改 PLC 程序（TIA Portal V17）
+
+工程师的日常是"打开项目 → 找到某个块 → 改一行 → 编译验证"，这些动作要么在 TIA 界面里点，
+要么写 Openness 脚本。本发行版把这条链路交给模型：
+
+- 模型**读**：导出项目里的 PLC 块（Simatic ML XML，保留用户组目录层级），或只看块清单与元数据；
+- 模型**写**：改 XML / 写 SCL 外部源，再导入回去，**覆盖前先预演**；
+- 模型**验**：写后读回项目块集合逐个确认，再编译并读编译结果。
+
+**核心约束**：不给模型"任意代码执行"。模型能表达的只有路径、块名、枚举这些**数据**，
+真正执行的是固定白名单里的 5 个操作。
+
+> 注意这一段的边界：模型今天拿到的是**导出的文件本身**，工程语义（调用关系、影响面、
+> 标签与 I/O 的对应）还没有被还原出来 —— 那正是②语义层要补的。
+
+#### 场景 B —— 让模型安全地用 Git
+
+模型写代码时高频要用 git，而原版运行时只有裸 `bash`：命令靠字符串拼、输出是给人看的散文、
+`push --force` 和 `reset --hard` 没有任何闸门。本发行版补上 12 个结构化 git 工具
+（shell-free、返回 JSON），并加一道 `tools/pre-execute` 闸门 —— 破坏性 git 操作
+**无论经插件工具还是经 shell 工具**发起，默认都被拒绝并给出解释。
+
+这是③管理层要用的**通用底座**：它现在与 PLC 项目还没有任何耦合，把它接上去需要先完成②。
+
+### 已经解决的技术难题
+
+| 难题 | 本发行版的解法 |
+|---|---|
+| Openness 只能被 **.NET Framework x64** 进程调用，Node 进程调不了 | 插件持有 C# 控制器子进程，用 NDJSON over stdio 通信 |
+| Openness 对象**非线程安全**，一次只能有一个客户端 | 一个宿主进程只有一个控制器；跨会话请求在控制器内排队串行 |
+| 写入失败必须保证项目不被写坏 | `ExclusiveAccess` + `Transaction`，全部成功才 `CommitOnDispose()`，否则 dispose 即回滚 |
+| 模型可能调用破坏性 git 命令 | `tools/pre-execute` 策略闸门：`deny`（默认）/ `ask` / `allow` |
+| 长操作可能卡死 | 每请求硬超时；超时**终止**控制器（Openness 不可取消），下次调用自动重启 |
+
+### 当前进度与路线图
+
+| 插件族 | 目标 | 状态 |
+|---|---|---|
+| **1 工控软件接口插件** | 把工控软件暴露的能力整体变成 LLM 的能力范围（含配套文档） | 🟡 **V17 × min**（块·UDT·标签表）；std/pro 能力层级与 V18+ 待补 |
+| **2 工程上下文管理插件** | 管住多项目 × 多分支 × 多版本，让答案对得上版本、也看得懂用户意图 | ⬜ 未开始（仅有通用 git 工具） |
+| **3 工程知识图谱管理插件** | 准确翻译 XML 中的 PLC 语法，XML → 图数据库 → 按需给出工程细节 | ⬜ 未开始 |
+
+逐项进度、缺口与验收口径见 [`docs/roadmap.md`](docs/roadmap.md)；
+已定的取舍见 [`docs/decisions.md`](docs/decisions.md)，**30 条待决策问题在
+[`docs/open-questions.md`](docs/open-questions.md)**（可直接编辑填写答复）。
+**路线图是方向性说明，不是承诺**；已实现与规划中的能力在本文档里始终分开陈述。
+
+---
+
+## 3. 交付内容一览
+
+| 交付物 | 类型 | 版本 | 提供什么 |
+|---|---|---|---|
+| `@voltarenyah/dsh-tia-openness-v17-min` | 插件 bundle | 0.1.0 | **26 个工具**：工程生命周期与工程数据 8（`create_project` / `save_project` / `archive_project` / `project_info` / `project_languages` / `project_texts` / `update_project` / `portal_settings`）、PLC 设备数据 9（`list_plc_objects` / `create_plc_objects` / `delete_plc_objects` / `write_tags` / `set_block_attributes` / `protect_blocks` / `generate_source` / `watch_and_force_tables` / `software_units`）、F 相关 3（`safety_status` / `set_safety_settings` / `safety_signatures`）、块读写主线 5 + `controller_status`；外加 1 个随包出货的知识库 skill。v0.2 的 20 个新操作**尚未在真实项目上验证**（见该包 `docs/VERIFICATION-PLAN.md`） |
+| `dsh-tool-git` | 插件 bundle（vendor） | 0.1.3 | **12 个工具**：`git_status` / `git_diff` / `git_log` / `git_branch` / `git_stage` / `git_commit` / `git_stash` / `git_show` / `git_fetch` / `git_pull` / `git_remote` / `git_checkout`；外加破坏性命令闸门 |
+| `profile/dsh-automation-suite` | profile 蓝图 | 0.1.0 | 把官方 Web 组合（`dsh-base` + `dsh-web-app`）与上面两个插件叠成一个可直接启动的 profile |
+| `scripts/start-env.ps1` | 启动器 | — | 一条命令完成"物化 profile + 装插件 + 起服务 + 带 token 开浏览器" |
+| `scripts/clean-build.mjs` | 工具 | — | 只清理 `lib/`、`dist/`，遇链接只 unlink、不递归下降 |
+
+合计 **38 个模型可见工具**，全部在同一个会话里可用 —— 例如"改完这个块，顺便把导出目录提交一下"。
+
+---
+
+## 4. 功能是怎么实现的
+
+### 4.1 组合机制：bundle → layer → profile
+
+DSH 的加载分两条独立路径，**两者都靠包名**：
+
+1. profile 清单 `dsh.profile.bundles` 里的名字 → 用于解析 bundle 目录；
+2. 每个 bundle 的 `cordis.patch.yml` 里 `insert[].name` → 被当作**模块标识符**交给 cordis Loader import。
+
+因此 `package.json` 的 `name` 与 `cordis.patch.yml` 的 `insert[].name` **必须逐字一致**
+（带 `@` 的 YAML scalar 还得加引号）。本发行版里这一点长这样：
+
+```yaml
+# packages/dsh-tool-git/cordis.patch.yml      （无 scope，不需要引号）
+- insert:
+    - id: tool-git
+      name: dsh-tool-git
+
+# packages/dsh-tia-openness-v17-min/cordis.patch.yml
+- insert:
+    - id: tia-openness-v17-min
+      name: '@voltarenyah/dsh-tia-openness-v17-min'
+```
+
+蓝图的 `dsh.profile.bundles` 决定**叠加顺序**（后面的层可以覆盖前面的层），
+profile 自己的 `cordis.patch.yml` 是**用户层**，在所有 bundle 层之后应用：
+
+```
+dsh-base  →  dsh-web-app  →  tia-openness-v17-min  →  dsh-tool-git  →  profile/cordis.patch.yml
+（基础层）    （Web 应用层）  （插件层，只插自己的行）    （插件层）        （环境相关设置写这里）
+```
+
+两个插件的 bundle patch **只插入自己的行、不带任何环境相关配置**，所以同一份 bundle
+可以装在任意 profile 里；`opennessDir`、超时、`destructivePolicy` 这些归 profile 的用户层管。
+
+### 4.2 TIA 插件：两层架构 + 白名单控制器
+
+Openness 不能直接从 Node 调用，所以插件分成两层，中间是**一行一帧的 NDJSON 协议**：
+
+```
+┌─ DSH 宿主进程 (Node) ─────────────────────────────┐
+│  dsh-tia-openness-v17-min (TypeScript)            │
+│   • 注册 6 个模型可见工具                          │
+│   • ctx.effect() 拥有 C# 控制器子进程              │
+│   • 请求串行化 / 排队上限 / 硬超时终止与自动重启    │
+│   • 传输层错误 → 结构化 ToolFailure                │
+└──────────────────┬────────────────────────────────┘
+                   │ NDJSON over stdin/stdout
+┌──────────────────▼────────────────────────────────┐
+│  TiaOpennessV17Min.Controller.exe (C#, x64,       │
+│  .NET Framework 4.8)                              │
+│   • 先注册 Siemens 官方程序集解析器，再惰性加载    │
+│     Siemens.Engineering.dll（V17）                 │
+│   • 只执行 5 个白名单操作                          │
+│   • 写入 = ExclusiveAccess + Transaction + 读回验证│
+│   • 任何异常 → 结构化 JSON {code, message, details}│
+└───────────────────────────────────────────────────┘
+```
+
+**工具与它们的默认策略**（26 个，统一返回 `ok` / `summary` / `data` / `changes` / `diagnostics` / `error` 信封；
+完整清单与参数见该包 [`README.md` §4](packages/dsh-tia-openness-v17-min/README.md) 与
+[`docs/EXTENDED-SURFACE.md`](packages/dsh-tia-openness-v17-min/docs/EXTENDED-SURFACE.md)）：
+
+| 工具组 | 工具 | 写入 | 默认 dry-run |
+|---|---|---|---|
+| 工程生命周期 | `open_project` | 仅当 `allow_upgrade=true` | 否（升级单独把关） |
+| 块读写主线 | `export_blocks` / `compile_plc` / `close_project` / `import_blocks` | 导出只写文件；其余**是** | 导入/编译/关闭 **是**，导出否 |
+| 工程数据（v0.2） | `create_project` / `save_project` / `archive_project` / `project_info` / `project_languages` / `project_texts` / `update_project` / `portal_settings` | 除 `project_info` 外都可写 | 写类除创建/保存/归档/导出文本外均 **是** |
+| PLC 设备数据（v0.2） | `list_plc_objects` / `create_plc_objects` / `delete_plc_objects` / `write_tags` / `set_block_attributes` / `protect_blocks` / `generate_source` / `watch_and_force_tables` / `software_units` | 除列表与生成源文件外**是** | 除生成源外均 **是** |
+| F 相关（v0.2） | `safety_status` / `set_safety_settings` / `safety_signatures` | 仅 `set_safety_settings` | 该工具 **是** |
+| 诊断 | `controller_status` | 否（不启动控制器） | — |
+
+写入链路的四道保险：
+
+1. **dry-run 默认开**：写入类操作的 `dry_run` 默认 `true`，必须显式传 `dry_run: false`；
+2. **事务**：`TiaPortal.ExclusiveAccess()` → `Transaction(project, …)`，**只有全部文件成功后**
+   才 `CommitOnDispose()`，否则 dispose 即回滚；
+3. **写后验证**：导出逐文件读回校验 `<Name>` 并记 SHA-256 + 写 manifest；
+   导入事务提交后重新读项目块集合，逐块确认存在并对比 `ModifiedDate` / `Number` / `ProgrammingLanguage`；
+4. **白名单**：控制器只接受 `controller/Protocol.cs` 的 `OperationCatalog` 里的 **25 个**操作名，
+   插件侧 `src/protocol.ts` 的 `OPERATIONS` 是同一份列表（双重校验，互不信任；`npm run matrix:check`
+   逐条比对）。没有任何 `eval` / `Invoke` / 反射入口。
+
+编译报错**不是**工具错误：`state` / `errorCount` / `warningCount` / `messages` 作为数据返回，让模型据此修正。
+
+### 4.3 Git 插件：shell-free 执行 + 策略闸门
+
+- **无 shell 注入**：每条命令走 `execFile` + 显式参数数组，模型给的路径与提交信息永不做字符串插值；
+- **机器输出**：porcelain v2、`--numstat`、`--format` 记录被解析成结构化 JSON，而不是散文；
+- **闸门**：`tools/pre-execute` 监听器检查**每一次**工具调用 —— 既包括插件自己的工具
+  （如 `git_commit` 带 `amend: true`），也包括 shell 类工具的**命令文本**
+  （`bash` / `pwsh` / `terminal` 等），匹配 `push --force`、`reset --hard`、`clean -f`、
+  `branch -D`、`rebase`、`commit --amend`、`checkout --`、`update-ref -d` 等模式。
+  匹配按命令切分，不会跨 `|`、`;`、换行，所以 `git add . && git push --force` 照样被拦，
+  而无辜的复合命令不会被误判。
+
+> 这是一道**策略护栏，不是沙箱**。能跑任意代码的 agent 总能用别名、`-c` 改写或脚本绕开字符串匹配。
+> 闸门的目的是让误触的破坏性命令**大声失败并给出解释**；有意为之的破坏性操作应当通过
+> 配置策略（`ask` / `allow`）授权，而不是绕过闸门。
+
+### 4.4 开发期的运行时解析（为什么仓库里不装 `@deepseek-ai/*`）
+
+插件在运行期从 profile 的运行时解析拿到 `@deepseek-ai/*`，仓库里**刻意不把它们声明为依赖**：
+公开 registry 上这条线止于 `0.1.0-rc.6`，而本仓对标的宿主是 `0.2.0-rc.2` ——
+拿旧副本做类型检查或跑测试 = 对着错误的 API 面验收。
+
+于是两个包各有一个 `link:runtime` 脚本，从**已安装 app 自己的 `resources/app.asar`**
+按 `dependencies` + `peerDependencies` 求闭包（约 32–33 个包 / 8 MB / < 1 s），
+解包到 `<DSH_HOME>/plugin-runtime`，再 junction 进各自的 `node_modules/@deepseek-ai/`。
+`runtime.json` 记下宿主版本，宿主升级后自动重抽。抽取出来的运行时**不含 `.d.ts`**
+（app 的生产构建剥掉了），所以两个包各自手写了一份 `src/dsh-runtime.d.ts` 喂 `tsc`。
+
+---
+
+## 5. 环境要求
+
+| 项目 | 要求 |
+|---|---|
+| 操作系统 | Windows（TIA 插件仅限；在其它平台能加载，但工具调用返回 `controller_not_found`）。Git 插件跨平台 |
+| Node.js | **≥ 22.19**（两个包 `engines` 都这么写）；`pnpm` 与 `dsh` 本机可不在 PATH 上 |
+| DSH | 任何能加载 bundle 的版本 |
+| TIA Portal | **V17**（严格绑定，不兼容 V16/V18）——仅 TIA 插件需要 |
+| Openness DLL | `C:\Program Files\Siemens\Automation\Portal V17\PublicAPI\V17\Siemens.Engineering.dll` |
+| .NET Framework | 4.6.1+（控制器以 **4.8** 为目标框架构建）；进程位数必须 **x64** |
+| Windows 用户组 | 当前用户必须属于本地组 **`Siemens TIA Openness`**（`net localgroup "Siemens TIA Openness"`） |
+| 只有重建 C# 控制器才需要 | .NET SDK + .NET Framework 4.8 targeting pack + 能访问 NuGet 源 |
+| 只有重建 TS 才需要 | `pnpm install`（只装 typescript / tsdown / vitest / @types/node） |
+
+仓库已包含两个插件的**已构建产物**（`lib/`、`controller/bin/*.exe`），安装前无需编译。
+
+---
+
+## 6. 快速开始
+
+### 6.1 一条命令起独立环境（推荐）
+
+`scripts/start-env.ps1` 把"按蓝图物化 profile + 装插件 + 起服务 + 带 token 开浏览器"收成一条命令，
+并且**不碰你日常的 `~/.dsh`**（默认用自己的 `DSH_HOME=%USERPROFILE%\dsh-suite-env`，
+删掉该目录即完全回退）：
+
+```powershell
+pwsh -NoProfile -File scripts\start-env.ps1
+```
+
+它做四件事：`pnpm -r build` → 按蓝图物化 profile 目录 → 把本地插件按名字链进 profile
+（默认 `-Mode link`，验的是**当前工作树**；`-Mode pack` 改为 `pnpm pack` 出 tarball，验**真实交付物**）
+→ 启动 `dsh --profile dsh-automation-suite --port 3092`。
+
+**要部署哪些插件不写死在脚本里**：它读蓝图的 `dsh.profile.bundles`，
+凡是能在 `packages/` 下按 `package.json` 的 `name` 匹配到的条目都算本地插件
+（带 scope 与不带 scope 同一套逻辑），所以新增插件只要建目录 + 把包名写进蓝图即可，脚本无需改动。
+
+常用开关：
+
+```powershell
+pwsh -NoProfile -File scripts\start-env.ps1 -Restart              # 端口上有旧实例就先停掉再起（开发循环）
+pwsh -NoProfile -File scripts\start-env.ps1 -Port 0               # 随机端口
+pwsh -NoProfile -File scripts\start-env.ps1 -Mode pack            # 验真实交付物
+pwsh -NoProfile -File scripts\start-env.ps1 -DshHome C:\temp\e2e  # 换一个独立 home
+pwsh -NoProfile -File scripts\start-env.ps1 -Reset -NoOpen        # 先删掉重建，且不开浏览器
+```
+
+| 参数 | 默认 | 说明 |
+|---|---|---|
+| `-DshHome` | `%USERPROFILE%\dsh-suite-env` | 独立 DSH_HOME；删掉即回退 |
+| `-Profile` | `dsh-automation-suite` | profile 名，同时决定用哪个蓝图 |
+| `-Port` | `3092` | `0` = 系统挑空闲端口 |
+| `-Mode` | `link` | `link` 验工作树 / `pack` 验 tarball |
+| `-SkipBuild` | 关 | 跳过 `pnpm -r build` |
+| `-Reset` | 关 | 先删 profile 目录再重建（会先请你确认） |
+| `-Restart` | 关 | 端口上已有 **DeepSeek Harness** 就先停掉它；占用者是别的进程则报错退出，不误杀 |
+| `-NoOpen` | 关 | 不自动打开浏览器 |
+
+> 本机 `pnpm` 与 `dsh` 都不在 PATH 上，脚本自己从 DSH 安装目录解析
+> （`$env:DSH_APP_ROOT` 可覆盖，默认 `%LOCALAPPDATA%\Programs\DeepSeek Harness`）。
+
+### 6.2 装进日常的 `~/.dsh`
+
+把仓库里的蓝图目录直接挂成 profile（junction，随改随生效）：
+
+```powershell
+pnpm install                     # 在 Monorepo 根：workspace:^ 把插件链进蓝图的 node_modules
+cmd /c mklink /J "$env:USERPROFILE\.dsh\profiles\dsh-automation-suite" `
+              "<repo>\profile\dsh-automation-suite"
+dsh --profile dsh-automation-suite --dump-config     # 应看到两个插件的行
+```
+
+用完要拆，**必须**用 `cmd /c rmdir`（只删链接本身）：
+
+```powershell
+cmd /c rmdir "$env:USERPROFILE\.dsh\profiles\dsh-automation-suite"
+```
+
+### 6.3 装发布物（Monorepo 之外）
+
+`workspace:^` 在仓库外无法解析，所以要把依赖换成 tarball 的 `file:` 路径：
+拷 `package.json` / `cordis.patch.yml` / `pnpm-workspace.yaml` 三个文件到目标 profile 目录，
+把每个 `workspace:^` 改写为对应 tarball（`pnpm pack` 产出，注意
+`@scope/name` 的文件名是 `scope-name-<version>.tgz`，**剥掉了 `@`**），然后：
+
+```powershell
+dsh plugin --profile dsh-automation-suite install
+dsh --profile dsh-automation-suite --dump-config
+```
+
+发布到 npm 之后这一步更简单：`pnpm pack` / `pnpm publish` 会把 `workspace:^`
+重写成发布时的具体版本（实测打包内变成 `"^0.1.0"`），消费者照上面两步即可。
+
+> ⚠️ `dsh plugin add` **装不了这个 profile**：插件管理器只接受带 `dsh.bundle.patch` 的 **bundle**，
+> 而蓝图声明的是 `dsh.profile.bundles`，用途不同，会被拒为 `not-a-bundle`。
+> 两个插件本身则是标准 bundle，可以单独 `dsh plugin --profile web add dsh-tool-git`。
+
+### 6.4 首次进入必须自己配模型
+
+启动后 `dsh` 会打印**带 token 的 URL** 并自动用默认浏览器打开（token 每次启动都换、不落盘，
+裸地址会 401）。首次进入要去 **设置 → Models 填 API key**（或首次运行弹窗 "Add an API key to get started"）；
+凭据落在该 home 的 `.credentials.yaml`，与日常 home 无关。
+
+---
+
+## 7. 交互使用
+
+### 7.1 三个交互面
+
+| 交互面 | 在哪 | 用来做什么 |
+|---|---|---|
+| **对话** | Web GUI 的会话输入框 | 主用法：用自然语言描述任务，模型自己选 38 个工具去执行 |
+| **设置 / 插件页** | 侧边栏 Settings、Plugins | 配 API key、看已加载插件、启用/禁用插件、调配置 |
+| **命令行** | `scripts/start-env.ps1`、`dsh …` | 起停环境、部署、验收（`--dump-config`） |
+
+在 **Creator 模式**下还可以让模型自己调 `plugin_manager` 装插件：
+
+```
+plugin_manager(action: "install_bundle", target: "C:\\Users\\Ansel\\dsh-automation-suite\\packages\\dsh-tia-openness-v17-min")
+```
+
+### 7.2 对话示例
+
+**TIA（导出 → 改 → 导入 → 编译）** —— 用户侧只需要说：
+
+> "打开 `C:\Projects\Line1\Line1.ap17`，把所有块导出到 `C:\Projects\Line1\export`。"
+
+> "把 `FB_Motor` 的 `<HeaderVersion>` 从 0.1 改成 0.2，导回它原来的组，然后编译验证。"
+
+模型侧展开成的调用链（每一步都是 TIA 插件的工具之一）：
+
+```jsonc
+{ "project_path": "C:\\Projects\\Line1\\Line1.ap17" }                       // open_project
+{ "output_dir": "C:\\Projects\\Line1\\export", "block_names": ["FB_Motor"] } // export_blocks
+{ "import_paths": ["…\\FB_Motor.xml"] }                                      // import_blocks：默认 dry_run
+{ "import_paths": ["…\\FB_Motor.xml"], "import_options": "override",
+  "target_group": "999_Kautex", "dry_run": false }                           // 真导入 + 写后验证
+{ "dry_run": false }                                                          // compile_plc：真编译
+{ "save": true, "dry_run": false }                                            // close_project
+```
+
+**Git** —— 用户说"看看现在什么状态，把改动提交了"，模型调 `git_status` → `git_diff` → `git_stage` → `git_commit`，
+拿到的是结构化 JSON 而不是散文。若它试图 `git push --force`，闸门会直接拒绝并说明理由与放行方式。
+
+### 7.3 dry-run 与审批：写操作不会悄悄发生
+
+- **TIA 写入默认预演**：`import_blocks` / `compile_plc` / `close_project` 不加 `dry_run: false` 时
+  只返回计划（`data.ready` / `data.plan` / `data.conflicts`），项目一个字节都不动。
+- **Git 破坏性操作默认拒绝**：`destructivePolicy: deny`。改成 `ask` 后走运行时的审批缝
+  （`ctx.approval`），由你在界面上批准；没有挂审批服务的环境会降级回 `deny`。
+- 每个工具的 `description` 里都写明了这些策略，模型直接读得到，不需要你教它。
+
+### 7.4 随包出货的知识库：`tia-openness` skill
+
+插件把 Siemens 官方的 Openness skill 集
+（[`siemens/tia-portal-ai-extensions`](https://github.com/siemens/tia-portal-ai-extensions)，MIT）
+**逐字**打进包里，注册成模型可见的**一个** skill `tia-openness`：
+
+- 它是一张「症状 / 任务 → 该读哪个文件」的**路由表**（独占访问、事务、Simatic ML 往返、
+  块组层级、编译、licensing/防火墙、线程、崩溃定位、性能……）；
+- 31 个上游文件作为**资源**放在 `skills/<name>/SKILL.md`，模型按需 `read` 分段读取，
+  所以知识库**不占常驻上下文**，只在真正用到时付费；
+- 每个工具的 description 末尾都带一句 ``Troubleshooting: load the bundled `tia-openness` skill …``，
+  会话目录里也有同名条目，模型一定会看到它。
+
+想要模型去查这些资料，直接说"编译报错了，查一下 Openness 的排查手册"即可。
+
+### 7.5 触发约定、停止与回退
+
+- 说「**启动 App**」（或"起一下环境"）＝ 在仓库根执行
+  `pwsh -NoProfile -File scripts\start-env.ps1 -Restart`。`-Restart` 让这条命令**永远可用**：
+  端口被占就先停掉旧的 `DeepSeek Harness` 再起，所以"改完代码 → 启动 App"是一步。
+- **停止**：在该实例的窗口里 `Ctrl+C`；窗口丢了就 `Stop-Process -Id <harness pid> -Force`，
+  控制器会读到 stdin EOF 自行退出（用 `Get-Process TiaOpennessV17Min.Controller` 确认无残留）。
+- **完全回退**：删掉独立 `DSH_HOME` 目录即可 —— 但**必须**用 `cmd /c rmdir /s /q`（见 [§14](#14-安全红线)）。
+
+### 7.6 启动成功的判断标准
+
+1. 控制台出现 `dsh web: http://127.0.0.1:<port>/?token=…`，且浏览器自动打开；
+2. 该端口有监听（`Get-NetTCPConnection -State Listen -LocalPort 3092` → `DeepSeek Harness`）；
+3. **插件真的加载了**的硬证据：出现 `TiaOpennessV17Min.Controller` 子进程
+   （`Get-Process TiaOpennessV17Min.Controller`）—— 说明 `apply()` 执行过、`ctx.effect` 持有子进程。
+   没看到它，就是插件没加载，别急着怀疑 TIA。
+
+---
+
+## 8. 配置
+
+所有环境相关的设置都写在 **profile 的用户层** `~/.dsh/profiles/dsh-automation-suite/cordis.patch.yml`
+（蓝图里那份是空数组，注释里给了示例）。顶层是 loader patch 条目数组：按 `id` 覆盖 config、
+`disable` 某行，或 `insert` 新行。
+
+```yaml
+# ~/.dsh/profiles/dsh-automation-suite/cordis.patch.yml
+- id: tia-openness-v17-min
+  config:
+    opennessDir: 'C:\Program Files\Siemens\Automation\Portal V17\PublicAPI\V17'
+    requestTimeoutMs: 600000        # 大项目导入/编译实测常需 10 分钟以上，默认 300000 会超时
+- id: tool-git
+  config:
+    destructivePolicy: ask          # deny（默认）| ask | allow
+    workDir: 'C:\work\my-repo'
+```
+
+**TIA 插件**（全部有默认值，整块 `config` 可以省略）：
+
+| 字段 | 默认 | 说明 |
+|---|---|---|
+| `controllerPath` | `''` | 控制器 exe 绝对路径；空 = 用包内 `controller/bin/…`。也可用环境变量 `TIA_OPENNESS_V17_MIN_CONTROLLER` |
+| `opennessDir` | `''` | 传给控制器的 `--openness-dir`；空 = 控制器默认路径。控制器侧还认环境变量 `TIA_OPENNESS_V17_DIR` |
+| `requestTimeoutMs` | `300000` | 单次操作硬超时；超时会**终止**控制器（Openness 无法取消），下次调用自动重启 |
+| `startupTimeoutMs` | `30000` | 启动握手超时 |
+| `shutdownGraceMs` | `5000` | 卸载时先关 stdin 优雅退出，超时后强杀 |
+| `maxQueue` | `8` | 排队上限，超出返回 `controller_busy` |
+| `logControllerOutput` | `false` | 把控制器 stdout/stderr 转发到 DSH 日志 |
+| `verboseResults` | `false` | 工具结果里附带完整控制器 payload |
+
+**Git 插件**：
+
+| 字段 | 默认 | 说明 |
+|---|---|---|
+| `workDir` | `''` | 仓库发现起始目录（默认 process cwd） |
+| `gitPath` | `git` | git 可执行文件 |
+| `destructivePolicy` | `deny` | `deny` / `ask` / `allow` |
+| `extraDestructivePatterns` | `[]` | 追加给闸门的额外大小写不敏感正则 |
+| `logMaxCommits` | `20` | `git_log` 默认条数（上限 100） |
+| `diffContextLines` | `3` | `git_diff` / `git_show` 的 patch 上下文行数 |
+
+每个工具都接受可选的 `repoDir`，并在结果里报告解析出的仓库根。
+
+> profile 的 `patchReload` 不是 `live` 时，改完配置要**重启 DSH** 才生效。
+
+---
+
+## 9. 仓库结构
+
+```
+packages/
+  dsh-tia-openness-v17-min/        TIA Portal V17 Openness 插件（MIT）
+    src/                           插件与协议实现（index/config/controller/protocol/tools/skills/errors）
+    controller/                    C# 控制器（x64 / .NET Framework 4.8）
+      bin/                         已构建产物 TiaOpennessV17Min.Controller.exe（+ .exe.config）
+    skills/                        随包出货的 Openness 知识库：31 个上游 SKILL.md（逐字）+ 路由 skill
+    test/                          node:test 套件（54 项：53 通过 / 1 跳过）
+    docs/                          协议、决策记录、真实项目实测、覆盖矩阵、功能测试指南
+    test-profile/                  试跑材料：三层验证指南 + 脚本，不改默认 profile
+  dsh-tool-git/                    vendor 副本（上游 lxj808624/dsh-tool-git v0.1.3，MIT）
+    src/tools/                     12 个 git 工具
+    src/safety.ts                  tools/pre-execute 破坏性命令闸门
+    tests/                         vitest 套件（33 项）
+    README.md / README.zh.md       上游 README（英/中）
+profile/
+  dsh-automation-suite/            发行版的 profile 蓝图
+    package.json                   dsh.profile.bundles = 组合顺序
+    cordis.patch.yml               用户 patch 层（空数组，环境设置归这里）
+    pnpm-workspace.yaml            与 DSH initProfile() 模板逐字一致（nodeLinker: hoisted）
+scripts/
+  start-env.ps1                    独立 DSH_HOME 的环境启动器
+  clean-build.mjs                  只清理 lib/ dist/ 的构建产物清理器
+docs/
+  vision.md                        愿景：问题、三层方案、每层职责与设计原则
+  architecture.md                  目标架构：三个插件族的职责、边界、契约与数据流
+  decisions.md                     发行版级决策记录（已定的取舍 + 待验证项）
+  open-questions.md                开放问题（30 条，可直接编辑填写答复）
+  roadmap.md                       路线图与现状：逐项进度、缺口、验收口径
+AGENTS.md                          仓库级约定（结构与命名、危险操作红线、验收口径）
+LICENSE                            本仓 MIT 许可证（原创部分）
+pnpm-workspace.yaml                workspaces: packages/* + profile/*
+```
+
+---
+
+## 10. 开发
+
+```powershell
+pnpm install              # 全仓安装
+pnpm -r build             # 全仓构建
+pnpm -r typecheck         # 全仓类型检查
+pnpm test                 # 全仓测试
+pnpm run clean:build      # 清构建产物（只碰 lib/ dist/）
+```
+
+两个插件用**不同的测试运行器**，`pnpm -r test` 会把两者都跑到：
+
+| 包 | 运行器 | 测试规模 |
+|---|---|---|
+| `dsh-tia-openness-v17-min` | `node:test`（`node --test test/*.test.mjs`） | 54 项：53 通过 / 1 跳过（跳过项是"控制器未构建"的降级路径） |
+| `dsh-tool-git` | `vitest`（`vitest run`） | 33 项全通过 |
+
+单测都需要**真实的** `@deepseek-ai/*` 运行时（不是 stub）。裸 checkout 首次运行时，
+两个包的测试自举会各自自动触发抽取；也可以手动：
+
+```powershell
+pnpm --filter @voltarenyah/dsh-tia-openness-v17-min run link:runtime
+pnpm --filter dsh-tool-git run link:runtime
+```
+
+包内另有针对性的命令（在包目录里跑）：
+
+```powershell
+npm run check            # TIA：build + test + matrix:check + skills:check
+npm run build:controller # TIA：重建 C# 控制器（需要本机 TIA V17 + NuGet 源）
+npm run test:controller  # TIA：控制器自检 14 项（无需 TIA Portal）
+npm run matrix:build     # TIA：重新生成 docs/coverage-matrix.html
+npm run skills:build     # TIA：按 pinned commit 重新取上游知识库
+```
+
+### 几个必须知道的约定
+
+- **不要手改生成物**：TIA 包的 `docs/coverage-matrix.html`、`skills/<上游名>/SKILL.md`、
+  `skills/UPSTREAM.json` 都是生成物，改 `src/` 或控制器后要跑对应的 `:build`，否则 `:check` 会失败。
+- **`tsdown` 会把能解析到的包打进产物**，所以 `dsh-tool-git` 的两个 tsdown 配置里
+  `deps: { neverBundle: true }` 不能删：否则链接过运行时之后，产物会把整个宿主运行时内联进去
+  （57.78 kB → 391.40 kB），插件会拿到一份私有的 `dsh-tools`。**验收口径**：`lib/index.mjs` 应约 57.78 kB。
+- **`clean` 这个名字不能用**：pnpm 11 有内置子命令会遮蔽脚本，本仓叫 `clean:build`。
+- 在 JS 块注释里写 glob 会截断注释（`profiles/*/node_modules` 的 `*/` 会提前结束 `/** … */`），
+  写路径用 `profiles/<profile>/node_modules` 或转义。
+
+---
+
+## 11. 验收
+
+**profile 组合的端到端验收**：
+
+```powershell
+dsh --profile dsh-automation-suite --dump-config
+```
+
+预期结尾出现（每个本地插件 3 行，共 **1265 行 = 官方 web 组合 1259 + 3 × 2**）：
+
+```yaml
+# == @voltarenyah/dsh-tia-openness-v17-min
+- id: tia-openness-v17-min
+  name: '@voltarenyah/dsh-tia-openness-v17-min'
+# == dsh-tool-git
+- id: tool-git
+  name: dsh-tool-git
+```
+
+更强的一条是 `dsh --profile <p> --dump-config-schema`：输出里出现该插件的 Config 字段
+（如 `opennessDir`、`destructivePolicy`），说明模块被**真实 import 并读取了 schema**。
+
+> 注意 `--dump-config-schema` 在**未装任何插件**的官方 `web` profile 上也返回 exit 1 ——
+> 那 4 条 `unrecognized Loader tree carrier` 错误落在官方 `dsh-agent-preset` 的行上
+> （`/179`–`/182`），与插件无关，不要当成插件问题去查。
+
+**装 tarball 的验收链路**：
+
+```powershell
+cd packages/<pkg>; pnpm pack
+dsh plugin --profile <临时 profile> add <tarball>
+dsh --profile <临时 profile> --dump-config     # 含你的插件行 = 通过了
+```
+
+**启动后的运行期验收**：见 [§7.6](#76-启动成功的判断标准)（token URL、端口监听、
+`TiaOpennessV17Min.Controller` 子进程）。
+
+---
+
+## 12. 故障排查
+
+TIA 排障第一步永远是让模型调：
+
+```jsonc
+{ "include_controller_output": true }   // controller_status：进程状态、exe 路径、Openness 探测、用户组、最后错误
+```
+
+| 症状 / 错误码 | 含义与处理 |
+|---|---|
+| `openness_unavailable` | 找不到 `Siemens.Engineering.dll`：确认 TIA Portal V17 已装，或用 `opennessDir` 指定 |
+| `openness_load_failed` | DLL 存在但不可用（位数不符/依赖缺失）：确认 **x64** 与安装完整性 |
+| `project_not_open` / `project_already_open` | 需要先 `open_project` / 先 `close_project` |
+| `project_open_failed` | 打开失败（多为旧版本项目）：需要 `allow_upgrade` |
+| `plc_software_not_found` / `plc_software_ambiguous` | 传 `device_name` / `software_name` 指定 |
+| `block_not_found` | 块不存在，`details.available` 给出项目里的块清单 |
+| `verification_failed` | 写后读回验证未通过（`data` 仍含已发生的写入与验证报告）—— **不要**盲目重试 |
+| `transaction_failed` | 拿不到独占访问（可能有另一个 Openness 客户端在改项目） |
+| `controller_not_found` | 找不到控制器 exe：`npm run build:controller` 或配 `controllerPath` |
+| `controller_timeout` | 超过 `requestTimeoutMs`，控制器已被终止，**TIA 会话丢失**，下次调用自动重启；先把超时调大 |
+| `controller_busy` | 排队超过 `maxQueue`：有长操作在跑，等它结束 |
+| `controller_protocol_mismatch` | exe 与插件版本不匹配：用同一份仓库重新构建 |
+| 端口被占用 | 换 `-Port`，或加 `-Restart` 停掉旧实例（占用者不是 DeepSeek Harness 时不会动它） |
+| 裸地址 401 | 必须用 `dsh` 打印的**带 token 的 URL**；token 每次启动都换、不落盘 |
+| 会话里看不到 TIA/git 工具 | 插件没加载：查 `--dump-config` 是否有对应行；`patchReload` 不是 `live` 时要重启 |
+
+---
+
+## 13. 已知边界
+
+- **TIA 插件只做块、PLC 数据类型（UDT）与标签表**：`export_blocks` / `import_blocks` 用
+  `categories` 选择 `blocks`（默认）/ `types` / `tag_tables`。硬件组态、在线下载/上传、比较、库、
+  多用户、HMI 等**未实现**；逐条覆盖情况见 `packages/dsh-tia-openness-v17-min/docs/coverage-matrix.html`
+  （391 条能力条目，随代码自动重新生成）。
+- **真实项目里的块不一定都能导出**：ProDiag 语言块与 Safety(F-) 块被 TIA 直接拒绝，
+  控制器逐块报告（`data.failures[]`）并继续。
+- **导入必须指定块原来所在的组**（`target_group`），且"导入后重新导出"要放在编译之后；
+  见 `docs/FUNCTIONAL-TEST.md` §8.5。
+- **一次一个宿主进程一个 TIA Portal 会话**：不同 DSH 会话共用同一个控制器并排队。
+- **超时即丢失会话**：Openness 不可取消，超时的唯一可靠处理是终止控制器；
+  被强杀时**由控制器启动的 TIA Portal 进程可能仍然驻留**（它是独立进程，插件绝不杀它），
+  请用 `close_project`（`close_portal: true`）正常收尾。
+- **待人工验证的两项**（需要人在界面/真实环境操作）：运行中实例里的 **HMR disposer 路径**
+  （界面里禁用/启用插件，看子进程被停掉并重启），以及 **V18+ 的 Openness 应用白名单**策略
+  （本机 V17 未触发拦截）。详见 `docs/verification.md` §B。
+- **Git 闸门是策略护栏，不是沙箱**：见 [§4.3](#43-git-插件shell-free-执行--策略闸门)。
+
+---
+
+## 14. 安全红线
+
+以下每一条都有真实事故记录（见 `packages/dsh-tia-openness-v17-min/docs/ECOSYSTEM-COMPAT.md`）：
+
+- ❌ **禁止**用 `rm -rf` / `Remove-Item -Recurse` / .NET `Directory.Delete` 等**会跟进
+  junction/symlink 目标**的递归删除去清 `node_modules` 或 profile 目录。这类删除毁过源仓库的 `.git` 元数据。
+- ❌ **禁止**在根 `package.json` 里声明 `@deepseek-ai/*`（或任何 DSH 运行时包）为依赖 ——
+  它们由 profile 的运行时解析提供。
+- ❌ **禁止**去掉根 `package.json` 的 `private`。
+- ✅ 拆 junction 只用 `cmd /c rmdir "<路径>"`（只删链接本身）或 `Remove-Item -Force`（**不加** `-Recurse`）。
+- ✅ 清构建产物用 `pnpm run clean:build`：它只检查 `lib/`、`dist/`，遇链接只 unlink、不下降。
+- ✅ 用 `-Reset` 或手删独立 `DSH_HOME` 时**必须**用 `cmd /c rmdir /s /q`：里面 `link:` 与 pnpm 的
+  junction 指向仓库和 pnpm store，跟进式递归删除会毁掉目标。
+- ✅ 重新链接运行时用 `pnpm --filter <pkg> run link:runtime -- --force`：目标若是链接只 unlink，不下降。
+
+---
+
+## 15. 许可证与第三方
+
+本仓整体以 **MIT** 授权（仓库根 [`LICENSE`](LICENSE)），覆盖本仓原创的部分：
+`profile/` 蓝图、`scripts/` 工具与本文档。随包出货的第三方内容保留各自条款：
+
+| 组件 | 许可证 | 说明 |
+|---|---|---|
+| `dsh-automation-suite`（本仓） | MIT（根 [`LICENSE`](LICENSE)） | 蓝图、Monorepo 脚本、文档；根 `package.json` 已声明 `"license": "MIT"` |
+| `@voltarenyah/dsh-tia-openness-v17-min` | MIT（包内 `LICENSE`） | 本仓原创代码 |
+| `dsh-tool-git` | MIT（包内 `LICENSE`） | 上游 [`lxj808624/dsh-tool-git`](https://github.com/lxj808624/dsh-tool-git) `v0.1.3`（commit `2347e3d`）的**压平 vendor 副本**；包名刻意保持上游的 `dsh-tool-git`（不加 scope），因此**不能以同名发布到 npm** |
+| Siemens Openness skill 集 | MIT | 上游 [`siemens/tia-portal-ai-extensions`](https://github.com/siemens/tia-portal-ai-extensions) commit `b5c7041` 的**逐字文档副本**（31 个文件，已改代码一行未取），附上游许可证全文与逐文件 sha256 |
+| Siemens NuGet 运行库 | Siemens 自有条款 | `controller/bin/` 随插件分发 **Siemens 解析器及其 5 个依赖**（约 889 KB，未做任何修改）；`Siemens.Engineering.dll` **从不被本仓分发**（引用包 `CopyLocal=false`），始终来自用户自己的 TIA Portal 安装。完整清单与合规姿态见 `packages/dsh-tia-openness-v17-min/THIRD_PARTY_NOTICES.md` |
+
+`dsh-tool-git` 与本仓的差异（包名策略、运行期链接方式、`neverBundle`、新增脚本）记录在
+`packages/dsh-tool-git/AGENTS.md`，与上游同步时的"四处保留差异"也在那里。
+
+---
+
+## 16. 文档索引
+
+| 文档 | 内容 |
+|---|---|
+| [`docs/vision.md`](docs/vision.md) | **愿景**：PLC 项目为何对 LLM 不可达、三层方案（接入 / 语义 / 管理）各自的职责与接口、贯穿各层的设计原则、术语与非目标 |
+| [`docs/architecture.md`](docs/architecture.md) | **目标架构**：三个插件族（接口 / 上下文 / 图谱）的职责、期望与边界，三条正交轴，数据流，插件间契约与依赖顺序 |
+| [`docs/decisions.md`](docs/decisions.md) | **决策记录（发行版级）**：已定的 11 条取舍（能力分层、workspace 模型、指纹变更识别、对象身份、图底座…）与 4 项待验证 |
+| [`docs/open-questions.md`](docs/open-questions.md) | **开放问题（30 条）**：A 部分 13 条会阻塞动手，B 部分 17 条影响细节与验收口径；已答 12 条 |
+| [`docs/roadmap.md`](docs/roadmap.md) | **路线图与现状**：按三个插件族逐项记录进度、缺口、验收口径 |
+| [`profile/dsh-automation-suite/README.md`](profile/dsh-automation-suite/README.md) | 蓝图的组成、三种部署方式、验收方式 |
+| [`packages/dsh-tia-openness-v17-min/README.md`](packages/dsh-tia-openness-v17-min/README.md) | TIA 插件的完整说明（验证状态、协议、工具、错误码、V17 API 要点） |
+| [`packages/dsh-tia-openness-v17-min/docs/`](packages/dsh-tia-openness-v17-min/docs/) | `PROTOCOL.md`（线路协议权威描述）、`decisions.md`（技术取舍）、`REAL-RUN.md`（真实项目实测）、`FUNCTIONAL-TEST.md`、`verification.md`（验证清单）、`ECOSYSTEM-COMPAT.md`（生态兼容与事故记录） |
+| [`packages/dsh-tool-git/README.md`](packages/dsh-tool-git/README.md) · [`README.zh.md`](packages/dsh-tool-git/README.zh.md) | git 插件的工具表、安全闸门、安装与配置 |
+| [`packages/dsh-tool-git/AGENTS.md`](packages/dsh-tool-git/AGENTS.md) | 这个 vendor 副本与上游的差异、运行期链接、`neverBundle` |
+| [`packages/dsh-tia-openness-v17-min/AGENTS.md`](packages/dsh-tia-openness-v17-min/AGENTS.md) | 覆盖矩阵与知识库的同步规则 |
+| [`AGENTS.md`](AGENTS.md) | 仓库级约定：结构、命名、危险操作红线、验收口径 |
+| [`LICENSE`](LICENSE) | 本仓 MIT 许可证；随包出货/ vendor 内容的条款归属见 [§15](#15-许可证与第三方) |

@@ -11,7 +11,13 @@
 packages/*   插件包。每个都是可安装的 DSH bundle（声明 dsh.bundle.patch）
 profile/*    profile 蓝图。物化成 ~/.dsh/profiles/<name>/ 后使用
 scripts/     Monorepo 级工具脚本
+docs/        发行版层面的文档：vision.md（愿景与分层方案）、architecture.md（三个插件族的目标架构）、
+             decisions.md（已定的取舍）、open-questions.md（待决策问题，用户直接在里面填答复）、
+             roadmap.md（路线图与现状）
 ```
+
+`docs/` 只放**发行版层面**的说明；插件自己的文档归各包的 `docs/`。
+"做到哪了"的状态只在 `docs/roadmap.md` 与根 `README.md` §2 两处维护，改一处必须同步另一处。
 
 新增插件时直接在 `packages/` 下建目录，不需要再走迁移流程。
 
