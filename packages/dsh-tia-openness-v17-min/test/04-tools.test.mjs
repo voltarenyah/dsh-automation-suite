@@ -262,6 +262,42 @@ test('the new write-capable tools keep their documented dry-run defaults', async
   }
 })
 
+test('save_project reports where TIA actually put the project, not just where it was asked to', async (t) => {
+  // SaveAs takes only a target directory and Openness cannot rename a project,
+  // so TIA decides the layout below it. The tool must therefore surface the
+  // requested directory *and* the resulting path.
+  const { byName } = await harness(t, (operation) => ({
+    type: 'result',
+    protocol: 1,
+    id: 'stub',
+    operation,
+    ok: true,
+    durationMs: 5,
+    data: {
+      projectName: 'PEI_SinoARP_SWT2',
+      projectPath: 'D:\\Verify\\tia\\PEI_SinoARP_SWT2\\PEI_SinoARP_SWT2.ap17',
+      saved: true,
+      requestedSaveAsDir: 'D:\\Verify\\tia',
+      savedAs: 'D:\\Verify\\tia\\PEI_SinoARP_SWT2\\PEI_SinoARP_SWT2.ap17',
+      locationChanged: true,
+      isModifiedBeforeSave: true,
+      isModified: false,
+      dryRun: false,
+    },
+    changes: [],
+    diagnostics: [],
+  }))
+
+  const args = { save_as_dir: 'D:\\Verify\\tia' }
+  const value = await byName['save_project'].execute(args, {})
+  assertOutcomeMatchesSchema(byName['save_project'], value)
+
+  const text = renderedText(byName['save_project'], args, value)
+  assert.match(text, /Saved as: D:\\Verify\\tia\\PEI_SinoARP_SWT2\\PEI_SinoARP_SWT2\.ap17/)
+  assert.match(text, /Requested directory: D:\\Verify\\tia/)
+  assert.match(text, /project name is unchanged/)
+})
+
 test('the read-only tools send no dry_run at all', async (t) => {
   const { calls, byName } = await harness(t)
 
@@ -298,6 +334,144 @@ test('list_plc_objects forwards exact names, which is how fingerprints are asked
 
   await byName['list_plc_objects'].execute({ categories: ['units'] }, {})
   assert.deepEqual(calls.at(-1).params.categories, ['units'])
+})
+
+/**
+ * The frame `OperationsPlc.ListPlcObjects` actually builds.
+ *
+ * Every family is the controller's `{count, items, truncated}` envelope, never a
+ * bare array — see `OperationsPlc.cs` (`data.Add("blocks", blocks)`) and
+ * `OpennessHost.Plc.cs` (`result.Add("items", items)`). A renderer that reads the
+ * envelope as if it were the list gets `[]` from `list()` and silently drops
+ * every row, which is how the fingerprint inventory once vanished from the
+ * model-facing text while `Counts:` and `Block groups:` still rendered.
+ */
+function listPlcObjectsFrame(data) {
+  return {
+    type: 'result',
+    protocol: 1,
+    id: 'stub',
+    operation: 'ListPlcObjects',
+    ok: true,
+    durationMs: 11802,
+    data,
+    changes: [],
+    diagnostics: [{ level: 'info', message: 'Listed the PLC objects of Sino_PEI / Sino_PEI.' }],
+  }
+}
+
+test('list_plc_objects renders the objects and their fingerprints out of the controller envelope', async (t) => {
+  const blocks = [
+    ['SCP_IN', '1001'],
+    ['SCP_OUT', '114'],
+    ['Output', '14'],
+    ['Switch', '57'],
+    ['Com_Server_PLC', '1000'],
+  ].map(([name, declaredNumber]) => ({
+    name,
+    declaredNumber,
+    simaticType: 'FB',
+    group: '999_Bibliotheque/Fonctions méthode/',
+    fingerprints: [
+      { id: 'Code', value: '3F2A91' },
+      { id: 'Interface', value: '0B77C1' },
+      { id: 'Properties', value: 'D4E500' },
+    ],
+  }))
+
+  const { byName } = await harness(t, () =>
+    listPlcObjectsFrame({
+      device: 'Sino_PEI',
+      software: 'Sino_PEI',
+      categories: ['blocks'],
+      counts: { blocks: blocks.length },
+      blockGroups: ['999_Bibliotheque', '999_Bibliotheque/Fonctions méthode'],
+      blocks: { count: blocks.length, items: blocks, truncated: false },
+      truncated: false,
+      maxItems: 200,
+    }),
+  )
+
+  const args = { categories: ['blocks'], include_fingerprints: true }
+  const value = await byName['list_plc_objects'].execute(args, {})
+  assertOutcomeMatchesSchema(byName['list_plc_objects'], value)
+
+  const text = renderedText(byName['list_plc_objects'], args, value)
+  assert.match(text, /Blocks: 5 — SCP_IN, SCP_OUT, Output, Switch, Com_Server_PLC/, 'the block names must reach the model')
+  assert.match(text, /Fingerprints \(5 object\(s\)\):/)
+  for (const block of blocks) {
+    assert.match(
+      text,
+      new RegExp(`block ${block.name}: Code=3F2A91 Interface=0B77C1 Properties=D4E500`),
+      `${block.name} must report its three fingerprints`,
+    )
+  }
+  assert.doesNotMatch(text, /… \d+ more/, 'nothing was hidden: every object was listed')
+})
+
+test('list_plc_objects reports the controller total, and the envelope shape holds for every family', async (t) => {
+  const items = [
+    { name: 'FB_1', fingerprints: [{ id: 'Code', value: 'C0' }] },
+    { name: 'FB_2', fingerprints: [{ id: 'Code', value: 'C1' }] },
+  ]
+
+  const { byName } = await harness(t, () =>
+    listPlcObjectsFrame({
+      device: 'Sino_PEI',
+      software: 'Sino_PEI',
+      counts: { blocks: 1155, types: 1, units: 2 },
+      blockGroups: ['999_Bibliotheque'],
+      blocks: { count: 1155, items, truncated: true },
+      types: { count: 1, items: [{ name: 'MyUDT', fingerprints: [{ id: 'Code', value: 'AA01' }] }], truncated: false },
+      // In ListPlcObjects `units` is an envelope too — unlike the standalone
+      // software_units operation, whose `units` is a bare array.
+      units: { available: true, count: 2, items: [{ name: 'Unit_A' }, { name: 'Unit_B' }], truncated: false },
+      truncated: true,
+      maxItems: 20,
+      missing: { blocks: ['Main'] },
+    }),
+  )
+
+  const args = { categories: ['blocks', 'types', 'units'], include_fingerprints: true }
+  const value = await byName['list_plc_objects'].execute(args, {})
+  const text = renderedText(byName['list_plc_objects'], args, value)
+
+  assert.match(text, /The listing was truncated by max_items\./)
+  assert.match(text, /Blocks: 1155 — FB_1, FB_2 … 1153 more/, 'the total is the envelope count, not the page size')
+  assert.match(text, /Types: 1 — MyUDT/)
+  assert.match(text, /Software units: 2 — Unit_A, Unit_B/)
+  assert.match(text, /Fingerprints \(3 object\(s\)\):/)
+  assert.match(text, /block FB_1: Code=C0/)
+  assert.match(text, /type MyUDT: Code=AA01/)
+  assert.match(text, /Not found in blocks: Main/)
+})
+
+test('the fingerprint section is paged, and says how many rows it held back', async (t) => {
+  const items = Array.from({ length: 25 }, (_, index) => ({
+    name: `FB_${index + 1}`,
+    fingerprints: [{ id: 'Code', value: `C${index}` }],
+  }))
+
+  const { byName } = await harness(t, () =>
+    listPlcObjectsFrame({
+      device: 'Sino_PEI',
+      software: 'Sino_PEI',
+      counts: { blocks: 25 },
+      blockGroups: ['999_Bibliotheque'],
+      blocks: { count: 25, items, truncated: false },
+      truncated: false,
+      maxItems: 200,
+    }),
+  )
+
+  const args = { categories: ['blocks'], include_fingerprints: true }
+  const value = await byName['list_plc_objects'].execute(args, {})
+  const text = renderedText(byName['list_plc_objects'], args, value)
+
+  assert.match(text, /Fingerprints \(25 object\(s\)\):/, 'the header counts every object that has fingerprints')
+  assert.match(text, /block FB_20: Code=C19/)
+  assert.doesNotMatch(text, /block FB_21:/, 'only MAX_LISTED rows are printed')
+  assert.match(text, /… 5 more/)
 })
 
 test('every tool returns a canonical value that matches its declared output schema', async (t) => {

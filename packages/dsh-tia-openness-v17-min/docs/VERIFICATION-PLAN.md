@@ -147,6 +147,12 @@ project_texts({ "action": "import", "file": "D:\\Verify\\texts.xlsx", "dry_run":
 `State` 与 `Path`（`Path` 的语义未在手册里说明，可能是结果日志）。若 `state=Error`，把原始
 `resultPath` 指向的文件内容抄进验证记录。导入失败时确认工程是否被改坏 → 用工程副本重来。
 
+⚠️ **导入刻意不包事务**：手册 "Transaction handling → Restrictions" 明确列出 `ProjectText Import`
+与 `ProjectText Export` 在事务内会抛**可恢复异常**。所以 `project_texts` 的 `data` 里没有
+`committed` 字段，一致性由 `state` 与 TIA 自身保证。验证时**顺便确认这一点**：如果导入成功，
+说明"不包事务"是对的；如果反而报出与事务无关的错，把原文记下来。
+（另外一个可选实验，见 §5 第 15 条：临时把导入包回事务，看是否真的抛异常 —— 只在工程副本上做。）
+
 ☐ 2.15 导出文件可读 ☐ 2.16 导入的 `state` 与结果文件内容可解释 ☐ 2.17 导入后 TIA 里文本确实变了
 
 ### 2.6 `save_project`（Save 与 SaveAs）
@@ -154,13 +160,34 @@ project_texts({ "action": "import", "file": "D:\\Verify\\texts.xlsx", "dry_run":
 ```jsonc
 save_project({})                                    // 默认 dry_run=false，真的保存
 save_project({ "dry_run": true })                   // 预演：给出 isModified 与 wouldWrite
-save_project({ "save_as_dir": "D:\\Verify\\DemoCopy" })
+save_project({ "save_as_dir": "D:\\Verify\\tia" })  // 目标目录名与工程名不必相同
 ```
 
-**期望**：保存后 `isModified:false`；SaveAs 后 `projectPath` 指向新目录，原工程仍在。
-**注意**：SaveAs 会**改变控制器的持久化位置**，后续 `close_project(save=true)` 会写新目录。
+**期望**：保存后 `isModified:false`；SaveAs 后 `projectPath` / `savedAs` 指向新位置，
+`requestedSaveAsDir` 回显你给的目录，`locationChanged` 为 true。
+**注意**：SaveAs 会**改变控制器的持久化位置**（手册：Archive 不改、SaveAs 会改），
+所以之后的 `save_project({})` 与 `close_project(save=true)` 都写新位置，源目录不再是控制器持有的工程。
 
-☐ 2.18 Save 生效（`isModified` 变 false） ☐ 2.19 SaveAs 后 `projectPath` 更新且可继续操作
+**要确认的 SaveAs 落盘语义**（代码里没有任何校验，落点全靠 TIA 决定）：
+
+1. 传 `save_as_dir = D:\Verify\tia` 而工程名是 `PEI_SinoARP_SWT2` 这类 → 看 `savedAs` 究竟是哪一种：
+   - `D:\Verify\tia\PEI_SinoARP_SWT2\PEI_SinoARP_SWT2.ap17`（目标目录是容器，里面再建同名工程文件夹）
+   - `D:\Verify\tia\PEI_SinoARP_SWT2.ap17`（目标目录就是工程文件夹本体）
+   - `D:\Verify\tia\tia.ap17`（用目录名当新工程名 —— 手册 "with a different name" 的读法）
+   把实际结果与 `Project.Name`（预期保持原名）一起记下来：**这正是手册没写清的那条**，也是用户实测遇到的现象。
+2. 传一个**已存在且非空**的目录 → 预期 `project_save_failed`，记录 TIA 原文。
+3. 传一个不存在的多层目录（`D:\Verify\a\b\c`）→ 确认自动创建还是报错。
+4. `save_as_dir` 指向**源目录的父目录**（工程在 `...\V17\PEI\`，你传 `...\V17`）→ 确认 TIA 是否拒绝自我覆盖。
+5. SaveAs 之后紧接着 `close_project({ "save": true, "dry_run": false })` → 确认真的写在**新**位置，
+   且源目录的 `.ap17` 修改时间未变。
+6. `save_project` 之后立刻 `project_info` → 确认 `attributes.path` 与 `savedAs` 一致。
+
+**预期不该发生**：任何"目录名与工程名不一致"被**插件**拒绝的情形 ——
+`OperationsProject.cs` 的 `SaveProjectAs` 把目录原样交给 `Project.SaveAs`，没有任何名字校验。
+
+☐ 2.18 Save 生效（`isModified` 变 false） ☐ 2.19 SaveAs 后 `projectPath`/`savedAs` 与实际一致
+☐ 2.19b `requestedSaveAsDir` 与 `savedAs` 的差异已记录（TIA 的落盘规则） ☐ 2.19c `locationChanged=true`
+☐ 2.19d SaveAs 后 `close(save=true)` 写在新位置、源目录未被改动
 
 ### 2.7 `close_project` 之后：`create_project`
 
@@ -502,8 +529,10 @@ PLC 类型 → `isFBlock:false` + `reason`。
 | 10 | `FingerprintProvider.GetFingerprints()` 对**不一致**块抛可恢复异常 | 手册明示；实现里逐块兜住并回报 `{error}` | 3.1b.7 |
 | 11 | 同一状态下指纹 value 稳定、且只随"用户输入"变化（与编译结果无关） | 手册明示"only user input"；未实测 | 3.1b.2 / 3.1b.3 |
 | 12 | `FingerprintProvider` 真的**离线**可用（不需要 PLC 在线） | 手册的 Requirement 只列"连 TIA + 工程已打开"；未实测 | 3.1b 全部（跑的时候**不要**连 PLC） |
-| 13 | `Project.ImportProjectTexts` 是否受事务保护 | 实现里包在 `ExclusiveAccess + Transaction` 内；事务是否接受这类调用未确认 | 2.5 真跑时看是否报 `transaction_failed` |
-| 14 | `project_languages` 的 `EditingLanguage` 直接赋值是否需要事务 | 手册示例直接赋值；实现未包事务 | 2.2 真跑 + 保存后重开确认持久化 |
+| 13 | SaveAs 的落盘布局：目录名与工程名的对应规则 | 手册只说 SaveAs 能 "with a different name or in a different directory"，自己的例子却传了一个不同名的目录；**规则未写明**，代码里也无校验 | 2.6 的第 1 条（用户实测已碰到） |
+| 14 | `Project.Name` / `Project.Path` 在 V17 只读、且没有 `SaveAs(folder, newName)` 重载 | 反射实证（`canWrite=False`，Project 只暴露 `Save()`/`SaveAs(DirectoryInfo)`） | 2.6 里"预期不该发生"那条 |
+| 15 | 事务内禁止 `ProjectText Import/Export`（手册 Restrictions） | 手册明示会抛可恢复异常；实现里已按此**去掉**事务，未实测反向 | 2.5 的可选实验 |
+| 16 | `project_languages` 的 `EditingLanguage` 直接赋值是否需要事务 | 手册示例直接赋值；实现未包事务 | 2.2 真跑 + 保存后重开确认持久化 |
 
 ---
 

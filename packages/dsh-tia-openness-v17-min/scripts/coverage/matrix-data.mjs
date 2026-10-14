@@ -462,7 +462,8 @@ export const SECTIONS = [
         reject: ['R4'],
         note:
           '部分：project_info 的 comment 段枚举工程注释，update_project 写 editing language 的注释，project_texts 导出/导入整工程 ' +
-          '文本（xlsx）。多语言文本不能单独导出（R4）。',
+          '文本（xlsx）。多语言文本不能单独导出（R4）。注意 ProjectText Import/Export 属手册 "Transaction handling → Restrictions" ' +
+          '里事务内禁止的动作，所以 project_texts 不包事务。',
       },
       'Updating project property simulation support': {
         status: 'done',
@@ -486,7 +487,15 @@ export const SECTIONS = [
           '部分：compile_plc 走 PLC 软件级 ICompilable（含 CompilerResult 逐条消息）；手册支持的 Device、DeviceItem、' +
           'CodeBlock、HmiTarget 等编译入口未暴露。',
       },
-      'Saving a project': { status: 'done', note: '已实现：save_project 的 Save 与 SaveAs(save_as_dir)。' },
+      'Saving a project': {
+        status: 'done',
+        note:
+          '已实现：save_project 的 Save 与 SaveAs(save_as_dir)。两条 Openness 语义写进了工具描述：' +
+          '(1) SaveAs 会**搬迁当前打开工程的持久化位置**（手册：Archive 不改持久化位置，SaveAs 会改，之后 close(save=true) 写新位置）；' +
+          '(2) 无法给工程改名——Project.Name/Path 只读、且没有 SaveAs(folder,newName) 重载，只有 SaveAs(DirectoryInfo)，' +
+          '目录之下怎么组织由 TIA 决定。手册从未写"目录名必须等于工程名"，插件因此不做这种校验，' +
+          '而是回报 requestedSaveAsDir / savedAs / projectPath / locationChanged 让调用方核对落点。',
+      },
       'Closing a project': { status: 'done', note: '已实现：close_project，可先保存、可关掉 TIA Portal 实例。' },
     },
   },

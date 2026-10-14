@@ -48,9 +48,34 @@ dry-run 时没有 `created`/`plcSoftware`，而有 `targetPath` 与 `wouldWrite:
 | `save_as_dir` | string | — |
 | `dry_run` | boolean | **false** |
 
-`data`：`{ projectName, projectPath, saved, savedAs?, isModifiedBeforeSave, isModified, dryRun }`
-dry-run：`{ projectName, projectPath, isModified, saveAs, wouldWrite: true, dryRun: true }`
+`data`：`{ projectName, projectPath, saved, requestedSaveAsDir?, savedAs?, locationChanged?, isModifiedBeforeSave, isModified, dryRun }`
+dry-run：`{ projectName, projectPath, isModified, saveAs, saveAsDir?, wouldWrite: true, dryRun: true }`
 错误码：`project_not_open` `project_save_failed`。
+
+**关于 `save_as_dir` 的两条硬事实**（都不是本插件的限制，而是 Openness / TIA 的语义）：
+
+1. **SaveAs 会搬迁"当前打开工程"的持久化位置**。手册 "Archiving and Retrieving a project"：
+   "the Archive will not change the persistence location to the new Archived folder whereas
+   **SaveAs does that**"；库的 SaveAs 一节写得更直白："The persistence of the library is changed
+   after SaveAs operation"。所以 SaveAs 之后 `close_project(save=true)` 写的是**新**位置，源目录里的
+   文件仍在但已不是控制器持有的那个工程。
+2. **Openness 无法给工程改名**。`Project.Name` / `Project.Path` 都是只读（V17 反射实证
+   `canWrite=False`），落盘方法只有 `Save()` 与 `SaveAs(DirectoryInfo)` —— **没有**
+   `SaveAs(folder, newName)` 重载。即 SaveAs 只接受一个"目标目录"，目录之下怎么组织
+   （项目文件夹名、`.ap17` 文件名）由 TIA 决定，工程名保持原样。手册 "Saving a project" 声称
+   SaveAs 能 "save a project with a different name **or** in a different directory"，但它自己的例子
+   传的是 `...\SampleProjectSaveAs` 而工程叫 `SampleProject` —— **手册从未说明目录名与工程名的
+   对应规则**，也没有任何地方写"目录名必须等于工程名"。
+   既然两边都无法从代码层面强制或放宽，插件就把 TIA **实际**产生的位置报回来
+   （`requestedSaveAsDir` 对比 `savedAs` / `projectPath` / `locationChanged`），而不是让调用方猜。
+
+**不得放进事务**：手册 "Transaction handling → Restrictions" 列出的事务内调用会抛可恢复异常的
+动作是：`Compile`、Go Online、Go Offline、**`ProjectText Import`**、**`ProjectText Export`**、
+Open/Close Global Library、**`Project Create`**、**`Project Open`**、**`Project OpenWithUpgrade`**、
+**`Project Save`**、**`Project SaveAs`**、**`Project Close`**。
+因此 `compile_plc`、`create_project`、`save_project`、`close_project`、`archive_project`、
+`project_texts` 一律**不包事务**；其余写操作照常包（见 `OpennessHost.BeginTransaction` 的注释与
+`docs/VERIFICATION-PLAN.md` §2.5/§2.6 的验证项）。
 
 ## 3. ArchiveProject / `archive_project`
 
@@ -113,6 +138,9 @@ retrieve 参数：`archive_path`（必填）、`target_dir`（必填）、`upgra
 `data`（export）：`{ action:'export', file, sourceLanguage, targetLanguage, bytes, sha256, dryRun:false }`
 `data`（import）：`{ action:'import', file, updateSourceLanguage, state, resultPath, dryRun }`（`state` 是 `Info|Warning|Error`）
 错误码：`project_not_open` `project_text_export_failed` `project_text_import_failed` `invalid_params`。
+
+导入**不在事务内**（手册 "Transaction handling → Restrictions" 明确 `ProjectText Import` 在事务里会抛
+可恢复异常），因此 `data` 里也**没有** `committed` 字段 —— 一致性由 `state` 与 TIA 自身保证。
 
 ## 7. UpdateProject / `update_project`
 

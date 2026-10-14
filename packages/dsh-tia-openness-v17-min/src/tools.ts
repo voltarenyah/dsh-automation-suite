@@ -264,7 +264,18 @@ function renderData(operation: string, data: JsonRecord | null, verbose: boolean
           `modified now: ${data['isModified'] === true ? 'yes' : 'no'}`,
       )
       const savedAs = text(data['savedAs'])
-      if (savedAs !== undefined) lines.push(`Saved as: ${savedAs}`)
+      if (savedAs !== undefined) {
+        const requested = text(data['requestedSaveAsDir'])
+        lines.push(`Saved as: ${savedAs}`)
+        if (requested !== undefined && requested !== savedAs) {
+          // TIA decides the layout below the requested directory and the project
+          // name is not changeable, so the two legitimately differ.
+          lines.push(`Requested directory: ${requested} (TIA chose the path above; the project name is unchanged)`)
+        }
+        if (data['locationChanged'] === false) {
+          lines.push('The persistence location did not change.')
+        }
+      }
       break
     }
     case 'ArchiveProject': {
@@ -478,26 +489,37 @@ function renderData(operation: string, data: JsonRecord | null, verbose: boolean
         ['forceTables', 'Force tables'],
         ['units', 'Software units'],
       ] as const) {
-        const entries = list(data[key])
+        // Each family arrives as the controller's `{count, items, truncated}`
+        // envelope (OperationsPlc.ListPlcObjects), never as a bare array, so the
+        // objects sit one level down. Reading the envelope as the list makes
+        // `list()` return [] and silently drops every row.
+        const entries = list(field(data, key, 'items'))
         if (entries.length === 0) continue
+        const total = numberOf(field(data, key, 'count')) ?? entries.length
         const names = entries.slice(0, MAX_LISTED).map((item) => text(field(record(item), 'name')) ?? '?')
-        lines.push(
-          `${heading}: ${entries.length} — ${names.join(', ')}${entries.length > MAX_LISTED ? ` … ${entries.length - MAX_LISTED} more` : ''}`,
-        )
+        const hidden = total - names.length
+        lines.push(`${heading}: ${total} — ${names.join(', ')}${hidden > 0 ? ` … ${hidden} more` : ''}`)
       }
       // Fingerprints are the point of a change-detection call, so an explicitly
       // requested fingerprint list is reported per object instead of being left
       // to the verbose payload.
       const fingerprintRows: string[] = []
+      let fingerprintObjects = 0
       for (const [key, heading] of [
         ['blocks', 'block'],
         ['types', 'type'],
       ] as const) {
-        for (const item of list(data[key]).slice(0, MAX_LISTED)) {
+        // Same envelope as above: the fingerprints live on the objects inside
+        // `items`, which is the whole point of asking for them.
+        for (const item of list(field(data, key, 'items'))) {
           const entry = record(item)
           if (entry === null) continue
           const fingerprints = list(entry['fingerprints'])
           if (fingerprints.length === 0) continue
+          fingerprintObjects += 1
+          // Every object counts, but only the page is rendered, so the header
+          // reports the objects the page left out instead of under-reporting.
+          if (fingerprintRows.length >= MAX_LISTED) continue
           const rendered = fingerprints
             .map((fingerprint) => {
               const pair = record(fingerprint)
@@ -510,10 +532,10 @@ function renderData(operation: string, data: JsonRecord | null, verbose: boolean
           fingerprintRows.push(`  ${heading} ${text(entry['name']) ?? '?'}: ${rendered}`)
         }
       }
-      if (fingerprintRows.length > 0) {
-        lines.push(`Fingerprints (${fingerprintRows.length} object(s)):`)
-        lines.push(...fingerprintRows.slice(0, MAX_LISTED))
-        if (fingerprintRows.length > MAX_LISTED) lines.push(`  … ${fingerprintRows.length - MAX_LISTED} more`)
+      if (fingerprintObjects > 0) {
+        lines.push(`Fingerprints (${fingerprintObjects} object(s)):`)
+        lines.push(...fingerprintRows)
+        if (fingerprintObjects > MAX_LISTED) lines.push(`  … ${fingerprintObjects - MAX_LISTED} more`)
       }
       const missing = record(data['missing'])
       if (missing !== null) {
@@ -1211,15 +1233,25 @@ export function registerTools(ctx: Context, dependencies: ToolDependencies): str
     defineTool({
       name: 'save_project',
       description:
-        'Save the open TIA Portal project, optionally as a copy: save_as_dir saves it into a different directory ' +
-        'and leaves the currently open project where it is. WRITES the project file, so dry_run defaults to false; ' +
-        'pass dry_run=true to only report whether the project is modified and where it would be saved. The result ' +
-        'reports isModifiedBeforeSave and isModified, which is how you confirm that changes really reached disk ' +
+        'Save the open TIA Portal project, optionally as a copy: save_as_dir saves the project into a different ' +
+        'location. WRITES the project file, so dry_run defaults to false; pass dry_run=true to only report whether ' +
+        'the project is modified and where it would be saved. Two things about save_as_dir matter: ' +
+        '(1) TIA moves the persistence location of the currently open project there, exactly like the UI\'s ' +
+        '"Save as" — the original folder keeps its files but stops being the project the controller holds, so later ' +
+        'saves and close_project(save=true) write to the new location. (2) SaveAs takes only a target directory: ' +
+        'Openness cannot rename a project (Project.Name is read-only and there is no SaveAs(folder, newName) ' +
+        'overload), so TIA decides the folder/file layout below that directory and the project name stays as it is. ' +
+        'The result therefore reports requestedSaveAsDir, the path TIA actually produced (savedAs / projectPath) and ' +
+        'locationChanged — read them instead of assuming the given directory is where the .ap17 lands. The result ' +
+        'also reports isModifiedBeforeSave and isModified, which is how you confirm that changes really reached disk ' +
         'before closing. Maps to the SaveProject operation. Fails with project_not_open or project_save_failed.',
       parameters: {
         save_as_dir: {
           type: 'string',
-          description: 'Absolute directory to save a copy of the project into. Omit to save the project in place.',
+          description:
+            'Absolute target directory for "save as". Omit to save the project in place. TIA places the project ' +
+            'folder below it and keeps the project name, so the resulting .ap17 path is reported back rather than ' +
+            'assumed.',
         },
         dry_run: {
           type: 'boolean',

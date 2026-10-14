@@ -292,6 +292,20 @@ namespace TiaOpennessV17Min.Controller
         /// Opens an exclusive-access session plus one transaction. The caller owns
         /// the returned scope: call <see cref="TransactionScope.Commit"/> after the
         /// last successful change, otherwise disposing rolls the transaction back.
+        ///
+        /// Not every operation may run inside a transaction. The manual's
+        /// "Transaction handling → Restrictions" names the actions below as
+        /// raising a recoverable exception when called within one, so they must
+        /// stay outside every scope created here:
+        ///
+        ///   Compile, Go Online, Go Offline, ProjectText Import, ProjectText
+        ///   Export, Open Global Library, Close Global Library, Project Create,
+        ///   Project Open, Project OpenWithUpgrade, Project Save, Project SaveAs,
+        ///   Project Close.
+        ///
+        /// That is why <c>compile_plc</c>, <c>create_project</c>, <c>save_project</c>,
+        /// <c>close_project</c>, <c>archive_project</c> and <c>project_texts</c>
+        /// never call this method.
         /// </summary>
         public TransactionScope BeginTransaction(string description)
         {

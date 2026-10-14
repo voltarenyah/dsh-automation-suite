@@ -94,6 +94,7 @@ namespace TiaOpennessV17Min.Controller
             string saveAsDir = p.String("save_as_dir", null);
             bool dryRun = p.Bool("dry_run", false);
             bool saveAs = !string.IsNullOrWhiteSpace(saveAsDir);
+            string requestedSaveAsDir = saveAs ? Path.GetFullPath(saveAsDir.Trim().Trim('"')) : null;
 
             JsonObject session = _host.DescribeSession();
             if (!JsonObject.ReadBool(session, "projectOpen", false))
@@ -109,7 +110,7 @@ namespace TiaOpennessV17Min.Controller
                 plan.Add("projectPath", JsonObject.ReadString(session, "projectPath", null));
                 plan.Add("isModified", JsonObject.ReadBool(session, "isModified", false));
                 plan.Add("saveAs", saveAs);
-                if (saveAs) plan.Add("saveAsDir", Path.GetFullPath(saveAsDir.Trim().Trim('"')));
+                if (saveAs) plan.Add("saveAsDir", requestedSaveAsDir);
                 plan.Add("wouldWrite", true);
                 plan.Add("dryRun", true);
                 log.Info("Dry run: the project was not saved. Re-run with dry_run disabled "
@@ -121,9 +122,8 @@ namespace TiaOpennessV17Min.Controller
             string before = JsonObject.ReadString(session, "projectPath", null);
             if (saveAs)
             {
-                string full = Path.GetFullPath(saveAsDir.Trim().Trim('"'));
-                progress.Report("save", "Saving the project as " + full);
-                _host.SaveProjectAs(full);
+                progress.Report("save", "Saving the project as " + requestedSaveAsDir);
+                _host.SaveProjectAs(requestedSaveAsDir);
             }
             else
             {
@@ -133,14 +133,26 @@ namespace TiaOpennessV17Min.Controller
 
             JsonObject data = new JsonObject();
             data.Add("projectName", _host.Project.Name);
-            data.Add("projectPath", Convert.ToString(_host.Project.Path));
+            string after = Convert.ToString(_host.Project.Path);
+            data.Add("projectPath", after);
             data.Add("saved", true);
-            if (saveAs) data.Add("savedAs", Convert.ToString(_host.Project.Path));
+            if (saveAs)
+            {
+                // TIA decides the folder/file layout under the directory that was
+                // passed (SaveAs takes only a DirectoryInfo), and Openness cannot
+                // rename a project: Project.Name is read-only and there is no
+                // SaveAs(targetFolder, newName) overload. Reporting the requested
+                // directory next to the path TIA actually produced is therefore
+                // the only way for a caller to see that the two may differ.
+                data.Add("requestedSaveAsDir", requestedSaveAsDir);
+                data.Add("savedAs", after);
+                data.Add("locationChanged", !string.Equals(before, after, StringComparison.OrdinalIgnoreCase));
+            }
             data.Add("isModifiedBeforeSave", wasModified);
             data.Add("isModified", _host.Project.IsModified);
             data.Add("dryRun", false);
             changes.Add("project", JsonObject.ReadString(data, "projectPath", before), saveAs ? "saved_as" : "saved",
-                saveAs ? "new location " + before : "changes persisted");
+                saveAs ? "new location " + after + " (requested directory " + requestedSaveAsDir + ")" : "changes persisted");
             log.Info("Saved the project " + Text.Quote(_host.Project.Name) + ".");
             return data;
         }
@@ -369,18 +381,19 @@ namespace TiaOpennessV17Min.Controller
                 }
 
                 progress.Report("texts", "Importing the project texts from " + file + ".");
-                using (TransactionScope scope = _host.BeginTransaction("Import project texts"))
-                {
-                    JsonObject imported = _host.ImportProjectTexts(file, updateSourceLanguage);
-                    scope.Commit();
-                    imported.Add("action", "import");
-                    imported.Add("dryRun", false);
-                    imported.Add("committed", true);
-                    changes.Add("texts", JsonObject.ReadString(imported, "file", file), "imported",
-                        JsonObject.ReadString(imported, "state", "?"));
-                    log.Info("Imported the project texts.");
-                    return imported;
-                }
+                // Deliberately NOT wrapped in a transaction: the manual's
+                // "Transaction handling → Restrictions" lists "ProjectText Import"
+                // (and Export) among the actions that are not allowed inside a
+                // transaction and raise a recoverable exception. The whole
+                // project-text import is one TIA-side operation with its own
+                // consistency handling, and data.state reports how it went.
+                JsonObject imported = _host.ImportProjectTexts(file, updateSourceLanguage);
+                imported.Add("action", "import");
+                imported.Add("dryRun", false);
+                changes.Add("texts", JsonObject.ReadString(imported, "file", file), "imported",
+                    JsonObject.ReadString(imported, "state", "?"));
+                log.Info("Imported the project texts.");
+                return imported;
             }
 
             string sourceLanguage = p.RequiredString("source_language");
