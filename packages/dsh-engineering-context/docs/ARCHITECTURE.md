@@ -1,19 +1,20 @@
 # 核心架构：工程上下文管理插件（插件族 2）
 
-> **状态：设计定稿，实现未开始。** 本文描述这个插件"要做成什么样"：定位与边界、核心架构、
-> 主要功能、实现方式、验收口径与风险。
+> **状态：设计定稿；P0 已实现（作用域 + 工程注册表 + 3 个工具）。**
+> 本文描述这个插件"要做成什么样"：定位与边界、核心架构、主要功能、实现方式、验收口径与风险。
+> 实现进度见 §10；做到哪了只在 [`docs/roadmap.md`](../../../docs/roadmap.md) §3 与
+> 根 [`README.md`](../../../README.md) §2 两处维护。
 >
-> - 本文**不是**进度说明。做到哪了只在 [`docs/roadmap.md`](../../../docs/roadmap.md) §3 与
->   根 [`README.md`](../../../README.md) §2 两处维护。
 > - 本文的接口名、工具名、字段名都是**设计值**，实现时可以改；改了必须同步本文与该包的
->   [`decisions.md`](decisions.md)。
+>   [`decisions.md`](decisions.md)（实现期的取舍记在该文件的「P0 实现期的决定」一节）。
 > - 引用代码/运行时一律带 `path:line`；凡属**推断**都显式标注，不与"已实测"混写。
 > - 与发行版级文档的关系：[`docs/architecture.md`](../../../docs/architecture.md) §4.2 给出这一族的
->   职责与边界，[`docs/decisions.md`](../../../docs/decisions.md) D5–D7、D9 给出已定的取舍，
+>   职责与边界，[`docs/decisions.md`](../../../docs/decisions.md) D5–D7、D12 给出已定的取舍，
 >   本文把它们落成可实现的形态。
 >
-> 本包当前**只有文档、没有 `package.json`**：这是刻意的（理由见 [`decisions.md`](decisions.md) 的
-> 「夜间自主决定」N1 —— 蓝图里多一个 bundle 名会让 `scripts/start-env.ps1` 去链一个不存在的包）。
+> 本包**尚未登记进 profile 蓝图**：这是刻意的（[`decisions.md`](decisions.md) N1 —— 蓝图里多一个
+> bundle 名，而 `packages/` 下找不到对应包时，`scripts/start-env.ps1` 会直接失败）。
+> 因此现在没有任何 profile 会加载它；用本包自己的 `check` 脚本验证。
 
 ---
 
@@ -389,6 +390,11 @@ git 的调用全在插件代码里，路径来自插件自己解析的 workspace
 表达不完整（`action='commit'` 才需要 `message`）。若你更看重 schema 精确性，拆成
 `eng_version_commit` / `eng_version_log` 即可（+2 工具 ≈ +1k 常驻）。
 
+> **P0 现状（已实现）**：只注册 **`eng_status` / `eng_project` / `eng_scope`** 三个。
+> `eng_scope` 目前只有 `select` / `clear`（分支与版本随 P1）；`eng_changes` / `eng_export` /
+> `eng_version` / `eng_context` 都还没实现。实现期的取舍见 [`decisions.md`](decisions.md)
+> 的「P0 实现期的决定」。
+
 ### 6.1 返回契约示例（`eng_changes`）
 
 ```jsonc
@@ -420,45 +426,50 @@ git 的调用全在插件代码里，路径来自插件自己解析的 workspace
 
 ---
 
-## 7. 状态与持久化（两层）
+## 7. 状态与持久化
 
-| 层 | 放什么 | 为什么 |
+| 层 | 放什么 | 现状 |
 |---|---|---|
-| **workspace 内 `_dsh-eng/`（权威、可携带、可进 git）** | 工程注册表、**指纹基线**、变更集、变更台账 | 变更检测**必须跨会话/跨机器**才有意义；与 D5 的隔离天然一致（[`docs/open-questions.md`](../../../docs/open-questions.md) A14 的倾向同此） |
-| 宿主 `ctx.storageDomain`（可选、机器本地、可再生） | "当前作用域指针"这类小状态 | 指针丢了无害，不值得付文件 IO。宿主自己就是这么持久化 workspace 记录的（`@deepseek-ai/dsh-storage-domain` README） |
+| **workspace 内 `_dsh-eng/projects.json`（权威、可携带、可进 git）** | 工程注册表 + **唯一**的"当前工程"指针 | ✅ P0 已实现 |
+| **workspace 内 `_dsh-eng/<project-id>/`** | 指纹基线、变更集、变更台账 | 路径已定，P2/P3 写入 |
+| 宿主 `ctx.storageDomain`（可选、机器本地、可再生） | 目前**没有**用到 | ⬜ P0 不需要：唯一的可再生状态就是那个指针，而指针必须与注册表在同一份文件里（P0-5） |
 
-**明确不用 `ctx.spillStore` 存基线**：spill 按会话归属、工件有过期
-（`@deepseek-ai/dsh-spill` README：backend owns artifact expiry），只适合**临时工件**。
-基线要的是"下次还能比"，必须落在 workspace 里。
+**为什么基线不落在 `DSH_HOME` 或 spill 里**：变更检测**必须跨会话/跨机器**才有意义
+（[`docs/open-questions.md`](../../../docs/open-questions.md) A14 的倾向同此）。
+`ctx.spillStore` 按会话归属、工件由 backend 决定过期（`@deepseek-ai/dsh-spill` README），
+只适合临时工件。
 
-**服务缺席时的降级**：`storageDomain` 不可用时，指针退化为 `_dsh-eng/scope.json`；
-两项都不可用时，`eng_scope` 退化为"按参数显式指定，不记忆"（功能变弱，但不报错、不假装记住）。
+**服务缺席时的降级**（P0 已实现）：宿主没有 workspace 服务、或本目录未登记时，
+作用域仍以会话工作目录为根，但结果里标 `registered: false` 并给出 warning（N2 / P0-9）。
 
 ---
 
 ## 8. 数据模型（记录 schema，设计值）
 
-### 8.1 工程注册表 `_dsh-eng/projects.json`
+### 8.1 工程注册表 `_dsh-eng/projects.json`（P0 已实现，字段以此为准）
 
 ```jsonc
 {
   "schemaVersion": 1,
-  "workspacePath": "C:\\work\\pei",
-  "current": "pei-sinoarp",
+  "workspacePath": "C:\\work\\pei",                    // 创建时的 canonical workspace 路径
+  "current": "pei-sinoarp",                            // 唯一指针；不设第二个 scope.json（P0-5）
   "projects": [
     {
       "id": "pei-sinoarp",
       "title": "PEI SinoARP",
-      "source": "D:\\TIA\\SinoARP\\tia.ap17",          // 只作溯源；登记后不再读写
-      "work": "projects/pei-sinoarp/work/tia.ap17",     // 唯一会被改的 .ap17
-      "export": "projects/pei-sinoarp/export",          // 导出物（含 _tia-openness-manifest.json）
-      "artifacts": "projects/pei-sinoarp/_dsh-eng",     // 基线/变更集/台账
-      "vcs": { "kind": "git", "root": "projects/pei-sinoarp" },
-      "adoptedAt": "2026-10-14T08:00:00Z"
+      "source": "D:\\TIA\\SinoARP\\tia.ap17",           // 绝对路径，只作溯源；登记后不再读写
+      "work": "projects/pei-sinoarp/work/tia.ap17",     // 可携带（相对 workspace 根），唯一会被改的 .ap17
+      "export": "projects/pei-sinoarp/export",          // 可携带；导出物（含 _tia-openness-manifest.json）
+      "createdAt": "2026-10-14T08:00:00.000Z",
+      "adoptedAt": null                                 // adopt 成功后写入；未另存为 null
     }
   ]
 }
 ```
+
+**P0 实际写的字段就是这 8 个**：`artifacts` 与 `vcs` **不再存**（前者由 `stateDirName + id`
+推导，后者是 P1 的产物），因为存下来的派生字段会与规则漂移。
+每工程的插件状态目录 = `_dsh-eng/<project-id>/`（P0-6）。
 
 ### 8.2 指纹基线 `_dsh-eng/fingerprints.json`
 
@@ -492,21 +503,25 @@ packages/dsh-engineering-context/
 ├── package.json          name: @voltarenyah/dsh-engineering-context, dsh.bundle.patch
 ├── cordis.patch.yml      - insert: - id: engineering-context
 │                                    name: '@voltarenyah/dsh-engineering-context'   ← 引号必须有
-├── tsconfig.json / tsconfig.test.json / tsdown.config.ts     ← deps.neverBundle: true（不可省）
+├── tsconfig.json         tsc → lib/（**不用** tsdown/vitest，见 decisions.md P0-1）
+├── .gitignore            lib/ 与 node_modules/（lib/ 暂不提交，见 P0-2）
 ├── src/
-│   ├── index.ts          apply(): 注册工具 + 可选服务 + ctx.effect 释放
-│   ├── config.ts         Schema + defaults + resolveConfig（照抄 TIA 包结构）
-│   ├── dsh-runtime.d.ts  手写环境声明；**必须**补 exec.agent.session.header.cwd 与 workspaceRegistry 形状
-│   ├── scope/            作用域解析、路径规则、包含性校验
-│   ├── registry/         工程注册表
-│   ├── change/           指纹客户端、基线、diff 引擎
-│   ├── version/          execFile(git) 封装
-│   ├── context/          变更台账
-│   └── tools/            7 个工作流工具 + index
-├── skills/engineering-context/SKILL.md      D4 三问
+│   ├── index.ts          apply(): 注册工具；无自有资源，故**没有** ctx.effect
+│   ├── config.ts         Schema + defaults + resolveConfig（含目录名安全校验）
+│   ├── errors.ts         稳定错误码 + describeFailure
+│   ├── paths.ts          归一化、包含性校验、slug、portable 路径
+│   ├── workspace.ts      作用域根解析 + **只读**的 workspaceRegistry 访问（按名取，不 import）
+│   ├── registry.ts       `_dsh-eng/projects.json` 的原子写与防御性读
+│   ├── scope.ts          四元组 + 一致性事实（路径存在性、warning）
+│   ├── dsh-runtime.d.ts  手写环境声明（含 exec.agent.session.header.cwd 与 RawJsonSchema）
+│   └── tools/            outcome.ts（共用信封）/ status.ts / project.ts / scope.ts / index.ts
+├── scripts/              link-dsh-runtime.mjs（**从不抽取**缓存）/ tsc.mjs / run-tests.mjs
 ├── docs/                 本文 / PATH-RULES.md / decisions.md
-└── test/
+└── test/                 node:test（37 项）+ helpers/harness.mjs
 ```
+
+后续期次新增的模块（P1–P3）：`src/version/`（`execFile(git)`）、`src/change/`（指纹客户端、
+基线、diff）、`src/context/`（变更台账）、`skills/engineering-context/SKILL.md`。
 
 **登记点**（实现开始后各改一处；现在**先不动**，理由见 [`decisions.md`](decisions.md) N1）：
 
@@ -518,8 +533,14 @@ packages/dsh-engineering-context/
 | `docs/open-questions.md` | 把 A8 / B7 / B8 / B9 等答复落进去 |
 
 **开发期纪律**（血泪见 `packages/dsh-tool-git/AGENTS.md` §2–§4）：
-不把 `@deepseek-ai/*` 装成依赖，走 `link:runtime`；`RUNTIME_ROOTS` 只列**直接 import** 的包；
-`neverBundle: true` 一行不能删（否则产物从 ~58KB 膨胀到 ~390KB，把一份私有运行时内联进去）。
+不把 `@deepseek-ai/*` 装成依赖，走 `link:runtime`；`RUNTIME_ROOTS` 只列**直接 import** 的包
+（本包是 `dsh-tools` / `cordis` / `schemastery` 三个）。
+本包用 `tsc` 而不是 tsdown，所以"tsdown 把可解析的包内联进产物"那个陷阱不适用；
+**若将来改用 tsdown，必须显式加 `deps.neverBundle: true`**。
+
+**另外两条本包特有的纪律**（都写进了 `decisions.md`）：
+`link:runtime` 脚本**从不抽取**运行时缓存（那在仓库之外、不可 git 恢复，P0-8）；
+**不要**在本工作树跑 `pnpm install`（会 prune 兄弟包的手工链接，P0-3）。
 
 **一个省钱的设计**：**不要 import `@deepseek-ai/dsh-workspace`**，只用
 `ctx.get('workspaceRegistry')` 按名取服务（先例：`dsh-workspace` 自己就是
@@ -530,27 +551,32 @@ packages/dsh-engineering-context/
 
 ## 10. 分期与验收口径
 
-| 期 | 做什么 | 依赖 | 独立交付的价值 |
-|---|---|---|---|
-| **P0** | 作用域 + 工程注册表（`eng_status` / `eng_project` / `eng_scope`） | 纯 FS + 宿主 registry | "我现在在哪个工程的哪一版" —— **不需要 TIA** |
-| **P1** | 版本层（`eng_version`）+ 导出物入库 | git | 导出的文本源终于有分支与历史 |
-| **P2** | 变更引擎（`eng_changes` / `eng_export`）+ 增量闭环 | **缝 A + V17 指纹实测** | D6/D9 的工作循环 |
-| **P3** | 变更台账（`eng_context`）+ 项目级 skill + 对族 3 暴露 `ctx.engineeringScope` | P2 | 期望二 |
+| 期 | 做什么 | 依赖 | 独立交付的价值 | 状态 |
+|---|---|---|---|---|
+| **P0** | 作用域 + 工程注册表（`eng_status` / `eng_project` / `eng_scope`） | 纯 FS + 宿主 registry | "我现在在哪个工程的哪一版" —— **不需要 TIA** | ✅ **已实现**（37 项测试通过） |
+| **P1** | 版本层（`eng_version`）+ 导出物入库 | git | 导出的文本源终于有分支与历史 | ⬜ |
+| **P2** | 变更引擎（`eng_changes` / `eng_export`）+ 增量闭环 | **缝 A + V17 指纹实测** | D6/D9 的工作循环 | ⬜ |
+| **P3** | 变更台账（`eng_context`）+ 项目级 skill + 对族 3 暴露 `ctx.engineeringScope` | P2 | 期望二 | ⬜ |
+
+**P0 的实际产出**：`src/` 下 7 个模块 + `src/tools/` 下 5 个文件、`test/` 4 个测试文件
+（37 项，全通过、无跳过）、`scripts/` 3 个脚本。**没有** `ctx.effect` —— 本插件不持有任何
+自有资源（不起子进程、不开句柄），所以 `apply` 注册完工具就返回。
+**没有** `skills/`：文档交付物（D4 三问）在 P3 与项目级 skill 一起做，P0 的三问写在工具描述里。
 
 ### 验收口径（对齐 `docs/roadmap.md` §3）
 
-| 口径 | 怎么验 | 离线可测？ |
-|---|---|---|
-| 可重复 | 给定「project/branch/version」两次物化，导出物逐字节一致 | ✅ |
-| **不串味** | 两个 workspace 各放同名块/同名 UDT，交叉查询互不可见；越界路径被拒 | ✅ |
-| 作用域显式 | 每个工具结果都带四元组 | ✅ |
-| **变更不漏报不误报** | stub 控制器喂录制的指纹：未改动 → `changed = 0`；只改注释 → 只报 `Comments`；只改代码 → 只报 `Code` | ✅（fixture） |
-| 增量可验证 | 改一个块后，导出集合 **==** 指纹报告的集合（D9 闭环） | ⚠️ 需真机 |
-| 失效可感知 | 人为让基线/导出物/`.ap17` 三者版本错配 → 必须**报不一致**，不得静默 | ✅ |
-| 上下文预算 | 每个工具结果 ≤4KB；工具目录开销可复算 | ✅ |
+| 口径 | 怎么验 | 离线可测？ | P0 |
+|---|---|---|---|
+| 可重复 | 给定「project/branch/version」两次物化，导出物逐字节一致 | ✅ | P1/P2 |
+| **不串味** | 两个 workspace 各放同名块/同名 UDT，交叉查询互不可见；越界路径被拒 | ✅ | ✅ 已测（两个 workspace + 同名 id；`path_outside_workspace`） |
+| 作用域显式 | 每个工具结果都带四元组 | ✅ | ✅ 已测（含三档 workspace 身份） |
+| **变更不漏报不误报** | stub 控制器喂录制的指纹：未改动 → `changed = 0`；只改注释 → 只报 `Comments`；只改代码 → 只报 `Code` | ✅（fixture） | ⬜ P2 |
+| 增量可验证 | 改一个块后，导出集合 **==** 指纹报告的集合（D9 闭环） | ⚠️ 需真机 | ⬜ P2 |
+| 失效可感知 | 人为让基线/导出物/`.ap17` 三者版本错配 → 必须**报不一致**，不得静默 | ✅ | 🟡 部分：注册表损坏/异 workspace 已测；导出物/基线错配待 P2 |
+| 上下文预算 | 每个工具结果 ≤4KB；工具目录开销可复算 | ✅ | ✅ 列表封顶 20 行、细节封顶 40 行 |
 
-测试形态照抄本仓两套先例：`node:test`（真实运行时 + stub 控制器）或
-`vitest`（真实 git 临时仓库）。
+测试形态：**`node:test`**（与 `dsh-tia-openness-v17-min` 一致），断言跑在**真实**运行时上 ——
+工具的 schema 由 `defineTool` 真的编译，结果也由运行时的 `validateJsonSchemaValue` 真的校验。
 
 ---
 

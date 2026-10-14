@@ -43,9 +43,8 @@
 │           └── tag_tables/<表名>.xml
 │
 ├── _dsh-eng/                                 ← **插件状态**（可携带、可进 git）
-│   ├── projects.json                         ← 工程注册表（含"当前工程"指针）
-│   ├── scope.json                            ← 本机作用域指针（storageDomain 缺席时的退化位）
-│   └── <project-id>/
+│   ├── projects.json                         ← 工程注册表（含**唯一**的"当前工程"指针）
+│   └── <project-id>/                         ← 该工程的状态（P2/P3：基线、变更集、台账）
 │       ├── fingerprints.json                 ← 指纹基线
 │       ├── changes-<ts>.json                 ← 变更集工件
 │       └── change-context.json               ← 工程变更台账
@@ -191,21 +190,33 @@ projects/*/source/
 | **变更集** | `_dsh-eng/<id>/changes-<ts>.json` | `eng_changes` | ✅ | 可以 |
 | **变更台账** | `_dsh-eng/<id>/change-context.json` | `eng_context` | ✅ | **不可以**（人工录入，无法重建） |
 | **工程注册表** | `_dsh-eng/projects.json` | `eng_project` | ✅ | **不可以**（丢了要重新登记） |
-| **作用域指针** | `_dsh-eng/scope.json` | `eng_scope` | ✅（可忽略） | 可以（可再生） |
 | **项目级 skill** | `.dsh/skills/<name>/SKILL.md` | 用户 / agent（经确认） | ✅ | 可以 |
+
+> **P0 实际会创建/写入的只有两项**：`_dsh-eng/projects.json`（register/forget/scope）与
+> `projects/<id>/work/<name>.ap17`（adopt）。其余各行是 P1–P3 的目标态。
+> **没有"作用域指针"文件**：`current` 就在注册表里（`decisions.md` P0-5 —— 两个指针会互相矛盾）。
+>
+> 另：`eng_project forget` **只**改注册表，不删任何文件；删文件这一动作本插件永远不做。
 
 ---
 
-## 9. 可调参数（实现时的配置面）
+## 9. 可调参数（配置面）
+
+**P0 已实现这三个**（`src/config.ts`，与 `package.json` 的 `Config` schema 一致）：
 
 | 配置 | 默认 | 含义 |
 |---|---|---|
-| `projectsDirName` | `projects` | 工程内容目录名 |
-| `stateDirName` | `_dsh-eng` | 插件状态目录名 |
-| `skillsDirName` | `.dsh/skills` | 项目级 skill 目录（A12） |
+| `projectsDirName` | `projects` | 工程内容目录名（必须是单个安全路径段） |
+| `stateDirName` | `_dsh-eng` | 插件状态目录名（同上） |
 | `requireWorkspace` | `true` | `true` 时越界一律拒绝；`false` 仅用于测试 |
-| `initVcs` | `false` | `register` 是否允许初始化仓库（§6.2） |
-| `adoptSourcePolicy` | `copy` | `copy`（复制）/ `move`（移动，需显式确认）—— 默认最保守的复制 |
+
+**以下为后续期次的目标态，P0 还没有这些字段**：
+
+| 配置 | 默认 | 含义 |
+|---|---|---|
+| `skillsDirName` | `.dsh/skills` | 项目级 skill 目录（P3 / A12） |
+| `initVcs` | `false` | `register` 是否允许初始化仓库（§6.2，P1） |
+| `adoptSourcePolicy` | `copy` | P0 只有 `copy`（字节复制）；`move` 未实现 |
 
 ---
 

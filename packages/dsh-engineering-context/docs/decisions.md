@@ -263,3 +263,144 @@ TIA 包已因此把 31 个上游 skill 收敛为 1 个）；项目级 skill **�
 | 3 | 一次**全项目指纹**的耗时与帧大小（1152 块） | 决定要不要做"指纹缓存 + 只重算可疑对象" | 真机实测 |
 | 4 | 缝 A 的**服务名与接口面**最终取值 | 族 1/族 2 的接缝 | 实现时两边同步一次即可 |
 | 5 | `PATH-RULES.md` §10 的三项（git 位置、目录名、`source/` 保留） | 影响交付物形态，不影响 P0 可开工 | 你的判断 |
+
+---
+
+## P0 实现期的决定（实现「作用域 + 工程注册表」时定的）
+
+> 这一节是**实现**阶段追加的，与上面的 D/N 同级：同样按"最保守 + 可逆"取舍，
+> 每条都写明理由与回退方式。P0 的交付边界见 [`ARCHITECTURE.md`](ARCHITECTURE.md) §10。
+
+### P0-1 · 构建与测试沿用 TIA 包的形态（`tsc` + `node:test`）✅
+
+**决定**：`build` 就是 `tsc -p tsconfig.json`，测试用 `node --test`；**不引入 `tsdown` / `vitest`**。
+
+**理由**：`dsh-tool-git` 用 tsdown + vitest 是因为它是上游 vendor 副本；本包是原创代码，
+TIA 包那套（`tsc` 出 `lib/`，`node:test` 跑真实运行时）已经够用，且**不新增任何工具链依赖**
+（根 `node_modules` 里已有 `typescript`，`vitest`/`tsdown` 只在 git 包的 `node_modules` 里）。
+连带好处见 P0-3：不需要 `pnpm install` 就能构建与测试。
+
+**回退**：换成 tsdown/vitest 只需改 `package.json` 与加配置文件，源码不动。
+
+### P0-2 · `lib/` 暂不提交 ✅
+
+**决定**：`packages/dsh-engineering-context/.gitignore` 忽略 `lib/`。
+
+**理由**：TIA 包提交 `lib/` 是因为它的 `lib/` **是交付物**（loader 直接 import 它，无需构建步骤）。
+本包**还没进蓝图**（N1），没有任何东西会加载 `lib/`，提交构建产物只会让每次 diff 变脏。
+
+**回退**：删掉 `.gitignore` 里那一行、重建并提交，即与 TIA 包一致。
+
+### P0-3 · 不跑 `pnpm install`；lockfile 暂不更新 🟡
+
+**决定**：声明好 `devDependencies`，但**不在本仓执行 `pnpm install`**；
+本地验证靠 `scripts/link-dsh-runtime.mjs` 建**项目内**的链接。
+
+**理由（这是本阶段最要紧的一条）**：本工作树里 `dsh-tia-openness-v17-min` 与 `dsh-tool-git`
+的 `node_modules/@deepseek-ai/*` 是**手工创建**的链接，而 `@deepseek-ai/*` 被刻意排除在
+`dependencies` 之外（根 AGENTS.md §3）。pnpm 的 workspace 安装会把"多余"条目 prune 掉，
+也就是**很可能删掉这两个包的手工链接**，使它们的测试立刻失效 —— 而当前还有别的会话在用这棵树。
+这些目录都在仓库内、可重建，但"顺手让别人的测试挂掉"不是本阶段该付的代价。
+
+**代价（必须承认）**：`pnpm-lock.yaml` 里**没有**本包的 importer，所以
+`pnpm install --frozen-lockfile` 会失败，直到在**安全的时刻**跑一次普通的 `pnpm install`。
+这不影响 `pnpm -r build` / `pnpm -r test`（`pnpm run` 不校验 lockfile），
+也不影响本包自己的 `check`（已实测通过）。
+
+**回退 / 补救**：等你确认没有别的会话在跑时，在仓库根执行：
+
+```powershell
+node "$env:LOCALAPPDATA\Programs\DeepSeek Harness\resources\runtime\pnpm\bin\pnpm.mjs" install
+# 然后按需恢复两个兄弟包的链接（若被 prune）：
+node <pnpm> --filter @voltarenyah/dsh-tia-openness-v17-min run link:runtime
+node <pnpm> --filter dsh-tool-git run link:runtime
+```
+
+### P0-4 · dry-run 规则：加信息立即生效，删/覆盖信息需要显式 `dry_run: false` ✅
+
+**决定**：`register` / `list` 立即生效；`adopt` / `forget` 默认 `dry_run: true`。
+
+**理由**：本仓写操作默认 dry-run 的惯例针对的是**工程数据的破坏**；而 `register` 只往
+workspace 内的注册表加一条记录、`forget` 就能撤销它 —— 要求两次调用只会拖慢正常使用。
+反过来，`adopt` 会覆盖工作副本、`forget` 会移除一条人工录入的信息，默认必须停在"只给计划"。
+规则写进了工具描述（模型一定会读到）。
+
+**回退**：改一处默认值（`args.dry_run !== false` → `args.dry_run === true`）并同步描述。
+
+### P0-5 · 只有一个"当前工程"指针，不设 `scope.json` ✅
+
+**决定**：`current` 只存在于 `_dsh-eng/projects.json`。
+
+**理由**：与 N3 同源 —— 两个指针可以互相矛盾，而"现在谈的是哪一个"是本插件最不能含糊的事。
+`PATH-RULES.md` 里原先列出的 `_dsh-eng/scope.json` 因此**没有实现**，该行已同步更正。
+
+### P0-6 · 每工程的状态目录 = `_dsh-eng/<project-id>/` ✅
+
+**决定**：注册表在 `_dsh-eng/projects.json`，每个工程的状态（P2 的指纹基线、变更集，P3 的台账）
+放 `_dsh-eng/<project-id>/`。
+
+**理由**：落实 N3（workspace 根一份注册表 + 按工程隔离）。P0 还不会创建这个子目录
+（只有 `adopt` 会建 `projects/<id>/work/`），但路径规则已按此实现与文档化。
+
+### P0-7 · `adopt` 在本阶段只做字节复制，并把这一点说出来 ✅
+
+**决定**：`adopt` = `copyFile(source, work)`；结果里明确写"TIA 侧另存属 P2 的族 1 缝"，
+并提示"若工程正在 TIA 里打开，请先保存"。
+
+**理由**：D5 的理想形态是 agent 让 TIA「打开并另存」，那需要族 1 的服务缝（D5/缝 A），P0 没有。
+退而做纯文件复制是**可逆、无破坏**的（源文件只读、目标在工作区内、默认 dry-run），
+而且能让 P0 独立产生价值（用户随后自己用 TIA 打开副本即可）。
+
+**回退**：缝 A 落地后把 `adopt` 改成经族 1 触发另存，并在结果里去掉这段说明。
+
+### P0-8 · `link:runtime` 脚本**从不抽取**运行时缓存 ✅
+
+**决定**：本包的 `scripts/link-dsh-runtime.mjs` 只**读**已存在的
+`<DSH_HOME>/plugin-runtime`，缺包就报错退出；**不**复制兄弟包的抽取逻辑。
+
+**理由**：抽取会删除并重建 `~/.dsh/plugin-runtime` —— 那个目录在仓库之外，
+**无法用 git 恢复**，属于"需要停下等人"的操作。链接本身只写本包的 `node_modules/`（已 gitignore）。
+
+**代价**：裸 checkout 若没有缓存，会提示去跑兄弟包的抽取器（一条明确命令），而不是自己动手。
+
+### P0-9 · 未登记的 workspace 仍然可用，但标 `registered: false` ✅
+
+**决定**：实现 N2。`eng_status` 同时报告"宿主有没有 workspace 服务"与"本目录是否已登记"。
+
+**理由**：拒绝工作会让插件在"workspace 还没登记"时完全不可用；标记则不夸大身份。
+实测覆盖：有 registry 服务且命中 / 有服务但未命中 / 完全没有服务（`ctx.get` 返回 undefined）三种。
+
+### P0-10 · 配置里的目录名拒绝 Windows 保留设备名 ✅
+
+**决定**：`segment()` 除了分隔符、`..`、保留字符，还拒绝 `con`/`prn`/`aux`/`nul`/`com1..9`/`lpt1..9`
+（含带扩展名的形式，如 `nul.txt`）与结尾的点。
+
+**理由**：这是**测试发现的真 bug** ——`stateDirName: 'nul'` 在 Windows 上无法创建
+（`nul\projects.json` 不是可创建的文件），会让每一次写入都失败，且失败形态很怪。
+原实现会静默接受它。回退：删掉那两行校验即可（但会重新引入这个失败模式）。
+
+### P0-11 · 工具面就 3 个；`eng_scope` 只做 `select` / `clear` ✅
+
+**决定**：不为了对称给 `eng_scope` 加 `show`（那是 `eng_status` 的职责），
+分支/版本（`branch`/`version`）留到 P1，作用域四元组里先固定为
+`branch: null` + `version: {kind:'none'}`。
+
+**理由**：两个工具回答同一个问题会让模型无所适从；而四元组的**形状**现在定下来，
+P1 填值时不必让模型重新学。结果里同时给出 `phases.pending`，明确"现在没有版本控制"。
+
+### P0-12 · `defineTool` 会把 spec 编译成 raw JSON Schema（实测）✅
+
+**事实**：`defineTool` 返回的 `definition.parameters` 与 `definition.output.schema`
+已经是**编译后的 raw JSON Schema**（`required` 变成对象级的数组）。
+
+**后果**：`src/dsh-runtime.d.ts` 的 `ToolDefinition` 按此修正（新增 `RawJsonSchema`），
+测试也改为**直接用**这两个 schema 调 `validateJsonSchemaValue` 校验真实结果 ——
+比"再编译一次"更接近注册表实际使用的对象。回退：改回声明即可，但那样声明就与实现不符。
+
+### P0-13 · 构建/测试脚本自己解析 `tsc` ✅
+
+**决定**：`scripts/tsc.mjs` 按"本包链接 → 仓库根"的顺序找 `typescript/bin/tsc`，
+`scripts/run-tests.mjs` 先构建再跑测试；`package.json` 的 `test` 不依赖 PATH 上的 `tsc`。
+
+**理由**：既然不跑 `pnpm install`（P0-3），`<pkg>/node_modules/.bin` 与 PATH 都不可靠；
+而且 `lib/` 不提交（P0-2），`pnpm -r test` 必须先构建才能跑测试。一条命令、无隐藏前提。
