@@ -1,0 +1,601 @@
+// ---------------------------------------------------------------------------
+// Vendored into dsh-engineering-graph (DSH plugin family 3) from:
+//   C:\Users\Ansel\orca\projects\AgentAssistPlcDev\src\Mcp.Knowledge\Import\ExportFolderCrawler.cs
+//   on 2026-10-15.
+//
+// Adaptations applied by this vendoring pass (nothing else was touched):
+//   * namespace Mcp.Knowledge.<Graph|Parsing|Import>  ->  EngineeringGraph.Engine
+//     (flattened to ONE namespace, following family 1's TiaOpennessV17Min.Controller,
+//      which uses a single flat namespace for its whole executable)
+//   * the now-redundant `using Mcp.Knowledge.*;` lines were removed
+//   * the temp-directory segment "Mcp.Knowledge" -> "EngineeringGraph.Engine"
+// The origin's own header below is kept verbatim.
+// Naming rule: docs/decisions.md D17.
+// ---------------------------------------------------------------------------
+// New code for mcp-knowledge (buildnote/plan/mcp-knowledge.md §3, §7) — not a port.
+// Manifest-first dispatcher (2026-07-18 decision): when <exportRoot>/metadata.json exists the import is
+// driven by ManifestImporter; otherwise this root-element folder crawl is the fallback. The crawl
+// classifies each exported file by its SW.* root element and feeds the ported per-category import
+// methods (Graph/TiaXmlSemanticGraphImporter).
+using System.Security.Cryptography;
+using System.Text;
+using System.Text.Json;
+using System.Xml;
+using System.Xml.Linq;
+
+namespace EngineeringGraph.Engine;
+
+public sealed class ExportFolderImportResult
+{
+    public ExportFolderImportResult(SemanticPlcGraph graph, int filesFound, int filesImported, IReadOnlyList<string> warnings, string source)
+    {
+        Graph = graph;
+        FilesFound = filesFound;
+        FilesImported = filesImported;
+        Warnings = warnings;
+        Source = source;
+    }
+
+    public SemanticPlcGraph Graph { get; }
+
+    public int FilesFound { get; }
+
+    public int FilesImported { get; }
+
+    public IReadOnlyList<string> Warnings { get; }
+
+    public IReadOnlyList<ComponentImport> Components => Graph.ComponentImports;
+
+    /// <summary>"manifest" when driven by metadata.json, "crawl" for the root-element folder crawl.</summary>
+    public string Source { get; }
+}
+
+public static class ExportFolderCrawler
+{
+    private const string ProgramBlockPrefix = "SW.Blocks.";
+
+    public static ExportFolderImportResult Import(string exportRoot, Action<string>? progress = null)
+    {
+        if (string.IsNullOrWhiteSpace(exportRoot))
+        {
+            throw new ArgumentException("Export root is required.", nameof(exportRoot));
+        }
+
+        if (!Directory.Exists(exportRoot))
+        {
+            throw new DirectoryNotFoundException($"Export root '{exportRoot}' was not found.");
+        }
+
+        var fullRoot = Path.GetFullPath(exportRoot);
+        RejectReparsePoint(new DirectoryInfo(fullRoot));
+
+        // 1. Per-device subfolders: each subdirectory with its own metadata.json
+        var childFolders = new DirectoryInfo(fullRoot).EnumerateDirectories().ToArray();
+        foreach (var childFolder in childFolders)
+        {
+            RejectReparsePoint(childFolder);
+        }
+
+        var deviceFolders = childFolders
+            .Where(dir => File.Exists(Path.Combine(dir.FullName, ManifestImporter.MetadataFileName)))
+            .Select(dir => dir.FullName)
+            .ToArray();
+
+        if (deviceFolders.Length > 0)
+        {
+            // Import each device individually, then merge into one graph
+            var combinedGraph = new SemanticPlcGraph();
+            var allWarnings = new List<string>();
+            var totalFilesFound = 0;
+            var totalFilesImported = 0;
+            var projectNode = CreateProjectNode(exportRoot, fullRoot);
+            combinedGraph.UpsertNode(projectNode);
+
+            foreach (var deviceDir in deviceFolders)
+            {
+                var deviceName = Path.GetFileName(deviceDir);
+                var result = ManifestImporter.Import(deviceDir, progress, deviceName);
+                // Project node from the device's manifest — skip it (we use the combined one).
+                var skippedProjectIds = result.Graph.Nodes
+                    .Where(n => string.Equals(n.Kind, SemanticNodeKind.Project, StringComparison.OrdinalIgnoreCase))
+                    .Select(n => n.Id)
+                    .ToHashSet(StringComparer.Ordinal);
+                foreach (var node in result.Graph.Nodes)
+                    if (!skippedProjectIds.Contains(node.Id))
+                        combinedGraph.UpsertNode(node);
+                foreach (var edge in result.Graph.Edges)
+                {
+                    if (skippedProjectIds.Contains(edge.FromNodeId) && skippedProjectIds.Contains(edge.ToNodeId))
+                        continue;
+                    if (skippedProjectIds.Contains(edge.FromNodeId))
+                    {
+                        // Rewire: point the CONTAINS edge to the combined project node
+                        combinedGraph.UpsertEdge(new SemanticGraphEdge(
+                            TiaXmlSemanticGraphImporter.EdgeId(projectNode.Id, edge.ToNodeId, edge.Type, edge.Properties),
+                            projectNode.Id, edge.ToNodeId, edge.Type, edge.Properties));
+                    }
+                    else if (skippedProjectIds.Contains(edge.ToNodeId))
+                    {
+                        continue; // edge targeting the old project node — drop
+                    }
+                    else
+                    {
+                        combinedGraph.UpsertEdge(edge);
+                    }
+                }
+                foreach (var component in result.Components)
+                {
+                    var rewrittenEdges = new HashSet<string>(StringComparer.Ordinal);
+                    foreach (var edgeId in component.EdgeIds)
+                    {
+                        var edge = result.Graph.Edges.Single(candidate => candidate.Id == edgeId);
+                        if (skippedProjectIds.Contains(edge.ToNodeId))
+                        {
+                            continue;
+                        }
+
+                        rewrittenEdges.Add(skippedProjectIds.Contains(edge.FromNodeId)
+                            ? TiaXmlSemanticGraphImporter.EdgeId(
+                                projectNode.Id,
+                                edge.ToNodeId,
+                                edge.Type,
+                                edge.Properties)
+                            : edge.Id);
+                    }
+
+                    combinedGraph.RegisterComponentImport(component with
+                    {
+                        NodeIds = component.NodeIds
+                            .Where(nodeId => !skippedProjectIds.Contains(nodeId))
+                            .ToHashSet(StringComparer.Ordinal),
+                        EdgeIds = rewrittenEdges,
+                    });
+                }
+                totalFilesFound += result.FilesFound;
+                totalFilesImported += result.FilesImported;
+                allWarnings.AddRange(result.Warnings);
+            }
+
+            // CONTAINS edges from the combined project node to each device
+            foreach (var deviceDir in deviceFolders)
+            {
+                var deviceName = Path.GetFileName(deviceDir);
+                combinedGraph.UpsertNode(new SemanticGraphNode(
+                    $"plc-device:{deviceName}",
+                    SemanticNodeKind.PlcDevice,
+                    deviceName));
+                TiaXmlSemanticGraphImporter.AddEdgeIfTargetExists(
+                    combinedGraph, projectNode.Id, $"plc-device:{deviceName}", SemanticRelationshipType.Contains);
+            }
+
+            return new ExportFolderImportResult(combinedGraph, totalFilesFound, totalFilesImported, allWarnings, "manifest");
+        }
+
+        // 2. Legacy flat export: metadata.json at the project root (pre-device-subfolder structure)
+        // that contains a "components" array. After the metadata split (2026-07-24), the project
+        // root metadata.json is project-level only (no components) — skip it, fall to crawl.
+        var rootMeta = Path.Combine(exportRoot, ManifestImporter.MetadataFileName);
+        if (File.Exists(rootMeta) && HasComponents(rootMeta))
+        {
+            return ManifestImporter.Import(exportRoot, progress);
+        }
+
+        // 3. Fall to crawl (legacy no-manifest)
+        return ImportByCrawl(exportRoot, progress);
+    }
+
+    public static ExportFolderImportResult ImportComponent(
+        string sourceRoot,
+        string relativePath)
+    {
+        if (string.IsNullOrWhiteSpace(sourceRoot))
+        {
+            throw new ArgumentException("Source root is required.", nameof(sourceRoot));
+        }
+
+        if (!Directory.Exists(sourceRoot))
+        {
+            throw new DirectoryNotFoundException($"Source root '{sourceRoot}' was not found.");
+        }
+
+        var fullRoot = Path.GetFullPath(sourceRoot);
+        var rootMetadata = Path.Combine(fullRoot, ManifestImporter.MetadataFileName);
+        if (File.Exists(rootMetadata) && HasComponents(rootMetadata))
+        {
+            return ManifestImporter.ImportComponent(sourceRoot, relativePath);
+        }
+
+        var normalizedPath = EffectiveSourceImporter.NormalizeRelativePath(relativePath);
+        var fullPath = EffectiveSourceImporter.ResolvePath(fullRoot, normalizedPath);
+        if (!File.Exists(fullPath))
+        {
+            throw new FileNotFoundException(
+                $"Source component '{normalizedPath}' was not found under '{sourceRoot}'.",
+                fullPath);
+        }
+
+        var warnings = new List<string>();
+        var candidate = TryClassify(
+            fullRoot,
+            Path.GetRelativePath(fullRoot, fullPath),
+            warnings);
+        if (candidate == null)
+        {
+            throw new ManifestInvalidException(
+                $"Source component '{normalizedPath}' could not be imported: {string.Join("; ", warnings)}");
+        }
+
+        var graph = new SemanticPlcGraph();
+        var project = CreateProjectNode(sourceRoot, fullRoot);
+        graph.UpsertNode(project);
+        ImportCandidateIntoGraph(candidate, graph, project);
+        TiaXmlSemanticGraphImporter.LinkSymbolsToDbMembers(graph);
+
+        return new ExportFolderImportResult(
+            graph,
+            filesFound: 1,
+            filesImported: 1,
+            warnings,
+            "crawl");
+    }
+
+    /// <summary>Cheap check: does the metadata.json at <paramref name="path"/> have a "components"
+    /// array? True for legacy device manifests, false for project-level metadata.</summary>
+    private static bool HasComponents(string path)
+    {
+        try
+        {
+            using var doc = JsonDocument.Parse(File.ReadAllText(path));
+            return doc.RootElement.TryGetProperty("components", out var comps)
+                && comps.ValueKind == JsonValueKind.Array;
+        }
+        catch (JsonException ex)
+        {
+            throw new ManifestInvalidException(
+                $"metadata.json at '{path}' is not valid JSON: {ex.Message}");
+        }
+        catch (IOException ex)
+        {
+            throw new ManifestInvalidException(
+                $"metadata.json at '{path}' could not be read: {ex.Message}");
+        }
+    }
+
+    internal static SemanticGraphNode CreateProjectNode(string exportRoot, string fullRoot)
+    {
+        var projectName = Path.GetFileName(fullRoot.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
+        if (string.IsNullOrWhiteSpace(projectName))
+        {
+            projectName = exportRoot;
+        }
+
+        return new SemanticGraphNode(
+            $"project:{projectName}",
+            SemanticNodeKind.Project,
+            projectName,
+            new Dictionary<string, string> { ["exportRoot"] = exportRoot });
+    }
+
+    private static ExportFolderImportResult ImportByCrawl(string exportRoot, Action<string>? progress)
+    {
+        var fullRoot = Path.GetFullPath(exportRoot);
+        var relativeFiles = EnumerateManifestlessXmlFiles(fullRoot)
+            .Select(path => Path.GetRelativePath(fullRoot, path))
+            .OrderBy(path => path, StringComparer.Ordinal)
+            .ToArray();
+
+        var candidates = new List<ImportCandidate>();
+        var warnings = new List<string>();
+        foreach (var relativeFile in relativeFiles)
+        {
+            var candidate = TryClassify(fullRoot, relativeFile, warnings);
+            if (candidate != null)
+            {
+                candidates.Add(candidate);
+            }
+        }
+
+        // Duplicate rule (§3): same block identity (root element + name) in several files keeps the
+        // shallowest relative path, ties broken alphabetically; losers are reported, not imported.
+        var winners = new List<ImportCandidate>();
+        foreach (var group in candidates.GroupBy(candidate => candidate.Identity))
+        {
+            var ordered = group
+                .OrderBy(candidate => candidate.Depth)
+                .ThenBy(candidate => candidate.RelativeFile, StringComparer.Ordinal)
+                .ToArray();
+            winners.Add(ordered[0]);
+            foreach (var duplicate in ordered.Skip(1))
+            {
+                warnings.Add(
+                    $"skipped duplicate: {duplicate.RelativeFile} ('{duplicate.Name}' {duplicate.RootElement} already imported from {ordered[0].RelativeFile})");
+            }
+        }
+
+        var graph = new SemanticPlcGraph();
+        var project = CreateProjectNode(exportRoot, fullRoot);
+        graph.UpsertNode(project);
+
+        var imported = 0;
+        foreach (var winner in winners.OrderBy(candidate => candidate.RelativeFile, StringComparer.Ordinal))
+        {
+            ImportCandidateIntoGraph(winner, graph, project);
+
+            imported++;
+            if (progress != null && (imported % 100 == 0 || imported == winners.Count))
+            {
+                progress($"ingest_source: {imported}/{winners.Count} files (crawl)");
+            }
+        }
+
+        TiaXmlSemanticGraphImporter.LinkSymbolsToDbMembers(graph);
+        return new ExportFolderImportResult(graph, relativeFiles.Length, imported, warnings, "crawl");
+    }
+
+    private static IReadOnlyList<string> EnumerateManifestlessXmlFiles(string fullRoot)
+    {
+        var files = new List<string>();
+        var pending = new Stack<DirectoryInfo>();
+        pending.Push(new DirectoryInfo(fullRoot));
+        while (pending.Count > 0)
+        {
+            foreach (var entry in pending.Pop().EnumerateFileSystemInfos())
+            {
+                RejectReparsePoint(entry);
+                if (entry is DirectoryInfo directory)
+                {
+                    pending.Push(directory);
+                }
+                else if (entry is FileInfo file &&
+                         string.Equals(
+                             file.Extension,
+                             ".xml",
+                             OperatingSystem.IsWindows()
+                                 ? StringComparison.OrdinalIgnoreCase
+                                 : StringComparison.Ordinal))
+                {
+                    files.Add(file.FullName);
+                }
+            }
+        }
+
+        return files;
+    }
+
+    private static void RejectReparsePoint(FileSystemInfo entry)
+    {
+        if (entry.Attributes.HasFlag(FileAttributes.ReparsePoint))
+        {
+            throw new ManifestInvalidException(
+                $"Source tree contains reparse point '{entry.FullName}'.");
+        }
+    }
+
+    private static void ImportCandidateIntoGraph(
+        ImportCandidate candidate,
+        SemanticPlcGraph graph,
+        SemanticGraphNode project)
+    {
+        var sourcePath = Path.GetDirectoryName(candidate.RelativeFile) ?? string.Empty;
+        var firstSeparator = sourcePath.IndexOfAny(new[] { '/', '\\' });
+        var deviceName = firstSeparator > 0
+            ? sourcePath[..firstSeparator]
+            : string.Empty;
+        if (string.IsNullOrEmpty(deviceName) && sourcePath.Length > 0)
+        {
+            deviceName = sourcePath;
+        }
+
+        var touches = graph.CaptureTouches(() =>
+        {
+            switch (candidate.Kind)
+            {
+                case ImportKind.ProgramBlock:
+                    TiaXmlSemanticGraphImporter.ImportBlockXml(
+                        candidate.Xml,
+                        new ProgramBlockComponent(
+                            candidate.Name,
+                            candidate.Category!,
+                            sourcePath,
+                            candidate.RelativeFile),
+                        graph,
+                        deviceName);
+                    TiaXmlSemanticGraphImporter.AddEdgeIfTargetExists(
+                        graph,
+                        project.Id,
+                        TiaXmlSemanticGraphImporter.BlockId(deviceName, candidate.Name),
+                        SemanticRelationshipType.Contains);
+                    break;
+                case ImportKind.DataBlock:
+                    TiaXmlSemanticGraphImporter.ImportDbXml(
+                        candidate.Xml,
+                        candidate.RelativeFile,
+                        sourcePath,
+                        graph,
+                        deviceName);
+                    TiaXmlSemanticGraphImporter.AddEdgeIfTargetExists(
+                        graph,
+                        project.Id,
+                        TiaXmlSemanticGraphImporter.DbId(deviceName, candidate.Name),
+                        SemanticRelationshipType.Contains);
+                    break;
+                case ImportKind.Udt:
+                    TiaXmlSemanticGraphImporter.ImportUdtXml(
+                        candidate.Xml,
+                        candidate.RelativeFile,
+                        sourcePath,
+                        graph,
+                        deviceName);
+                    TiaXmlSemanticGraphImporter.AddEdgeIfTargetExists(
+                        graph,
+                        project.Id,
+                        TiaXmlSemanticGraphImporter.UdtId(deviceName, candidate.Name),
+                        SemanticRelationshipType.Contains);
+                    break;
+                case ImportKind.TagTable:
+                    // Reference behaviour: tag tables get no project CONTAINS edge (tags float freely).
+                    TiaXmlSemanticGraphImporter.ImportTagTableXml(
+                        candidate.Xml,
+                        candidate.RelativeFile,
+                        sourcePath,
+                        graph);
+                    break;
+            }
+        });
+        var normalizedPath = candidate.RelativeFile.Replace('\\', '/');
+        graph.RegisterComponentImport(new ComponentImport(
+            SemanticComponentKey(candidate.RootElement, candidate.Name),
+            normalizedPath,
+            candidate.ContentHash,
+            touches.NodeIds,
+            touches.EdgeIds));
+    }
+
+    private static string SemanticComponentKey(string rootElement, string name)
+    {
+        return Convert.ToBase64String(
+                Encoding.UTF8.GetBytes($"{rootElement}|{name}"))
+            .TrimEnd('=')
+            .Replace('+', '-')
+            .Replace('/', '_');
+    }
+
+    private static ImportCandidate? TryClassify(string fullRoot, string relativeFile, IList<string> warnings)
+    {
+        string xml;
+        byte[] bytes;
+        XDocument document;
+        try
+        {
+            bytes = File.ReadAllBytes(Path.Combine(fullRoot, relativeFile));
+            using var stream = new MemoryStream(bytes, writable: false);
+            using var reader = new StreamReader(
+                stream,
+                Encoding.UTF8,
+                detectEncodingFromByteOrderMarks: true);
+            xml = reader.ReadToEnd();
+            document = XDocument.Parse(xml);
+        }
+        catch (XmlException ex)
+        {
+            warnings.Add($"skipped {relativeFile}: malformed XML ({ex.Message})");
+            return null;
+        }
+        catch (IOException ex)
+        {
+            warnings.Add($"skipped {relativeFile}: {ex.Message}");
+            return null;
+        }
+
+        var contentRoot = document.Root;
+        if (contentRoot != null && !contentRoot.Name.LocalName.StartsWith("SW.", StringComparison.Ordinal))
+        {
+            // TIA exports wrap the payload in <Document>; classify by the first SW.* child.
+            contentRoot = contentRoot
+                .Elements()
+                .FirstOrDefault(element => element.Name.LocalName.StartsWith("SW.", StringComparison.Ordinal));
+        }
+
+        if (contentRoot == null)
+        {
+            warnings.Add($"skipped {relativeFile}: no SW.* content element found");
+            return null;
+        }
+
+        var rootElement = contentRoot.Name.LocalName;
+        var kind = rootElement switch
+        {
+            "SW.Blocks.OB" or "SW.Blocks.FB" or "SW.Blocks.FC" => ImportKind.ProgramBlock,
+            "SW.Blocks.GlobalDB" or "SW.Blocks.InstanceDB" or "SW.Blocks.ArrayDB" or "SW.Blocks.DB" => ImportKind.DataBlock,
+            "SW.Types.PlcStruct" => ImportKind.Udt,
+            "SW.Tags.PlcTagTable" => ImportKind.TagTable,
+            _ => ImportKind.Unsupported,
+        };
+        if (kind == ImportKind.Unsupported)
+        {
+            warnings.Add($"skipped {relativeFile}: unsupported root element '{rootElement}'");
+            return null;
+        }
+
+        var name = GetAttributeListValue(contentRoot, "Name");
+        if (string.IsNullOrWhiteSpace(name))
+        {
+            warnings.Add($"skipped {relativeFile}: no <Name> entry in AttributeList of '{rootElement}'");
+            return null;
+        }
+
+        return new ImportCandidate(
+            relativeFile,
+            xml,
+            name,
+            rootElement,
+            kind,
+            kind == ImportKind.ProgramBlock ? rootElement.Substring(ProgramBlockPrefix.Length) : null,
+            relativeFile.Count(character => character == '/' || character == '\\'),
+            Convert.ToHexString(SHA256.HashData(bytes)).ToLowerInvariant());
+    }
+
+    private static string GetAttributeListValue(XElement element, string name)
+    {
+        return element
+            .Elements()
+            .FirstOrDefault(child => child.Name.LocalName == "AttributeList")
+            ?.Elements()
+            .FirstOrDefault(child => child.Name.LocalName == name)
+            ?.Value
+            .Trim() ?? string.Empty;
+    }
+
+    private enum ImportKind
+    {
+        Unsupported,
+        ProgramBlock,
+        DataBlock,
+        Udt,
+        TagTable,
+    }
+
+    private sealed class ImportCandidate
+    {
+        public ImportCandidate(
+            string relativeFile,
+            string xml,
+            string name,
+            string rootElement,
+            ImportKind kind,
+            string? category,
+            int depth,
+            string contentHash)
+        {
+            RelativeFile = relativeFile;
+            Xml = xml;
+            Name = name;
+            RootElement = rootElement;
+            Kind = kind;
+            Category = category;
+            Depth = depth;
+            ContentHash = contentHash;
+            Identity = rootElement + "\n" + name;
+        }
+
+        public string RelativeFile { get; }
+
+        public string Xml { get; }
+
+        public string Name { get; }
+
+        public string RootElement { get; }
+
+        public ImportKind Kind { get; }
+
+        /// <summary>Block category (OB/FB/FC) for program blocks; null otherwise.</summary>
+        public string? Category { get; }
+
+        public int Depth { get; }
+
+        public string ContentHash { get; }
+
+        /// <summary>Duplicate-detection identity: content root element + block name.</summary>
+        public string Identity { get; }
+    }
+}

@@ -1,0 +1,49 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    dsh-engineering-graph C# engine (DSH plugin family 3).
+
+    Targets net8.0, unlike family 1's controller (net48 / x64): the parser, the
+    graph model and the SQLite store have no Siemens dependency at all — this is
+    pure XML plus Microsoft.Data.Sqlite — so there is no reason to hold it to the
+    .NET Framework, and `Microsoft.Data.Sqlite` 8 loads its native provider
+    (e_sqlite3) through SQLitePCLRaw.bundle_e_sqlite3 on net8.
+
+    AssemblyName / RootNamespace follow family 1's <Product>.<Role> rule
+    (TiaOpennessV17Min.Controller): the product is this package's name without the
+    `dsh-` prefix, the role is the directory. See docs/decisions.md D17.
+
+    The vendored sources under Graph/, Parsing/ and Import/ were copied from
+    another repository; each file carries a note listing the exact adaptations
+    (namespace flattening, removal of the now-redundant using lines, one temp
+    directory name). Nothing else was changed.
+  -->
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <AssemblyName>EngineeringGraph.Engine</AssemblyName>
+    <RootNamespace>EngineeringGraph.Engine</RootNamespace>
+    <LangVersion>latest</LangVersion>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <!-- Same as family 1: the executable lands directly in bin/, which is where
+         the TypeScript half resolves it from by default. -->
+    <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+    <Deterministic>true</Deterministic>
+    <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- SQLite storage for the property graph; bundle_e_sqlite3 handles native loading. -->
+    <PackageReference Include="Microsoft.Data.Sqlite" Version="8.0.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Trimmed real V17 exports, used by the self test and by the parser tests.
+         (An XML comment cannot contain two consecutive hyphens, hence the wording.) -->
+    <None Include="fixtures/**/*.xml" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+</Project>
