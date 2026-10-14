@@ -493,9 +493,34 @@ plugin_manager(action: "install_bundle", target: "C:\\Users\\Ansel\\dsh-automati
 
 ## 8. 配置
 
-所有环境相关的设置都写在 **profile 的用户层** `~/.dsh/profiles/dsh-automation-suite/cordis.patch.yml`
-（蓝图里那份是空数组，注释里给了示例）。顶层是 loader patch 条目数组：按 `id` 覆盖 config、
-`disable` 某行，或 `insert` 新行。
+所有环境相关的设置都写在 **profile 的用户层** `~/.dsh/profiles/dsh-automation-suite/cordis.patch.yml`。
+顶层是 loader patch 条目数组：按 `id` 覆盖 config、`disable` 某行，或 `insert` 新行。
+蓝图里那份**不是**空数组了：它同时承载下面的发行版政策层，物化 profile 时会被拷进去。
+
+### 8.1 发行版政策层（注入系统提示词）
+
+`profile/dsh-automation-suite/cordis.patch.yml` 最前面那三块，把发行版规矩注入到 **system 角色**的
+提示词里。**纯配置、无插件代码**，改文字不需要重新构建：
+
+| 条目 | 作用 |
+|---|---|
+| `- id: system-prompt` | 覆盖全局 persona（管**非 preset** 的 agent） |
+| `- id: agent-preset-registry` | 把新会话的默认 preset 指到 `suite` |
+| `- insert: - id: preset-suite` | 发行版自己的 preset：内置 `standard` 的工具清单原样 + 政策文本 |
+
+**要改政策文字，只改 `personaPrefix` / `personaSuffix` 两处 block scalar。**
+想换成中文、或锁死政策（给四个内置 preset 各加一条 `disabled: true`），写法都在文件头注释里。
+
+实测效果（一次真实请求落盘的 `system/message`）：identity 之后紧接着就是 `personaPrefix`，
+`personaSuffix` 落在提示词最末尾；`{{cwd}}`、`{{model}}` 按当次会话求值。
+
+> ⚠️ 别把这段"简化"成只留一行 `- id: system-prompt`。web 组合的 agent 一律走 preset，
+> preset 内的 `dsh-persona` 行按作用域**遮蔽**全局 persona——已实测：给全局 persona 打标记，
+> 该标记**不会**出现在 preset 会话的提示词里；而 `dsh-base` 的全局工具行全是 `disabled: true`，
+> 真正生效的工具面就在 preset 的 `plugins` 里。机理与升级时的重生成办法见
+> [profile/dsh-automation-suite/README.md](profile/dsh-automation-suite/README.md)。
+
+### 8.2 插件配置
 
 ```yaml
 # ~/.dsh/profiles/dsh-automation-suite/cordis.patch.yml
@@ -633,7 +658,7 @@ npm run skills:build     # TIA：按 pinned commit 重新取上游知识库
 dsh --profile dsh-automation-suite --dump-config
 ```
 
-预期结尾出现（每个本地插件 3 行，共 **1265 行 = 官方 web 组合 1259 + 3 × 2**）：
+预期结尾出现（每个本地插件 3 行）：
 
 ```yaml
 # == @voltarenyah/dsh-tia-openness-v17-min
@@ -642,6 +667,23 @@ dsh --profile dsh-automation-suite --dump-config
 # == dsh-tool-git
 - id: tool-git
   name: dsh-tool-git
+```
+
+带上 **§8.1 的政策层**后，行数变成 **1517 = 1265 + 252**（多出全局 `system-prompt` 覆盖行、
+`agent-preset-registry` 覆盖行，以及 `preset-suite` 那一整块 ≈ 200 行的工具清单），并且多出：
+
+```yaml
+- id: agent-preset-registry
+  config:
+    default: suite
+- id: preset-suite
+  name: '@deepseek-ai/dsh-agent-preset'
+```
+
+想在不改动任何环境的前提下预览政策层，用 `--patch` 叠加（`--dump-config` 不会挂载插件）：
+
+```powershell
+dsh --profile web --patch .\profile\dsh-automation-suite\cordis.patch.yml --dump-config
 ```
 
 更强的一条是 `dsh --profile <p> --dump-config-schema`：输出里出现该插件的 Config 字段

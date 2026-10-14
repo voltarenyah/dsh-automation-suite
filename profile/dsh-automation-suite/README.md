@@ -22,11 +22,76 @@
 | 文件 | 说明 |
 |---|---|
 | `package.json` | profile 清单。`dsh.profile.bundles` 是**按包名**解析 bundle 目录的依据 |
-| `cordis.patch.yml` | 用户 patch 层，在所有 bundle 层之后应用。环境相关设置（`opennessDir`、超时）写这里 |
+| `cordis.patch.yml` | 用户 patch 层，在所有 bundle 层之后应用。环境相关设置（`opennessDir`、超时）写这里；发行版的行为政策也在这里（见下节） |
 | `pnpm-workspace.yaml` | 与 DSH `initProfile()` 生成的模板逐字一致，`nodeLinker: hoisted` 是树外插件需要的 |
 
 `dsh` 首次启动一个 profile 目录时会额外生成 `cordis.yml`（空的根 include 存根，内容写着
 "Edit cordis.patch.yml, not this file"）与 `.plugin-manager/`。两者都已 gitignore，不要手改。
+
+## 发行版政策层：往系统提示词里注入发行版规矩
+
+`cordis.patch.yml` 里那三块（全局 `system-prompt` persona、`preset-suite`、`agent-preset-registry`）
+把发行版的政策文本注入到 **system 角色**的提示词里。**纯配置，没有任何插件代码**，改文字不用重新构建。
+
+**要改政策文本，只改文件里那两处 block scalar**（`personaPrefix` / `personaSuffix`）。
+文件头部注释记录了另外两种改法：把它换成中文、以及给四个内置 preset 各加一条 `disabled: true`
+把政策锁死（不许切回无政策的 preset）。
+
+### 为什么必须整份重述 `standard` 的 plugins 列表
+
+这条最容易被"顺手简化"，改坏的方式是不报错的（工具悄悄消失），所以写在这里：
+
+1. 系统提示词里**唯一由配置提供的文本槽位**是 persona prefix/suffix。但 web 组合的 agent 一律走
+   preset，preset 内的 `dsh-persona` 行在 agent 作用域注册同名段 `deployment:persona-prefix`，
+   按作用域**遮蔽**全局 `system-prompt` 的 persona
+   （`dsh-scope` 的 `ScopedLayers.merge`；`dsh-persona` 包自己的注释也这么写）。
+   ⇒ 只改全局那一行，对 preset 会话无效。
+2. loader 的 patch 是「按 key 浅合并、`config` 整体替换」
+   （`cordis-plugin-loader/src/config/entry.ts` 的 `Entry.update`），嵌套的 `config.plugins`
+   **不会**按 id 合并；而 web 组合里 `dsh-base` 的全局工具行**全部 `disabled: true`**，
+   真正生效的工具面就在 preset 的 `plugins` 列表里。
+   ⇒ 覆盖或新建 preset 必须把 `plugins` 整份写出来；只写一个 persona 行会把该 agent 的工具全丢掉。
+
+因此本文件里的 `preset-suite` 与上游 `standard` 的 32 条子插件行**逐项等价**（id、name、顺序、
+`disabled`/`group`/`isolate`/`config` 全部相同），只有 persona 行与 id/order/名称不同。
+升级 DSH 后上游若改了 `standard`，这份副本**不会**自动跟随，需要按文件头注释重新生成。
+
+### 验收
+
+```powershell
+# 组合是否成立（无副作用，不需要物化 profile）
+dsh --profile web --patch .\profile\dsh-automation-suite\cordis.patch.yml --dump-config
+```
+
+预期：exit 0，且新树里出现
+
+```yaml
+- id: agent-preset-registry
+  config:
+    default: suite
+- id: preset-suite
+  name: '@deepseek-ai/dsh-agent-preset'
+  config:
+    id: suite
+    ...
+          - id: persona
+            config:
+              prefix: |-
+                You are the dsh-automation-suite agent: ...
+```
+
+本 profile 自身（物化后）的验收：
+
+```powershell
+dsh --profile dsh-automation-suite --dump-config
+```
+
+输出会比政策层之前多 **252 行**（政策层在官方 web 组合上是 1265 → 1517 行），并且仍以两个插件行结尾。
+
+> ⚠️ `start-env.ps1` 只在 profile 目录**尚不存在**时从蓝图拷贝 `cordis.patch.yml`
+> （`if (-not (Test-Path $manifest))`）。所以改完蓝图后要让它生效，得 `-Reset` 重建，
+> 或者手动把新内容同步进已物化的那个目录。物化目录里的 patch 是**应用会回写的活状态**
+> （设置项以行形式写回），所以同步时请**追加/合并**，不要整文件覆盖。
 
 ## ⚠️ `dsh plugin add` 装不了它
 
@@ -112,6 +177,14 @@ dsh --profile dsh-automation-suite --dump-config
 - id: tia-openness-v17-min
   name: '@voltarenyah/dsh-tia-openness-v17-min'
 ```
+
+行数：**政策层之前 1265 行**（= 官方 web 组合 1259 + 每个本地插件 3 行 × 2）；
+**带上政策层之后 +252 行**（多出全局 `system-prompt` 覆盖行、`agent-preset-registry` 覆盖行，
+以及 `preset-suite` 那一整块 ≈ 200 行的工具清单）。
+
+> 注意这两条命令都是对**已物化的 profile**生效的：`--profile` 读的是
+> `$DSH_HOME/profiles/dsh-automation-suite/`，不是本蓝图目录。想在不改动任何环境的前提下
+> 预览政策层的效果，用上面「发行版政策层」一节里的 `--patch` 写法。
 
 ## 一个待定项
 

@@ -63,6 +63,35 @@ DSH 的解析机制有两条独立路径，**两者都靠包名**：
       name: '@scope/my-plugin'   # ← 引号必须有，且等于 package.json 的 name
 ```
 
+### 系统提示词注入在 profile 蓝图里（发行版政策层）
+
+模型看到的**发行版规矩**注入在 profile 蓝图里，**不在任何插件里**——改它不需要写代码、也不需要重新构建：
+
+| 位置 | 是什么 |
+|---|---|
+| `profile/dsh-automation-suite/cordis.patch.yml` | 政策层本体：`- id: system-prompt`（全局 persona）、`- id: agent-preset-registry`（默认 preset）、`- insert: - id: preset-suite`（发行版 preset，政策文本就在它的 persona 行里） |
+| 同上文件头部注释 | 为什么必须整份重述 preset、升级 DSH 后怎么重新生成 |
+| `profile/dsh-automation-suite/README.md` | 「发行版政策层」一节：机理、验收、演示命令 |
+| 根 `README.md` §8.1 / §11 | 用户向说明与验收行数 |
+
+**要改政策文字，只改 `personaPrefix` / `personaSuffix` 两处 block scalar。**
+
+三条会**静默出错**的注意事项（都已实测，别凭直觉改）：
+
+1. **别"简化"成只留 `- id: system-prompt` 一行**。web 组合的 agent 一律走 preset，preset 里的
+   `dsh-persona` 按作用域**遮蔽**全局 persona —— 实测：给全局 persona 打标记，该标记不会出现在
+   preset 会话的提示词里。全局那一行只对非 preset 的 agent 有效。
+2. **别只往 preset 里写一个 persona 行**。loader 的 patch 是「按 key 浅合并、`config` 整体替换」
+   （`cordis-plugin-loader` 的 `Entry.update`），嵌套 `config.plugins` **不按 id 合并**；而 web 组合里
+   `dsh-base` 的全局工具行全是 `disabled: true`，真正生效的工具面就在 preset 的 `plugins` 里 ——
+   漏掉整份清单会让该 agent 的工具**静默消失**，不报错。所以 `preset-suite` 必须整份照抄 `standard`。
+3. **改完蓝图不等于生效**。`scripts/start-env.ps1` 只在 profile 目录**尚不存在**时拷贝
+   `cordis.patch.yml`，已物化的 profile 要 `-Reset` 或手动同步；而物化目录里那份是**应用会回写的
+   活状态**（设置项以行形式写回，CST 保留式写入），同步时**追加/合并**，不要整文件覆盖。
+
+验证政策是否真的进了提示词，不必猜：会话日志（`<DSH_HOME>/sessions/**/session.v4.jsonl.zstd`，
+多帧 zstd）里有真实的 `system/message` 事件，可直接读渲染后的全文。
+
 ---
 
 ## 2. 常规命令
@@ -150,7 +179,10 @@ profile 组合的端到端验收：
 dsh --profile dsh-automation-suite --dump-config
 ```
 
-预期结尾出现（每个本地插件 3 行，共 1265 行 = 官方 web 组合 1259 + 3 × 2）：
+预期结尾出现（每个本地插件 3 行；基线 **1265 行** = 官方 web 组合 1259 + 3 × 2，
+**加上 §1「系统提示词注入在 profile 蓝图里」那条政策层后 +252 行** —— 本机实测
+`dsh --profile web --patch profile/dsh-automation-suite/cordis.patch.yml --dump-config`
+是 1265 → 1517）：
 
 ```yaml
 # == @voltarenyah/dsh-tia-openness-v17-min
