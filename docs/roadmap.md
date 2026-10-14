@@ -15,7 +15,7 @@
 | # | 插件族 | 对应层 | 状态 | 落地位置 |
 |---|---|---|---|---|
 | **1** | 工控软件接口插件族（**软件版本 × 能力层级**：V17/V18… × min/std/pro） | ① 接入层 | 🟡 已有 **V17 × min** 成员 | `packages/dsh-tia-openness-v17-min` |
-| **2** | 工程上下文管理插件 | 作用域（横向） | 🟡 **部分实现**（P0：作用域 + 工程注册表，3 个工具；未登记进蓝图） | `packages/dsh-engineering-context` |
+| **2** | 工程上下文管理插件 | 作用域（横向） | 🟡 **部分实现**（P0：作用域 + 工程注册表，3 个工具；**已登记进蓝图**） | `packages/dsh-engineering-context` |
 | **3** | 工程知识图谱管理插件 | ② 语义层 | ⬜ 未开始 | 待定 |
 
 ```
@@ -115,10 +115,10 @@
 使得会话中就某个工程问题对话时，工具能暴露出**恰当的工程上下文**。
 
 > **状态：设计 ✅ 已定稿；P0（作用域 + 工程注册表）🟡 已实现（37 项单测通过）；P1–P3 ⬜ 未开始。**
-> 落地位置 `packages/dsh-engineering-context`。**尚未登记进 profile 蓝图**（刻意：蓝图里多一个
-> 名字而 `packages/` 下找不到对应包时，`scripts/start-env.ps1` 会直接失败），所以现在没有任何
-> profile 会加载它；验证方式是 `node scripts/run-tests.mjs`（或 `pnpm --filter
-> @voltarenyah/dsh-engineering-context run check`）。
+> 落地位置 `packages/dsh-engineering-context`，**已登记进 profile 蓝图**
+> （`profile/dsh-automation-suite/package.json` 的 `dependencies` + `dsh.profile.bundles`）。
+> 验收：`pwsh -NoProfile -File scripts\start-env.ps1` 之后 `dsh --profile dsh-automation-suite
+> --dump-config` 出现本插件行（实测 **1520 行**）；本包自身的 `check` 可独立跑。
 > 设计见该包 [`docs/ARCHITECTURE.md`](../packages/dsh-engineering-context/docs/ARCHITECTURE.md)、
 > [`docs/PATH-RULES.md`](../packages/dsh-engineering-context/docs/PATH-RULES.md)、
 > [`docs/decisions.md`](../packages/dsh-engineering-context/docs/decisions.md)；
@@ -143,7 +143,6 @@
 | **没有变更台账** | 期望二（「待办清单」式上下文）未落地 | P3 |
 | **没有随包 skill** | D4 三问目前写在工具描述里，没有随包知识库 | P3（与项目级 skill / A12 一起做） |
 | **`adopt` 只做字节复制** | 不是 TIA 侧「另存」，工程正开着时副本可能过期 | P0-7；缝 A 落地后改为经族 1 触发另存 |
-| **未登记进蓝图** | 终端用户还不能用；只有单测与 `pnpm --filter` 验证 | 等你看过 P0 再决定是否加 `dsh.profile.bundles` |
 
 ### 三条期望
 

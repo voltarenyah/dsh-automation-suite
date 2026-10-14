@@ -11,7 +11,8 @@
 |---|---|
 | `@deepseek-ai/dsh-base` | DSH 基础层（会话、工具注册表、LLM……） |
 | `@deepseek-ai/dsh-web-app` | Web 应用层 —— 没有它这个 profile 启动后没有 app 可跑 |
-| `@voltarenyah/dsh-tia-openness-v17-min` | 本发行版的第一个插件 |
+| `@voltarenyah/dsh-tia-openness-v17-min` | 本发行版的第一个插件（接口族：与 TIA Portal 对话） |
+| `@voltarenyah/dsh-engineering-context` | 工程上下文插件（族 2）：作用域 + 工程注册表。排在接口插件之后，因为它要消费前者暴露的服务 |
 | `dsh-tool-git` | 结构化 Git 工具族 + 破坏性命令闸门（vendor 自上游 `lxj808624/dsh-tool-git` v0.1.3） |
 
 `dsh-web-app` 是**超出最初清单额外加的**：只列 `dsh-base` 的话 profile 能 `--dump-config`，
@@ -86,7 +87,7 @@ dsh --profile web --patch .\profile\dsh-automation-suite\cordis.patch.yml --dump
 dsh --profile dsh-automation-suite --dump-config
 ```
 
-输出会比政策层之前多 **252 行**（政策层在官方 web 组合上是 1265 → 1517 行），并且仍以两个插件行结尾。
+输出会比政策层之前多 **252 行**（政策层在官方 web 组合上是 1268 → 1520 行），并且以三个插件行结尾。
 
 > ⚠️ `start-env.ps1` 只在 profile 目录**尚不存在**时从蓝图拷贝 `cordis.patch.yml`
 > （`if (-not (Test-Path $manifest))`）。所以改完蓝图后要让它生效，得 `-Reset` 重建，
@@ -149,7 +150,7 @@ dsh plugin --profile dsh-automation-suite install
 dsh --profile dsh-automation-suite --dump-config
 ```
 
-这条流程已实测通过：输出 **1265 行 = 官方 web 组合的 1259 行 + 每个插件行 3 行 × 2**，exit 0。
+这条流程已实测通过：输出 **1268 行 = 官方 web 组合的 1259 行 + 每个插件行 3 行 × 3**，exit 0。
 
 > ⚠️ 第 2 步的 tarball 文件名不要硬编码 `@scope-` 前缀：`pnpm pack` 对 `@scope/name` 产出的是
 > `scope-name-<version>.tgz`（剥掉 `@`、`/`→`-`），对不带 scope 的包就是 `dsh-tool-git-0.1.3.tgz`。
@@ -170,16 +171,19 @@ dsh --profile dsh-automation-suite --dump-config
 预期结尾出现：
 
 ```yaml
-# == dsh-tool-git
-- id: tool-git
-  name: dsh-tool-git
 # == @voltarenyah/dsh-tia-openness-v17-min
 - id: tia-openness-v17-min
   name: '@voltarenyah/dsh-tia-openness-v17-min'
+# == @voltarenyah/dsh-engineering-context
+- id: engineering-context
+  name: '@voltarenyah/dsh-engineering-context'
+# == dsh-tool-git
+- id: tool-git
+  name: dsh-tool-git
 ```
 
-行数：**政策层之前 1265 行**（= 官方 web 组合 1259 + 每个本地插件 3 行 × 2）；
-**带上政策层之后 +252 行**（多出全局 `system-prompt` 覆盖行、`agent-preset-registry` 覆盖行，
+行数：**政策层之前 1268 行**（= 官方 web 组合 1259 + 每个本地插件 3 行 × 3）；
+**带上政策层之后 +252 行 = 1520 行**（多出全局 `system-prompt` 覆盖行、`agent-preset-registry` 覆盖行，
 以及 `preset-suite` 那一整块 ≈ 200 行的工具清单）。
 
 > 注意这两条命令都是对**已物化的 profile**生效的：`--profile` 读的是

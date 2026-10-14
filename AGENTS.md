@@ -187,15 +187,18 @@ profile 组合的端到端验收：
 dsh --profile dsh-automation-suite --dump-config
 ```
 
-预期结尾出现（每个本地插件 3 行；基线 **1265 行** = 官方 web 组合 1259 + 3 × 2，
+预期结尾出现（每个本地插件 3 行；基线 **1268 行** = 官方 web 组合 1259 + 3 × 3，
 **加上 §1「系统提示词注入在 profile 蓝图里」那条政策层后 +252 行** —— 本机实测
 `dsh --profile web --patch profile/dsh-automation-suite/cordis.patch.yml --dump-config`
-是 1265 → 1517）：
+是 1268 → 1520）：
 
 ```yaml
 # == @voltarenyah/dsh-tia-openness-v17-min
 - id: tia-openness-v17-min
   name: '@voltarenyah/dsh-tia-openness-v17-min'
+# == @voltarenyah/dsh-engineering-context
+- id: engineering-context
+  name: '@voltarenyah/dsh-engineering-context'
 # == dsh-tool-git
 - id: tool-git
   name: dsh-tool-git

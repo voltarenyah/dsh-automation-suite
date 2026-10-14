@@ -4,6 +4,7 @@
   "private": true,
   "description": "DSH profile blueprint for the dsh-automation-suite distribution: the shipped Web composition plus this suite's plugins.",
   "dependencies": {
+    "@voltarenyah/dsh-engineering-context": "workspace:^",
     "@voltarenyah/dsh-tia-openness-v17-min": "workspace:^",
     "dsh-tool-git": "workspace:^"
   },
@@ -13,6 +14,7 @@
         "@deepseek-ai/dsh-base",
         "@deepseek-ai/dsh-web-app",
         "@voltarenyah/dsh-tia-openness-v17-min",
+        "@voltarenyah/dsh-engineering-context",
         "dsh-tool-git"
       ]
     }

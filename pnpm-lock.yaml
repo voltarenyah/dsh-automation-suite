@@ -47,6 +47,9 @@ importers:
 
   profile/dsh-automation-suite:
     dependencies:
+      '@voltarenyah/dsh-engineering-context':
+        specifier: workspace:^
+        version: link:../../packages/dsh-engineering-context
       '@voltarenyah/dsh-tia-openness-v17-min':
         specifier: workspace:^
         version: link:../../packages/dsh-tia-openness-v17-min
