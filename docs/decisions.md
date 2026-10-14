@@ -180,6 +180,47 @@ V17 子集需实测确认；该包 `docs/EXTENDED-SURFACE.md` 已在接线 `incl
 
 ---
 
+## D12 · 工程上下文管理插件（族 2）：作用域锚定宿主 workspace，状态落 workspace 内 ✅
+
+**背景**：插件族 2 进入设计（产出：[`packages/dsh-engineering-context/docs/ARCHITECTURE.md`](../packages/dsh-engineering-context/docs/ARCHITECTURE.md)）。
+设计前核对了运行中的宿主，发现 **D5 的 workspace 模型在宿主里已经存在**：
+服务 `ctx.workspaceRegistry`（`@deepseek-ai/dsh-workspace`），
+而会话归属判定 = session 的 `header.cwd` 归一后**等于** workspace 路径
+（`dsh-workspace/lib/index.js:122`；服务注册见 `:374`），工具调用期可读到该 cwd
+（`dsh-tools/lib/index.js:1423`）。
+
+**决定**（三条，细节与该包的编号决策见其 `docs/decisions.md` D1–D14）：
+
+1. **作用域锚定宿主的 workspace，不自建**：作用域根 = `exec.agent.session.header.cwd`；
+   宿主身份用 `ctx.workspaceRegistry.resolveByPath()` 认领；**只读**注册表 ——
+   从不 `create` / `attachSession` / `archiveSession`（建 workspace 是用户在 GUI 的显式动作）。
+   ⇒ **D5 不需要这一族实现一遍**，"不串味"由"每次调用从 cwd 重新解析 + 路径包含性校验"结构性保证。
+2. **状态落 workspace 内**：`<workspace>/_dsh-eng/`（工程注册表、**指纹基线**、变更集、变更台账），
+   可携带、可进 git；宿主 `ctx.storageDomain` 只承担**可再生**的作用域指针。
+   `ctx.spillStore` 因按会话归属且工件会过期，**不用于基线**。
+3. **与族 1 的接缝 = 服务，不抽包**：族 1 注册一个可选的 cordis `Service`
+   （只读能力：状态 / 开关项目 / 列对象含指纹 / 导出），族 2 可选注入，缺席时降级读旧工件并**报过期**。
+   与 **D10**（先各自独立、不抽共享包）不冲突 —— 这是**服务契约**，不是共享包；
+   且它不经过族 1 的工具面，所以 **A15** 怎么定都不影响这条路径。
+
+**随设计一并定的两条口径**：变更键**只用 TIA 指纹**，manifest 的 `sha256` 只作完整性审计
+（它含 `<DocumentInfo><Created>`，每次导出都变，见
+[`MANIFEST-GAP-ANALYSIS.md`](../packages/dsh-tia-openness-v17-min/docs/MANIFEST-GAP-ANALYSIS.md) §3）；
+对象身份键在 `tiaObjectId` 拿到之前走"复合键 + `rename-candidate`"降级路径，
+并在结果里**显式标记**"身份按名字推断"（身份键错会让跨版本关联**静默断链**，见 D7）。
+
+**后果**：
+
+- 落地位置定为 `packages/dsh-engineering-context`；**蓝图登记与 `package.json` 留到实现开始时再加**
+  （理由：蓝图 `dsh.profile.bundles` 多一个名字，`scripts/start-env.ps1` 就会去链一个不存在的包，
+  会让"启动 App"直接失败 —— 见该包 `docs/decisions.md` N1）；
+- 新增两个**族 1 侧**的工作项：注册该服务；补 `tiaObjectId`（后者仍待实测）；
+- 开放问题 **A8 / B7 / B8 / B9** 已答（见 [`open-questions.md`](open-questions.md)）；
+- 状态同步：[`roadmap.md`](roadmap.md) §1/§3 与根 [`README.md`](../README.md) §2 均记为
+  "实现未开始（设计已定稿）"。
+
+---
+
 ## 待办验证清单（由以上决策派生）
 
 | # | 待验证 | 来源 |
@@ -187,4 +228,5 @@ V17 子集需实测确认；该包 `docs/EXTENDED-SURFACE.md` 已在接线 `incl
 | 1 | V17 上 `FingerprintProvider` 的可得性与粒度 | D6 |
 | 2 | 导出物里的 id 在改名/编辑/重导/另存后的稳定性 | D7 |
 | 3 | 以 min 为依赖被 std 复用时，插件行与控制器生命周期是否干净（一次会话） | D2 |
-| 4 | workspace 路径规则的字段级定义 | D5 → B7 |
+| 4 | ~~workspace 路径规则的字段级定义~~ → **已定稿**：[`packages/dsh-engineering-context/docs/PATH-RULES.md`](../packages/dsh-engineering-context/docs/PATH-RULES.md) §8（其 §10 三项待确认） | D5 → B7 |
+| 5 | 族 1 的服务缝（服务名与接口面）与族 2 跑通一次 | D12 |
