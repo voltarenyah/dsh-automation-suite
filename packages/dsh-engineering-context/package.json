@@ -1,0 +1,50 @@
+{
+  "name": "@voltarenyah/dsh-engineering-context",
+  "version": "0.1.0",
+  "private": false,
+  "description": "DSH plugin (family 2): engineering project context — workspace-anchored scope resolution and a per-workspace engineering project registry, with no dependency on TIA Portal or a graph database.",
+  "type": "module",
+  "license": "MIT",
+  "engines": {
+    "node": ">=22.19.0"
+  },
+  "main": "./lib/index.js",
+  "exports": {
+    ".": {
+      "default": "./lib/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "lib",
+    "cordis.patch.yml",
+    "README.md",
+    "docs"
+  ],
+  "dsh": {
+    "manifestVersion": 1,
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  },
+  "keywords": [
+    "deepseek-harness",
+    "dsh-plugin",
+    "dsh",
+    "cordis",
+    "engineering-context",
+    "workspace",
+    "plc"
+  ],
+  "scripts": {
+    "build": "node scripts/tsc.mjs -p tsconfig.json",
+    "typecheck": "node scripts/tsc.mjs -p tsconfig.json --noEmit",
+    "link:runtime": "node scripts/link-dsh-runtime.mjs",
+    "test": "node scripts/run-tests.mjs",
+    "check": "node scripts/run-tests.mjs"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "typescript": "^5.6.0"
+  }
+}

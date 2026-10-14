@@ -1,0 +1,8 @@
+# dsh-engineering-context bundle layer: insert the plugin row when this bundle is active.
+#
+# The package name is scoped, so the scalar MUST be quoted: `@` is a reserved
+# start character in YAML. It must match package.json's `name` byte for byte —
+# the loader treats this string as a module identifier (root AGENTS.md §1).
+- insert:
+    - id: engineering-context
+      name: '@voltarenyah/dsh-engineering-context'

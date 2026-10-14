@@ -1,0 +1,14 @@
+# Build output of src/. Deliberately NOT committed at this stage: the plugin is
+# not reachable from any profile yet (its bundle name is not in the blueprint
+# `dsh.profile.bundles`, on purpose — see docs/decisions.md N1), so there is
+# nothing that would load lib/. Flip to the `dsh-tia-openness-v17-min` convention
+# (commit lib/, ignore nothing here) when the blueprint entry lands.
+lib/
+
+# Local development links to the DeepSeek Harness runtime packages, created by
+# scripts/link-dsh-runtime.mjs. They are never shipped: an installed plugin
+# resolves @deepseek-ai/* from the profile's runtime resolution.
+node_modules/
+
+# Scratch output.
+*.log
