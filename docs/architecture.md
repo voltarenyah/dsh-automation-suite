@@ -203,7 +203,7 @@ min 新增的能力必须能低成本流向 std / pro —— 否则改用"内核
 
 图底座采用 **SQLite + Graph DB** 这条技术路径（已在另一个代码库验证可用），
 **不引入服务型图数据库** —— 方案跑在工程师本机，不应要求额外部署。
-分区/更新策略（A10）与语法翻译深度（A11）仍待定。
+分区/更新策略（A10）与语法翻译深度（A11）**已定** —— 见 [`decisions.md`](decisions.md) **D13** / **D14**。
 
 #### 期望：准确翻译 XML 中的 PLC 语法，兼容性强
 
@@ -212,11 +212,11 @@ min 新增的能力必须能低成本流向 std / pro —— 否则改用"内核
   图数据库只是承载它的手段。
 - **兼容性强**：能应对不同来源、不同版本的导出物（不同 TIA 版本、不同语言、不同写法），
   而不是只认手上的那一个样本。
-- **关系边的两个来源（待定，见 [`open-questions.md`](open-questions.md) A13）**：
-  - **自己解析 XML**（离线可用，但"谁引用了谁"要靠推断）；
-  - **从 TIA 取交叉引用** —— Openness 的 `CrossReferenceService` 直接给 unused / using / used-by，
-    是**权威答案**但要开项目。
-  两者是否都以、以谁为准、如何交叉校验，尚未决定。
+- **关系边的来源（已定）**：**只解析 XML，不取 TIA 交叉引用**（[`decisions.md`](decisions.md) **D15**）。
+  - 好处：图谱层**离线可用** —— 不依赖 TIA Portal，可在 CI 跑；
+  - 代价：跨块、跨 UDT 的深层引用闭包（unused / used-by）靠 XML 推断，**可能漏或错**；
+  - Openness 的 `CrossReferenceService`（unused / using / used-by）是**权威答案**但要开项目，
+    已**降级为后续可选项**，不作边的主来源。
 
 - **候选的图模型**（待定，需与实际解析结果对齐）：
 
@@ -224,6 +224,17 @@ min 新增的能力必须能低成本流向 std / pro —— 否则改用"内核
   |---|---|
   | 节点 | 块、PLC 数据类型（UDT）、标签表、标签、用户组、I/O |
   | 边 | 调用、包含（组层级）、实例化、读写（标签）、引用类型 |
+
+  **与移植物实际词表的对齐情况**（已读另一代码库的 `SchemaVocabulary.cs` / `SemanticPlcGraph.cs` 确认）：
+  它交付的节点种类是 `Project` / `OB` / `FB` / `FC` / `Network` / `Instruction` / `Variable` /
+  `Global DB` / `Instance DB` / `DB Member` / `Data Type` / `UDT` / `UDT Member` / `PLC Tag` /
+  `IO Address`（其种类常量里另有 `PLC Device` / `Hardware Device`，不在 `get_schema` 的清单内）；
+  边类型是 `CONTAINS` / `CALLS` / `READS` / `WRITES` / `HAS_TYPE` / `INSTANCE_OF` /
+  `CONNECTED_TO` / `EXECUTES_BEFORE` / `EXECUTES_AFTER` / `REFERS_TO`（同理另有 `DECLARES`
+  不在清单内）。
+  **两点与上表不一致，落地时要留意**：候选的"**标签表**"没有对应的节点种类 —— 它落在
+  `PLC Tag` / `IO Address` 上；候选的"**用户组**"也没有对应的节点种类（组层级不作为节点）。
+  具体词表在族 3 落地时冻结并写进该包自己的文档。
 
 - **边界**：只做静态解析与查询，不碰设备、不做版本管理。写入工程的唯一通道是插件族 1。
 

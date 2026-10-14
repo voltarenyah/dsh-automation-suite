@@ -145,8 +145,8 @@ V17 子集需实测确认；该包 `docs/EXTENDED-SURFACE.md` 已在接线 `incl
 
 **决定**：采用 **SQLite + Graph DB** 这条技术路径（已在另一个代码库中验证可用），不引入服务型图数据库。
 
-**后果**：**无需用户额外部署服务**；下面的问题随之收窄 ——
-分区/更新策略（A10）与 PLC 语法翻译深度（A11）仍待定，见 [`open-questions.md`](open-questions.md)。
+**后果**：**无需用户额外部署服务**；原先随之收窄的两个问题已由 A10 / A11 答定 ——
+分区与更新策略见 **D13**，PLC 语法翻译深度见 **D14**（答复见 [`open-questions.md`](open-questions.md)）。
 
 ---
 
@@ -221,11 +221,146 @@ V17 子集需实测确认；该包 `docs/EXTENDED-SURFACE.md` 已在接线 `incl
 - **D12 第 3 条的"缝 A"已落地**：族 1 注册了 **`engineeringAccess`** 服务
   （`packages/dsh-tia-openness-v17-min/src/access.ts`，该包 `docs/decisions.md` **D20**），
   接口面镜像在族 2 的 `docs/ARCHITECTURE.md` §5.3。族 2 的**消费代码属 P2**，尚未接入。
-- **实现进度**：P0（作用域 + 工程注册表）已实现并**登记进蓝图**；`--dump-config` 实测 1520 行。
+- **实现进度**：**P0（作用域 + 工程注册表）与 P1（版本层 `eng_version`）都已实现，并已登记进蓝图**；
+  `--dump-config` 实测 1520 行；本包 44 项单测全通过。
+  P1 只版本化"导出物 + 工程状态"，`.ap17` 由 `.gitignore` 挡在库外，提交默认 dry-run，
+  且绝不 `init` / `force` / `push`（该包 `docs/decisions.md` P1-1…P1-6）。
 - **指纹可得性**：**用户报告已在另一个代码库验证可用**（用户侧证据，**不是本仓实测**）——
   本仓第一次在 V17 真机跑 P2 时仍需留下证据（见待办清单第 1 条）。
 - **一处实测更正**：控制器的 `max_items` 只能截断、**没有 offset**，所以"按片翻页"不可行
   （族 2 `docs/decisions.md` **P0-15**）；这条同时更正了 `docs/tool-surface.md` §5.1 的措辞。
+
+---
+
+## D13 · 图谱分区与更新（族 3 的数据模型）🟡
+
+**背景**：[A10](open-questions.md) 问"图怎么分区、怎么更新"；图底座已由 **D8** 定为 SQLite + Graph DB。
+
+**决定**（三条，答复原文见 [`open-questions.md`](open-questions.md) A10）：
+
+1. **分区 = 一个 workspace 下每个 PLC device 一张图**；**一个 workspace 下的多个分支暂不考虑**
+   —— 不为分支建多份图。
+2. **更新 = 初次全量重建，之后增量更新。**
+3. **变更键 = 每个块各自的 TIA fingerprint**；**没有 fingerprint 的对象用 contentHash 兜底**
+   （D6 已记：标签表没有指纹）。
+
+**后果**：
+
+- **全量重建保持离线**：它只读 `projects/<id>/export/`，符合 D6"离线能力留给图谱层"。
+  **但增量路径需要开项目** —— 指纹来自 Openness（D6），与族 2 的工作循环
+  （[`roadmap.md`](roadmap.md) §3 第 8 项）是**同一条依赖**，不是族 3 自己能满足的。
+- ⚠️ **contentHash 兜底必须归一化**（先剥掉 `<DocumentInfo>` / `<Created>`），否则标签表
+  每次重新导出都会被判为"变了"。**D6 / D12 已经因为同一理由拒绝把 manifest 的 `sha256`
+  当变更键**，依据见 [`MANIFEST-GAP-ANALYSIS.md`](../packages/dsh-tia-openness-v17-min/docs/MANIFEST-GAP-ANALYSIS.md) §3。
+- ⚠️ **"用 fingerprint 区分块有没有变"本来就是族 2 的职责**（D6 + 族 2 P2 的指纹基线
+  `_dsh-eng/<id>/fingerprints.json`）。所以族 3 有两条落地路径：**① 消费族 2 的变更集**
+  （默认 —— 避免两处各自算指纹导致口径漂移）／**② 自己经族 1 的 `engineeringAccess` 服务取指纹**
+  （族 2 缺席时的降级）。**这一条仍需拍板**，见文末待办清单。
+- **db 的具体路径仍未定**：它是族 3 的状态，**倾向** `_dsh-eng/<project-id>/` —— 因为
+  [`PATH-RULES.md`](../packages/dsh-engineering-context/docs/PATH-RULES.md) §2 的哲学是
+  `projects/` 属用户、`_dsh-eng/` 属插件。**无论选哪里，都要回写该文件 §2/§8** ——
+  那里现在没有它的位置。
+
+---
+
+## D14 · 图谱的 PLC 语法翻译深度（A11）✅
+
+**背景**：[A11](open-questions.md) 问翻译做到多深 —— "块级结构"与"语句级语法树"差着一个编译器前端。
+
+**决定**：**SCL 与 LAD/FBD（含 Safety 的 `F_LAD` / `F_FBD`）做到语句级；其他块语言暂不支持。**
+且**深度随结果标注**：每个网段带 `confidence` ∈ `exact` / `partial` / `untranslated` 与 `notes[]`；
+未覆盖的指令**泛化渲染并显式标注**，**不猜**。
+
+**依据**：移植物（另一代码库的 FlgNet → SCL 翻译器 `ProgramBlockLogicYamlWriter`）已在此深度上
+跑过真实 V17 导出物；**STL（AWL）与 GRAPH 没有处理路径**，落入显式失败分支 ——
+所以"暂不支持"是**已知边界**，不是待办。
+
+**后果**：
+
+- [`roadmap.md`](roadmap.md) §4 第 2 项的口径按此定：覆盖范围以**实测过的指令目录**为准；
+- **B14（"准确"如何验收）因此可按 `confidence` 分级统计**，而不是只有"对 / 错" ——
+  与 §4 验收口径"宁可明确报'不支持这种写法'，不要猜"一致。
+
+---
+
+## D15 · 图谱的关系边只来自 XML 解析（A13）✅
+
+**背景**：[A13](open-questions.md) 问边从哪来 —— 自己解析 XML，还是取 TIA 的 `CrossReferenceService`。
+
+**决定**：**只解析 XML，不取 TIA 交叉引用**（答复原文："A，纯 XML 解析，离线可用"）。
+图谱层保持**离线**：不依赖 TIA Portal、可在 CI 跑。
+
+**代价（必须写明）**：跨块、跨 UDT 的深层引用闭包（unused / used-by）靠 XML 推断，
+**可能漏或错**；`CrossReferenceService` 是**权威答案**而**不用**它。
+
+**后果**：在线对账**降级为后续可选项**，不作边的主来源。与 [`roadmap.md`](roadmap.md) §4
+"**离线可 CI**"这条验收口径一致。
+
+---
+
+## D16 · 图谱能力的暴露形态（B16）🟡
+
+**背景**：[B16](open-questions.md) 问图谱能力是走工具族、随包索引文件，还是 skill 资源。
+
+**决定**：
+
+1. **图谱工具走工具面暴露，不用 skill 交付** —— 用户理由：skill 是静态文件，
+   可能不按需、不最新；工具读的是活数据。
+2. **面向"回答特定工程问题"的子 agent 必须能看到图谱工具**，而**操作层面的工具在那个子 agent 里隐藏**。
+3. **先把工具暴露出来**（先可用，收口后置）。
+
+**后果**：
+
+- **`get_schema` 类能力保留为工具**（返回活的 DDL / 词表），**不做成 bundled skill**。
+  这与族 1 的 skill 形态（`packages/dsh-tia-openness-v17-min/src/skills.ts` / **D4**）**不冲突** ——
+  那一条服务的是**静态手册知识**，两者载体不同。
+- **需要一个子 agent 的 preset**（在 profile 蓝图 `profile/dsh-automation-suite/cordis.patch.yml` 里），
+  把图谱工具列进去、把操作层工具排除。
+  ⚠️ 按根 [`AGENTS.md`](../AGENTS.md) §1，preset 必须**整份重述** `config.plugins` ——
+  漏写会让该 agent 的工具**静默消失**（不报错）。
+- **工具目录成本不再由主 agent 承担**，所以 B16 **不再需要**"工作流层 / 原子层两层收口"
+  来省常驻字符。但 `query`（任意只读 SQL）**是否进子 agent 面仍是独立取舍** —— 见
+  [`architecture.md`](architecture.md) §6「不向模型暴露任意代码执行」。
+- **待验证**：DSH 里"按 agent 隐藏工具"的**确切机制**（族 2 `ARCHITECTURE.md` §5.3 提到工具解析
+  "按可见性"，`dsh-tools/lib/index.js:3058`）—— **写工具层之前必须先核实，别猜**。
+
+---
+
+## D17 · 族 3 的包名与 C# 命名照族 1 的规则 🟡
+
+**背景**：族 3 开工前定包名与 C# 工程命名。第一次 vendoring 时**沿用了来源库的
+`Mcp.Knowledge.*` 命名空间**，理由是"最小偏离、便于与来源库 re-sync"——**该理由被否决**，
+要求按**本仓既有风格**取名。
+
+**旁证（支持这条否决）**：移植物中最大的那个文件的**来源头注释自己就写明放弃了 re-sync 约束** ——
+`Parsing/ProgramBlockLogicYamlWriter.cs` 原文 "mcp-knowledge is now the home of this translator;
+**the re-sync constraint is dropped** and the two copies may diverge"。
+所以"保留原命名空间以便 diff"对它本就不成立。
+
+**决定**：
+
+1. **包名** `@voltarenyah/dsh-engineering-graph`（与族 2 的 `@voltarenyah/dsh-engineering-context` 平行）。
+2. **C# 目录** `engine/`，项目文件 `EngineeringGraph.Engine.csproj`。
+3. **`AssemblyName` = `RootNamespace` = `EngineeringGraph.Engine`** —— 规则同族 1 的
+   `<产品 PascalCase>.<角色>`：产品取自包名去掉 `dsh-` 前缀，角色取自目录名
+   （族 1 = 包 `dsh-tia-openness-v17-min` + 目录 `controller/` → `TiaOpennessV17Min.Controller`，
+   见其 `.csproj` 的 `AssemblyName` / `RootNamespace`）。
+4. **12 个 vendored `.cs` 全部拍平为单一命名空间 `EngineeringGraph.Engine`** ——
+   照族 1 的**实际做法**（族 1 的 14 个 `.cs` 共用一个扁平命名空间，**不按子目录再分子命名空间**）。
+   改名后的文件用**文件级** `namespace EngineeringGraph.Engine;`
+   （net8 + `LangVersion latest` 允许；族 1 因 `LangVersion 7.3` 只能用块级）。
+5. **默认引擎路径** `engine/bin/EngineeringGraph.Engine.exe`。
+
+**后果**：
+
+- 与来源库的 re-sync **不再是"可 diff"**，而是一次**显式重命名**：将来同步时须重新套用本条规则，
+  并以 `dotnet build` 验证（拍平后的撞名会立刻暴露）。
+- 首次以来源命名空间建立的包**已删除**——未提交、未进蓝图 `dsh.profile.bundles`、
+  `pnpm-lock.yaml` 未变，且删除前已核实 **0 个 reparse point**。重建时按本条执行。
+- 该包的 `.gitignore` **必须覆盖 `engine/bin/` 与 `engine/obj/`**：第一次建包时只忽略了
+  `lib/`、`node_modules/`、`*.log`，此时 `git add -A` 会把 .NET 构建产物一起提交。
+
+**待验证**：拍平到单一命名空间后是否发生类型撞名（由 `dotnet build` 判定，见待办清单）。
 
 ---
 
@@ -238,3 +373,8 @@ V17 子集需实测确认；该包 `docs/EXTENDED-SURFACE.md` 已在接线 `incl
 | 3 | 以 min 为依赖被 std 复用时，插件行与控制器生命周期是否干净（一次会话） | D2 |
 | 4 | ~~workspace 路径规则的字段级定义~~ → **已定稿**：[`packages/dsh-engineering-context/docs/PATH-RULES.md`](../packages/dsh-engineering-context/docs/PATH-RULES.md) §8（其 §10 三项待确认） | D5 → B7 |
 | 5 | ~~族 1 的服务缝（服务名与接口面）~~ → **✅ 已定并实现**：`engineeringAccess`（族 1 `src/access.ts` / 该包 D20）。**剩**：族 2 的消费代码（P2）跑通一次 | D12 |
+| 6 | 图谱 db 的具体路径（倾向 `_dsh-eng/<project-id>/`）+ 回写 `PATH-RULES.md` §2/§8 | D13（A10） |
+| 7 | contentHash 兜底必须归一化（剥 `<DocumentInfo>`/`<Created>`）才可用作变更键 | D13 |
+| 8 | 族 3 取指纹的路径：消费族 2 的变更集（默认）还是自己经族 1 `engineeringAccess` 服务 | D13（A10） |
+| 9 | DSH 按 agent 隐藏工具的确切机制（子 agent preset 如何排除操作层工具） | D16（B16） |
+| 10 | 族 3 把 12 个文件拍平到单一命名空间后是否撞名（`dotnet build` 判定） | D17 |
