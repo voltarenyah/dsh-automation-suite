@@ -68,7 +68,8 @@
 | PLC 对象增删改（组/表/变量/常量/监视表/软件单元/单实例 DB） | ⏳ | v0.2：`OperationsPlc.cs` + 9 个工具 |
 | F 相关（`GlobalSettings` 两个动作、`SafetySettings`、F 签名） | ⏳ | v0.2：`OperationsSafety.cs` + 3 个工具；需装 STEP 7 Safety 与 F-CPU 才能验证 |
 | 白名单 + 事务 + 写后读回验证 + dry-run 默认开 | ✅ | 控制器只接受 25 个操作；`ExclusiveAccess` + `Transaction`；`matrix:check` 逐条比对插件侧 `OPERATIONS` |
-| 子进程生命周期（`ctx.effect`、超时终止与重启） | ✅ | 58 项测试中 57 通过 / 1 跳过；真实宿主加载/退出验证 |
+| 子进程生命周期（`ctx.effect`、超时终止与重启） | ✅ | 71 项测试中 70 通过 / 1 跳过（实测 2026-10-14）；真实宿主加载/退出验证 |
+| **给插件族 2 的服务 `engineeringAccess`**（缝 A / D12） | ✅ | `packages/dsh-tia-openness-v17-min/src/access.ts` + `test/08-access-service.test.mjs`（9 项）；该包 `docs/decisions.md` **D20** |
 | 随包出货的 Openness 知识库 skill（文档交付物的雏形） | 🟡 | `skills/`（31 个上游 SKILL.md + 路由 skill）；**尚未逐能力覆盖"何时/怎么/数据怎么用"三问** |
 
 ### 缺口
@@ -87,6 +88,7 @@
 | **超时即丢失会话** | 控制器被终止，TIA 会话丢失（TIA 进程可能仍驻留） | 需 `close_project(close_portal: true)` 正常收尾 |
 | **HMR disposer 路径未人工验证** | 运行中禁用/启用插件的行为未证实 | 该包 `docs/verification.md` §B |
 | **V18+ 的 Openness 应用白名单未验证** | 受管环境可能需要白名单条目 | 官方解析器的 `WhitelistApp()` 尚未接线 |
+| **导出清单没有稳定对象 id** | 对象身份只能靠 `category + group + name` 复合键，**改名即断链**；族 2 与族 3 都直接受这条约束 | V17 **没有** `ObjectIdentifierProvider`（V21+ 才有，见 [`decisions.md`](decisions.md) D7 与 [`packages/dsh-engineering-context/docs/ARCHITECTURE.md`](../packages/dsh-engineering-context/docs/ARCHITECTURE.md) §5.2）；清单缺口见该包 [`docs/MANIFEST-GAP-ANALYSIS.md`](../packages/dsh-tia-openness-v17-min/docs/MANIFEST-GAP-ANALYSIS.md) §2/§5。**注意**：那位外部工具的 `id` 算法外部不可复现（同文 §5 第 8 项），所以这条路要的是"从 Openness 现取"，不是"复刻它的 id" |
 
 ### 计划做的事
 
@@ -98,6 +100,7 @@
 | 4 | 划分 std / pro 的能力边界并实现 | 新层级插件或能力包 | ⬜ |
 | 5 | 加软件版本维度（V18+） | 新成员插件 | ⬜ |
 | 6 | **工具面重设计**：从"一个控制器操作一个工具"（26 个）改成**面向用户工作流的少数工具** + 内部合并/分页 + "摘要 + 工件 + 下钻"的返回 | 工作流层工具；调研与提案见 [`tool-surface.md`](tool-surface.md) | 🟡 调研完成，待 A14–A17 拍板 |
+| 7 | **稳定对象 id 的可行性核实**（先查证，再决定要不要补字段）：查 Openness V17 有没有可取的逐对象标识；**有** → 补进导出清单/指纹结果并实测其**跨导出稳定性**；**没有** → 明确记为"不可得"，保留复合键降级路径 | 可复核的结论 +（若可行）清单新字段 `tiaObjectId` + 实测记录 | ⬜ |
 
 ### 计划中的验收口径
 
@@ -139,7 +142,7 @@
 | 缺口 | 影响 | 备注 |
 |---|---|---|
 | **没有版本层** | 分支/历史/工程级 diff 都没有；四元组里 `branch`=`null`、`version`=`kind:'none'` | P1；A8 已定为"插件内部 `execFile(git)`" |
-| **没有变更检测** | 期望一（识别工程文件是否被更改）与 D6/D9 的工作循环都未落地 | P2；**前置**：V17 指纹实测 + 族 1 的服务缝（D12 第 3 条） |
+| **没有变更检测** | 期望一（识别工程文件是否被更改）与 D6/D9 的工作循环都未落地 | P2；**两个前置都已就绪**：族 1 的 `engineeringAccess` 服务已实现（D20 / §2 已实现表），指纹可得性由**用户在另一代码库**验证过（**用户侧证据，不是本仓实测**） |
 | **没有变更台账** | 期望二（「待办清单」式上下文）未落地 | P3 |
 | **没有随包 skill** | D4 三问目前写在工具描述里，没有随包知识库 | P3（与项目级 skill / A12 一起做） |
 | **`adopt` 只做字节复制** | 不是 TIA 侧「另存」，工程正开着时副本可能过期 | P0-7；缝 A 落地后改为经族 1 触发另存 |

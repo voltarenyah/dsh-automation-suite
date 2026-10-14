@@ -100,7 +100,10 @@
 （`list_plc_objects` 已支持 `include_fingerprints`、`export_blocks` 已支持 `block_names`，
 **不需要新的 C# 能力**）。
 
-**待验证**：具体服务名与接口面两边同步后跑通一次（见文末清单 4）。
+**待验证**：~~具体服务名与接口面两边同步后跑通一次~~ → **✅ 已落地**：族 1 侧实现了
+`engineeringAccess`（见 `packages/dsh-tia-openness-v17-min/src/access.ts` 与该包的
+`docs/decisions.md` **D20**），接口面镜像在本包 [`ARCHITECTURE.md`](ARCHITECTURE.md) §5.3。
+族 2 **尚未调用它** —— 消费代码属于 P2（`eng_changes` / `eng_export`）。
 
 ---
 
@@ -258,10 +261,10 @@ TIA 包已因此把 31 个上游 skill 收敛为 1 个）；项目级 skill **�
 
 | # | 事项 | 影响 | 谁来收 |
 |---|---|---|---|
-| 1 | **V17 上 `FingerprintProvider` 的可得性与粒度** | P2 的分面能力；拿不到就只能退到"变没变"（`PlcChecksumProvider`） | 真机实测（发行版级待验证清单第 1 条） |
+| 1 | **V17 上 `FingerprintProvider` 的可得性与粒度** | P2 的分面能力；拿不到就只能退到"变没变"（`PlcChecksumProvider`） | **用户报告已在另一代码库验证可用**（2026-10-14）—— 用户侧证据，**不是本仓实测**；本仓首次真机跑 P2 时仍要留证据 |
 | 2 | **`tiaObjectId` 能否拿到、改名/重导后是否稳定** | 期望三（跨版本关联）；D7 的降级路径是兜底不是目标 | 需族 1 补字段 + 实测（发行版级待验证清单第 2 条） |
 | 3 | 一次**全项目指纹**的耗时与帧大小（1152 块） | 决定要不要做"指纹缓存 + 只重算可疑对象" | 真机实测 |
-| 4 | 缝 A 的**服务名与接口面**最终取值 | 族 1/族 2 的接缝 | 实现时两边同步一次即可 |
+| 4 | ~~缝 A 的**服务名与接口面**最终取值~~ | — | ✅ **已定**：`engineeringAccess`（族 1 `src/access.ts` + 该包 D20）；镜像见 `ARCHITECTURE.md` §5.3 |
 | 5 | `PATH-RULES.md` §10 的三项（git 位置、目录名、`source/` 保留） | 影响交付物形态，不影响 P0 可开工 | 你的判断 |
 
 ---
@@ -435,3 +438,27 @@ P1 填值时不必让模型重新学。结果里同时给出 `phases.pending`，
 
 **验证（install 之后实测）**：`pnpm -r test` 三个包全绿 ——
 本包 37/37（无跳过）、TIA 62 项（61 通过 / 1 跳过）、`dsh-tool-git` 33/33。
+
+### P0-15 · 更正："插件侧自翻页"做不到（控制器没有 offset）✅
+
+**背景**：本包设计与 [`docs/tool-surface.md`](../../../docs/tool-surface.md) §5.1 都写过
+"工作流工具内部自行抬高 `max_items` **并按片请求**"。实现缝 A 时核对了控制器源码，这句是错的。
+
+**事实（已核对 C#）**：`controller/OpennessHost.Plc.cs:152,166` —— 超过 `max_items` 后
+**继续累加 `total`，但停止把对象加进 `items`**，且**没有任何 offset / skip 参数**。
+响应只有 `{count, items, truncated}`。所以"取下一页"这件事在协议层就不存在。
+
+**决定**：
+
+1. 族 1 的 `engineeringAccess.listObjects` 把默认上限抬到 **1000**（`DEFAULT_LIST_MAX_ITEMS`），
+   并**如实返回**每族的 `{count, returned, truncated}` 与顶层 `truncated`；
+2. 族 2 在 P2 必须**把这个 `truncated` 照实写进 `eng_changes` 的 `notCovered`** ——
+   "没取全"和"没变"是两件完全不同的事，混在一起就是假报告；
+3. 本包 `ARCHITECTURE.md` §5.1 与 §5.3 已按此更正；`docs/tool-surface.md` §5.1 也加了一条更正注记
+   （那份是提案，不是现状）。
+
+**为什么这不是小事**：D6 的整个承诺是"变更不漏报也不误报"。一个被上限截断的清单如果不说，
+就会让"没看见"变成"没有变化" —— 这正是本插件最不能犯的错。
+
+**回退**：若将来控制器加了 offset，把 `listObjects` 改成真正的分页即可；
+`truncated` 字段保留（分页也需要它来表示"还有更多"）。

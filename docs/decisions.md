@@ -211,13 +211,21 @@ V17 子集需实测确认；该包 `docs/EXTENDED-SURFACE.md` 已在接线 `incl
 
 **后果**：
 
-- 落地位置定为 `packages/dsh-engineering-context`；**蓝图登记与 `package.json` 留到实现开始时再加**
-  （理由：蓝图 `dsh.profile.bundles` 多一个名字，`scripts/start-env.ps1` 就会去链一个不存在的包，
-  会让"启动 App"直接失败 —— 见该包 `docs/decisions.md` N1）；
+- 落地位置定为 `packages/dsh-engineering-context`；
 - 新增两个**族 1 侧**的工作项：注册该服务；补 `tiaObjectId`（后者仍待实测）；
 - 开放问题 **A8 / B7 / B8 / B9** 已答（见 [`open-questions.md`](open-questions.md)）；
-- 状态同步：[`roadmap.md`](roadmap.md) §1/§3 与根 [`README.md`](../README.md) §2 均记为
-  "实现未开始（设计已定稿）"。
+- 状态同步：[`roadmap.md`](roadmap.md) §1/§3 与根 [`README.md`](../README.md) §2 两处。
+
+**进展（2026-10-14）**：
+
+- **D12 第 3 条的"缝 A"已落地**：族 1 注册了 **`engineeringAccess`** 服务
+  （`packages/dsh-tia-openness-v17-min/src/access.ts`，该包 `docs/decisions.md` **D20**），
+  接口面镜像在族 2 的 `docs/ARCHITECTURE.md` §5.3。族 2 的**消费代码属 P2**，尚未接入。
+- **实现进度**：P0（作用域 + 工程注册表）已实现并**登记进蓝图**；`--dump-config` 实测 1520 行。
+- **指纹可得性**：**用户报告已在另一个代码库验证可用**（用户侧证据，**不是本仓实测**）——
+  本仓第一次在 V17 真机跑 P2 时仍需留下证据（见待办清单第 1 条）。
+- **一处实测更正**：控制器的 `max_items` 只能截断、**没有 offset**，所以"按片翻页"不可行
+  （族 2 `docs/decisions.md` **P0-15**）；这条同时更正了 `docs/tool-surface.md` §5.1 的措辞。
 
 ---
 
@@ -225,8 +233,8 @@ V17 子集需实测确认；该包 `docs/EXTENDED-SURFACE.md` 已在接线 `incl
 
 | # | 待验证 | 来源 |
 |---|---|---|
-| 1 | V17 上 `FingerprintProvider` 的可得性与粒度 | D6 |
+| 1 | V17 上 `FingerprintProvider` 的可得性与粒度 | D6 —— 🟡 **用户报告已在另一个代码库验证可用**（用户侧证据，不是本仓实测）；本仓首次真机跑 P2 时仍需留证据 |
 | 2 | 导出物里的 id 在改名/编辑/重导/另存后的稳定性 | D7 |
 | 3 | 以 min 为依赖被 std 复用时，插件行与控制器生命周期是否干净（一次会话） | D2 |
 | 4 | ~~workspace 路径规则的字段级定义~~ → **已定稿**：[`packages/dsh-engineering-context/docs/PATH-RULES.md`](../packages/dsh-engineering-context/docs/PATH-RULES.md) §8（其 §10 三项待确认） | D5 → B7 |
-| 5 | 族 1 的服务缝（服务名与接口面）与族 2 跑通一次 | D12 |
+| 5 | ~~族 1 的服务缝（服务名与接口面）~~ → **✅ 已定并实现**：`engineeringAccess`（族 1 `src/access.ts` / 该包 D20）。**剩**：族 2 的消费代码（P2）跑通一次 | D12 |

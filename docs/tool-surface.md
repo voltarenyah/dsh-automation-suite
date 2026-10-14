@@ -73,7 +73,7 @@
 
 **还有一条更硬的事实：信封里的 `data` 根本到不了模型。** DSH 只把 `render` 产出的 content blocks
 交给模型（`appendToolResult` 只持久化 `content`，结构化的 `value` 既不落盘也不下发）。
-所以 [`OUTPUT-CONTRACT.md`](packages/dsh-tia-openness-v17-min/packages/dsh-tia-openness-v17-min/docs/OUTPUT-CONTRACT.md) §1 里
+所以 [`OUTPUT-CONTRACT.md`](../packages/dsh-tia-openness-v17-min/docs/OUTPUT-CONTRACT.md) §1 里
 "`data` 里始终保留完整结构化负载 …… 这就是 agent 看到的 canonical value"这句话**与运行时行为不符**：
 `data` 是留给宿主与未来接口的，**模型能看到的只有那 20 行文本**。这既解释了"上下文被撑爆"
 （唯一通道是文本，于是只能往文本里塞），也说明**任何"把批量数据留在 data 里"的优化都是无效的**。
@@ -91,7 +91,7 @@
 
 ### 2.4 模型被迫自己编排流程，每一步都可能错
 
-- 写入默认 dry-run（插件 [`docs/decisions.md`](packages/dsh-tia-openness-v17-min/docs/decisions.md) D5）
+- 写入默认 dry-run（插件 [`docs/decisions.md`](../packages/dsh-tia-openness-v17-min/docs/decisions.md) D5）
   → **任何写入都是两次调用**；
   "改一个块并证明成立"（插件 README §4.1 的典型流程）是 **7–8 次调用**：
   open → export(指定块) → 编辑文件 → import(dry) → import(真) → compile → export 复核 → close。
@@ -258,8 +258,15 @@ R1 的 4 KB 也必须这样定 —— 越过 8192 字符会被 Pruner 从中间�
 
 ### 5.1 内部分页 / 批量
 
-- 控制器的 `max_items` 是**每族**上限（默认 200）：工作流工具内部自行抬高并按片请求
-  （建议每片 200–500，避免单帧过大），TS 侧合并、去重、聚合。
+> ⚠️ **2026-10-14 更正（实现"缝 A"时核对 C# 得到）**：本节的"**按片请求**"做不到。
+> 控制器的 `max_items` **只能截断** —— `controller/OpennessHost.Plc.cs:152,166` 在超过上限后
+> 继续累加 `total` 但停止添加 `items`，**没有 offset/skip 参数**，所以不存在"下一页"。
+> 可行的做法是**把上限抬到预期规模**（族 2 消费的服务 `listObjects` 默认抬到 1000）并
+> **如实传播 `truncated`**；下半句"TS 侧合并、去重、聚合"仍然成立（多族合并仍然要在插件侧做）。
+> 详见 `packages/dsh-engineering-context/docs/decisions.md` **P0-15**。
+
+- 控制器的 `max_items` 是**每族**上限（默认 200）：工作流工具内部自行抬高（~~并按片请求~~
+  ——见上面的更正），TS 侧合并、去重、聚合。
 - 已有数组语义的操作（导出/导入/删除/属性/保护/签名）**不需要循环**，只要工具把数组用满。
 - **需要 C# 配合的**（先记着，P3 再做）：多对象 `create_plc_objects`、
   批量 `portal_settings` 设置、批量软件单元/关系、批量监视表建删导出、

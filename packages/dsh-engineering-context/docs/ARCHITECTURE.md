@@ -187,7 +187,7 @@ resolveScope() → project + .ap17 + exportDir + baseline
    │
    ├─ 1. 经【缝 A】让 TIA 打开 .ap17（复用已开会话，不自开自闭）
    ├─ 2. listObjects({ categories: [blocks, types], includeFingerprints: true })
-   │        └─ 插件侧**自翻页**：控制器 max_items 默认 200 且**每族独立**、无硬上限
+   │        └─ **抬高 max_items 并如实读 `truncated`**：控制器没有 offset，翻不了页
    ├─ 3. 与基线逐**面**比对 → changed / added / removed + 变化的面
    ├─ 4. 变更集落盘成工件 changes-<ts>.json（全量进工件）
    └─ 5. 返回 ≤4KB：计数 + 面直方图 + 前 N 条 + 工件路径 + 下钻提示
@@ -195,9 +195,14 @@ resolveScope() → project + .ap17 + exportDir + baseline
 
 四条必须做对的细节：
 
-1. **分页在插件侧。** 族 1 的 `list_plc_objects` 的 `max_items` 默认 200、**每族**上限、
-   控制器侧无硬上限（[`docs/tool-surface.md`](../../../docs/tool-surface.md) §2.2）；而渲染层把列表
-   砍到 20 行（同处 `MAX_LISTED`）。工作流层必须自己抬高上限、按片请求、TS 侧合并去重。
+1. **没有"翻页"这回事（已实测更正）。** 控制器的 `max_items` **只能截断** ——
+   `controller/OpennessHost.Plc.cs:152,166` 在超过上限后**继续累加 `total` 但停止添加 items**，
+   没有任何 offset/skip 参数，所以"请求下一页"不存在。唯一正确的做法是
+   **把上限抬到预期规模**（族 1 的 `listObjects` 默认已抬到 1000），并**如实传播 `truncated`**：
+   调用方看到它就是"我没取全"，要么用更大的上限重试、要么把"未覆盖"写进结果。
+   顺带更正：[`docs/tool-surface.md`](../../../docs/tool-surface.md) §5.1 写的"按片请求"
+   在这一版控制器上也做不到（那份是提案）。
+   另：渲染层还把列表砍到 20 行（同处 `MAX_LISTED`），所以工作流层必须**绕开渲染层**取值。
 2. **指纹是唯一硬依据，`sha256` 绝不能当变更键。** 现有 manifest 的 `sha256` 是"写出文件的字节
    哈希"，而文件里含 `<DocumentInfo><Created>`（每次导出都不同）：
    [`MANIFEST-GAP-ANALYSIS.md`](../../dsh-tia-openness-v17-min/docs/MANIFEST-GAP-ANALYSIS.md)
@@ -248,41 +253,79 @@ resolveScope() → project + .ap17 + exportDir + baseline
 
 族 1 的边界是"唯一与工控软件对话的插件"，而指纹**必须开项目**才拿得到（D6）。
 所以族 2 必然要向族 1 要一项**能力**（不是文件）。**决定：族 1 注册一个可选的 cordis 服务**，
-族 2 可选注入。
+族 2 按名取用。
 
-设计的最小接口面（**只读 + 开关项目**；写回仍由族 1 自己的写路径负责）：
+> **状态：✅ 已实现（族 1 侧）。** 服务名 **`engineeringAccess`**，由
+> `packages/dsh-tia-openness-v17-min/src/access.ts` 提供，在 `apply()` 里构造，随该插件的
+> 卸载一起消失。族 1 的 [`docs/decisions.md`](../../dsh-tia-openness-v17-min/docs/decisions.md) **D20**
+> 是提供方那一侧的权威描述；**本节的接口面是消费方的镜像**，两边改一处必须改另一处。
+
+实际的接口面（族 1 的 `src/access.ts` 是权威；族 2 **不 import 它**，只按名取服务并自行声明形状，D10）：
 
 ```ts
-// 由族 1 提供；族 2 只使用这一面。名字与字段为实现值，可改，改了两边同步。
+// 由族 1 提供；族 2 只使用这一面。ctx.get('engineeringAccess') 取不到就降级。
 interface EngineeringAccess {
-  readonly name: string                                  // 例如 'tia-openness-v17-min'
-  status(): Promise<{ available: boolean; reason?: string; session?: SessionState }>
-  openProject(path: string, opts?: { allowUpgrade?: boolean }): Promise<SessionState>
-  closeProject(opts?: { closePortal?: boolean }): Promise<void>
-  listObjects(query: {
-    categories?: Array<'blocks' | 'types' | 'tag_tables'>
-    names?: { blocks?: string[]; types?: string[]; tagTables?: string[] }
-    includeFingerprints?: boolean
+  readonly name: string                       // 'engineeringAccess'
+  status(): {
+    available: boolean                        // 值不值得试（exe 在、且 Openness 未被判为不可用）
+    reason: string | null
+    state: string; exePath: string; exeExists: boolean
+    probed: boolean                           // 控制器是否真的探过 Openness
+    controller: JsonRecord                    // 原始快照，供诊断
+  }
+  openProject(path: string, opts?: { withWindow?: boolean; allowUpgrade?: boolean; dryRun?: boolean; signal?: AbortSignal }): Promise<AccessCallResult>
+  closeProject(opts: { dryRun: boolean; save?: boolean; closePortal?: boolean; signal?: AbortSignal }): Promise<AccessCallResult>
+  listObjects(query?: {
+    categories?: readonly AccessCategory[]     // 省略 = 由下面点名的族决定
+    blockNames?: readonly string[]; typeNames?: readonly string[]; tagTableNames?: readonly string[]
     deviceName?: string; softwareName?: string
-    maxItems?: number
-  }): Promise<ObjectRow[]>                            // 插件侧负责翻页合并
+    recursive?: boolean; nameFilter?: string
+    includeFingerprints?: boolean; includeAttributes?: boolean; includeTags?: boolean; includeConstants?: boolean
+    maxItems?: number                          // 省略 = 1000（控制器没有 offset，抬高上限是唯一办法）
+    signal?: AbortSignal
+  }): Promise<AccessListResult>
   exportObjects(query: {
-    targets?: ObjectRef[]                             // 省略 = 全部；给了就只导这批（D9 工作循环）
     outputDir: string
-    categories?: Array<'blocks' | 'types' | 'tag_tables'>
-    overwrite?: boolean
-  }): Promise<ExportReport>                           // 含 manifest 路径与逐项结局
+    categories?: readonly AccessCategory[]
+    blockNames?: readonly string[]; typeNames?: readonly string[]; tagTableNames?: readonly string[]
+    deviceName?: string; softwareName?: string
+    recursive?: boolean; overwrite?: boolean
+    exportOptions?: 'none' | 'with_defaults' | 'with_read_only'
+    writeManifest?: boolean; dryRun?: boolean
+    signal?: AbortSignal
+  }): Promise<AccessCallResult>
 }
 
-interface ObjectRow {
-  category: 'blocks' | 'types' | 'tag_tables'
-  name: string; group: string
-  simaticType?: string; number?: string
-  tiaObjectId?: string                                // 目标态；现在缺席
-  fingerprints?: Array<{ id: string; value: string }>  // 逐面
-  error?: { code: string; message: string }
+interface AccessCallResult {
+  ok: boolean; operation: string; dryRun: boolean; summary: string
+  error: { code: string; message: string; details: JsonRecord | null } | null
+  data: JsonRecord | null; durationMs: number
+  changes: readonly unknown[]; diagnostics: readonly unknown[]
+}
+
+interface AccessListResult extends AccessCallResult {
+  objects: Array<{
+    category: 'blocks' | 'types' | 'tag_tables'
+    name: string
+    group: string | null
+    attributes: unknown
+    fingerprints: Array<{ id: string; value: string | null; error: string | null }> | null
+  }>
+  /** 每族 count/returned/truncated（族 1 把 `{count,items,truncated}` 信封摊平了）。 */
+  families: Record<string, { count: number; returned: number; truncated: boolean }>
+  truncated: boolean
+  missing: unknown
 }
 ```
+
+**三条与设计稿的差异（以实现为准）**：
+
+1. **没有 `tiaObjectId`**：V17 拿不到（D7 / §5.2），所以行里根本没有这个字段 —— 身份仍由
+   `category + group + name` 决定，不确定时在结果里标 `identity`。
+2. **`families` 里的 `truncated` 必须向上传播**：族 1 如实报，族 2 必须**照实**写进
+   `eng_changes` 的 `notCovered`，不能让它看起来"没变"。
+3. **`closeProject` 的 `dryRun` 是必填参数**：族 2 目前**不调用**它（A16 的倾向是复用已开会话），
+   真要调用时必须显式表态。
 
 **为什么不用另外两条路**（已评估）：
 
@@ -291,13 +334,9 @@ interface ObjectRow {
 | 族 2 用 `ctx.tools.execute({name:'list_plc_objects', …})` 间接调族 1 的工具 | 脆弱：受族 1 工具面重构（[`docs/open-questions.md`](../../../docs/open-questions.md) **A15** 要把原子工具默认隐藏）影响；解析是**按可见性**的（`dsh-tools/lib/index.js:3058`）；还要过 `tools/pre-execute` 闸门 |
 | 纯文件契约：族 1 写 `fingerprints.json`，族 2 只读 | 零耦合，但"谁触发指纹"变成"模型得记得先让族 1 跑一次" —— 正好退回 [`docs/tool-surface.md`](../../../docs/tool-surface.md) §1 要消灭的"模型自己编排几十次调用" |
 
-**服务缺席时的降级**（必须实现）：读**上一次**的指纹工件，并在结果里明确标注
+**服务缺席时的降级**（必须实现，P2）：读**上一次**的指纹工件，并在结果里明确标注
 `stale: true` + 工件时间 + "指纹未刷新"的原因；**绝不**静默拿旧数据当现状
 （[`docs/architecture.md`](../../../docs/architecture.md) §5.4「失效可感知」）。
-
-**族 1 侧的工作项**（不在本包范围内，记录在此以免遗忘）：注册该服务、把 `listObjects` /
-`exportObjects` 接到已有的控制器操作上（`list_plc_objects` 已支持 `include_fingerprints`、
-`export_blocks` 已支持 `block_names`，所以**不需要新的 C# 能力**）。
 
 ### 5.4 版本层（A8）
 
@@ -556,7 +595,7 @@ packages/dsh-engineering-context/
 |---|---|---|---|---|
 | **P0** | 作用域 + 工程注册表（`eng_status` / `eng_project` / `eng_scope`） | 纯 FS + 宿主 registry | "我现在在哪个工程的哪一版" —— **不需要 TIA** | ✅ **已实现**（37 项测试通过） |
 | **P1** | 版本层（`eng_version`）+ 导出物入库 | git | 导出的文本源终于有分支与历史 | ⬜ |
-| **P2** | 变更引擎（`eng_changes` / `eng_export`）+ 增量闭环 | **缝 A + V17 指纹实测** | D6/D9 的工作循环 | ⬜ |
+| **P2** | 变更引擎（`eng_changes` / `eng_export`）+ 增量闭环 | 缝 A ✅ 已就绪（族 1 的 `engineeringAccess`）；指纹可得性已由**用户在另一代码库**验证 | D6/D9 的工作循环 | ⬜ |
 | **P3** | 变更台账（`eng_context`）+ 项目级 skill + 对族 3 暴露 `ctx.engineeringScope` | P2 | 期望二 | ⬜ |
 
 **P0 的实际产出**：`src/` 下 7 个模块 + `src/tools/` 下 5 个文件、`test/` 4 个测试文件
@@ -585,10 +624,10 @@ packages/dsh-engineering-context/
 
 | # | 事项 | 影响 | 处置 |
 |---|---|---|---|
-| 1 | **V17 上 `FingerprintProvider` 的可得性与粒度未实测** | P2 的分面能力；若拿不到，只能退到"变没变"（`PlcChecksumProvider`） | [`docs/decisions.md`](../../../docs/decisions.md) 待验证清单第 1 条；P0/P1 不受影响 |
+| 1 | **V17 上 `FingerprintProvider` 的可得性与粒度** | P2 的分面能力；若拿不到，只能退到"变没变"（`PlcChecksumProvider`） | **用户报告已在另一个代码库验证可用**（2026-10-14）—— 这是**用户侧证据，不是本仓实测**；本仓第一次真机跑 P2 时仍要记录证据（发行版待验证清单第 1 条） |
 | 2 | **对象身份键缺位**（§5.2） | 期望三（跨版本关联） | 需族 1 补 `tiaObjectId` + 实测改名/重导后的稳定性 |
 | 3 | **一次全项目指纹的耗时与帧大小未测** | 决定要不要做"指纹缓存 + 只重算可疑对象" | 手册说 `GetFingerprints()` **每次重算**；1152 块项目未测 |
-| 4 | 缝 A 的具体服务名与接口面未最终定 | 族 1 与族 2 的接缝 | 已给出最小接口面（§5.3）；两边同步即可 |
+| 4 | ~~缝 A 的服务名与接口面未定~~ | — | ✅ **已定**：`engineeringAccess`（族 1 `src/access.ts`、该包 D20）；接口面镜像见 §5.3 |
 | 5 | 宿主 workspace 服务是**可选**的（组合里没挂 `dsh-workspace` 时 `ctx.get` 返回 `undefined`） | `registered` 恒为 false | 已设计降级（§4.1 / N2），不阻塞 |
 
 ---
