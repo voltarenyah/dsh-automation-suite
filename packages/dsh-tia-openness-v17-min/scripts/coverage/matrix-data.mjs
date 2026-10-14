@@ -121,6 +121,10 @@ export const REFUSALS = {
     label: 'ProDiag',
     text: '手册 "Accessing supervisions and properties of ProDiag-FB"：多属性 SetAttributes 会抛异常、不支持的属性抛可恢复异常；工程实测 ProDiag_OB 语言不可导入导出。',
   },
+  R15: {
+    label: '力表只读',
+    text: 'V17 的 PlcForceTableComposition 只有 Import/Find，PlcForceTable 没有 Delete（Siemens.Engineering.dll V17 反射实证）：力表只能靠导入建立或替换，不能经 Openness 创建或删除。',
+  },
 }
 
 /** Status codes used by both sections and leaves. */
@@ -405,30 +409,85 @@ export const SECTIONS = [
   // ------------------------------------------------------------ projects
   {
     path: ['TIA Portal Openness API', 'Functions for projects and project data'],
-    api: ['Siemens.Engineering', 'Siemens.Engineering.Compiler'],
+    api: ['Siemens.Engineering', 'Siemens.Engineering.Compiler', 'Siemens.Engineering.Settings'],
     compile: 'yes',
     pre: ['E'],
     reject: ['R11'],
     default: 'none',
-    note: '工程生命周期与工程级数据。插件只做打开/关闭/保存/编译，其余（创建、归档、只读打开、语言、多语言文本、图形）未适配。',
+    note:
+      '工程生命周期与工程级数据。创建、打开、保存（含另存）、归档/取回、关闭，以及工程属性、语言、多语言文本、' +
+      '历史、已用产品与 TIA Portal 设置都已接入（OperationsProject.cs）；只读打开、图形删除未适配。',
     leaves: {
-      'Opening a project': { status: 'done', note: '已实现：open_project，含 .ap17 校验、allow_upgrade 显式开关、dry_run。' },
-      'Closing a project': { status: 'done', note: '已实现：close_project，可先保存。' },
-      'Saving a project': { status: 'partial', note: '部分：只能通过 close_project(save=true) 保存，没有独立的保存操作。' },
-      'Compiling a project': { status: 'done', note: '已实现（PLC 软件级）：compile_plc 经 ICompilable 取 CompilerResult 与消息。工程级整体编译未单独验证。' },
+      'Opening a project': {
+        status: 'done',
+        note: '已实现：open_project，含 .ap17 校验、allow_upgrade 显式开关、dry_run。只读打开另见 "Accessing read-only TIA Portal project"。',
+      },
+      'Creating a project': {
+        status: 'done',
+        note: '已实现：create_project（ProjectComposition.Create；带 Author/Comment 时走 IEngineeringComposition.Create 的创建参数重载）。',
+      },
+      'Accessing general settings of the TIA Portal': {
+        status: 'partial',
+        note:
+          '部分：portal_settings 读写 TiaPortal.SettingsFolders（General 等），value_type 支持 bool/string/int/CultureInfo，' +
+          '并递归列出子文件夹；只覆盖标量设置。命名空间 Siemens.Engineering.Settings。',
+      },
+      'Archiving and Retrieving a project': {
+        status: 'done',
+        reject: ['R11'],
+        note:
+          '已实现：archive_project 的 archive/retrieve。有未保存改动时先报 project_not_saved（手册要求先 Save），' +
+          'retrieve 支持 Retrieve 与 RetrieveWithUpgrade 以及 ProjectOpenMode.Primary/Secondary。',
+      },
+      'Accessing read-only TIA Portal project': {
+        status: 'none',
+        note: '未适配：没有 OpenMode.ReadOnly 打开路径，也没有 UMAC 凭据回调（UmacDelegate 一律传 null）。',
+      },
+      'Accessing languages': {
+        status: 'done',
+        note: '已实现：project_languages 的 list/set（LanguageSettings.Languages/ActiveLanguages 增删、EditingLanguage、ReferenceLanguage）。',
+      },
       'Determining the object structure and attributes': {
         status: 'partial',
-        note: '部分：设备/设备项/块组遍历与块属性描述已实现，未提供通用对象树导出。',
+        note:
+          '部分：project_info 的 devices 段在 include_attribute_infos=true 时给出每个设备/设备项的 GetAttributeInfos 与 ' +
+          'GetCompositionInfos；不是"任意 IEngineeringObject"的通用对象树。',
       },
-      'Access software target': { status: 'partial', note: '部分：FindPlcSoftware 支持按设备名/软件名选型，不覆盖 HMI 等其他目标。' },
-      'Read project related attributes': { status: 'partial', note: '部分：会话描述（DescribeSession）只读少量工程属性。' },
-      'Creating a project': { status: 'none', note: '未适配。' },
-      'Archiving and Retrieving a project': { status: 'none', reject: ['R11'], note: '未适配；且部分归档模式被 API 拒绝（见限制 R11）。' },
-      'Accessing read-only TIA Portal project': { status: 'none', note: '未适配：没有只读打开模式参数。' },
-      'Accessing languages': { status: 'none', note: '未适配：未处理工程语言设置。' },
-      'Accessing and enumerating multilingual texts': { status: 'none', reject: ['R4'], note: '未适配；多语言文本也不能单独导出。' },
-      'Updating project property simulation support': { status: 'none', note: '未适配。' },
-      'Deleting project graphics': { status: 'none', note: '未适配。' },
+      'Access software target': {
+        status: 'partial',
+        note: '部分：software 段列出 PLC 软件目标（设备名/软件名/块数）；HMI 等其他目标仍未处理。',
+      },
+      'Accessing and enumerating multilingual texts': {
+        status: 'partial',
+        reject: ['R4'],
+        note:
+          '部分：project_info 的 comment 段枚举工程注释，update_project 写 editing language 的注释，project_texts 导出/导入整工程 ' +
+          '文本（xlsx）。多语言文本不能单独导出（R4）。',
+      },
+      'Updating project property simulation support': {
+        status: 'done',
+        note: '已实现：update_project 的 simulation_during_block_compilation（Project.IsSimulationDuringBlockCompilationEnabled）。',
+      },
+      'Read project related attributes': {
+        status: 'done',
+        note:
+          '已实现：project_info 的 attributes / history / products 三段（Author、Copyright、Family、Version、Size、CreationTime、' +
+          'LastModified、LastModifiedBy、HistoryEntries、UsedProducts）。',
+      },
+      'Deleting project graphics': {
+        status: 'none',
+        note:
+          '未适配：Project.Graphics 的类型是 Siemens.Engineering.Hmi.Globalization.MultiLingualGraphicComposition，' +
+          '引入它就要把 HMI 命名空间纳入本插件；该操作不可逆，因此有意跳过。',
+      },
+      'Compiling a project': {
+        status: 'partial',
+        note:
+          '部分：compile_plc 走 PLC 软件级 ICompilable（含 CompilerResult 逐条消息）；手册支持的 Device、DeviceItem、' +
+          'CodeBlock、HmiTarget 等编译入口未暴露。',
+      },
+      'Saving a project': { status: 'done', note: '已实现：save_project 的 Save 与 SaveAs(save_as_dir)。' },
+      'Closing a project': { status: 'done', note: '已实现：close_project，可先保存、可关掉 TIA Portal 实例。' },
     },
   },
   {
@@ -585,72 +644,140 @@ export const SECTIONS = [
     reject: ['R1', 'R5', 'R6', 'R13', 'R14'],
     default: 'none',
     note:
-      '插件的核心领域，也是手册里最大的章节。已适配集中在"块/类型/标签表 + 外部源 + 编译"这条链上；' +
-      '下载、上传、在线、比较、保护、OPC UA、软件单元等全部未适配。',
+      '插件的核心领域，也是手册里最大的章节。块/类型/标签表/外部源/编译这条链之外，已补上块与组的删除、know-how 保护、' +
+      'OB 属性写、指纹读取、由块生成源、监视表、软件单元与 F 相关服务（OperationsPlc.cs / OperationsSafety.cs）；' +
+      '下载、上传、在线、比较、保护密码、OPC UA、力表建档等仍未适配。',
     leaves: {
       // -- blocks
-      Blocks: { status: 'done', note: '已实现：PlcBlockGroup 遍历入口。' },
-      'Querying the "Program blocks" group': { status: 'done', note: '已实现：software.BlockGroup。' },
+      Blocks: { status: 'done', note: '已实现：PlcBlockSystemGroup 遍历、单块增删改（list/create/delete/set_block_attributes）。' },
+      'Querying the "Program blocks" group': { status: 'done', note: '已实现：software.BlockGroup，并可按 group_path 定位用户组。' },
       'Querying the system group for system blocks': { status: 'partial', note: '部分：遍历时区分系统组，但不操作系统块。' },
       'Enumerating system subgroups': { status: 'partial', note: '部分：只作为遍历路径处理。' },
-      'Enumerating user-defined block groups': { status: 'done', note: '已实现：递归收集用户组路径，导出按组落目录。' },
-      'Enumerating all blocks': { status: 'done', note: '已实现：递归枚举块（块名+组路径+类型）。' },
-      'Querying information of a block/user data type': { status: 'partial', note: '部分：读名称/编号/语言等少量属性用于回报与校验。' },
-      'Accessing attributes of all blocks': { status: 'partial', note: '部分：只读属性枚举，不写属性。' },
-      'Setting and removing protections from a block': { status: 'none', note: '未适配。' },
-      'Deleting block': { status: 'none', note: '未适配：导入覆盖用 ImportOptions.Override，不删块。' },
-      'Creating group for blocks': { status: 'done', note: '已实现：create_group 在导入时创建缺失的用户组。' },
-      'Deleting group for blocks': { status: 'none', note: '未适配。' },
+      'Enumerating user-defined block groups': {
+        status: 'done',
+        note: '已实现：递归收集用户组路径（list_plc_objects 的 blockGroups），create_plc_objects(kind=block_group) 可建组。',
+      },
+      'Enumerating all blocks': { status: 'done', note: '已实现：递归枚举块（名称+组路径+语言+编号+时间戳）。' },
+      'Querying information of a block/user data type': {
+        status: 'done',
+        note: '部分→已完成：list_plc_objects 回报编号、语言、IsConsistent、IsKnowHowProtected、AutoNumber、Header*、多个时间戳。',
+      },
+      'Setting and removing protections from a block': {
+        status: 'done',
+        note:
+          '已实现：protect_blocks（PlcBlockProtectionProvider.Protect/Unprotect，先查 GetInvalidPasswordCharacters；' +
+          'provider 为 null 时报 protection_unavailable，对应手册列出的可保护条件）。',
+      },
+      'Deleting block': { status: 'done', note: '已实现：delete_plc_objects 的 block_names（PlcBlock.Delete，事务内）。' },
+      'Accessing attributes of all blocks': {
+        status: 'done',
+        note: '已实现：list_plc_objects(include_attributes=true) 用 GetAttributeInfos 列出每个块的全部属性名、访问模式与当前值。',
+      },
+      'Creating group for blocks': { status: 'done', note: '已实现：导入时 create_group 与 create_plc_objects(kind=block_group)。' },
+      'Deleting group for blocks': { status: 'done', note: '已实现：delete_plc_objects 的 block_group_paths（非空组报 group_not_empty）。' },
       'Creating a ProDiag-FB': { status: 'none', reject: ['R14'], note: '未适配。' },
       'Accessing supervisions and properties of ProDiag-FB': { status: 'none', reject: ['R14'], note: '未适配。' },
       'Reading ProDiag-FB blocks and attributes': { status: 'none', reject: ['R14'], note: '未适配；工程实测 ProDiag 块也无法导出。' },
       'Adding an external file': { status: 'done', reject: ['R5'], note: '已实现：外部源文件导入（*.scl/*.stl/*.db/*.udt）；组层级不可访问。' },
-      'Generate source from block': { status: 'none', note: '未适配。' },
+      'Generate source from block': {
+        status: 'done',
+        note:
+          '已实现：generate_source 经 PlcExternalSourceSystemGroup.GenerateSource（IGenerateSource），按手册校验扩展名 ' +
+          '(.scl/.awl/.db/.udt) 与 GenerateOptions.WithDependencies。',
+      },
       'Generating blocks from source': { status: 'done', note: '已实现：从外部源生成块，支持 GenerateBlockOption.KeepOnError。' },
       'Generating from source of known source format': { status: 'done', note: '已实现：SCL/STL/DB/UDT 源文件生成。' },
-      'Deleting user data type': { status: 'none', note: '未适配。' },
+      'Deleting user data type': { status: 'done', note: '已实现：delete_plc_objects 的 type_names（PlcType.Delete）。' },
       'Deleting an external file': { status: 'done', note: '已实现：keep_source=false 时生成完删除外部源。' },
       'Starting the block editor': { status: 'none', pre: ['D'], note: '未适配：属界面行为。' },
-      'Changing blocks using fingerprints': { status: 'none', note: '未适配。' },
+      'Changing blocks using fingerprints': {
+        status: 'done',
+        note:
+          '已完成：list_plc_objects(include_fingerprints=true, block_names/type_names=…) 逐块/逐 UDT 调 ' +
+          'FingerprintProvider.GetFingerprints()，回报 {id, value}（Code/Comments/Interface/LibraryType/Texts/…）。' +
+          '手册这一条只有读接口——"检测变化"靠调用方比对两次取到的 value，Openness 没有写入/改写指纹的 API；' +
+          '标签表按手册不支持指纹。',
+      },
       'Generating/deleting blocks for user defined pages': { status: 'none', note: '未适配。' },
-      'Writing access for OB block priority attribute': { status: 'none', note: '未适配。' },
+      'Writing access for OB block priority attribute': {
+        status: 'done',
+        note: '已实现：set_block_attributes 的 attributes（通用 SetAttribute，手册示例即 SetAttribute("Priority", 14)）。',
+      },
       'Generating block/UDT from external source file in specific user group': {
         status: 'done',
         note: '已实现：target_group / mirror_groups 控制生成位置。',
       },
       // -- tags
-      'Tags and Tag tables': { status: 'partial', note: '部分：枚举、导出、导入已实现；写单标签、建删表未实现。' },
-      'Querying system groups for PLC tags': { status: 'done', note: '已实现：TagTableGroup 系统组遍历。' },
-      'Enumerating user-defined groups for PLC tags': { status: 'done', note: '已实现：递归收集标签表用户组路径。' },
-      'Creating user-defined groups for PLC tags': { status: 'done', note: '已实现：导入时按需创建标签表组。' },
-      'Enumerating PLC tag tables in a folder': { status: 'done', note: '已实现：PlcTagTable 枚举（含组路径）。' },
-      'Querying information from a PLC tag table': { status: 'partial', note: '部分：只读名称与所属组。' },
-      'Enumerating PLC tags': { status: 'partial', note: '部分：引用 PlcTag 但只做只读枚举。' },
-      'Accessing PLC tags': { status: 'partial', note: '部分：只读。' },
-      'Starting the "PLC Tags" editor': { status: 'none', pre: ['D'], note: '未适配：属界面行为。' },
-      'Creating PLC tag table': { status: 'none', note: '未适配：只能靠导入 XML 建立。' },
-      'Deleting user-defined groups for PLC tags': { status: 'none', note: '未适配。' },
-      'Reading the time of the last changes of a PLC tag table': {
-        status: 'none',
-        note: 'API 限制：V17 的 PlcTagTable 不暴露 ModifiedDate（Operations.cs:1082 注释实证），本条在 V17 无法实现。',
+      'Tags and Tag tables': {
+        status: 'done',
+        note: '已完成：枚举、导出、导入、建表、删表、建/删组、单标签与用户常量的增改删（write_tags / delete_plc_objects）。',
       },
-      'Deleting a PLC tag table from a group': { status: 'none', note: '未适配。' },
-      'Accessing PLC constants': { status: 'none', note: '未适配。' },
+      'Querying system groups for PLC tags': { status: 'done', note: '已实现：PlcTagTableSystemGroup 遍历。' },
+      'Enumerating user-defined groups for PLC tags': { status: 'done', note: '已实现：递归收集标签表用户组路径。' },
+      'Creating user-defined groups for PLC tags': { status: 'done', note: '已实现：导入时按需创建；create_plc_objects(kind=tag_table_group)。' },
+      'Enumerating PLC tag tables in a folder': { status: 'done', note: '已实现：PlcTagTable 枚举（含组路径、IsDefault、标签数）。' },
+      'Querying information from a PLC tag table': {
+        status: 'done',
+        note: '已完成：名称、所属组、标签数、IsDefault、ModifiedTimeStamp（见下一条）。',
+      },
+      'Enumerating PLC tags': {
+        status: 'done',
+        note: '已实现：list_plc_objects(include_tags=true) 逐标签给出 Name/DataType/LogicalAddress/Comment/External* 三个开关。',
+      },
+      'Accessing PLC tags': {
+        status: 'done',
+        note:
+          '已完成：读（list_plc_objects）与写（write_tags 改 DataTypeName、LogicalAddress、External* 与注释，并按需创建/删除）。' +
+          'Name 只读（手册明示），改名不支持。',
+      },
+      'Starting the "PLC Tags" editor': { status: 'none', pre: ['D'], note: '未适配：属界面行为。' },
+      'Creating PLC tag table': { status: 'done', note: '已实现：create_plc_objects(kind=tag_table)（PlcTagTableComposition.Create）。' },
+      'Deleting user-defined groups for PLC tags': { status: 'done', note: '已实现：delete_plc_objects 的 tag_table_group_paths。' },
+      'Reading the time of the last changes of a PLC tag table': {
+        status: 'done',
+        note:
+          '已完成，并纠正旧结论：V17 的 PlcTagTable 暴露 ModifiedTimeStamp（不是 ModifiedDate），' +
+          'list_plc_objects 的 tagTables[].modifiedTimeStamp 即它。',
+      },
+      'Deleting a PLC tag table from a group': { status: 'done', note: '已实现：delete_plc_objects 的 tag_table_names（PlcTagTable.Delete）。' },
+      'Accessing PLC constants': {
+        status: 'done',
+        note:
+          '已完成：list_plc_objects(include_constants=true) 列用户常量与系统常量；write_tags 可建/改/删用户常量' +
+          '（Name、DataTypeName、Value、Comment）；系统常量只读（手册明示）。',
+      },
       // -- software units
-      'Functions for software units': { status: 'none', note: '未适配：SW.Units 0 引用。' },
-      'Working with software unit': { status: 'none', note: '未适配。' },
-      'Accessing software unit': { status: 'none', note: '未适配。' },
-      'Accessing software unit underlying objects': { status: 'none', note: '未适配。' },
-      'Accessing to existing relations of a unit': { status: 'none', note: '未适配。' },
-      'Updating software unit properties': { status: 'none', note: '未适配。' },
-      'Publishing software unit object': { status: 'none', note: '未适配。' },
-      'Adding external sources in units': { status: 'none', note: '未适配。' },
-      'Units as mastercopies': { status: 'none', note: '未适配。' },
-      'Updating existing relations & create/delete relations': { status: 'none', note: '未适配。' },
+      'Functions for software units': {
+        status: 'partial',
+        note: '部分：software_units 覆盖列表/创建/删除/关系增删（PlcUnitProvider 经 GetService 获取）。',
+      },
+      'Working with software unit': { status: 'partial', note: '部分：建/删/列举已实现；发布与"作为主副本"未做。' },
+      'Accessing software unit': { status: 'done', note: '已实现：PlcUnit 的 Name/Author/Comment 与关系列表。' },
+      'Accessing software unit underlying objects': {
+        status: 'partial',
+        note: '部分：只回报单元下块/类型/标签表/外部源的数量，不逐个列出对象。',
+      },
+      'Accessing to existing relations of a unit': { status: 'done', note: '已实现：PlcUnit.Relations 的 RelatedObject + RelationType。' },
+      'Updating software unit properties': { status: 'partial', note: '部分：Author/Comment 只读回报，未写回。' },
+      'Publishing software unit object': { status: 'none', note: '未适配（UnitAccessType.Published 存在但未暴露）。' },
+      'Adding external sources in units': { status: 'none', note: '未适配：外部源只走非单元路径。' },
+      'Units as mastercopies': { status: 'none', note: '未适配（库/主副本整体未适配）。' },
+      'Updating existing relations & create/delete relations': {
+        status: 'done',
+        note: '已实现：software_units 的 relation_create / relation_delete（PlcUnitRelationComposition.Create/Find + PlcUnitRelation.Delete）。',
+      },
       // -- online / download / upload
       'Determining the status of a PLC': { status: 'none', pre: ['P'], note: '未适配：需实机在线。' },
       'Accessing parameters of an online connection': { status: 'none', pre: ['P'], note: '未适配。' },
-      'Accessing fingerprint for quick station compare': { status: 'none', pre: ['P'], note: '未适配。' },
+      'Accessing fingerprint for quick station compare': {
+        status: 'none',
+        pre: ['P'],
+        note:
+          '未适配，且与"Changing blocks using fingerprints"是**两套 API**：这一条走 ' +
+          'Siemens.Engineering.FingerprintData.FingerprintDataProvider（从 TiaPortal.GetService 取），' +
+          'GetFingerprintData(ConfigurationAddress, OnlineConfigurationDelegate) 需要 PN/IE 接口 + 设备 IP，' +
+          '即必须有可达的真实设备（手册写 "PLC is offline" 但地址是连设备用的），纯离线工程无法验证。',
+      },
       'Accessing CM DP as DP slave and transfer area': { status: 'none', pre: ['P'], note: '未适配。' },
       'Setting PLC online of R/H system': { status: 'none', pre: ['P'], note: '未适配。' },
       'Accessing software container from primary PLC of R/H system': { status: 'none', pre: ['P'], note: '未适配。' },
@@ -660,24 +787,27 @@ export const SECTIONS = [
       'Downloading hardware and software components to PLC device': { status: 'none', pre: ['P'], note: '未适配。' },
       'Running and stopping PLC': { status: 'none', pre: ['P'], note: '未适配。' },
       'Uploading hardware, software and files to PLC device': { status: 'none', pre: ['P'], note: '未适配。' },
-      'Comparing PLC software': { status: 'none', pre: ['P'], note: '未适配。' },
+      'Comparing PLC software': { status: 'none', pre: ['P'], note: '未适配：PlcSoftware.CompareToOnline 存在但需实机。' },
       'Comparing PLC hardware': { status: 'none', pre: ['P'], note: '未适配。' },
       'Establishing or disconnecting the online connection to the PLC': { status: 'none', pre: ['P'], note: '未适配。' },
       'Assigning PC interface': { status: 'none', pre: ['P'], note: '未适配。' },
       'Supporting callbacks': { status: 'none', pre: ['P', 'D'], note: '未适配。' },
       // -- protection / security / misc
-      'Protecting PLC through password': { status: 'none', note: '未适配。' },
+      'Protecting PLC through password': { status: 'none', note: '未适配（块级 know-how 保护已适配，见上）。' },
       'Handling PLC block binding passwords': { status: 'none', note: '未适配。' },
       'Access level setting': { status: 'none', note: '未适配。' },
       'Setting a display password': { status: 'none', note: '未适配。' },
-      'Functions for accessing PLC service': { status: 'none', note: '未适配。' },
+      'Functions for accessing PLC service': { status: 'none', note: '未适配：PlcChecksumProvider.Software 可用但未暴露。' },
       'Accessing OPC UA server interface': { status: 'none', note: '未适配。' },
       'Accessing web server and OPC UA user management': { status: 'none', note: '未适配。' },
       'Accessing domain settings': { status: 'none', note: '未适配。' },
       'Managing certificate': { status: 'none', note: '未适配。' },
-      'Assigning watch & force tables for web server and PLC display': { status: 'none', note: '未适配。' },
+      'Assigning watch & force tables for web server and PLC display': {
+        status: 'none',
+        note: '未适配：本条是"给 Web 服务器/面板指定监视表"的属性，不是监视表本身的增删（后者见 watch_and_force_tables）。',
+      },
       'Accessing Software Checksum': { status: 'none', note: '未适配。' },
-      'Assigning project language to PLC': { status: 'none', note: '未适配。' },
+      'Assigning project language to PLC': { status: 'none', note: '未适配：工程语言已适配，PLC 侧语言未做。' },
       'Supporting IP Accessibility': { status: 'none', note: '未适配。' },
       'Updating module description': { status: 'none', note: '未适配。' },
     },
@@ -763,8 +893,37 @@ export const SECTIONS = [
     reject: ['R1'],
     default: 'none',
     note:
-      'F 相关：SafetyModificationsPossible、UsernameForFChangeHistory、SafetySignatureProvider；' +
-      '控制器对 Siemens.Engineering.Safety 0 引用。注意 F 块本身可以导入导出（见限制 R1），只有 F-system 块不行。',
+      'F 相关：safety_status 读 GlobalSettings（取自 TiaPortal.GetService）、SafetyAdministration.Settings 与运行时组；' +
+      'set_safety_settings 写手册只有的两个动作；safety_signatures 逐块读 SafetySignatureProvider。' +
+      '注意 F 块本身可以导入导出（见限制 R1），只有 F-system 块不行。',
+    leaves: {
+      'F-related Openness': {
+        status: 'partial',
+        pre: ['P'],
+        note:
+          '部分：三个服务都已接入（GlobalSettings、SafetyAdministration/SafetySettings/SafetyPrintout 未做的只有打印，' +
+          'SafetySignatureProvider），但本机没有 F-CPU 工程可验（P）。',
+      },
+      SafetyModificationsPossible: {
+        status: 'done',
+        pre: [],
+        note:
+          '已实现：set_safety_settings 的 safety_modifications_possible（读/写成对回报 before/after）；' +
+          'safety_status 读当前值。GlobalSettings 经 TiaPortal.GetService 获取（手册 "F-related Openness"）。',
+      },
+      UsernameForFChangeHistory: {
+        status: 'done',
+        pre: [],
+        note: '已实现：set_safety_settings 的 username_for_f_change_history（读/写成对回报 before/after）。',
+      },
+      SafetySignatureProvider: {
+        status: 'done',
+        pre: ['P'],
+        note:
+          '已实现：safety_signatures 逐块 GetService<SafetySignatureProvider>()，Find(BlockOfflineSignature) 后回报 Type/Value；' +
+          'provider 为 null 即非 F 块（手册明示），按"没有签名"回报而不是报错；签名缺失/失效回报 0。',
+      },
+    },
   },
 
   // ------------------------------------------------------------ export / import
@@ -819,9 +978,20 @@ export const SECTIONS = [
     api: ['Siemens.Engineering.SW.WatchAndForceTables'],
     compile: 'yes',
     pre: [],
-    reject: [],
+    reject: ['R15'],
     default: 'none',
-    note: '监控表/强制表的导入导出；未适配。',
+    note:
+      '监视表/强制表的导入导出。watch_and_force_tables 覆盖导出（两者）、导入（两者）以及监视表的创建/删除；' +
+      '力表不能创建也不能删除（R15）。',
+    leaves: {
+      'Export/Import Watch & Force Table': {
+        status: 'partial',
+        reject: ['R15'],
+        note:
+          '部分：export/import 两个 action 对监视表与力表都可用（监视表导入到组，力表只能靠导入建立）；' +
+          '力表的 Create/Delete 在 V17 不存在（R15）。',
+      },
+    },
   },
   {
     path: ['Export/import', 'Importing/exporting data of a PLC device'],
@@ -854,9 +1024,9 @@ export const SECTIONS = [
       'Exporting system blocks': { status: 'none', note: '未适配。' },
       'Exporting GRAPH blocks with multi-language text': { status: 'none', note: '未适配。' },
       'Export/Import of unit specific publishing attribute of blocks and types': { status: 'none', note: '未适配（软件单元相关）。' },
-      'Creating Instance DB': { status: 'none', note: '未适配：单实例 DB 靠导入文件带入。' },
+      'Creating Instance DB': { status: 'done', note: '已实现：create_plc_objects(kind=instance_db)（PlcBlockComposition.CreateInstanceDB）。' },
       'Accessing DB value parameter without export': { status: 'none', note: '未适配。' },
-      'Tag tables': { status: 'partial', note: '部分：表级导出/导入已实现（categories=tag_tables），单标签/常量级未做。' },
+      'Tag tables': { status: 'partial', note: '部分：表级导出/导入已实现（categories=tag_tables）；单标签/常量的 XML 导入导出未做（可用 write_tags 直接建改）。' },
       'Exporting PLC tag tables': { status: 'done', note: '已实现：categories=tag_tables，落盘到 <output_dir>/tag_tables/。' },
       'Importing PLC tag table': { status: 'done', note: '已实现：按 XML 元素识别标签表并导入。' },
       'Exporting user data type': { status: 'done', note: '已实现：categories=types，落盘到 <output_dir>/types/。' },

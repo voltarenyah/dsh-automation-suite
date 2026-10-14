@@ -1,18 +1,22 @@
 /**
- * TIAOpennessV17Min — minimal PLC block access for TIA Portal V17 through Openness.
+ * TIAOpennessV17Min — PLC block access and project/PLC/F-data access for TIA
+ * Portal V17 through Openness.
  *
  * The plugin is the TypeScript half of a two-part design:
  *
  *   DSH host process                       controller subprocess (C#, x64, net48)
  *   ─────────────────                      ──────────────────────────────────────
- *   tools: open_project / export_blocks /  whitelist of exactly five Openness
- *          import_blocks / compile_plc /    operations, one exclusive-access
- *          close_project / controller_      transaction per write, read-back
- *          status                           verification after every write,
+ *   tools: 26 tools over 25 whitelisted    the same 25 operations, one
+ *          operations (project data,       exclusive-access transaction per
+ *          PLC data, F-related, block      write, read-back verification after
+ *          read/write, controller_status)  every write, structured JSON results
  *   lifecycle: ctx.effect owns the child    structured JSON results
  *   knowledge: the vendored Openness skill set, served as one bundled skill
  *              (see `skills.ts`); registered only when the composition has a
  *              skill registry, so its absence never blocks the tools
+ *
+ * The operation surface and its parameters are frozen in
+ * `docs/EXTENDED-SURFACE.md`.
  *
  * The controller is spawned on demand, serializes operations because Openness is
  * not thread safe, and is terminated by the effect disposer when the plugin

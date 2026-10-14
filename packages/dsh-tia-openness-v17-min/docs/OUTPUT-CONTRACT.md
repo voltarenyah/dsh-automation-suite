@@ -6,7 +6,8 @@
 
 ## 1. 工具与统一输出信封
 
-六个工具（`inject: ['tools']`）：
+26 个工具（`inject: ['tools']`）。**完整的参数与返回契约在
+[`EXTENDED-SURFACE.md`](EXTENDED-SURFACE.md)**，这里只列工具清单与信封。
 
 | 工具 | 作用 | 写入 | 默认 dry-run |
 |---|---|---|---|
@@ -15,6 +16,26 @@
 | `import_blocks` | 从 Simatic ML XML 或 SCL/STL 外部源导入上述三类对象 | **是** | **是** |
 | `compile_plc` | 编译 PLC 软件 | 是（编译状态） | **是** |
 | `close_project` | 关闭项目（可选保存/关 TIA） | 是（会话） | **是** |
+| `create_project` | 新建工程并保持打开 | **是** | 否 |
+| `save_project` | 保存 / 另存工程 | **是** | 否 |
+| `archive_project` | 归档当前工程 / 取回归档并打开 | 归档只写文件，取回打开工程 | 否 |
+| `project_info` | 只读：工程属性、注释、语言、历史、产品、设备树、TIA 设置 | 否 | — |
+| `project_languages` | 列出/设置工程语言 | 是（`set`） | **是** |
+| `project_texts` | 导出/导入整工程文本（xlsx） | 导出只写文件 | 导出否 / 导入**是** |
+| `update_project` | 写仿真支持属性与工程注释 | **是** | **是** |
+| `portal_settings` | 列出/修改 TIA Portal 设置项 | 是（`set`） | **是** |
+| `list_plc_objects` | 只读：块/类型/标签表(变量,常量)/外部源/监视表/力表/软件单元 | 否 | — |
+| `create_plc_objects` | 建组/标签表/监视表/软件单元/单实例 DB | **是** | **是** |
+| `delete_plc_objects` | 删块/类型/标签表/监视表/软件单元/组/变量/常量 | **是** | **是** |
+| `write_tags` | 建/改/删 PLC 变量与用户常量 | **是** | **是** |
+| `set_block_attributes` | 通用 `SetAttribute`（如 OB `Priority`） | **是** | **是** |
+| `protect_blocks` | 块 know-how 保护加/解 | **是** | **是** |
+| `generate_source` | 由块/UDT 生成 `.scl`/`.awl`/`.db`/`.udt` | 只写文件 | 否 |
+| `watch_and_force_tables` | 监视表建删导出导入、力表导出导入 | **是** | **是** |
+| `software_units` | 软件单元列表/建删/关系增删 | **是** | **是** |
+| `safety_status` | 只读：F 相关全局设置、SafetySettings、运行时组 | 否 | — |
+| `set_safety_settings` | 写 `SafetyModificationsPossible` / `UsernameForFChangeHistory` | **是** | **是** |
+| `safety_signatures` | 只读：逐块 F 签名 | 否 | — |
 | `controller_status` | 控制器与 Openness 环境状态 | 否 | — |
 
 > 工具名保留历史命名：`export_blocks` / `import_blocks` 现在按 `categories` 处理三类"程序对象"

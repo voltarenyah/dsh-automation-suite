@@ -15,11 +15,21 @@ import {
   assertOutcomeMatchesSchema,
   controllerAvailable,
   createTestContext,
+  loadOperations,
   loadToolsModule,
   renderedText,
 } from './helpers/harness.mjs'
 
-const WHITELIST = ['OpenProject', 'ExportBlocks', 'ImportBlocks', 'CompilePlc', 'CloseProject']
+/** The controller operations the plugin may send, straight from `protocol.ts`. */
+const WHITELIST = await loadOperations()
+
+/** `open_project` -> `OpenProject`, the naming convention every tool follows. */
+function operationOf(toolName) {
+  return toolName
+    .split('_')
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join('')
+}
 
 function recordingController(reply) {
   const calls = []
@@ -176,7 +186,7 @@ test('controller_status never talks to the controller and hides the captured out
   const verboseValue = await byName['controller_status'].execute({ include_controller_output: true }, {})
   assert.deepEqual(verboseValue.data.stderrTail, ['a stderr line'])
 
-  assert.equal(context.definitions.length, 6)
+  assert.equal(context.definitions.length, 26)
 })
 
 test('only whitelisted operations ever reach the controller', async (t) => {
@@ -188,7 +198,106 @@ test('only whitelisted operations ever reach the controller', async (t) => {
   await byName['compile_plc'].execute({}, {})
   await byName['close_project'].execute({}, {})
 
-  assert.deepEqual(calls.map((call) => call.operation), WHITELIST)
+  assert.deepEqual(calls.map((call) => call.operation), WHITELIST.slice(0, 5))
+})
+
+test('every tool maps onto exactly one whitelisted controller operation', async (t) => {
+  const { context } = await harness(t)
+
+  const toolNames = context.definitions.map((definition) => definition.name)
+  // `controller_status` is answered by the plugin itself and never reaches the
+  // controller, so it is the one tool without a matching operation.
+  assert.deepEqual(toolNames.filter((name) => name === 'controller_status'), ['controller_status'])
+  assert.equal(toolNames.length - 1, WHITELIST.length, 'one tool per whitelisted operation')
+
+  for (const name of toolNames) {
+    if (name === 'controller_status') continue
+    assert.ok(
+      WHITELIST.includes(operationOf(name)),
+      `the tool ${name} maps onto ${operationOf(name)}, which the controller whitelist does not carry`,
+    )
+  }
+  for (const operation of WHITELIST) {
+    const expectedTool = operation.replace(/([a-z0-9])([A-Z])/g, '$1_$2').toLowerCase()
+    assert.ok(toolNames.includes(expectedTool), `the operation ${operation} has no tool named ${expectedTool}`)
+  }
+})
+
+test('the new write-capable tools keep their documented dry-run defaults', async (t) => {
+  const { calls, byName } = await harness(t)
+
+  await byName['create_project'].execute({ project_dir: 'C:\\P', project_name: 'P' }, {})
+  assert.equal(calls.at(-1).operation, 'CreateProject')
+  assert.equal(calls.at(-1).params.dry_run, false)
+
+  await byName['save_project'].execute({}, {})
+  assert.equal(calls.at(-1).params.dry_run, false)
+
+  await byName['archive_project'].execute({ target_dir: 'C:\\A', target_name: 'A' }, {})
+  assert.equal(calls.at(-1).params.dry_run, false)
+
+  await byName['generate_source'].execute({ output_file: 'C:\\o.scl', block_names: ['Main'] }, {})
+  assert.equal(calls.at(-1).operation, 'GenerateSource')
+  assert.equal(calls.at(-1).params.dry_run, false)
+
+  await byName['project_texts'].execute({ action: 'export', file: 'C:\\t.xlsx', source_language: 'en-US', target_language: 'de-DE' }, {})
+  assert.equal(calls.at(-1).params.dry_run, false, 'exporting project texts only writes a file')
+  await byName['project_texts'].execute({ action: 'import', file: 'C:\\t.xlsx' }, {})
+  assert.equal(calls.at(-1).params.dry_run, true, 'importing project texts changes the project')
+
+  for (const [name, args] of [
+    ['project_languages', { action: 'set', editing_language: 'en-US' }],
+    ['portal_settings', { action: 'set', setting: 'SearchInProject', value: true }],
+    ['create_plc_objects', { kind: 'tag_table', name: 'T1' }],
+    ['delete_plc_objects', { block_names: ['FB1'] }],
+    ['write_tags', { tag_table: 'T1', tags: [{ name: 'Tag1' }] }],
+    ['set_block_attributes', { names: ['Main'], attributes: { Priority: 14 } }],
+    ['protect_blocks', { block_names: ['FB1'], action: 'protect', password: 'x' }],
+    ['watch_and_force_tables', { action: 'create', name: 'W1' }],
+    ['software_units', { action: 'create', name: 'U1' }],
+    ['set_safety_settings', { safety_modifications_possible: false }],
+  ]) {
+    await byName[name].execute(args, {})
+    assert.equal(calls.at(-1).params.dry_run, true, `${name} must default to a dry run`)
+  }
+})
+
+test('the read-only tools send no dry_run at all', async (t) => {
+  const { calls, byName } = await harness(t)
+
+  await byName['project_info'].execute({}, {})
+  assert.equal(calls.at(-1).operation, 'ProjectInfo')
+  assert.equal('dry_run' in calls.at(-1).params, false)
+})
+
+test('list_plc_objects forwards exact names, which is how fingerprints are asked for per block', async (t) => {
+  const { calls, byName } = await harness(t)
+
+  await byName['list_plc_objects'].execute(
+    { categories: ['blocks'], block_names: ['FB_Motor', 'FC_1'], include_fingerprints: true },
+    {},
+  )
+  assert.equal(calls.at(-1).operation, 'ListPlcObjects')
+  assert.deepEqual(calls.at(-1).params.block_names, ['FB_Motor', 'FC_1'])
+  assert.equal(calls.at(-1).params.include_fingerprints, true)
+  assert.equal('dry_run' in calls.at(-1).params, false, 'listing is read-only')
+
+  // A caller that only names objects does not have to repeat the family.
+  await byName['list_plc_objects'].execute({ type_names: ['MyUDT'], include_fingerprints: true }, {})
+  assert.deepEqual(calls.at(-1).params.type_names, ['MyUDT'])
+
+  // The parameters stay absent when they were not given, so the controller's
+  // "exact names given" branch cannot trigger by accident.
+  await byName['list_plc_objects'].execute({}, {})
+  assert.equal('block_names' in calls.at(-1).params, false)
+  assert.equal('type_names' in calls.at(-1).params, false)
+  assert.equal('tag_table_names' in calls.at(-1).params, false)
+  // categories is left to the controller: sending a default would make a
+  // "fingerprints of these blocks" call also dump every type and tag table.
+  assert.equal('categories' in calls.at(-1).params, false)
+
+  await byName['list_plc_objects'].execute({ categories: ['units'] }, {})
+  assert.deepEqual(calls.at(-1).params.categories, ['units'])
 })
 
 test('every tool returns a canonical value that matches its declared output schema', async (t) => {
@@ -201,6 +310,26 @@ test('every tool returns a canonical value that matches its declared output sche
     ['compile_plc', {}],
     ['close_project', {}],
     ['controller_status', {}],
+    ['create_project', { project_dir: 'C:\\P', project_name: 'P' }],
+    ['save_project', {}],
+    ['archive_project', { target_dir: 'C:\\A', target_name: 'A' }],
+    ['project_info', {}],
+    ['project_languages', {}],
+    ['project_texts', { action: 'export', file: 'C:\\t.xlsx', source_language: 'en-US', target_language: 'de-DE' }],
+    ['update_project', { simulation_during_block_compilation: false }],
+    ['portal_settings', {}],
+    ['list_plc_objects', {}],
+    ['create_plc_objects', { kind: 'tag_table', name: 'T1' }],
+    ['delete_plc_objects', { block_names: ['FB1'] }],
+    ['write_tags', { tag_table: 'T1', tags: [{ name: 'Tag1', data_type: 'Bool' }] }],
+    ['set_block_attributes', { names: ['Main'], attributes: { Priority: 14 } }],
+    ['protect_blocks', { block_names: ['FB1'], action: 'protect', password: 'x' }],
+    ['generate_source', { output_file: 'C:\\o.scl', block_names: ['Main'] }],
+    ['watch_and_force_tables', { action: 'export', name: 'W1', output_file: 'C:\\w.xml' }],
+    ['software_units', {}],
+    ['safety_status', {}],
+    ['set_safety_settings', { safety_modifications_possible: false }],
+    ['safety_signatures', {}],
   ]
 
   for (const [name, args] of invocations) {

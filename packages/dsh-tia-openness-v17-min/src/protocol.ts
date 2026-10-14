@@ -16,9 +16,37 @@ export const PROTOCOL_VERSION = 1
  *
  * This list is duplicated on purpose: the plugin refuses to send anything else,
  * and the controller independently refuses to execute anything else. Neither side
- * trusts the other's validation.
+ * trusts the other's validation. The order is part of the contract too:
+ * `scripts/coverage/build-matrix.mjs` compares it entry by entry with the C#
+ * catalog, which prints it in the ready frame and in `--help`.
  */
-export const OPERATIONS = ['OpenProject', 'ExportBlocks', 'ImportBlocks', 'CompilePlc', 'CloseProject'] as const
+export const OPERATIONS = [
+  'OpenProject',
+  'ExportBlocks',
+  'ImportBlocks',
+  'CompilePlc',
+  'CloseProject',
+  'CreateProject',
+  'SaveProject',
+  'ArchiveProject',
+  'ProjectInfo',
+  'ProjectLanguages',
+  'ProjectTexts',
+  'UpdateProject',
+  'PortalSettings',
+  'ListPlcObjects',
+  'CreatePlcObjects',
+  'DeletePlcObjects',
+  'WriteTags',
+  'SetBlockAttributes',
+  'ProtectBlocks',
+  'GenerateSource',
+  'WatchAndForceTables',
+  'SoftwareUnits',
+  'SafetyStatus',
+  'SetSafetySettings',
+  'SafetySignatures',
+] as const
 
 export type Operation = (typeof OPERATIONS)[number]
 

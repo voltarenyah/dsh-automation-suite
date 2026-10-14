@@ -16,7 +16,14 @@ import { execFile } from 'node:child_process'
 import { test } from 'node:test'
 import { promisify } from 'node:util'
 
-import { controllerAvailable, controllerExe } from './helpers/harness.mjs'
+import { controllerAvailable, controllerExe, loadOperations } from './helpers/harness.mjs'
+
+/**
+ * The controller's own list is asserted by the C# self test
+ * (`whitelist_exact`); this module-level copy is the plugin's, so the two tests
+ * fail together when only one side of the wire contract is updated.
+ */
+const OPERATIONS = await loadOperations()
 
 const run = promisify(execFile)
 
@@ -45,7 +52,7 @@ test('the controller self test passes', async (t) => {
 
   const names = report.checks.map((check) => check.name)
   for (const expected of [
-    'whitelist_exact_five',
+    'whitelist_exact',
     'whitelist_rejects_unknown',
     'json_roundtrip',
     'json_escaping',
@@ -109,11 +116,11 @@ test('--version and --help describe the whitelist', async (t) => {
   assert.equal(version.code, 0)
   const frame = JSON.parse(version.stdout)
   assert.equal(frame.controller, 'TiaOpennessV17Min.Controller')
-  assert.deepEqual(frame.operations, ['OpenProject', 'ExportBlocks', 'ImportBlocks', 'CompilePlc', 'CloseProject'])
+  assert.deepEqual(frame.operations, OPERATIONS)
 
   const help = await controller(['--help'])
   assert.equal(help.code, 0)
-  for (const operation of ['OpenProject', 'ExportBlocks', 'ImportBlocks', 'CompilePlc', 'CloseProject']) {
+  for (const operation of OPERATIONS) {
     assert.match(help.stdout, new RegExp(operation))
   }
   assert.match(help.stdout, /TIA_OPENNESS_V17_DIR/)
@@ -133,7 +140,7 @@ test('a non-whitelisted operation is refused on the command line too', async (t)
   const frame = JSON.parse(lines[lines.length - 1])
   assert.equal(frame.ok, false)
   assert.equal(frame.error.code, 'unsupported_operation')
-  assert.deepEqual(frame.error.details.allowed, ['OpenProject', 'ExportBlocks', 'ImportBlocks', 'CompilePlc', 'CloseProject'])
+  assert.deepEqual(frame.error.details.allowed, OPERATIONS)
 })
 
 test('an unknown command line argument is refused with a structured frame', async (t) => {

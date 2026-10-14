@@ -28,6 +28,14 @@ namespace TiaOpennessV17Min.Controller
             return this;
         }
 
+        /// <summary>Inserts a pair at the given position, keeping a stable key order.</summary>
+        public JsonObject Insert(int index, string key, object value)
+        {
+            int position = index < 0 ? 0 : (index > _items.Count ? _items.Count : index);
+            _items.Insert(position, new KeyValuePair<string, object>(key, value));
+            return this;
+        }
+
         /// <summary>Adds the pair only when the value is not null (an empty string is kept).</summary>
         public JsonObject AddIfPresent(string key, object value)
         {
@@ -61,7 +69,7 @@ namespace TiaOpennessV17Min.Controller
         {
             if (source == null) return fallback;
             object value = source[key];
-            return value == null ? fallback : Convert.ToString(value, CultureInfo.InvariantCulture);
+            return value == null ? fallback : System.Convert.ToString(value, CultureInfo.InvariantCulture);
         }
 
         public static bool ReadBool(JsonObject source, string key, bool fallback)
@@ -71,7 +79,7 @@ namespace TiaOpennessV17Min.Controller
             if (value is bool) return (bool)value;
             if (value == null) return fallback;
             bool parsed;
-            return bool.TryParse(Convert.ToString(value, CultureInfo.InvariantCulture), out parsed) ? parsed : fallback;
+            return bool.TryParse(System.Convert.ToString(value, CultureInfo.InvariantCulture), out parsed) ? parsed : fallback;
         }
 
         public static int ReadInt(JsonObject source, string key, int fallback)
@@ -81,7 +89,7 @@ namespace TiaOpennessV17Min.Controller
             if (value is int) return (int)value;
             if (value == null) return fallback;
             int parsed;
-            return int.TryParse(Convert.ToString(value, CultureInfo.InvariantCulture), NumberStyles.Integer,
+            return int.TryParse(System.Convert.ToString(value, CultureInfo.InvariantCulture), NumberStyles.Integer,
                 CultureInfo.InvariantCulture, out parsed) ? parsed : fallback;
         }
 
@@ -93,7 +101,7 @@ namespace TiaOpennessV17Min.Controller
             JsonObject result = new JsonObject();
             for (int i = 0; i < keyValuePairs.Length; i += 2)
             {
-                result.Add(Convert.ToString(keyValuePairs[i], CultureInfo.InvariantCulture), keyValuePairs[i + 1]);
+                result.Add(System.Convert.ToString(keyValuePairs[i], CultureInfo.InvariantCulture), keyValuePairs[i + 1]);
             }
             return result;
         }
@@ -143,7 +151,7 @@ namespace TiaOpennessV17Min.Controller
             }
             if (IsInteger(value))
             {
-                sb.Append(Convert.ToString(value, CultureInfo.InvariantCulture));
+                sb.Append(System.Convert.ToString(value, CultureInfo.InvariantCulture));
                 return;
             }
             if (value is DateTime)
@@ -177,7 +185,7 @@ namespace TiaOpennessV17Min.Controller
             IEnumerable enumerable = value as IEnumerable;
             if (enumerable != null) { WriteArray(sb, enumerable, pretty, depth); return; }
 
-            WriteString(sb, Convert.ToString(value, CultureInfo.InvariantCulture));
+            WriteString(sb, System.Convert.ToString(value, CultureInfo.InvariantCulture));
         }
 
         private static void WriteObject(StringBuilder sb, JsonObject value, bool pretty, int depth)
@@ -207,7 +215,7 @@ namespace TiaOpennessV17Min.Controller
                 if (!first) sb.Append(',');
                 first = false;
                 NewLine(sb, pretty, depth + 1);
-                WriteString(sb, Convert.ToString(entry.Key, CultureInfo.InvariantCulture));
+                WriteString(sb, System.Convert.ToString(entry.Key, CultureInfo.InvariantCulture));
                 sb.Append(':');
                 if (pretty) sb.Append(' ');
                 WriteValue(sb, entry.Value, pretty, depth + 1);
@@ -343,6 +351,55 @@ namespace TiaOpennessV17Min.Controller
             return FromValue(_values[name], "'" + name + "'");
         }
 
+        /// <summary>
+        /// Reads an array of JSON objects; a single object is accepted as a one
+        /// element list, and a missing value yields an empty list. Used by the
+        /// parameters that describe one write per object (<c>tags</c>,
+        /// <c>constants</c>).
+        /// </summary>
+        public List<JsonArgs> ObjectList(string name)
+        {
+            object value = Raw(name);
+            List<JsonArgs> result = new List<JsonArgs>();
+            if (value == null) return result;
+
+            Dictionary<string, object> single = value as Dictionary<string, object>;
+            if (single != null)
+            {
+                result.Add(FromValue(single, "'" + name + "'"));
+                return result;
+            }
+
+            IEnumerable items = value as IEnumerable;
+            if (items == null)
+            {
+                throw new ControllerException("invalid_params", "'" + name + "' must be an object or an array of objects.");
+            }
+            int index = 0;
+            foreach (object item in items)
+            {
+                Dictionary<string, object> entry = item as Dictionary<string, object>;
+                if (entry == null)
+                {
+                    throw new ControllerException("invalid_params",
+                        "'" + name + "[" + index + "]' must be a JSON object.");
+                }
+                result.Add(FromValue(entry, "'" + name + "[" + index + "]'"));
+                index++;
+            }
+            return result;
+        }
+
+        /// <summary>True when at least one of the named parameters is present and non-null.</summary>
+        public bool HasAny(params string[] names)
+        {
+            foreach (string name in names)
+            {
+                if (Has(name)) return true;
+            }
+            return false;
+        }
+
         public string String(string name, string fallback)
         {
             object value = Raw(name);
@@ -453,6 +510,17 @@ namespace TiaOpennessV17Min.Controller
             return match;
         }
 
+        /// <summary>Reads a mandatory enum-like string.</summary>
+        public string RequiredEnum(string name, IList<string> allowed)
+        {
+            if (!Has(name))
+            {
+                throw new ControllerException("invalid_params",
+                    "'" + name + "' is required. Allowed values: " + string.Join(", ", ToArray(allowed)) + ".");
+            }
+            return Enum(name, allowed, null);
+        }
+
         private static string[] ToArray(IList<string> values)
         {
             string[] array = new string[values.Count];
@@ -467,6 +535,83 @@ namespace TiaOpennessV17Min.Controller
                 if (string.Equals(candidate, value, StringComparison.OrdinalIgnoreCase)) return candidate;
             }
             return null;
+        }
+    }
+
+    /// <summary>
+    /// Converts a JSON scalar into the CLR value an Openness attribute expects.
+    ///
+    /// JSON alone is not enough: <c>SetAttribute("Priority", 14)</c> wants an
+    /// <see cref="System.Int32"/> while the TIA Portal setting
+    /// <c>UserInterfaceLanguage</c> wants a <see cref="CultureInfo"/>. The caller
+    /// therefore names the target type, and <c>auto</c> keeps what JSON produced.
+    /// </summary>
+    internal static class Values
+    {
+        /// <summary>Accepted <c>value_type</c> names, in documentation order.</summary>
+        public static readonly string[] TypeNames = { "auto", "string", "boolean", "integer", "culture" };
+
+        public static object Convert(object raw, string valueType, string parameterName)
+        {
+            string type = string.IsNullOrEmpty(valueType) ? "auto" : valueType.ToLowerInvariant();
+            switch (type)
+            {
+                case "auto":
+                    return raw;
+                case "string":
+                    return System.Convert.ToString(raw, CultureInfo.InvariantCulture);
+                case "boolean":
+                    if (raw is bool) return raw;
+                    {
+                        bool parsed;
+                        string text = System.Convert.ToString(raw, CultureInfo.InvariantCulture);
+                        if (bool.TryParse(text, out parsed)) return parsed;
+                        throw new ControllerException("invalid_params",
+                            "'" + parameterName + "' is not a boolean: " + Text.Quote(text));
+                    }
+                case "integer":
+                    if (raw is int) return raw;
+                    if (raw is long) return (int)(long)raw;
+                    if (raw is decimal) return decimal.ToInt32((decimal)raw);
+                    {
+                        int parsed;
+                        string text = System.Convert.ToString(raw, CultureInfo.InvariantCulture);
+                        if (int.TryParse(text, NumberStyles.Integer, CultureInfo.InvariantCulture, out parsed)) return parsed;
+                        throw new ControllerException("invalid_params",
+                            "'" + parameterName + "' is not an integer: " + Text.Quote(text));
+                    }
+                case "culture":
+                    {
+                        string text = System.Convert.ToString(raw, CultureInfo.InvariantCulture);
+                        try
+                        {
+                            return CultureInfo.GetCultureInfo(text);
+                        }
+                        catch (Exception ex)
+                        {
+                            throw new ControllerException("invalid_params",
+                                "'" + parameterName + "' is not a known culture name: " + Text.Quote(text) + " (" + ex.Message + ").");
+                        }
+                    }
+                default:
+                    throw new ControllerException("invalid_params",
+                        "'" + parameterName + "' has the unknown value " + Text.Quote(type)
+                            + ". Allowed: " + string.Join(", ", TypeNames) + ".");
+            }
+        }
+
+        /// <summary>Renders any Openness attribute value for the JSON payload.</summary>
+        public static object Printable(object value)
+        {
+            if (value == null) return null;
+            if (value is CultureInfo) return ((CultureInfo)value).Name;
+            if (value is DateTime) return value;
+            if (value is bool || value is string || value is int || value is long || value is double || value is decimal)
+            {
+                return value;
+            }
+            if (value is Enum) return value.ToString();
+            return System.Convert.ToString(value, CultureInfo.InvariantCulture);
         }
     }
 }

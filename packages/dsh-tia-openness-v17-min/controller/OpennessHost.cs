@@ -65,8 +65,13 @@ namespace TiaOpennessV17Min.Controller
     /// Every method here runs on the single thread that reads the request
     /// channel. Openness objects are not thread safe and are never shared with
     /// another thread.
+    ///
+    /// The class is partial: the project-data helpers live in
+    /// <c>OpennessHost.Project.cs</c>, the PLC-data helpers in
+    /// <c>OpennessHost.Plc.cs</c> and the F-related helpers in
+    /// <c>OpennessHost.Safety.cs</c>.
     /// </summary>
-    internal sealed class OpennessHost : IDisposable
+    internal sealed partial class OpennessHost : IDisposable
     {
         private readonly DiagnosticLog _log;
         private TiaPortal _portal;
@@ -214,6 +219,26 @@ namespace TiaOpennessV17Min.Controller
             catch (Exception ex)
             {
                 throw OpennessFailure("project_save_failed", "Saving the project failed: " + ex.Message, ex);
+            }
+        }
+
+        /// <summary>Saves the project under a different name or in another directory.</summary>
+        public void SaveProjectAs(string directory)
+        {
+            EnsureProjectOpen("SaveProject");
+            if (string.IsNullOrWhiteSpace(directory))
+            {
+                throw new ControllerException("invalid_params", "'save_as_dir' must be a non-empty path.");
+            }
+            string full = Path.GetFullPath(directory.Trim().Trim('"'));
+            try
+            {
+                _project.SaveAs(new DirectoryInfo(full));
+            }
+            catch (Exception ex)
+            {
+                throw OpennessFailure("project_save_failed",
+                    "Saving the project as " + Text.Quote(full) + " failed: " + ex.Message, ex);
             }
         }
 

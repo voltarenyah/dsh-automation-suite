@@ -28,12 +28,17 @@ namespace TiaOpennessV17Min.Controller
     }
 
     /// <summary>
-    /// Implements the five whitelisted Openness operations. Every write is
-    /// explicit about it: an operation that changes the project runs inside an
+    /// Implements the whitelisted Openness operations. Every write is explicit
+    /// about it: an operation that changes the project runs inside an
     /// exclusive-access transaction that is only committed after the last change,
     /// and every write is followed by a read-back verification.
+    ///
+    /// The class is partial. This file holds the original block read/write
+    /// surface; the project-data operations live in <c>OperationsProject.cs</c>,
+    /// the PLC-data operations in <c>OperationsPlc.cs</c> and the F-related
+    /// operations in <c>OperationsSafety.cs</c>.
     /// </summary>
-    internal sealed class OpennessOperations : IOperationRunner
+    internal sealed partial class OpennessOperations : IOperationRunner
     {
         private static readonly string[] ExportOptionNames = { "none", "with_defaults", "with_read_only" };
         private static readonly string[] ImportOptionNames = { "none", "override" };
@@ -96,6 +101,52 @@ namespace TiaOpennessV17Min.Controller
                     return CompilePlc(parameters, log, changes, progress);
                 case OperationCatalog.CloseProject:
                     return CloseProject(parameters, log, changes, progress);
+
+                // Functions for projects and project data.
+                case OperationCatalog.CreateProject:
+                    return CreateProject(parameters, log, changes, progress);
+                case OperationCatalog.SaveProject:
+                    return SaveProject(parameters, log, changes, progress);
+                case OperationCatalog.ArchiveProject:
+                    return ArchiveProject(parameters, log, changes, progress);
+                case OperationCatalog.ProjectInfo:
+                    return ProjectInfo(parameters, log, changes, progress);
+                case OperationCatalog.ProjectLanguages:
+                    return ProjectLanguages(parameters, log, changes, progress);
+                case OperationCatalog.ProjectTexts:
+                    return ProjectTexts(parameters, log, changes, progress);
+                case OperationCatalog.UpdateProject:
+                    return UpdateProject(parameters, log, changes, progress);
+                case OperationCatalog.PortalSettings:
+                    return PortalSettings(parameters, log, changes, progress);
+
+                // Functions for accessing the data of a PLC device.
+                case OperationCatalog.ListPlcObjects:
+                    return ListPlcObjects(parameters, log, changes, progress);
+                case OperationCatalog.CreatePlcObjects:
+                    return CreatePlcObjects(parameters, log, changes, progress);
+                case OperationCatalog.DeletePlcObjects:
+                    return DeletePlcObjects(parameters, log, changes, progress);
+                case OperationCatalog.WriteTags:
+                    return WriteTags(parameters, log, changes, progress);
+                case OperationCatalog.SetBlockAttributes:
+                    return SetBlockAttributes(parameters, log, changes, progress);
+                case OperationCatalog.ProtectBlocks:
+                    return ProtectBlocks(parameters, log, changes, progress);
+                case OperationCatalog.GenerateSource:
+                    return GenerateSource(parameters, log, changes, progress);
+                case OperationCatalog.WatchAndForceTables:
+                    return WatchAndForceTables(parameters, log, changes, progress);
+                case OperationCatalog.SoftwareUnits:
+                    return SoftwareUnits(parameters, log, changes, progress);
+
+                // F-related Openness.
+                case OperationCatalog.SafetyStatus:
+                    return SafetyStatus(parameters, log, changes, progress);
+                case OperationCatalog.SetSafetySettings:
+                    return SetSafetySettings(parameters, log, changes, progress);
+                case OperationCatalog.SafetySignatures:
+                    return SafetySignatures(parameters, log, changes, progress);
                 default:
                     // Unreachable: the catalog admitted the name above.
                     throw new ControllerException("unsupported_operation", "Unhandled operation " + Text.Quote(operation) + ".");

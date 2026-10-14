@@ -24,7 +24,7 @@
 ```
 ┌─ DSH 宿主进程 (Node) ──────────────────────────┐
 │  dsh-tia-openness-v17-min (本插件, TypeScript) │
-│   • 注册 6 个工具                               │
+│   • 注册 26 个工具                              │
 │   • ctx.effect() 拥有 C# 控制器子进程           │
 │   • 请求串行化 / 超时 / 硬超时终止与重启         │
 │   • 结构化错误 → 结构化工具结果                  │
@@ -35,7 +35,7 @@
 │  .NET Framework 4.8)                           │
 │   • 先注册程序集解析器，再加载                  │
 │     Siemens.Engineering.dll（V17）              │
-│   • 只执行 5 个白名单操作                       │
+│   • 只执行 25 个白名单操作                      │
 │   • 写入 = ExclusiveAccess + Transaction        │
 │   • 写后读回验证                                │
 │   • 返回结构化 JSON                             │
@@ -53,12 +53,13 @@
 |---|---|
 | TypeScript 构建 / typecheck | ✅ 0 错误 |
 | C# 控制器编译（对着本机真实 V17 `Siemens.Engineering.dll`） | ✅ 0 Warning / 0 Error |
-| 自动化测试 `npm test` | ✅ **54 项：53 通过 / 0 失败 / 1 跳过**（跳过项为"控制器未构建"的降级路径；其中 9 项覆盖 §4.4 知识库，含 3 项对**真实** skill 注册表的集成测试） |
+| 自动化测试 `npm test` | ✅ **58 项：57 通过 / 0 失败 / 1 跳过**（跳过项为"控制器未构建"的降级路径；含 9 项知识库与 3 项对**真实** skill 注册表的集成测试） |
 | C# 控制器自检（无 TIA） | ✅ **14/14**（含"启动时不加载 Openness 程序集"与"Siemens 解析器包可用"） |
 | Openness 环境探测（DLL 版本 / 位数 / 用户组） | ✅ `17.0.0.0` / x64 / 已在 `Siemens TIA Openness` 组 |
 | 安装进真实 DSH 宿主的加载 / 卸载验证 | ✅ **已验证（真实宿主）**：独立 `DSH_HOME` + 测试 profile 启动真实宿主 → 控制器子进程出现（`apply` 执行、`ctx.effect` 持有）；宿主结束 → 子进程自行退出，无残留。`~/.dsh` 未被修改 |
 | 真实 V17 项目上的导出→改→导入→编译 | ✅ **已验证（真实项目）**：237 块项目导出 234 个（3 个被 TIA 拒绝，逐块报告）、改 `HeaderVersion` 导入 override 进原组、写后验证 `passed/changed=True`、重新导出内容为新值、编译 `errors=0`。详见 §0.1 |
 | 第二个真实项目（`PEI_SinoARP_Master_V4.1.3`，1152 块，**正式项目**，设备在用户组里） | ✅ 导出 **1151/1152**（1 个 Safety F 块被拒绝并逐块报告），1152 文件 / 70.6 MB，22 个用户组目录层级与非 ASCII 组名（`Fonctions méthode`、`55_Cavité_STD`）均正确；`.ap17` 修改时间未变、无锁文件、无残留进程。该轮又修掉一个缺陷（设备分组 → 见 [REAL-RUN.md](docs/REAL-RUN.md) §D.6、[decisions.md](docs/decisions.md) D16） |
+| v0.2 新增的 20 个操作（工程数据 / PLC 数据 / F 相关） | ⏳ **已实现、编译通过、单测通过；尚未在真实 TIA Portal 项目上验证**。逐条测试项与执行方法见 [docs/VERIFICATION-PLAN.md](docs/VERIFICATION-PLAN.md)；接口契约见 [docs/EXTENDED-SURFACE.md](docs/EXTENDED-SURFACE.md) |
 
 > **关于验证范围**
 >
@@ -164,7 +165,11 @@ plugin_manager(action: "install_bundle", target: "C:\\Users\\Ansel\\dsh-automati
 
 ## 4. 工具
 
-六个工具，统一返回同一个信封（`ok` / `summary` / `data` / `changes` / `diagnostics` / `error`）：
+26 个工具，统一返回同一个信封（`ok` / `summary` / `data` / `changes` / `diagnostics` / `error`）。
+每个工具对应控制器的一个白名单操作，参数与返回结构见
+[`docs/EXTENDED-SURFACE.md`](docs/EXTENDED-SURFACE.md)。
+
+**块与工程主线（v0.1 已有）**
 
 | 工具 | 作用 | 写入 | 默认 dry-run |
 |---|---|---|---|
@@ -174,6 +179,41 @@ plugin_manager(action: "install_bundle", target: "C:\\Users\\Ansel\\dsh-automati
 | `compile_plc` | 编译 PLC 软件并返回编译结果 | 是（编译状态） | **是** |
 | `close_project` | 关闭项目（可选保存、可选关掉 TIA Portal 实例） | 是（保存/关闭会话） | **是** |
 | `controller_status` | 报告控制器子进程与 Openness 环境状态 | 否 | —（不启动控制器） |
+
+**工程与工程数据（v0.2 新增）**
+
+| 工具 | 作用 | 写入 | 默认 dry-run |
+|---|---|---|---|
+| `create_project` | 新建工程（可选 Author/Comment），并保持打开 | **是**（新目录 + 新工程） | 否 |
+| `save_project` | 保存工程，或另存到 `save_as_dir` | **是** | 否 |
+| `archive_project` | `action=archive` 归档当前工程；`action=retrieve` 取回归档并打开 | 归档只写文件；取回打开工程 | 否 |
+| `project_info` | 只读汇总：工程属性、注释、语言、历史、已用产品、设备树、PLC 软件、TIA 设置 | 否 | —（无 `dry_run`） |
+| `project_languages` | 列出/设置支持语言、活动语言、编辑语言、参考语言 | **是**（`action=set`） | **是** |
+| `project_texts` | 导出/导入整工程文本（xlsx，`ExportProjectTexts`/`ImportProjectTexts`） | 导出只写文件；导入改工程 | 导出否 / 导入**是** |
+| `update_project` | 写"块编译时仿真支持"与工程注释（多语言文本） | **是** | **是** |
+| `portal_settings` | 列出/修改 TIA Portal 设置（`SettingsFolders`，如 General/SearchInProject） | 是（`action=set`） | **是** |
+
+**PLC 设备数据（v0.2 新增）**
+
+| 工具 | 作用 | 写入 | 默认 dry-run |
+|---|---|---|---|
+| `list_plc_objects` | 只读枚举块/PLC 类型/标签表（含变量与常量）/外部源/监视表/力表/软件单元，可带属性与指纹 | 否 | —（无 `dry_run`） |
+| `create_plc_objects` | 建块组/类型组/标签表组/标签表/监视表/软件单元/单实例 DB | **是** | **是** |
+| `delete_plc_objects` | 删块/类型/标签表/监视表/软件单元/各类组/变量/用户常量 | **是** | **是** |
+| `write_tags` | 建/改/删 PLC 变量与用户常量（含注释、外部可见性） | **是** | **是** |
+| `set_block_attributes` | 通用 `SetAttribute` 写块/UDT 属性（如 OB 的 `Priority`） | **是** | **是** |
+| `protect_blocks` | 设置/解除块 know-how 保护（`PlcBlockProtectionProvider`） | **是** | **是** |
+| `generate_source` | 由块/UDT 生成 `.scl`/`.awl`/`.db`/`.udt` 源文件 | 只写文件 | 否 |
+| `watch_and_force_tables` | 监视表的建/删/导出/导入、力表的导出/导入 | **是** | **是** |
+| `software_units` | 软件单元的列出/创建/删除、关系增删 | **是** | **是** |
+
+**F 相关（v0.2 新增）**
+
+| 工具 | 作用 | 写入 | 默认 dry-run |
+|---|---|---|---|
+| `safety_status` | 只读：`GlobalSettings` 两个动作、`SafetySettings`、`SafetyAdministration`、运行时组 | 否 | —（无 `dry_run`） |
+| `set_safety_settings` | 写 `SafetyModificationsPossible` 与 `UsernameForFChangeHistory` | **是** | **是** |
+| `safety_signatures` | 只读：逐块 `SafetySignatureProvider` 的 F 签名（`BlockOfflineSignature`） | 否 | —（无 `dry_run`） |
 
 ### 4.1 典型流程：导出 → 修改 → 导入 → 编译
 
@@ -203,10 +243,16 @@ plugin_manager(action: "install_bundle", target: "C:\\Users\\Ansel\\dsh-automati
 
 ### 4.2 dry-run 与写入策略
 
-- **写入类操作默认 dry-run**：`import_blocks`、`compile_plc`、`close_project` 的
-  `dry_run` 默认 `true`，必须显式传 `dry_run: false` 才真正执行。
-- `open_project` 默认 `dry_run: false`，因为默认参数下它**不修改项目内容**；唯一可能的写入
-  （把旧版本项目升级为 V17）被独立的 `allow_upgrade`（默认 `false`）把关，属于 fail-closed。
+- **写入类操作默认 dry-run**：`import_blocks`、`compile_plc`、`close_project`，以及 v0.2 的
+  `project_languages`、`update_project`、`portal_settings`、`create_plc_objects`、`delete_plc_objects`、
+  `write_tags`、`set_block_attributes`、`protect_blocks`、`watch_and_force_tables`、`software_units`、
+  `set_safety_settings`、`project_texts`（仅 `action=import`）的 `dry_run` 默认 `true`，必须显式传
+  `dry_run: false` 才真正执行。
+- 默认 `dry_run: false` 的都是"不修改工程内容"或"改的是用户明确要求的一次性动作"：
+  `open_project`（写入只由 `allow_upgrade` 把关）、`create_project`、`save_project`、
+  `archive_project`（归档只写文件）、`generate_source`（只写文件）、`project_texts` 的 export。
+- 读操作（`project_info`、`list_plc_objects`、`safety_status`、`safety_signatures`）不声明 `dry_run`：
+  它们不写任何东西。
 - 每个工具的 `description` 都写明了上述策略，模型可以直接读到。
 
 ### 4.3 写后验证
@@ -233,7 +279,7 @@ commit `b5c7041`）**逐字**打进包里，并注册成模型可见的**一个*
 - **为什么只注册一个**：会话目录是每个会话都要付的持久消息，描述上限 500 字符；31 条目录项会让
   每个（哪怕与 TIA 无关的）会话都替它买单。路由 skill 只占一行，同时把绝对 base directory 交给模型。
 - **怎么注册**：`src/skills.ts` 通过 `ctx.inject(['skills'], …)` 注册 bundled provider；
-  `skills` **没有**被放进模块级 `inject`，所以未挂 skill 注册表的 profile 里 6 个工具照常可用。
+  `skills` **没有**被放进模块级 `inject`，所以未挂 skill 注册表的 profile 里 26 个工具照常可用。
   两条都有单测守着：`test/06-skills.test.mjs` 用替身注册表，`test/07-skills-registry.test.mjs`
   用**真实**的 `@deepseek-ai/dsh-skill` 注册表（含"卸载后目录项消失"）。
 - **模型一定会看到它**：每个工具的 description 末尾都带一句
@@ -253,7 +299,7 @@ commit `b5c7041`）**逐字**打进包里，并注册成模型可见的**一个*
 
 | 措施 | 实现 |
 |---|---|
-| 操作白名单 | 控制器只接受 `OpenProject` / `ExportBlocks` / `ImportBlocks` / `CompilePlc` / `CloseProject`；其它名字返回 `unsupported_operation`。插件侧同样只发送这 5 个名字（双重校验，互不信任） |
+| 操作白名单 | 控制器只接受 `controller/Protocol.cs` 的 `OperationCatalog` 里的 25 个操作名（v0.1 的 5 个 + v0.2 的 20 个）；其它名字返回 `unsupported_operation`。插件侧 `src/protocol.ts` 的 `OPERATIONS` 是同一份列表（双重校验，互不信任），`npm run matrix:check` 逐条比对两者 |
 | 禁止任意代码 | 控制器不接受任何 C#/脚本片段，所有参数都是数据（路径、块名、枚举）；没有 `eval` / `Invoke` / `Create` 反射入口 |
 | 事务与回滚 | 写入使用 `TiaPortal.ExclusiveAccess()` + `ExclusiveAccess.Transaction(project, "...")`；**只有全部文件成功后**才调用 `CommitOnDispose()`，否则 dispose 即回滚，项目保持不变 |
 | 写后验证 | 见 4.3 |
@@ -344,12 +390,12 @@ npm run test:controller  # 只跑 C# 控制器自检
 
 | 文件 | 覆盖 |
 |---|---|
-| `01-load.test.mjs` | **加载测试**：模块级 `name`/`inject`/`Config`/`apply`；6 个工具注册；参数与输出 schema 用**真实** `@deepseek-ai/dsh-tools` 编译器编译；校验器拒绝缺参/错类型/越界枚举；工具描述包含 dry-run 与错误码；工具返回值通过 output schema 校验；控制器缺失时仍能加载并给出结构化原因 |
+| `01-load.test.mjs` | **加载测试**：模块级 `name`/`inject`/`Config`/`apply`；26 个工具按注册顺序注册；参数与输出 schema 用**真实** `@deepseek-ai/dsh-tools` 编译器编译；校验器拒绝缺参/错类型/越界枚举；工具描述包含 dry-run 与错误码；工具返回值通过 output schema 校验；控制器缺失时仍能加载并给出结构化原因 |
 | `02-lifecycle.test.mjs` | **生命周期测试**：用真实 exe 启动控制器，断言操作系统可见该进程；`ctx.effect` 的 disposer 卸载后断言**进程已消失**；卸载幂等；配置了不存在的路径时调用失败为 `controller_not_found`。注意：触发卸载的是测试里忠实模拟 `ctx.effect` 语义的 disposer，不是真实 DSH loader 的 HMR 路径（该环待人工验证） |
 | `03-controller-protocol.test.mjs` | **协议测试**：握手、白名单拒绝、参数校验、`project_not_open`、ASCII 转义、进度帧、请求串行化、队列上限；用 stub 控制器覆盖**卡死超时→终止→重启**、请求中途退出、协议版本不匹配、stdout 噪声（这一组还捕获并回归了一个真实的 bug：被替换的旧子进程的迟到 `exit` 事件会清掉新子进程引用，导致进程泄漏） |
 | `04-tools.test.mjs` | **工具语义**：每个工具发送的参数与默认值（写入类默认 dry-run）、只发送白名单操作、`controller_status` 不触碰控制器、渲染文本包含错误码/提示/诊断 |
 | `05-controller-cli.test.mjs` | **C# 控制器**：`--self-test` 14 项检查全绿；Openness 探测与用户组；`--version`/`--help`；命令行输出重定向为结构化帧；`--param` 重复值成数组 |
-| `06-skills.test.mjs` | **知识库（替身注册表）**：`ctx.inject(['skills'], …)` 注册；没有 skills 服务的 profile 仍加载 6 个工具；目录只多一条且 description ≤ 500；`get()` 正文无 frontmatter、引用的每个上游文件都存在、正文 < 8192；vendored 树与 `UPSTREAM.json` 一致；每个工具描述都指向该 skill |
+| `06-skills.test.mjs` | **知识库（替身注册表）**：`ctx.inject(['skills'], …)` 注册；没有 skills 服务的 profile 仍加载 26 个工具；目录只多一条且 description ≤ 500；`get()` 正文无 frontmatter、引用的每个上游文件都存在、正文 < 8192；vendored 树与 `UPSTREAM.json` 一致；每个工具描述都指向该 skill |
 | `07-skills-registry.test.mjs` | **知识库（真实注册表）**：把 `@deepseek-ai/dsh-skill` 的真实 `SkillRegistry` 挂到裸 cordis context 上，验证 candidate 被真实校验接受、重名注册被拒、`get()` 能加载、`renderSkillContent` 带上 base directory、卸载插件后目录项消失 |
 
 C# 控制器自检（无需 TIA Portal，14 项）：
@@ -419,7 +465,22 @@ pnpm run link:runtime -- --force   # 无视缓存，按当前宿主版本重抽
 | `export_failed` / `import_failed` / `compile_failed` | Openness 调用本身失败，`details.hint` 给出常见原因 |
 | `verification_failed` | 写入后读回验证未通过（`data` 仍包含已发生的写入与验证报告） |
 | `transaction_failed` | 无法获得独占访问事务（可能有另一个 Openness 客户端在改项目） |
-| `unsupported_operation` / `unsupported_frame` | 越出白名单的请求被拒绝 |
+| `unsupported_operation` / `unsupported_frame` | 越出白名单的请求被拒绝；`details.allowed` 列出全部 25 个允许的操作名 |
+| `delete_failed` / `object_not_found` / `object_already_exists` | v0.2：删除对象失败 / 目标不存在（`details.missing`、`details.available`）/ 已存在 |
+| `project_create_failed` / `project_save_failed` | v0.2：新建工程失败（目录非空、名称含非法字符等）/ 保存或另存失败 |
+| `project_not_saved` | v0.2：`archive_project` 前工程有未保存改动（手册要求先 Save） |
+| `archive_failed` / `archive_not_found` / `retrieve_failed` | v0.2：归档写入失败 / 归档文件不存在 / 取回失败 |
+| `language_not_found` / `language_change_failed` | v0.2：工程不支持该语言（`details.available` 给出支持列表）/ 语言设置失败 |
+| `project_text_export_failed` / `project_text_import_failed` / `project_update_failed` | v0.2：工程文本 xlsx 导出/导入失败 / 工程属性或注释写入失败 |
+| `setting_not_found` / `setting_change_failed` | v0.2：TIA Portal 设置项不存在（列出可用文件夹与设置）/ 写入失败 |
+| `group_not_found` / `group_not_empty` / `group_create_failed` | v0.2：用户组不存在 / 非空不能删 / 建组失败 |
+| `tag_table_not_found` / `tag_not_found` / `tag_create_failed` / `tag_update_failed` / `constant_create_failed` / `constant_update_failed` | v0.2：标签表或变量/常量不存在与写失败 |
+| `attribute_not_writeable` / `attribute_write_failed` | v0.2：属性没有写权限（`GetAttributeInfos` 无 Write）/ 写入失败 |
+| `protection_unavailable` / `protect_failed` / `unprotect_failed` | v0.2：块不可 know-how 保护（provider 为 null）/ 加保护失败 / 解保护失败 |
+| `generate_source_failed` / `file_exists` | v0.2：生成源文件失败 / 目标文件已存在且未给 `overwrite` |
+| `watch_table_not_found` / `force_table_not_found` / `table_create_failed` / `table_delete_failed` | v0.2：监视表或力表不存在、建删失败；力表在 V17 既不能建也不能删（限制 R15） |
+| `unit_provider_unavailable` / `unit_not_found` / `unit_exists` / `unit_create_failed` / `unit_delete_failed` / `relation_create_failed` | v0.2：软件单元——该 PLC 不支持 / 单元不存在或已存在 / 建删失败 / 关系建立失败 |
+| `global_settings_unavailable` / `safety_setting_failed` / `signature_read_failed` | v0.2：没有 `Siemens.Engineering.Safety.GlobalSettings` 服务（未装 STEP 7 Safety）/ 写 F 相关设置失败 / 读 F 签名失败（非 F 块不报错，回报 `isFBlock:false`） |
 | `controller_not_found` | 插件找不到控制器 exe：`npm run build:controller` 或配置 `controllerPath` |
 | `controller_timeout` / `controller_cancelled` | 超过 `requestTimeoutMs` 或被取消：控制器已被终止，下次调用会自动重启（TIA Portal 会话丢失） |
 | `controller_exited` / `controller_spawn_failed` / `controller_handshake_timeout` | 控制器启动/运行异常，`details.stderr` 带控制器自身输出 |
@@ -443,7 +504,7 @@ src/
   controller.ts        C# 控制器的生命周期、NDJSON 帧、串行化、超时与终止
   protocol.ts          线路类型 + 容错帧解析 + 统一结果信封
   skills.ts            知识库：把 skills/ 注册成一个 bundled skill（ctx.inject(['skills'], …)）
-  tools.ts             6 个 defineTool 定义（模型可见描述）与渲染
+  tools.ts             26 个 defineTool 定义（模型可见描述）与渲染
   errors.ts            ToolFailure（传输层错误）
   dsh-runtime.d.ts     本插件用到的 DSH 运行时类型（离线可构建）
 skills/                随包出货的 Openness 知识库：31 个上游 SKILL.md（逐字，MIT）+ 路由 skill（见 §4.4）
@@ -456,12 +517,19 @@ controller/
   Json.cs              有序 JSON 写出器 + 参数读取器
   OpennessBootstrap.cs 用 Siemens 官方 NuGet 解析器加载 Openness（惰性，首个操作用到才初始化）
   OpennessHost.cs      TiaPortal/项目会话、事务、块遍历、元数据读取
-  Operations.cs        5 个白名单操作的实现（dry-run、事务、写后验证）
+  Operations.cs        白名单操作：块/类型/标签表导出导入、编译、开关工程（dry-run、事务、写后验证）
+  OperationsProject.cs v0.2 工程与工程数据（创建/保存/归档/取回/信息/语言/文本/设置）
+  OperationsPlc.cs     v0.2 PLC 设备数据（枚举/建删/变量/属性/保护/生成源/监视表/软件单元）
+  OperationsSafety.cs  v0.2 F 相关（GlobalSettings、SafetyAdministration、F 签名）
+  OpennessHost.cs      会话：TIA Portal 实例、工程、独占访问事务、块遍历
+  OpennessHost.Project.cs / .Plc.cs / .Safety.cs  上述三块的宿主侧实现
   SimaticMl.cs         Simatic ML XML 头解析与 SCL/STL 外部源扫描
   SelfTest.cs          14 项无 TIA 自检
 test/                  node:test 测试套件
 test-profile/          试跑材料：三层验证指南 + 两个脚本 + --patch 叠加层（不改默认 profile）
 docs/PROTOCOL.md       线路协议与错误码（权威描述）
+docs/EXTENDED-SURFACE.md  v0.2 新增 20 个操作的参数与返回契约（冻结）
+docs/VERIFICATION-PLAN.md v0.2 新增能力的真实项目验证清单（待执行）
 docs/KNOWLEDGE-BASE.md 知识库在哪、为什么不放 docs/、怎么更新（见 §4.4）
 docs/FUNCTIONAL-TEST.md 真实项目功能测试步骤
 docs/verification.md    section 8 验证清单逐条核对 + 待人工验证步骤
@@ -487,11 +555,22 @@ scripts/knowledge/build-skills.mjs  知识库同步（联网重取上游）与�
   控制器逐块报告（`data.failures[]`）并继续；**导入必须指定块原来所在的组**（`target_group`），
   且"导入后重新导出"要放在编译之后。三条约束见
   [`docs/FUNCTIONAL-TEST.md`](docs/FUNCTIONAL-TEST.md) §8.5。
-- **只做块、PLC 类型与标签表**：`export_blocks` / `import_blocks` 用 `categories` 选择
+- **块、PLC 类型与标签表仍是核心，但已不止于此**：`export_blocks` / `import_blocks` 用 `categories` 选择
   `blocks`（默认）/`types`（PLC 数据类型 UDT）/`tag_tables`，三族对象互不冲突；
-  硬件组态、在线下载/上传、比较、库、多用户、HMI 等仍未实现。完整的逐条覆盖情况见
+  v0.2 又补上工程生命周期与工程数据（`create_project`/`save_project`/`archive_project`/`project_info`/
+  `project_languages`/`project_texts`/`update_project`/`portal_settings`）、PLC 对象增删改
+  （`list_plc_objects`/`create_plc_objects`/`delete_plc_objects`/`write_tags`/`set_block_attributes`/
+  `protect_blocks`/`generate_source`/`watch_and_force_tables`/`software_units`）与 F 相关
+  （`safety_status`/`set_safety_settings`/`safety_signatures`）。仍未实现：硬件组态与网络、
+  在线下载/上传/比较、库与主副本、多用户、HMI、OPC UA、工程图形删除、只读/UMAC 打开、
+  力表的创建与删除（V17 无相应 API，见限制 R15）。完整的逐条覆盖情况见
   [`docs/coverage-matrix.html`](docs/coverage-matrix.html)（随代码自动重新生成）。
   PLC 类型与标签表可以被导入，但块的读回验证覆盖不到它们（会给出 warning）。
+- **v0.2 的 20 个操作尚未在真实项目上验证**：已实现、编译、单测通过，但真实 TIA Portal 行为
+  （尤其是 `archive_project` 的取回、`project_texts` 的 xlsx 往返、`software_units` 需要支持
+  软件单元的 CPU、`safety_*` 需要 STEP 7 Safety 与 F-CPU）留待逐条执行
+  [`docs/VERIFICATION-PLAN.md`](docs/VERIFICATION-PLAN.md)。在跑完之前不要把这些操作当成
+  "已在 V17 上实测"向他人转述。
 - **导入的目标组固定为根块组**：TIA 的导入不保留导出时的用户组层级，导出仍会按组写目录。
 - **一次一个宿主进程一个 TIA Portal 会话**：不同 DSH 会话共用同一个控制器并排队。
 - **超时即丢失会话**：Openness 不可取消，超时的唯一可靠处理是终止控制器。

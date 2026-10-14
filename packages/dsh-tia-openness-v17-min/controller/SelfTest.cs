@@ -27,7 +27,7 @@ namespace TiaOpennessV17Min.Controller
             {
                 Directory.CreateDirectory(workDirectory);
 
-                Check(checks, ref ok, "whitelist_exact_five", WhitelistExactFive);
+                Check(checks, ref ok, "whitelist_exact", WhitelistExact);
                 Check(checks, ref ok, "whitelist_rejects_unknown", WhitelistRejectsUnknown);
                 Check(checks, ref ok, "json_roundtrip", JsonRoundTrip);
                 Check(checks, ref ok, "json_escaping", JsonEscaping);
@@ -131,20 +131,39 @@ namespace TiaOpennessV17Min.Controller
 
         // ------------------------------------------------------------- the checks
 
-        private static void WhitelistExactFive()
+        /// <summary>
+        /// The whitelist is the controller's security boundary, so its exact
+        /// contents are asserted here rather than only its size: a name that
+        /// disappears from the catalog silently breaks the matching DSH tool.
+        /// </summary>
+        private static void WhitelistExact()
         {
             IList<string> all = OperationCatalog.All;
-            RequireEqual("5", all.Count.ToString(), "the whitelist size");
-            string[] expected = { "OpenProject", "ExportBlocks", "ImportBlocks", "CompilePlc", "CloseProject" };
-            foreach (string name in expected)
+            string[] expected =
             {
-                Require(OperationCatalog.IsAllowed(name), "the whitelist is missing " + Text.Quote(name));
+                "OpenProject", "ExportBlocks", "ImportBlocks", "CompilePlc", "CloseProject",
+                "CreateProject", "SaveProject", "ArchiveProject", "ProjectInfo", "ProjectLanguages", "ProjectTexts",
+                "UpdateProject", "PortalSettings",
+                "ListPlcObjects", "CreatePlcObjects", "DeletePlcObjects", "WriteTags", "SetBlockAttributes",
+                "ProtectBlocks", "GenerateSource", "WatchAndForceTables", "SoftwareUnits",
+                "SafetyStatus", "SetSafetySettings", "SafetySignatures",
+            };
+            RequireEqual(expected.Length.ToString(), all.Count.ToString(), "the whitelist size");
+            for (int i = 0; i < expected.Length; i++)
+            {
+                RequireEqual(expected[i], all[i], "the whitelist entry " + (i + 1));
+                Require(OperationCatalog.IsAllowed(expected[i]), "the whitelist is missing " + Text.Quote(expected[i]));
             }
-            foreach (string name in all)
+            // The order is the wire order (ready frame, --help, the coverage
+            // matrix), so a duplicate would shift the list rather than be caught
+            // by the loop above.
+            for (int i = 0; i < all.Count; i++)
             {
-                bool known = false;
-                foreach (string candidate in expected) if (candidate == name) known = true;
-                Require(known, "the whitelist contains the unexpected operation " + Text.Quote(name));
+                for (int j = i + 1; j < all.Count; j++)
+                {
+                    Require(!string.Equals(all[i], all[j], StringComparison.Ordinal),
+                        "the whitelist contains " + Text.Quote(all[i]) + " twice");
+                }
             }
         }
 

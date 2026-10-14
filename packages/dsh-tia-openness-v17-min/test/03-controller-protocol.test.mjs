@@ -18,6 +18,7 @@ import {
   controllerExe,
   controllerAvailable,
   loadControllerModule,
+  loadOperations,
   sleep,
   waitFor,
 } from './helpers/harness.mjs'
@@ -107,7 +108,7 @@ test('the real controller performs the ready handshake', async (t) => {
   const ready = await instance.start()
   assert.equal(ready.type, 'ready')
   assert.equal(ready.protocol, 1)
-  assert.equal(ready.operations.length, 5)
+  assert.deepEqual(ready.operations, await loadOperations())
   assert.equal(ready.openness.available, true)
   assert.equal(instance.status().state, 'ready')
 
@@ -130,7 +131,7 @@ test('the real controller refuses anything outside the whitelist', async (t) => 
   const frame = await instance.request('RunScript', { code: 'System.IO.File.Delete("x")' })
   assert.equal(frame.ok, false)
   assert.equal(frame.error.code, 'unsupported_operation')
-  assert.deepEqual(frame.error.details.allowed, ['OpenProject', 'ExportBlocks', 'ImportBlocks', 'CompilePlc', 'CloseProject'])
+  assert.deepEqual(frame.error.details.allowed, await loadOperations())
   assert.equal(instance.status().state, 'ready', 'a refused operation keeps the controller usable')
 })
 

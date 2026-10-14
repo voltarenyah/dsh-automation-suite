@@ -19,11 +19,10 @@ import { existsSync, readFileSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
 import { test } from 'node:test'
 
-import { createTestContext, loadPlugin, packageRoot, withPlugin } from './helpers/harness.mjs'
+import { createTestContext, EXPECTED_TOOLS, loadPlugin, packageRoot, withPlugin } from './helpers/harness.mjs'
 
 const SKILLS = join(packageRoot, 'skills')
 const ROUTER = join(SKILLS, 'tia-openness', 'SKILL.md')
-const EXPECTED_TOOLS = ['open_project', 'export_blocks', 'import_blocks', 'compile_plc', 'close_project', 'controller_status']
 /** The standard preset prunes tool results above this many code points. */
 const MAX_ROUTER_CHARS = 8192
 /** The session catalog truncates each description to this many characters by default. */
@@ -61,7 +60,7 @@ test('a composition without a skill registry still loads every tool', async (t) 
 
   assert.deepEqual(harness.injectedServices, [['skills']], 'the plugin asks for the registry and moves on')
   assert.equal(harness.skillProviders.length, 0)
-  assert.deepEqual(harness.registered().sort(), [...EXPECTED_TOOLS].sort(), 'the six tools are unaffected')
+  assert.deepEqual(harness.registered().sort(), [...EXPECTED_TOOLS].sort(), 'the tools are unaffected')
 })
 
 test('the provider advertises exactly one skill, sized for the session catalog', async (t) => {

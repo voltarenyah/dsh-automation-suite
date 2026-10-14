@@ -1,6 +1,6 @@
 ---
 name: tia-openness
-description: Troubleshooting index for the tia-openness-v17-min tools (open_project, export_blocks, import_blocks, compile_plc, close_project, controller_status). Load it when one of them fails or reports an Openness error, or before answering any TIA Portal Openness question (exclusive access, transactions, Simatic ML round trip, block groups, compile, licensing/firewall, threading, crashes). Maps symptoms to the vendored Siemens skill files under this skill's base directory.
+description: Troubleshooting index for the tia-openness-v17-min tools: project lifecycle and project data, PLC blocks/types/tag tables/tags/watch+force tables/units, F-related safety settings and signatures, controller_status. Load it when one fails or reports an Openness error, or before answering any TIA Portal Openness question (exclusive access, transactions, Simatic ML round trip, block groups, compile, licensing/firewall, threading, crashes). Maps symptoms to the vendored Siemens skill files.
 ---
 
 # TIA Portal Openness 知识库（路由 skill）
@@ -36,13 +36,16 @@ V17 的行为也不能从 V21 文本直接推。判不准时以本机 V17 实测
 | 调用过程中 TIA 进程直接消失、要按面包屑定位崩溃点 | `crash-diagnosis/SKILL.md` |
 | 判断"和上次比变了什么"、要不要重编译/重下载、库类型版本 | `change-detection/SKILL.md` |
 | 打开/关闭/attach 已运行实例、归档、项目生命周期 | `session-and-project/SKILL.md` |
+| 工程语言、工程注释（多语言文本）、工程历史、TIA Portal 设置项 | `engineering-objects/SKILL.md`、`session-and-project/SKILL.md` |
 | 块导出/导入/编译、块口令保护、InstanceDB/GlobalDB 接口成员、交叉引用 | `blocks/SKILL.md` |
+| 块/UDT 的指纹（FingerprintProvider）与"变了什么" | `change-detection/SKILL.md` |
 | `PlcSoftware` 下的组层级（BlockGroup/TypeGroup/TagTableGroup/ExternalSourceGroup） | `software-hierarchy/SKILL.md` |
 | 独占访问与事务、属性读写、`GetService` 模式、对象树导航 | `engineering-objects/SKILL.md` |
 | 不知道 schema 也要遍历/比对两棵对象树 | `object-tree-walking/SKILL.md` |
 | UDT（`PlcType`）XML 结构、成员属性格式、递归搜索 | `plc-data-types/SKILL.md` |
-| PLC 变量与变量表、XML 往返 | `tags-and-tagtables/SKILL.md` |
+| PLC 变量与变量表、XML 往返、PLC 常量、监视表/强制表 | `tags-and-tagtables/SKILL.md` |
 | SW-Unit（`PlcUnit`）里找元素、往正确组里建元素、InstanceDB 归属 | `sw-units/SKILL.md` |
+| 由块/UDT 生成 SCL/STL 源文件（`GenerateSource` 的扩展名规则） | `blocks/SKILL.md`、`tags-and-tagtables/SKILL.md` |
 | 想先小步验证、在 CI 或真实 TIA 上跑集成测试 | `openness-testing/SKILL.md` |
 | UMAC 角色/用户/设备权限、项目保护、CPU 保护级别 | `security/SKILL.md` |
 | 故障安全 PLC 的 `SafetyAdministration`（`Siemens.Engineering.Safety`） | `plc-safety-administration/SKILL.md` |
@@ -54,7 +57,8 @@ V17 的行为也不能从 V21 文本直接推。判不准时以本机 V17 实测
 | 工艺对象（TO，运动控制） | `technology-objects/SKILL.md` |
 
 > 驱动、安全、在线下载、硬件组态这些上游章节回答的是「**Openness 能不能做**」，
-> 不是「**这个插件能不能做**」：本插件只暴露块级读写的 6 个工具，能力边界以 `README.md` §10 为准。
+> 不是「**这个插件能不能做**」：本插件的 26 个工具覆盖工程生命周期与工程数据、PLC 块/类型/标签表/
+> 变量/监视表/软件单元、F 相关服务三块，边界以 `README.md` §10 与 `docs/EXTENDED-SURFACE.md` 为准。
 
 ## 怎么读
 

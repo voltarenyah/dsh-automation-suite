@@ -74,7 +74,7 @@ report a precise reason — on a machine without TIA Portal.
 ```
 
 - `type` is optional and must be `"operation"` when present.
-- `operation` must be one of the five whitelisted names; anything else is
+- `operation` must be one of the 25 whitelisted names (`OperationCatalog` / `src/protocol.ts`); anything else is
   `unsupported_operation` and is never dispatched.
 - `params` is an operation-specific object. Unknown keys are ignored; a key of the
   wrong type is `invalid_params`.
@@ -127,6 +127,10 @@ exceeds `requestTimeoutMs` is abandoned by terminating the controller.
 Controller-level notes that belong to no request (shutdown notes, warnings).
 
 ## Operations and their `params`
+
+The five operations below are the original block read/write surface. v0.2 added 20 more
+(8 project-data, 9 PLC-data, 3 F-related); their parameter and payload contract is frozen in
+[`EXTENDED-SURFACE.md`](EXTENDED-SURFACE.md) and is not repeated here.
 
 ### `OpenProject`
 
@@ -220,7 +224,7 @@ data, not a tool failure.
 
 | code | raised when | typical fix |
 |---|---|---|
-| `unsupported_operation` | the request named anything outside the whitelist | use one of the five operations |
+| `unsupported_operation` | the request named anything outside the whitelist | use one of the 25 operations (`details.allowed` lists them) |
 | `unsupported_frame` | `type` was not `operation` | send a request frame |
 | `invalid_params` | a parameter is missing or has the wrong type | read `error.message`, it names the parameter and the allowed values |
 | `invalid_file` | an import file is not well-formed Simatic ML / a supported source | check the file and `mode` |

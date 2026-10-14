@@ -42,6 +42,43 @@ ensureRuntimePackages()
 /** The real tool runtime, used to compile and validate the plugin's schemas. */
 export const dshTools = await import('@deepseek-ai/dsh-tools')
 
+/**
+ * Every tool the plugin registers, in registration order.
+ *
+ * Spelled out on purpose: it is the one place that catches a tool silently
+ * disappearing from `registerTools`. `npm run matrix:check` cross-checks the
+ * count against the controller's `OperationCatalog`, and `loadOperations()`
+ * gives the matching operation names.
+ */
+export const EXPECTED_TOOLS = [
+  'open_project',
+  'export_blocks',
+  'import_blocks',
+  'compile_plc',
+  'close_project',
+  'create_project',
+  'save_project',
+  'archive_project',
+  'project_info',
+  'project_languages',
+  'project_texts',
+  'update_project',
+  'portal_settings',
+  'list_plc_objects',
+  'create_plc_objects',
+  'delete_plc_objects',
+  'write_tags',
+  'set_block_attributes',
+  'protect_blocks',
+  'generate_source',
+  'watch_and_force_tables',
+  'software_units',
+  'safety_status',
+  'set_safety_settings',
+  'safety_signatures',
+  'controller_status',
+]
+
 export async function loadPlugin() {
   // A cache-busting query keeps repeated loads independent inside one test file.
   return await import(`../../lib/index.js?t=${Date.now()}${Math.random()}`)
@@ -53,6 +90,16 @@ export async function loadToolsModule() {
 
 export async function loadControllerModule() {
   return await import(`../../lib/controller.js?t=${Date.now()}${Math.random()}`)
+}
+
+/**
+ * The plugin's own operation whitelist, so a test never restates it. The C#
+ * `OperationCatalog` carries the same list and `npm run matrix:check` compares
+ * the two, which is what makes this single source trustworthy in the tests.
+ */
+export async function loadOperations() {
+  const protocol = await import(`../../lib/protocol.js?t=${Date.now()}${Math.random()}`)
+  return [...protocol.OPERATIONS]
 }
 
 /**

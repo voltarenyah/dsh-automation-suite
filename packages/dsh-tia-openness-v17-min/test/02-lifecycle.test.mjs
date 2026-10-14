@@ -14,6 +14,7 @@ import {
   controllerAvailable,
   createTestContext,
   findTool,
+  loadOperations,
   loadPlugin,
   processAlive,
   waitFor,
@@ -50,7 +51,7 @@ test('the controller is started lazily and terminated when the plugin unloads', 
   const statusTool = captureStatusTool(harness)
 
   // `apply` pre-warms the process; either way the tools are registered first.
-  assert.equal(harness.registered().length, 6)
+  assert.equal(harness.registered().length, 26)
 
   const ready = await waitFor(
     async () => {
@@ -68,7 +69,7 @@ test('the controller is started lazily and terminated when the plugin unloads', 
   assert.equal(ready.ready.protocol, 1)
   assert.equal(ready.ready.openness.available, true, 'the probe found the Openness assembly')
   assert.equal(ready.ready.opennessUserGroup.isMember, true, 'the test user is in the Siemens TIA Openness group')
-  assert.deepEqual(ready.ready.operations, ['OpenProject', 'ExportBlocks', 'ImportBlocks', 'CompilePlc', 'CloseProject'])
+  assert.deepEqual(ready.ready.operations, await loadOperations())
 
   await harness.unload()
 
@@ -84,7 +85,7 @@ test('unloading is idempotent and removes every registration it made', async (t)
   // A path that cannot exist makes `apply` register the tools, warn, and never
   // spawn anything, so this test is independent of the process probes above.
   plugin.apply(harness.ctx, { controllerPath: 'C:\\does\\not\\exist\\controller.exe' })
-  assert.equal(harness.registered().length, 6)
+  assert.equal(harness.registered().length, 26)
   const statusTool = captureStatusTool(harness)
 
   await harness.unload()

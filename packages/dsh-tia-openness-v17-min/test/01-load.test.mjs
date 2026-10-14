@@ -16,14 +16,13 @@ import {
   controllerAvailable,
   createTestContext,
   dshTools,
+  EXPECTED_TOOLS,
   loadPlugin,
   loadToolsModule,
   parameterViolations,
   renderedText,
   withPlugin,
 } from './helpers/harness.mjs'
-
-const EXPECTED_TOOLS = ['open_project', 'export_blocks', 'import_blocks', 'compile_plc', 'close_project', 'controller_status']
 
 test('the module exports name, inject, Config and apply at module level', async () => {
   const plugin = await loadPlugin()

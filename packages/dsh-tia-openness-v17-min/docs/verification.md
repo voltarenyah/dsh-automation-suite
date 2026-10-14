@@ -93,6 +93,13 @@ controller\bin\TiaOpennessV17Min.Controller.exe --self-test
 
 ### A6. 白名单只包含 5 个允许的操作 —— ✅ 已验证
 
+> **v0.2 更新（2026-10-13）**：白名单从 5 个扩展到 **25 个**（新增 20 个：工程数据 8、
+> PLC 数据 9、F 相关 3）。C# 自检项 `whitelist_exact_five` 更名为 **`whitelist_exact`**，
+> 现在逐条比对 25 个名字与顺序；`test/01`、`test/04` 改用 `test/helpers/harness.mjs` 的
+> `EXPECTED_TOOLS` / `loadOperations()`，`test/02`、`03`、`05` 直接与 `src/protocol.ts` 的
+> `OPERATIONS` 比对。下表描述的是 v0.1 的 5 个操作，机制未变。新增的 20 个操作**尚未在真实
+> 项目上验证**，见 [`VERIFICATION-PLAN.md`](VERIFICATION-PLAN.md)。
+
 | 位置 | 内容 |
 |---|---|
 | `controller/Protocol.cs:37-41` | 五个常量 |

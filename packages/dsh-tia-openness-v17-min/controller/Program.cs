@@ -513,7 +513,7 @@ namespace TiaOpennessV17Min.Controller
             frame.Add("operations", OperationCatalog.All);
             frame.Add("notes", new List<string>
             {
-                "Only the five whitelisted operations are executed; the controller never evaluates caller-supplied code.",
+                "Only the whitelisted operations are executed; the controller never evaluates caller-supplied code.",
                 "Operations are serialized on one thread because Openness objects are not thread safe.",
                 "Closing stdin shuts the controller down and closes the open project and the TIA Portal instance it started.",
             });

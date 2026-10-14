@@ -31,16 +31,55 @@ namespace TiaOpennessV17Min.Controller
     /// This is a security boundary, not a convenience list: the controller never
     /// evaluates caller-supplied code and never dispatches a name outside this
     /// catalog. Anything else is rejected with <c>unsupported_operation</c>.
+    ///
+    /// The order is part of the wire contract: it is what the ready frame and
+    /// <c>--help</c> print, and <c>scripts/coverage/build-matrix.mjs</c> compares
+    /// the list with <c>src/protocol.ts</c>'s <c>OPERATIONS</c> entry by entry.
     /// </summary>
     internal static class OperationCatalog
     {
+        // The original block read/write surface.
         public const string OpenProject = "OpenProject";
         public const string ExportBlocks = "ExportBlocks";
         public const string ImportBlocks = "ImportBlocks";
         public const string CompilePlc = "CompilePlc";
         public const string CloseProject = "CloseProject";
 
-        private static readonly string[] Names = { OpenProject, ExportBlocks, ImportBlocks, CompilePlc, CloseProject };
+        // "Functions for projects and project data" (OperationsProject.cs).
+        public const string CreateProject = "CreateProject";
+        public const string SaveProject = "SaveProject";
+        public const string ArchiveProject = "ArchiveProject";
+        public const string ProjectInfo = "ProjectInfo";
+        public const string ProjectLanguages = "ProjectLanguages";
+        public const string ProjectTexts = "ProjectTexts";
+        public const string UpdateProject = "UpdateProject";
+        public const string PortalSettings = "PortalSettings";
+
+        // "Functions for accessing the data of a PLC device" (OperationsPlc.cs).
+        public const string ListPlcObjects = "ListPlcObjects";
+        public const string CreatePlcObjects = "CreatePlcObjects";
+        public const string DeletePlcObjects = "DeletePlcObjects";
+        public const string WriteTags = "WriteTags";
+        public const string SetBlockAttributes = "SetBlockAttributes";
+        public const string ProtectBlocks = "ProtectBlocks";
+        public const string GenerateSource = "GenerateSource";
+        public const string WatchAndForceTables = "WatchAndForceTables";
+        public const string SoftwareUnits = "SoftwareUnits";
+
+        // "F-related Openness" (OperationsSafety.cs).
+        public const string SafetyStatus = "SafetyStatus";
+        public const string SetSafetySettings = "SetSafetySettings";
+        public const string SafetySignatures = "SafetySignatures";
+
+        private static readonly string[] Names =
+        {
+            OpenProject, ExportBlocks, ImportBlocks, CompilePlc, CloseProject,
+            CreateProject, SaveProject, ArchiveProject, ProjectInfo, ProjectLanguages, ProjectTexts, UpdateProject,
+            PortalSettings,
+            ListPlcObjects, CreatePlcObjects, DeletePlcObjects, WriteTags, SetBlockAttributes, ProtectBlocks,
+            GenerateSource, WatchAndForceTables, SoftwareUnits,
+            SafetyStatus, SetSafetySettings, SafetySignatures,
+        };
 
         /// <summary>The whitelist in declaration order; used by diagnostics and the self test.</summary>
         public static IList<string> All { get { return Array.AsReadOnly(Names); } }

@@ -6,9 +6,11 @@
  * the list of `changes` the operation made, the controller `diagnostics`, and a
  * structured `error` when the operation reported a failure.
  *
- * Only `OpenProject`, `ExportBlocks`, `ImportBlocks`, `CompilePlc` and
- * `CloseProject` are ever sent to the controller; `controller_status` is
- * answered by the plugin itself and never touches TIA Portal.
+ * Every operation of `OPERATIONS` (see `protocol.ts`) has exactly one tool here,
+ * in the same order: the original block read/write surface, then the project and
+ * project-data operations, then the PLC-device operations, then F-related
+ * Openness. `controller_status` is answered by the plugin itself and never
+ * touches TIA Portal.
  */
 
 import type { Context } from '@deepseek-ai/cordis'
@@ -49,6 +51,15 @@ function text(value: unknown): string | undefined {
 
 function numberOf(value: unknown): number | undefined {
   return typeof value === 'number' ? value : undefined
+}
+
+/**
+ * Reads a list of labels out of a payload list that may hold plain strings or
+ * records: the controllers use `{name}` for objects and `{culture}` for
+ * languages, so the caller names the key it expects.
+ */
+function labels(value: unknown, key = 'name'): string[] {
+  return list(value).map((item) => text(item) ?? text(field(record(item), key)) ?? '?')
 }
 
 /** Reads `data[key]`, falling back to a nested `data.a.b` path when asked. */
@@ -222,6 +233,519 @@ function renderData(operation: string, data: JsonRecord | null, verbose: boolean
         break
       }
       lines.push(`Saved: ${data['saved'] === true ? 'yes' : 'no'}, closed: ${data['closed'] === true ? 'yes' : 'no'}, TIA Portal closed: ${data['portalClosed'] === true ? 'yes' : 'no'}`)
+      break
+    }
+    case 'CreateProject': {
+      lines.push(`Project: ${text(data['projectName']) ?? '?'} in ${text(data['projectDir']) ?? '?'}`)
+      const targetPath = text(data['targetPath']) ?? text(data['projectPath'])
+      if (targetPath !== undefined) lines.push(`Target path: ${targetPath}`)
+      if (data['dryRun'] === true) {
+        lines.push('Dry run: nothing was created; pass dry_run=false to create the project.')
+        break
+      }
+      lines.push(`Created: ${data['created'] === true ? 'yes' : 'no'}, user interface: ${data['withUserInterface'] === true ? 'visible' : 'headless'}`)
+      const author = text(data['author'])
+      if (author !== undefined) lines.push(`Author: ${author}`)
+      const comment = text(data['comment'])
+      if (comment !== undefined) lines.push(`Comment: ${comment}`)
+      const software = record(data['plcSoftware'])
+      if (software !== null) lines.push(`PLC software instances: ${numberOf(software['count']) ?? list(software['items']).length}`)
+      break
+    }
+    case 'SaveProject': {
+      lines.push(`Project: ${text(data['projectName']) ?? '?'} (${text(data['projectPath']) ?? '?'})`)
+      if (data['dryRun'] === true) {
+        const saveAs = text(data['saveAs'])
+        lines.push(`Dry run: would save ${saveAs === undefined ? 'in place' : `as ${saveAs}`} (modified: ${data['isModified'] === true ? 'yes' : 'no'}).`)
+        break
+      }
+      lines.push(
+        `Saved: ${data['saved'] === true ? 'yes' : 'no'}, modified before saving: ${data['isModifiedBeforeSave'] === true ? 'yes' : 'no'}, ` +
+          `modified now: ${data['isModified'] === true ? 'yes' : 'no'}`,
+      )
+      const savedAs = text(data['savedAs'])
+      if (savedAs !== undefined) lines.push(`Saved as: ${savedAs}`)
+      break
+    }
+    case 'ArchiveProject': {
+      if ((text(data['action']) ?? 'archive') === 'retrieve') {
+        lines.push(`Retrieve archive: ${text(data['archivePath']) ?? '?'} -> ${text(data['targetDir']) ?? '?'}`)
+        lines.push(`Project open mode: ${text(data['projectOpenMode']) ?? 'primary'}, upgrade: ${data['upgraded'] === true ? 'yes' : 'no'}`)
+        if (data['dryRun'] === true) {
+          lines.push('Dry run: nothing was retrieved; pass dry_run=false to retrieve the archive.')
+          break
+        }
+        lines.push(`Project: ${text(data['projectName']) ?? '?'} (${text(data['projectPath']) ?? '?'})`)
+        const software = record(data['plcSoftware'])
+        if (software !== null) lines.push(`PLC software instances: ${numberOf(software['count']) ?? list(software['items']).length}`)
+        break
+      }
+      lines.push(`Archive project: ${text(data['projectName']) ?? '?'} (${text(data['projectPath']) ?? '?'})`)
+      lines.push(`Target: ${text(data['targetDir']) ?? '?'} / ${text(data['targetName']) ?? '?'} (mode ${text(data['mode']) ?? 'compressed'})`)
+      if (data['dryRun'] === true) {
+        lines.push('Dry run: nothing was archived; pass dry_run=false to write the archive.')
+        break
+      }
+      const archivedPath = text(data['archivedPath'])
+      if (archivedPath !== undefined) lines.push(`Archive: ${archivedPath}`)
+      lines.push(`Modified before archiving: ${data['isModifiedBeforeArchive'] === true ? 'yes' : 'no'}`)
+      break
+    }
+    case 'ProjectInfo': {
+      const attributes = record(data['attributes'])
+      if (attributes !== null) {
+        lines.push(`Project: ${text(attributes['name']) ?? '?'} (${text(attributes['path']) ?? '?'})`)
+        lines.push(
+          `Author: ${text(attributes['author']) ?? '?'}, family: ${text(attributes['family']) ?? '?'}, ` +
+            `version: ${text(attributes['version']) ?? '?'}, size: ${numberOf(attributes['sizeKB']) ?? 0} KB`,
+        )
+        lines.push(
+          `Modified: ${attributes['isModified'] === true ? 'yes' : 'no'}, last modified ${text(attributes['lastModified']) ?? '?'} ` +
+            `by ${text(attributes['lastModifiedBy']) ?? '?'}`,
+        )
+        const infos = list(attributes['attributeInfos'])
+        if (infos.length > 0) {
+          lines.push(`Attribute infos: ${infos.length}`)
+          for (const item of infos.slice(0, MAX_LISTED)) {
+            const entry = record(item)
+            if (entry === null) continue
+            lines.push(`  - ${text(entry['name']) ?? '?'} (${text(entry['accessMode']) ?? '?'})`)
+          }
+        }
+      }
+      const comment = record(data['comment'])
+      if (comment !== null) {
+        const entries = list(comment['languages'])
+        lines.push(`Comment languages: ${entries.length}`)
+        for (const item of entries.slice(0, MAX_LISTED)) {
+          const entry = record(item)
+          if (entry === null) continue
+          const body = text(entry['text']) ?? ''
+          lines.push(`  - ${text(entry['culture']) ?? '?'}: ${body.length > 120 ? `${body.slice(0, 120)}…` : body}`)
+        }
+      }
+      const languages = record(data['languages'])
+      if (languages !== null) {
+        const active = labels(languages['activeLanguages'], 'culture')
+        lines.push(`Languages: ${numberOf(languages['activeCount']) ?? active.length} active of ${numberOf(languages['supportedCount']) ?? 0} supported`)
+        if (active.length > 0) lines.push(`  Active: ${active.slice(0, MAX_LISTED).join(', ')}`)
+      }
+      const history = record(data['history'])
+      if (history !== null) {
+        lines.push(`History entries: ${numberOf(history['count']) ?? 0}${history['truncated'] === true ? ' (truncated)' : ''}`)
+        for (const item of list(history['entries']).slice(0, MAX_LISTED)) {
+          const entry = record(item)
+          if (entry === null) continue
+          lines.push(`  - ${text(entry['dateTime']) ?? '?'} ${text(entry['text']) ?? ''}`.trimEnd())
+        }
+      }
+      const products = record(data['products'])
+      if (products !== null) {
+        lines.push(`Products: ${numberOf(products['count']) ?? 0}`)
+        for (const item of list(products['items']).slice(0, MAX_LISTED)) {
+          const entry = record(item)
+          if (entry === null) continue
+          lines.push(`  - ${text(entry['name']) ?? '?'} ${text(entry['version']) ?? ''}`.trimEnd())
+        }
+      }
+      const devices = record(data['devices'])
+      if (devices !== null) {
+        lines.push(`Devices: ${numberOf(devices['deviceCount']) ?? 0} in ${numberOf(devices['deviceGroupCount']) ?? 0} group(s)`)
+        const names = labels(devices['devices'])
+        if (names.length > 0) {
+          lines.push(`  ${names.slice(0, MAX_LISTED).join(', ')}${names.length > MAX_LISTED ? ` … ${names.length - MAX_LISTED} more` : ''}`)
+        }
+      }
+      const softwareItems = record(data['software'])
+      if (softwareItems !== null) {
+        lines.push(`PLC software: ${numberOf(softwareItems['count']) ?? 0}`)
+        for (const item of list(softwareItems['items']).slice(0, MAX_LISTED)) {
+          const entry = record(item)
+          if (entry === null) continue
+          lines.push(`  - ${text(entry['device']) ?? '?'} / ${text(entry['software']) ?? '?'} (${numberOf(entry['blockCount']) ?? 0} blocks)`)
+        }
+      }
+      const settings = record(data['settings'])
+      if (settings !== null) lines.push(`Portal setting folders: ${numberOf(settings['folderCount']) ?? 0}`)
+      break
+    }
+    case 'ProjectLanguages': {
+      const added = labels(data['added'], 'culture')
+      const removed = labels(data['removed'], 'culture')
+      if (added.length > 0 || removed.length > 0) {
+        lines.push(`Added: ${added.join(', ') || 'none'}`)
+        lines.push(`Removed: ${removed.join(', ') || 'none'}`)
+      }
+      const active = labels(data['activeLanguages'], 'culture')
+      lines.push(`Active languages (${numberOf(data['activeCount']) ?? active.length}): ${active.slice(0, MAX_LISTED).join(', ') || 'none'}`)
+      const supported = numberOf(data['supportedCount'])
+      if (supported !== undefined) lines.push(`Supported languages: ${supported}`)
+      const editing = text(data['editingLanguage'])
+      if (editing !== undefined) lines.push(`Editing language: ${editing}`)
+      const reference = text(data['referenceLanguage'])
+      if (reference !== undefined) lines.push(`Reference language: ${reference}`)
+      const supportedList = list(data['supportedLanguages'])
+      if (supportedList.length > 0) {
+        lines.push('Supported language catalog:')
+        for (const item of supportedList.slice(0, MAX_LISTED)) {
+          const entry = record(item)
+          if (entry === null) continue
+          lines.push(`  - ${text(entry['culture']) ?? '?'} ${text(entry['displayName']) ?? text(entry['name']) ?? ''}`.trimEnd())
+        }
+      }
+      break
+    }
+    case 'ProjectTexts': {
+      const action = text(data['action']) ?? 'export'
+      lines.push(`Project texts ${action}: ${text(data['file']) ?? '?'}`)
+      if (action === 'export') {
+        lines.push(`Source language: ${text(data['sourceLanguage']) ?? '?'}, target language: ${text(data['targetLanguage']) ?? '?'}`)
+        lines.push(`Written: ${numberOf(data['bytes']) ?? 0} bytes, sha256 ${text(data['sha256']) ?? '?'}`)
+        break
+      }
+      lines.push(`Update source language: ${data['updateSourceLanguage'] === true ? 'yes' : 'no'}, state: ${text(data['state']) ?? '?'}`)
+      const resultPath = text(data['resultPath'])
+      if (resultPath !== undefined) lines.push(`Result: ${resultPath}`)
+      break
+    }
+    case 'UpdateProject': {
+      const simulation = record(data['simulationDuringBlockCompilation'])
+      if (simulation !== null) {
+        lines.push(
+          `Simulation during block compilation: ${simulation['before'] === true ? 'yes' : 'no'} -> ${simulation['after'] === true ? 'yes' : 'no'}` +
+            `${simulation['changed'] === true ? ' (changed)' : ' (unchanged)'}`,
+        )
+      }
+      const comment = record(data['comment'])
+      if (comment !== null) {
+        lines.push(
+          `Comment (${text(comment['language']) ?? '?'}): ${text(comment['before']) ?? ''} -> ${text(comment['after']) ?? ''}` +
+            `${comment['changed'] === true ? ' (changed)' : ' (unchanged)'}`,
+        )
+      }
+      break
+    }
+    case 'PortalSettings': {
+      const folders = list(data['folders'])
+      if (folders.length > 0) {
+        lines.push(`Setting folders: ${numberOf(data['folderCount']) ?? folders.length}`)
+        for (const item of folders.slice(0, MAX_LISTED)) {
+          const folder = record(item)
+          if (folder === null) continue
+          const settings = list(folder['settings'])
+          lines.push(`  ${text(folder['name']) ?? '?'} (${settings.length} setting(s))`)
+          for (const entry of settings.slice(0, MAX_LISTED)) {
+            const setting = record(entry)
+            if (setting === null) continue
+            lines.push(
+              `    - ${text(setting['name']) ?? '?'} [${text(setting['valueType']) ?? '?'}] = ${text(setting['value']) ?? '?'}` +
+                `${setting['writeable'] === true ? '' : ' (read-only)'}`,
+            )
+          }
+        }
+      }
+      const folder = text(data['folder'])
+      const setting = text(data['setting'])
+      if (folder !== undefined && setting !== undefined) {
+        lines.push(
+          `Setting ${folder} / ${setting} [${text(data['valueType']) ?? 'auto'}]: ${text(data['before']) ?? '?'} -> ${text(data['after']) ?? '?'}` +
+            `${data['changed'] === true ? ' (changed)' : ' (unchanged)'}`,
+        )
+      }
+      break
+    }
+    case 'ListPlcObjects': {
+      lines.push(`PLC software: ${text(data['device']) ?? '?'} / ${text(data['software']) ?? '?'}`)
+      const counts = record(data['counts'])
+      if (counts !== null) {
+        lines.push(`Counts: ${Object.entries(counts).map(([key, value]) => `${key}=${numberOf(value) ?? 0}`).join(', ')}`)
+      }
+      if (data['truncated'] === true) lines.push('The listing was truncated by max_items.')
+      for (const [key, heading] of [
+        ['blockGroups', 'Block groups'],
+        ['typeGroups', 'Type groups'],
+        ['tagTableGroups', 'Tag table groups'],
+      ] as const) {
+        const groups = list(data[key])
+        if (groups.length > 0) lines.push(`${heading}: ${groups.length}`)
+      }
+      for (const [key, heading] of [
+        ['blocks', 'Blocks'],
+        ['types', 'Types'],
+        ['tagTables', 'Tag tables'],
+        ['externalSources', 'External sources'],
+        ['watchTables', 'Watch tables'],
+        ['forceTables', 'Force tables'],
+        ['units', 'Software units'],
+      ] as const) {
+        const entries = list(data[key])
+        if (entries.length === 0) continue
+        const names = entries.slice(0, MAX_LISTED).map((item) => text(field(record(item), 'name')) ?? '?')
+        lines.push(
+          `${heading}: ${entries.length} — ${names.join(', ')}${entries.length > MAX_LISTED ? ` … ${entries.length - MAX_LISTED} more` : ''}`,
+        )
+      }
+      // Fingerprints are the point of a change-detection call, so an explicitly
+      // requested fingerprint list is reported per object instead of being left
+      // to the verbose payload.
+      const fingerprintRows: string[] = []
+      for (const [key, heading] of [
+        ['blocks', 'block'],
+        ['types', 'type'],
+      ] as const) {
+        for (const item of list(data[key]).slice(0, MAX_LISTED)) {
+          const entry = record(item)
+          if (entry === null) continue
+          const fingerprints = list(entry['fingerprints'])
+          if (fingerprints.length === 0) continue
+          const rendered = fingerprints
+            .map((fingerprint) => {
+              const pair = record(fingerprint)
+              if (pair === null) return '?'
+              const error = text(pair['error'])
+              if (error !== undefined) return `error: ${error}`
+              return `${text(pair['id']) ?? '?'}=${text(pair['value']) ?? '?'}`
+            })
+            .join(' ')
+          fingerprintRows.push(`  ${heading} ${text(entry['name']) ?? '?'}: ${rendered}`)
+        }
+      }
+      if (fingerprintRows.length > 0) {
+        lines.push(`Fingerprints (${fingerprintRows.length} object(s)):`)
+        lines.push(...fingerprintRows.slice(0, MAX_LISTED))
+        if (fingerprintRows.length > MAX_LISTED) lines.push(`  … ${fingerprintRows.length - MAX_LISTED} more`)
+      }
+      const missing = record(data['missing'])
+      if (missing !== null) {
+        for (const [family, names] of Object.entries(missing)) {
+          lines.push(
+            `Not found in ${family}: ${list(names).map((name) => text(name) ?? '?').join(', ')}`,
+          )
+        }
+      }
+      break
+    }
+    case 'CreatePlcObjects': {
+      lines.push(`${text(data['kind']) ?? '?'}: ${text(data['name']) ?? text(data['fullPath']) ?? '?'}`)
+      const groupPath = text(data['groupPath'])
+      if (groupPath !== undefined) lines.push(`Parent group: ${groupPath}`)
+      const fullPath = text(data['fullPath'])
+      if (fullPath !== undefined) lines.push(`Full path: ${fullPath}`)
+      lines.push(data['dryRun'] === true ? 'Dry run: nothing was created.' : `Created: ${data['created'] === true ? 'yes' : 'no'}`)
+      break
+    }
+    case 'DeletePlcObjects': {
+      const planned = list(data['planned'])
+      const deleted = list(data['deleted'])
+      const missing = labels(data['missing'])
+      lines.push(`Planned: ${planned.length}, deleted: ${deleted.length}, missing: ${missing.length}`)
+      const counts = record(data['counts'])
+      if (counts !== null) {
+        lines.push(`Counts: ${Object.entries(counts).map(([key, value]) => `${key}=${numberOf(value) ?? 0}`).join(', ')}`)
+      }
+      for (const item of planned.slice(0, MAX_LISTED)) {
+        const entry = record(item)
+        if (entry === null) continue
+        const group = text(entry['group'])
+        lines.push(`  ${text(entry['kind']) ?? '?'} ${text(entry['name']) ?? '?'}${group === undefined ? '' : ` in ${group}`} (exists: ${entry['exists'] === true ? 'yes' : 'no'})`)
+      }
+      if (missing.length > 0) lines.push(`Missing: ${missing.slice(0, MAX_LISTED).join(', ')}`)
+      break
+    }
+    case 'WriteTags': {
+      const groupPath = text(data['groupPath'])
+      lines.push(`Tag table: ${text(data['tagTable']) ?? '?'}${groupPath === undefined ? '' : ` (group ${groupPath})`}`)
+      for (const [key, heading] of [
+        ['tags', 'Tags'],
+        ['constants', 'Constants'],
+      ] as const) {
+        const entries = list(data[key])
+        if (entries.length === 0) continue
+        lines.push(`${heading}: ${entries.length}`)
+        for (const item of entries.slice(0, MAX_LISTED)) {
+          const entry = record(item)
+          if (entry === null) continue
+          const changes = list(entry['changes']).map((change) => {
+            const changeEntry = record(change)
+            if (changeEntry === null) return '?'
+            return `${text(changeEntry['attribute']) ?? '?'} ${text(changeEntry['before']) ?? '?'} -> ${text(changeEntry['after']) ?? '?'}`
+          })
+          lines.push(`  ${text(entry['name']) ?? '?'}: ${text(entry['action']) ?? '?'}${changes.length === 0 ? '' : ` (${changes.join('; ')})`}`)
+        }
+      }
+      const deletedTags = labels(data['deletedTags'])
+      if (deletedTags.length > 0) lines.push(`Deleted tags: ${deletedTags.slice(0, MAX_LISTED).join(', ')}`)
+      const deletedConstants = labels(data['deletedConstants'])
+      if (deletedConstants.length > 0) lines.push(`Deleted constants: ${deletedConstants.slice(0, MAX_LISTED).join(', ')}`)
+      break
+    }
+    case 'SetBlockAttributes': {
+      const attributes = record(data['attributes'])
+      lines.push(`Target: ${text(data['target']) ?? 'block'}, attributes requested: ${attributes === null ? 0 : Object.keys(attributes).length}`)
+      if (attributes !== null) {
+        for (const [name, value] of Object.entries(attributes)) lines.push(`  ${name} = ${text(value) ?? JSON.stringify(value) ?? ''}`)
+      }
+      for (const item of list(data['applied']).slice(0, MAX_LISTED)) {
+        const entry = record(item)
+        if (entry === null) continue
+        const changes = list(entry['changes']).map((change) => {
+          const changeEntry = record(change)
+          if (changeEntry === null) return '?'
+          return `${text(changeEntry['attribute']) ?? '?'} ${text(changeEntry['before']) ?? '?'} -> ${text(changeEntry['after']) ?? '?'}`
+        })
+        const group = text(entry['group'])
+        lines.push(
+          `  ${text(entry['name']) ?? '?'}${group === undefined ? '' : ` (${group})`}: ${changes.length === 0 ? 'unchanged' : changes.join('; ')}`,
+        )
+      }
+      break
+    }
+    case 'ProtectBlocks': {
+      const counts = record(data['counts'])
+      lines.push(
+        `Action: ${text(data['action']) ?? '?'}${counts === null ? '' : `, protected ${numberOf(counts['protected']) ?? 0}, failed ${numberOf(counts['failed']) ?? 0}`}`,
+      )
+      const protectedBlocks = labels(data['protected'])
+      if (protectedBlocks.length > 0) lines.push(`Protected: ${protectedBlocks.slice(0, MAX_LISTED).join(', ')}`)
+      for (const item of list(data['failed']).slice(0, MAX_LISTED)) {
+        const entry = record(item)
+        if (entry === null) continue
+        lines.push(`  FAILED ${text(entry['name']) ?? '?'}: ${text(entry['code']) ?? '?'} — ${text(entry['message']) ?? ''}`.trimEnd())
+      }
+      break
+    }
+    case 'GenerateSource': {
+      lines.push(`Source file: ${text(data['outputFile']) ?? '?'} (${text(data['extension']) ?? '?'})`)
+      lines.push(
+        `Blocks: ${numberOf(data['blockCount']) ?? 0}, types: ${numberOf(data['typeCount']) ?? 0}, ` +
+          `with dependencies: ${data['withDependencies'] === true ? 'yes' : 'no'}`,
+      )
+      if (data['dryRun'] !== true) lines.push(`Written: ${numberOf(data['bytes']) ?? 0} bytes, sha256 ${text(data['sha256']) ?? '?'}`)
+      break
+    }
+    case 'WatchAndForceTables': {
+      const action = text(data['action']) ?? '?'
+      lines.push(`Action: ${action}, kind: ${text(data['kind']) ?? 'watch'}`)
+      const table = [text(data['name']), text(data['group'])].filter((part) => part !== undefined).join(' / ')
+      if (table.length > 0) lines.push(`Table: ${table}`)
+      if (action === 'import') {
+        const imported = list(data['imported'])
+        lines.push(`Imported: ${imported.length}, committed: ${data['committed'] === true ? 'yes' : 'no'}`)
+        for (const item of imported.slice(0, MAX_LISTED)) {
+          const entry = record(item)
+          if (entry === null) continue
+          lines.push(`  ${text(entry['name']) ?? '?'} <- ${text(entry['file']) ?? '?'}`)
+        }
+        break
+      }
+      if (action === 'export') {
+        lines.push(`File: ${text(data['file']) ?? '?'} (${numberOf(data['bytes']) ?? 0} bytes, sha256 ${text(data['sha256']) ?? '?'})`)
+        break
+      }
+      lines.push(`${action === 'create' ? 'Created' : 'Deleted'}: ${data[action === 'create' ? 'created' : 'deleted'] === true ? 'yes' : 'no'}`)
+      break
+    }
+    case 'SoftwareUnits': {
+      const units = list(data['units'])
+      if (units.length > 0 || data['available'] !== undefined) {
+        lines.push(`Software units available: ${data['available'] === true ? 'yes' : 'no'}, count: ${numberOf(data['unitCount']) ?? units.length}`)
+      }
+      for (const item of units.slice(0, MAX_LISTED)) {
+        const entry = record(item)
+        if (entry === null) continue
+        lines.push(
+          `  ${text(entry['name']) ?? '?'}: ${numberOf(entry['blockCount']) ?? 0} blocks, ${numberOf(entry['typeCount']) ?? 0} types, ` +
+            `${numberOf(entry['tagTableCount']) ?? 0} tag tables, ${numberOf(entry['externalSourceCount']) ?? 0} external sources, ` +
+            `${list(entry['relations']).length} relation(s)`,
+        )
+      }
+      const action = text(data['action'])
+      const name = text(data['name'])
+      if (action !== undefined && name !== undefined) {
+        const related = text(data['relatedObject'])
+        const relationType = text(data['relationType'])
+        lines.push(
+          `${action}: ${name}${related === undefined ? '' : ` -> ${related}`}${relationType === undefined ? '' : ` (${relationType})`}` +
+            `${data['created'] !== undefined ? `, created: ${data['created'] === true ? 'yes' : 'no'}` : ''}` +
+            `${data['deleted'] !== undefined ? `, deleted: ${data['deleted'] === true ? 'yes' : 'no'}` : ''}`,
+        )
+      }
+      break
+    }
+    case 'SafetyStatus': {
+      const globalSettings = record(data['globalSettings'])
+      if (globalSettings !== null) {
+        const reason = text(globalSettings['reason'])
+        lines.push(`Global settings: ${globalSettings['available'] === true ? 'available' : 'NOT AVAILABLE'}${reason === undefined ? '' : ` (${reason})`}`)
+        if (globalSettings['available'] === true) {
+          lines.push(
+            `  Safety modifications possible: ${globalSettings['safetyModificationsPossible'] === true ? 'yes' : 'no'}, ` +
+              `F-change history user: ${text(globalSettings['usernameForFChangeHistory']) ?? '?'}`,
+          )
+        }
+      }
+      const settings = record(data['settings'])
+      if (settings !== null) {
+        const reason = text(settings['reason'])
+        lines.push(`Safety settings: ${settings['available'] === true ? 'available' : 'NOT AVAILABLE'}${reason === undefined ? '' : ` (${reason})`}`)
+        if (settings['available'] === true) {
+          lines.push(
+            `  Safety mode can be disabled: ${settings['safetyModeCanBeDisabled'] === true ? 'yes' : 'no'}, ` +
+              `system version: ${text(settings['safetySystemVersion']) ?? '?'}`,
+          )
+        }
+      }
+      const administration = record(data['administration'])
+      if (administration !== null) {
+        const reason = text(administration['reason'])
+        lines.push(`Safety administration: ${administration['available'] === true ? 'available' : 'NOT AVAILABLE'}${reason === undefined ? '' : ` (${reason})`}`)
+        if (administration['available'] === true) {
+          lines.push(
+            `  Logged on to safety offline program: ${administration['isLoggedOnToSafetyOfflineProgram'] === true ? 'yes' : 'no'}, ` +
+              `password set: ${administration['isSafetyOfflineProgramPasswordSet'] === true ? 'yes' : 'no'}`,
+          )
+        }
+      }
+      const runtimeGroups = list(data['runtimeGroups'])
+      if (runtimeGroups.length > 0) {
+        lines.push(`Runtime groups: ${runtimeGroups.length}`)
+        for (const item of runtimeGroups.slice(0, MAX_LISTED)) {
+          const entry = record(item)
+          if (entry === null) continue
+          lines.push(`  ${text(entry['name']) ?? '?'} (FOB ${text(entry['fobName']) ?? '?'}, main safety block ${text(entry['mainSafetyBlockName']) ?? '?'})`)
+        }
+      }
+      break
+    }
+    case 'SetSafetySettings': {
+      const modifications = record(data['safetyModificationsPossible'])
+      if (modifications !== null) {
+        lines.push(
+          `Safety modifications possible: ${modifications['before'] === true ? 'yes' : 'no'} -> ${modifications['after'] === true ? 'yes' : 'no'}` +
+            `${modifications['changed'] === true ? ' (changed)' : ' (unchanged)'}`,
+        )
+      }
+      const username = record(data['usernameForFChangeHistory'])
+      if (username !== null) {
+        lines.push(
+          `F-change history user: ${text(username['before']) ?? '?'} -> ${text(username['after']) ?? '?'}` +
+            `${username['changed'] === true ? ' (changed)' : ' (unchanged)'}`,
+        )
+      }
+      break
+    }
+    case 'SafetySignatures': {
+      lines.push(`PLC software: ${text(data['device']) ?? '?'} / ${text(data['software']) ?? '?'}`)
+      lines.push(
+        `Signature type: ${text(data['signatureType']) ?? 'block_offline_signature'}, ` +
+          `F blocks: ${numberOf(data['fBlockCount']) ?? 0}, non-F blocks: ${numberOf(data['nonFBlockCount']) ?? 0}`,
+      )
+      for (const item of list(data['blocks']).slice(0, MAX_LISTED)) {
+        const entry = record(item)
+        if (entry === null || entry['isFBlock'] !== true) continue
+        const group = text(entry['group'])
+        lines.push(`  ${text(entry['name']) ?? '?'}${group === undefined ? '' : ` (${group})`}: signature ${text(entry['value']) ?? 0}`)
+      }
       break
     }
     case 'ControllerStatus': {
@@ -629,6 +1153,1026 @@ export function registerTools(ctx: Context, dependencies: ToolDependencies): str
           dry_run: args.dry_run ?? true,
         }
         return asJsonOutcome(await runOperation(dependencies, 'CloseProject', params, exec.signal))
+      },
+    }),
+  )
+
+  register(
+    defineTool({
+      name: 'create_project',
+      description:
+        'Create a new TIA Portal V17 project: make the project folder and .ap17 file below project_dir and open it ' +
+        'in the TIA Portal instance the controller holds, so the other project tools can work on it immediately. ' +
+        'author and comment are the optional creation parameters, and with_window=true creates the project in a ' +
+        'visible TIA Portal instead of the default headless instance. Creating the project is the point of the ' +
+        'call, so dry_run defaults to false; pass dry_run=true to only report the target path. Maps to the ' +
+        'CreateProject operation. Fails with project_already_open, project_create_failed or invalid_params.',
+      parameters: {
+        project_dir: {
+          type: 'string',
+          required: true,
+          description: 'Absolute directory the new project folder is created in, for example C:\\Projects\\Line1.',
+        },
+        project_name: {
+          type: 'string',
+          required: true,
+          description: 'Name of the new project. It is also the name of the project folder created below project_dir.',
+        },
+        author: { type: 'string', description: 'Optional author stored in the new project.' },
+        comment: { type: 'string', description: 'Optional project comment stored in the new project.' },
+        with_window: {
+          type: 'boolean',
+          description: 'True to create the project in a visible TIA Portal instance; false (the default) uses a headless instance.',
+        },
+        dry_run: {
+          type: 'boolean',
+          description: 'Defaults to false because creating the project is the purpose of this call. True only reports the target path.',
+        },
+      },
+      output: {
+        schema: OUTCOME_SCHEMA,
+        render: (_args, value) => [{ type: 'text', text: renderValue(value, verbose) }],
+      },
+      async execute(args, exec) {
+        const params: JsonRecord = {
+          project_dir: args.project_dir,
+          project_name: args.project_name,
+          with_window: args.with_window ?? false,
+          dry_run: args.dry_run ?? false,
+        }
+        if (args.author !== undefined) params['author'] = args.author
+        if (args.comment !== undefined) params['comment'] = args.comment
+        return asJsonOutcome(await runOperation(dependencies, 'CreateProject', params, exec.signal))
+      },
+    }),
+  )
+
+  register(
+    defineTool({
+      name: 'save_project',
+      description:
+        'Save the open TIA Portal project, optionally as a copy: save_as_dir saves it into a different directory ' +
+        'and leaves the currently open project where it is. WRITES the project file, so dry_run defaults to false; ' +
+        'pass dry_run=true to only report whether the project is modified and where it would be saved. The result ' +
+        'reports isModifiedBeforeSave and isModified, which is how you confirm that changes really reached disk ' +
+        'before closing. Maps to the SaveProject operation. Fails with project_not_open or project_save_failed.',
+      parameters: {
+        save_as_dir: {
+          type: 'string',
+          description: 'Absolute directory to save a copy of the project into. Omit to save the project in place.',
+        },
+        dry_run: {
+          type: 'boolean',
+          description: 'Defaults to false because saving is the purpose of this call. True only reports the modified state and the target.',
+        },
+      },
+      output: {
+        schema: OUTCOME_SCHEMA,
+        render: (_args, value) => [{ type: 'text', text: renderValue(value, verbose) }],
+      },
+      async execute(args, exec) {
+        const params: JsonRecord = { dry_run: args.dry_run ?? false }
+        if (args.save_as_dir !== undefined) params['save_as_dir'] = args.save_as_dir
+        return asJsonOutcome(await runOperation(dependencies, 'SaveProject', params, exec.signal))
+      },
+    }),
+  )
+
+  register(
+    defineTool({
+      name: 'archive_project',
+      description:
+        'Archive the open project into a .zap17 archive, or retrieve an archive into a new project. action=archive ' +
+        '(the default) writes target_dir/target_name using mode none, compressed (the default), ' +
+        'discard_restorable_data or discard_restorable_data_and_compressed. action=retrieve reads archive_path into ' +
+        'target_dir, optionally upgrading the project (upgrade) and opening it in a visible TIA Portal instance ' +
+        '(with_window) with project_open_mode primary or secondary. Archiving only writes the archive file and ' +
+        'retrieving opens a project, so dry_run defaults to false for both; pass dry_run=true to only report what ' +
+        'would happen. Maps to the ArchiveProject operation. Fails with project_not_open, project_not_saved ' +
+        '(unsaved changes), archive_failed, project_already_open, archive_not_found or retrieve_failed.',
+      parameters: {
+        action: {
+          type: 'string',
+          enum: ['archive', 'retrieve'],
+          description: "'archive' (the default) writes an archive of the open project; 'retrieve' creates a project from an archive.",
+        },
+        target_dir: {
+          type: 'string',
+          required: true,
+          description: 'For archive: directory the archive is written to. For retrieve: directory the retrieved project folder is created in.',
+        },
+        target_name: { type: 'string', description: 'File name of the archive to write. Required for action archive.' },
+        mode: {
+          type: 'string',
+          enum: ['none', 'compressed', 'discard_restorable_data', 'discard_restorable_data_and_compressed'],
+          description: "Archive mode, default 'compressed'. 'discard_restorable_data' variants shrink the archive but drop restorable data.",
+        },
+        archive_path: { type: 'string', description: 'Absolute path of the .zap17 archive to retrieve. Required for action retrieve.' },
+        upgrade: { type: 'boolean', description: 'Retrieve only: true upgrades the retrieved project to V17. Defaults to false.' },
+        project_open_mode: {
+          type: 'string',
+          enum: ['primary', 'secondary'],
+          description: "Retrieve only: open the retrieved project as 'primary' (the default) or 'secondary'.",
+        },
+        with_window: {
+          type: 'boolean',
+          description: 'Retrieve only: true opens the retrieved project in a visible TIA Portal instance. Defaults to false.',
+        },
+        dry_run: {
+          type: 'boolean',
+          description: 'Defaults to false for both actions. True reports the archive path or the retrieve plan without writing or opening anything.',
+        },
+      },
+      output: {
+        schema: OUTCOME_SCHEMA,
+        render: (_args, value) => [{ type: 'text', text: renderValue(value, verbose) }],
+      },
+      async execute(args, exec) {
+        const action = args.action ?? 'archive'
+        const params: JsonRecord = { action, dry_run: args.dry_run ?? false }
+        if (args.target_dir !== undefined) params['target_dir'] = args.target_dir
+        if (action === 'archive') {
+          if (args.target_name !== undefined) params['target_name'] = args.target_name
+          params['mode'] = args.mode ?? 'compressed'
+        } else {
+          if (args.archive_path !== undefined) params['archive_path'] = args.archive_path
+          params['upgrade'] = args.upgrade ?? false
+          params['project_open_mode'] = args.project_open_mode ?? 'primary'
+          params['with_window'] = args.with_window ?? false
+        }
+        return asJsonOutcome(await runOperation(dependencies, 'ArchiveProject', params, exec.signal))
+      },
+    }),
+  )
+
+  register(
+    defineTool({
+      name: 'project_info',
+      description:
+        'Read the metadata of the open project: attributes, comment, languages, history, installed products, ' +
+        'device list, PLC software composition and TIA Portal settings, selected with sections (default: ' +
+        'attributes, comment, languages, products, software). Read-only — it never modifies the project and has no ' +
+        'dry_run. history_limit caps the history entries (default 50) and max_objects caps the device and software ' +
+        'listings (default 200); include_attribute_infos adds the attribute name/accessMode pairs. Maps to the ' +
+        'ProjectInfo operation. Fails with project_not_open.',
+      parameters: {
+        sections: {
+          type: 'array',
+          items: {
+            type: 'string',
+            enum: ['attributes', 'comment', 'languages', 'history', 'products', 'devices', 'software', 'settings'],
+          },
+          description:
+            "Which sections to return. Defaults to ['attributes', 'comment', 'languages', 'products', 'software']; add 'history', 'devices' or 'settings' when needed.",
+        },
+        history_limit: { type: 'integer', description: 'Maximum number of project history entries to return (default 50).' },
+        max_objects: { type: 'integer', description: 'Maximum number of devices and software items to list (default 200).' },
+        include_attribute_infos: {
+          type: 'boolean',
+          description: 'True to add the attribute name/accessMode pairs of the project and of every device (default false).',
+        },
+      },
+      output: {
+        schema: OUTCOME_SCHEMA,
+        render: (_args, value) => [{ type: 'text', text: renderValue(value, verbose) }],
+      },
+      async execute(args, exec) {
+        const params: JsonRecord = {
+          sections: args.sections ?? ['attributes', 'comment', 'languages', 'products', 'software'],
+          history_limit: args.history_limit ?? 50,
+          max_objects: args.max_objects ?? 200,
+          include_attribute_infos: args.include_attribute_infos ?? false,
+        }
+        return asJsonOutcome(await runOperation(dependencies, 'ProjectInfo', params, exec.signal))
+      },
+    }),
+  )
+
+  register(
+    defineTool({
+      name: 'project_languages',
+      description:
+        'List or change the languages of the open project. action=list (the default) reports the supported ' +
+        'language catalog plus the active, editing and reference language; action=set adds or removes ' +
+        'active_languages (active_mode add, the default, or remove) and sets editing_language and/or ' +
+        'reference_language. Only action=set writes to the project, so dry_run defaults to true; pass ' +
+        'dry_run=false to apply it. Maps to the ProjectLanguages operation. Fails with project_not_open, ' +
+        'language_not_found (details.available lists the supported cultures) or invalid_params.',
+      parameters: {
+        action: {
+          type: 'string',
+          enum: ['list', 'set'],
+          description: "'list' (the default) reports the languages; 'set' changes them.",
+        },
+        active_languages: {
+          type: 'array',
+          items: { type: 'string' },
+          description: "Culture names to add to or remove from the active languages in action=set, for example 'de-DE'.",
+        },
+        active_mode: {
+          type: 'string',
+          enum: ['add', 'remove'],
+          description: "How active_languages is applied in action=set: 'add' (the default) or 'remove'.",
+        },
+        editing_language: { type: 'string', description: "Culture name to set as the project's editing language in action=set." },
+        reference_language: { type: 'string', description: "Culture name to set as the project's reference language in action=set." },
+        dry_run: {
+          type: 'boolean',
+          description: 'Defaults to true because action=set writes to the project. Set false to apply the change.',
+        },
+      },
+      output: {
+        schema: OUTCOME_SCHEMA,
+        render: (_args, value) => [{ type: 'text', text: renderValue(value, verbose) }],
+      },
+      async execute(args, exec) {
+        const params: JsonRecord = {
+          action: args.action ?? 'list',
+          active_mode: args.active_mode ?? 'add',
+          dry_run: args.dry_run ?? true,
+        }
+        if (args.active_languages !== undefined) params['active_languages'] = args.active_languages
+        if (args.editing_language !== undefined) params['editing_language'] = args.editing_language
+        if (args.reference_language !== undefined) params['reference_language'] = args.reference_language
+        return asJsonOutcome(await runOperation(dependencies, 'ProjectLanguages', params, exec.signal))
+      },
+    }),
+  )
+
+  register(
+    defineTool({
+      name: 'project_texts',
+      description:
+        'Export the project texts of the open project into an XLSX file, or import them back from one. ' +
+        'action=export needs source_language and target_language and writes file; it writes only that file and not ' +
+        'the project, so its dry_run defaults to false. action=import reads file into the project and therefore ' +
+        'defaults to dry_run=true; update_source_language=true also updates the source language column, and the ' +
+        'result reports the import state (Info, Warning or Error) and the result path. Maps to the ProjectTexts ' +
+        'operation. Fails with project_not_open, project_text_export_failed, project_text_import_failed or ' +
+        'invalid_params.',
+      parameters: {
+        action: {
+          type: 'string',
+          required: true,
+          enum: ['export', 'import'],
+          description: "'export' writes the project texts to file; 'import' reads them back from file.",
+        },
+        file: { type: 'string', required: true, description: 'Absolute path of the XLSX file to write (export) or to read (import).' },
+        source_language: { type: 'string', description: "Culture name of the source language column. Required for action=export, for example 'en-US'." },
+        target_language: { type: 'string', description: "Culture name of the target language column. Required for action=export, for example 'de-DE'." },
+        update_source_language: {
+          type: 'boolean',
+          description: 'Import only: true also updates the source language column from the file. Defaults to false.',
+        },
+        dry_run: {
+          type: 'boolean',
+          description: 'Defaults to false for action=export (it only writes that file) and to true for action=import (which writes to the project).',
+        },
+      },
+      output: {
+        schema: OUTCOME_SCHEMA,
+        render: (_args, value) => [{ type: 'text', text: renderValue(value, verbose) }],
+      },
+      async execute(args, exec) {
+        const action = args.action
+        const params: JsonRecord = {
+          action,
+          file: args.file,
+          dry_run: args.dry_run ?? action === 'import',
+        }
+        if (args.source_language !== undefined) params['source_language'] = args.source_language
+        if (args.target_language !== undefined) params['target_language'] = args.target_language
+        if (action === 'import') params['update_source_language'] = args.update_source_language ?? false
+        return asJsonOutcome(await runOperation(dependencies, 'ProjectTexts', params, exec.signal))
+      },
+    }),
+  )
+
+  register(
+    defineTool({
+      name: 'update_project',
+      description:
+        "Change project-level settings of the open project: simulation_during_block_compilation and, per " +
+        'language, the project comment (comment_language plus comment_text). WRITES to the project, so dry_run ' +
+        'defaults to true; the result reports the before and after value of every item and whether it changed. At ' +
+        'least one writable item is required. Maps to the UpdateProject operation. Fails with project_not_open, ' +
+        'project_update_failed, language_not_found or invalid_params.',
+      parameters: {
+        simulation_during_block_compilation: {
+          type: 'boolean',
+          description: 'New value for the "simulation during block compilation" project setting.',
+        },
+        comment_language: { type: 'string', description: "Culture name of the project comment to change, for example 'en-US'." },
+        comment_text: { type: 'string', description: 'New project comment text for comment_language.' },
+        dry_run: {
+          type: 'boolean',
+          description: 'Defaults to true because this tool writes to the project. Set false to apply the changes.',
+        },
+      },
+      output: {
+        schema: OUTCOME_SCHEMA,
+        render: (_args, value) => [{ type: 'text', text: renderValue(value, verbose) }],
+      },
+      async execute(args, exec) {
+        const params: JsonRecord = { dry_run: args.dry_run ?? true }
+        if (args.simulation_during_block_compilation !== undefined) {
+          params['simulation_during_block_compilation'] = args.simulation_during_block_compilation
+        }
+        if (args.comment_language !== undefined) params['comment_language'] = args.comment_language
+        if (args.comment_text !== undefined) params['comment_text'] = args.comment_text
+        return asJsonOutcome(await runOperation(dependencies, 'UpdateProject', params, exec.signal))
+      },
+    }),
+  )
+
+  register(
+    defineTool({
+      name: 'portal_settings',
+      description:
+        'Read or change TIA Portal settings, which live outside the project. action=list (the default) reports ' +
+        'every setting folder and its settings with valueType, value and writeable; action=set changes the single ' +
+        'setting named by setting in folder (default General) to value, which the controller converts according to ' +
+        'value_type (auto, string, boolean, integer or culture). Only action=set writes, so dry_run defaults to ' +
+        'true; with_window=true uses a visible TIA Portal instance, which some settings require. Maps to the ' +
+        'PortalSettings operation. Fails with setting_not_found (details.availableFolders / ' +
+        'details.availableSettings), setting_change_failed or invalid_params.',
+      parameters: {
+        action: {
+          type: 'string',
+          enum: ['list', 'set'],
+          description: "'list' (the default) reports the settings; 'set' changes one of them.",
+        },
+        folder: { type: 'string', description: "Setting folder to read or write. Defaults to 'General'." },
+        setting: { type: 'string', description: 'Name of the setting to change. Required for action=set.' },
+        value: {
+          type: 'json',
+          description:
+            'New value for action=set. It may be a string, number or boolean: the controller converts it according to value_type, ' +
+            'which is why it is not declared as one JSON type here.',
+        },
+        value_type: {
+          type: 'string',
+          enum: ['auto', 'string', 'boolean', 'integer', 'culture'],
+          description: "How value is converted: 'auto' (the default) lets the controller pick the setting's own type.",
+        },
+        with_window: {
+          type: 'boolean',
+          description: 'True to use a visible TIA Portal instance; false (the default) uses the headless one. Some settings only exist with a window.',
+        },
+        dry_run: {
+          type: 'boolean',
+          description: 'Defaults to true because action=set writes to the TIA Portal settings. Set false to apply the change.',
+        },
+      },
+      output: {
+        schema: OUTCOME_SCHEMA,
+        render: (_args, value) => [{ type: 'text', text: renderValue(value, verbose) }],
+      },
+      async execute(args, exec) {
+        const params: JsonRecord = {
+          action: args.action ?? 'list',
+          folder: args.folder ?? 'General',
+          value_type: args.value_type ?? 'auto',
+          with_window: args.with_window ?? false,
+          dry_run: args.dry_run ?? true,
+        }
+        if (args.setting !== undefined) params['setting'] = args.setting
+        if (args.value !== undefined) params['value'] = args.value
+        return asJsonOutcome(await runOperation(dependencies, 'PortalSettings', params, exec.signal))
+      },
+    }),
+  )
+
+  register(
+    defineTool({
+      name: 'list_plc_objects',
+      description:
+        'List the objects of one PLC software of the open project: program blocks, PLC types (UDTs), tag tables, ' +
+        'external sources, watch tables, force tables and software units, selected with categories (default: ' +
+        'blocks, types, tag_tables). Read-only — it never modifies the project and has no dry_run. recursive ' +
+        'defaults to true, name_filter is a case-insensitive substring match on the names, block_names/type_names/' +
+        'tag_table_names select exact names instead (a name that matches nothing is reported under data.missing ' +
+        'rather than failing), include_tags and include_constants extend the tag tables, include_attributes and ' +
+        'include_fingerprints add the attribute and fingerprint lists, and max_items caps the listing (default ' +
+        '200, reported through truncated). This is the only way to read block/UDT fingerprints offline: ' +
+        'include_fingerprints returns the per-object FingerprintProvider list (id = Code / Interface / Properties / ' +
+        'Comments / LibraryType / Texts / … , value = the opaque string to compare), which is what detects changes ' +
+        'between two versions of a project. Maps to the ListPlcObjects operation. Fails with project_not_open, ' +
+        'plc_software_not_found or plc_software_ambiguous.',
+      parameters: {
+        categories: {
+          type: 'array',
+          items: {
+            type: 'string',
+            enum: ['blocks', 'types', 'tag_tables', 'external_sources', 'watch_tables', 'force_tables', 'units'],
+          },
+          description:
+            "Object families to list. Omit it to get ['blocks', 'types', 'tag_tables'], or — when block_names/type_names/tag_table_names are given — only the families those names select. Add 'external_sources', 'watch_tables', 'force_tables' or 'units' explicitly when needed.",
+        },
+        device_name: { type: 'string', description: 'Device that owns the PLC software. Only needed when the project has several PLCs.' },
+        software_name: { type: 'string', description: 'PLC software name. Only needed when one device holds several PLC software instances.' },
+        recursive: { type: 'boolean', description: 'True (the default) to include objects in user groups.' },
+        name_filter: { type: 'string', description: 'Case-insensitive substring that an object name must contain to be listed. Ignored for a family for which exact names were given.' },
+        block_names: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'Exact block names to list (searched across all user groups). A name that matches nothing appears under data.missing.blocks.',
+        },
+        type_names: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'Exact PLC type (UDT) names to list. A name that matches nothing appears under data.missing.types.',
+        },
+        tag_table_names: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'Exact tag table names to list. A name that matches nothing appears under data.missing.tagTables.',
+        },
+        include_tags: { type: 'boolean', description: 'True to list the tags of every listed tag table (default false).' },
+        include_constants: { type: 'boolean', description: 'True to list the user and system constants of every listed tag table (default false).' },
+        include_attributes: { type: 'boolean', description: 'True to add the attribute name/accessMode/value list of every listed object (default false).' },
+        include_fingerprints: {
+          type: 'boolean',
+          description:
+            'True to add the fingerprint id/value list of every listed block and PLC type (default false). Tag tables have no fingerprints. A block that is not consistent reports an entry with an error instead of failing the call.',
+        },
+        max_items: { type: 'integer', description: 'Maximum number of objects to return per family (default 200). Truncation is reported as data.truncated.' },
+      },
+      output: {
+        schema: OUTCOME_SCHEMA,
+        render: (_args, value) => [{ type: 'text', text: renderValue(value, verbose) }],
+      },
+      async execute(args, exec) {
+        const params: JsonRecord = {
+          recursive: args.recursive ?? true,
+          include_tags: args.include_tags ?? false,
+          include_constants: args.include_constants ?? false,
+          include_attributes: args.include_attributes ?? false,
+          include_fingerprints: args.include_fingerprints ?? false,
+          max_items: args.max_items ?? 200,
+        }
+        // categories is deliberately left out when the caller did not name any:
+        // the controller then lists exactly the families that block_names /
+        // type_names / tag_table_names selected (and all three when nothing was
+        // selected at all). Sending a default here would defeat that.
+        if (args.categories !== undefined) params['categories'] = args.categories
+        if (args.device_name !== undefined) params['device_name'] = args.device_name
+        if (args.software_name !== undefined) params['software_name'] = args.software_name
+        if (args.name_filter !== undefined) params['name_filter'] = args.name_filter
+        if (args.block_names !== undefined) params['block_names'] = args.block_names
+        if (args.type_names !== undefined) params['type_names'] = args.type_names
+        if (args.tag_table_names !== undefined) params['tag_table_names'] = args.tag_table_names
+        return asJsonOutcome(await runOperation(dependencies, 'ListPlcObjects', params, exec.signal))
+      },
+    }),
+  )
+
+  register(
+    defineTool({
+      name: 'create_plc_objects',
+      description:
+        'Create one object in the PLC software of the open project. kind selects a block group, type group, tag ' +
+        'table group, tag table, watch table, software unit or instance DB; name is required for everything except ' +
+        'the three group kinds, where group_path is the path of the group to create instead. For the other kinds ' +
+        'group_path is the parent group, and create_parents=true creates the missing groups on the way. An ' +
+        'instance_db also needs instance_of (the function block it instantiates) and takes auto_number and number ' +
+        'for its DB number. WRITES to the project, so dry_run defaults to true. Maps to the CreatePlcObjects ' +
+        'operation. Fails with invalid_params, group_not_found, group_create_failed, object_already_exists, ' +
+        'object_create_failed or unit_provider_unavailable.',
+      parameters: {
+        kind: {
+          type: 'string',
+          required: true,
+          enum: ['block_group', 'type_group', 'tag_table_group', 'tag_table', 'watch_table', 'unit', 'instance_db'],
+          description: 'Kind of object to create. The three *_group kinds create a group, the others create an object inside a group.',
+        },
+        name: {
+          type: 'string',
+          description: 'Name of the object to create. Required for every kind except block_group, type_group and tag_table_group.',
+        },
+        group_path: {
+          type: 'string',
+          description: 'For the *_group kinds: path of the group to create. For the other kinds: parent group the object is created in.',
+        },
+        create_parents: {
+          type: 'boolean',
+          description: 'True to create the missing groups of group_path instead of failing with group_not_found. Defaults to false.',
+        },
+        instance_of: { type: 'string', description: 'Name of the function block the new instance DB instantiates. Required for kind instance_db.' },
+        auto_number: { type: 'boolean', description: 'instance_db only: true (the default) lets TIA assign the DB number, so number is ignored.' },
+        number: { type: 'integer', description: 'instance_db only: DB number to use when auto_number is false. Defaults to 0.' },
+        dry_run: {
+          type: 'boolean',
+          description: 'Defaults to true because this tool writes to the project. Set false to create the object.',
+        },
+      },
+      output: {
+        schema: OUTCOME_SCHEMA,
+        render: (_args, value) => [{ type: 'text', text: renderValue(value, verbose) }],
+      },
+      async execute(args, exec) {
+        const kind = args.kind
+        const params: JsonRecord = {
+          kind,
+          create_parents: args.create_parents ?? false,
+          dry_run: args.dry_run ?? true,
+        }
+        if (args.name !== undefined) params['name'] = args.name
+        if (args.group_path !== undefined) params['group_path'] = args.group_path
+        if (args.instance_of !== undefined) params['instance_of'] = args.instance_of
+        if (kind === 'instance_db') {
+          params['auto_number'] = args.auto_number ?? true
+          params['number'] = args.number ?? 0
+        }
+        return asJsonOutcome(await runOperation(dependencies, 'CreatePlcObjects', params, exec.signal))
+      },
+    }),
+  )
+
+  register(
+    defineTool({
+      name: 'delete_plc_objects',
+      description:
+        'Delete PLC objects of the open project: program blocks, PLC types, tag tables, watch tables and software ' +
+        'units by name, whole groups through block_group_paths, type_group_paths and tag_table_group_paths, and ' +
+        'individual tags or constants inside the table named by tag_table (otherwise give them as Table.Name). ' +
+        'group_path is the parent group the names are looked up in. WRITES to the project, so dry_run defaults to ' +
+        'true; the dry run reports every planned object with whether it exists. strict_missing (the default) fails ' +
+        'when a name does not exist; false skips it. Maps to the DeletePlcObjects operation. Fails with ' +
+        'object_not_found (details.missing / details.available), delete_failed, group_not_empty or ' +
+        'project_not_open.',
+      parameters: {
+        block_names: { type: 'array', items: { type: 'string' }, description: 'Names of the program blocks to delete.' },
+        type_names: { type: 'array', items: { type: 'string' }, description: 'Names of the PLC types (UDTs) to delete.' },
+        tag_table_names: { type: 'array', items: { type: 'string' }, description: 'Names of the tag tables to delete.' },
+        watch_table_names: { type: 'array', items: { type: 'string' }, description: 'Names of the watch tables to delete.' },
+        unit_names: { type: 'array', items: { type: 'string' }, description: 'Names of the software units to delete.' },
+        block_group_paths: { type: 'array', items: { type: 'string' }, description: 'Paths of the block groups to delete, for example A/B.' },
+        type_group_paths: { type: 'array', items: { type: 'string' }, description: 'Paths of the PLC type groups to delete.' },
+        tag_table_group_paths: { type: 'array', items: { type: 'string' }, description: 'Paths of the tag table groups to delete.' },
+        group_path: { type: 'string', description: 'Parent group the *_names and *_group_paths are resolved in.' },
+        tag_table: { type: 'string', description: 'Tag table that tag_names and constant_names belong to. Omit to give them as Table.Name.' },
+        tag_names: { type: 'array', items: { type: 'string' }, description: 'Names of the tags to delete, either inside tag_table or as Table.Name.' },
+        constant_names: { type: 'array', items: { type: 'string' }, description: 'Names of the user constants to delete, either inside tag_table or as Table.Name.' },
+        strict_missing: {
+          type: 'boolean',
+          description: 'True (the default) fails with object_not_found when one of the names does not exist; false reports it in data.missing and deletes the rest.',
+        },
+        dry_run: {
+          type: 'boolean',
+          description: 'Defaults to true because this tool deletes from the project. Set false to delete.',
+        },
+      },
+      output: {
+        schema: OUTCOME_SCHEMA,
+        render: (_args, value) => [{ type: 'text', text: renderValue(value, verbose) }],
+      },
+      async execute(args, exec) {
+        const params: JsonRecord = {
+          strict_missing: args.strict_missing ?? true,
+          dry_run: args.dry_run ?? true,
+        }
+        if (args.block_names !== undefined) params['block_names'] = args.block_names
+        if (args.type_names !== undefined) params['type_names'] = args.type_names
+        if (args.tag_table_names !== undefined) params['tag_table_names'] = args.tag_table_names
+        if (args.watch_table_names !== undefined) params['watch_table_names'] = args.watch_table_names
+        if (args.unit_names !== undefined) params['unit_names'] = args.unit_names
+        if (args.block_group_paths !== undefined) params['block_group_paths'] = args.block_group_paths
+        if (args.type_group_paths !== undefined) params['type_group_paths'] = args.type_group_paths
+        if (args.tag_table_group_paths !== undefined) params['tag_table_group_paths'] = args.tag_table_group_paths
+        if (args.group_path !== undefined) params['group_path'] = args.group_path
+        if (args.tag_table !== undefined) params['tag_table'] = args.tag_table
+        if (args.tag_names !== undefined) params['tag_names'] = args.tag_names
+        if (args.constant_names !== undefined) params['constant_names'] = args.constant_names
+        return asJsonOutcome(await runOperation(dependencies, 'DeletePlcObjects', params, exec.signal))
+      },
+    }),
+  )
+
+  register(
+    defineTool({
+      name: 'write_tags',
+      description:
+        'Create, update or delete tags and user constants of one tag table in the open project. Every entry of ' +
+        'tags carries name plus the optional data_type, logical_address, comment and ' +
+        'external_accessible/external_visible/external_writable flags; entries of constants carry name plus ' +
+        'data_type, value and comment. In both lists create and update decide whether a missing object is created ' +
+        'or an existing one is updated, and delete_tags/delete_constants remove names. WRITES to the project, so ' +
+        'dry_run defaults to true; the result reports the action (created, updated, unchanged, skipped or ' +
+        'deleted) and the before/after value of every changed attribute. Maps to the WriteTags operation. Fails ' +
+        'with tag_table_not_found, tag_not_found, tag_create_failed, tag_update_failed, constant_create_failed, ' +
+        'constant_update_failed or invalid_params.',
+      parameters: {
+        tag_table: { type: 'string', required: true, description: 'Name of the tag table to write to.' },
+        group_path: { type: 'string', description: 'Group path of the tag table when it does not live in the root group.' },
+        tags: {
+          type: 'array',
+          items: {
+            type: 'object',
+            additionalProperties: false,
+            properties: {
+              name: { type: 'string', required: true, description: 'Tag name.' },
+              data_type: { type: 'string', description: "Data type of the tag, for example 'Bool' or 'Int'." },
+              logical_address: { type: 'string', description: "Logical address of the tag, for example '%I0.0'." },
+              comment: { type: 'string', description: 'Comment of the tag.' },
+              external_accessible: { type: 'boolean', description: 'External accessibility flag of the tag.' },
+              external_visible: { type: 'boolean', description: 'External visibility flag of the tag.' },
+              external_writable: { type: 'boolean', description: 'External writability flag of the tag.' },
+              create: { type: 'boolean', description: 'True to create the tag when it does not exist; false to skip it.' },
+              update: { type: 'boolean', description: 'True to update an existing tag; false to leave it unchanged.' },
+            },
+          },
+          description: 'Tags to create or update. Each entry needs name; the other fields are only written when given.',
+        },
+        constants: {
+          type: 'array',
+          items: {
+            type: 'object',
+            additionalProperties: false,
+            properties: {
+              name: { type: 'string', required: true, description: 'Constant name.' },
+              data_type: { type: 'string', description: "Data type of the constant, for example 'Int'." },
+              value: { type: 'json', description: 'Value of the constant: a string, number or boolean, converted to the data type.' },
+              comment: { type: 'string', description: 'Comment of the constant.' },
+              create: { type: 'boolean', description: 'True to create the constant when it does not exist; false to skip it.' },
+              update: { type: 'boolean', description: 'True to update an existing constant; false to leave it unchanged.' },
+            },
+          },
+          description: 'User constants to create or update. Each entry needs name; the other fields are only written when given.',
+        },
+        delete_tags: { type: 'array', items: { type: 'string' }, description: 'Names of the tags to delete from the tag table.' },
+        delete_constants: { type: 'array', items: { type: 'string' }, description: 'Names of the user constants to delete from the tag table.' },
+        dry_run: {
+          type: 'boolean',
+          description: 'Defaults to true because this tool writes to the project. Set false to write the tags and constants.',
+        },
+      },
+      output: {
+        schema: OUTCOME_SCHEMA,
+        render: (_args, value) => [{ type: 'text', text: renderValue(value, verbose) }],
+      },
+      async execute(args, exec) {
+        const params: JsonRecord = {
+          tag_table: args.tag_table,
+          dry_run: args.dry_run ?? true,
+        }
+        if (args.group_path !== undefined) params['group_path'] = args.group_path
+        if (args.tags !== undefined) params['tags'] = args.tags
+        if (args.constants !== undefined) params['constants'] = args.constants
+        if (args.delete_tags !== undefined) params['delete_tags'] = args.delete_tags
+        if (args.delete_constants !== undefined) params['delete_constants'] = args.delete_constants
+        return asJsonOutcome(await runOperation(dependencies, 'WriteTags', params, exec.signal))
+      },
+    }),
+  )
+
+  register(
+    defineTool({
+      name: 'set_block_attributes',
+      description:
+        'Write Openness attributes of existing blocks (target block, the default) or PLC types (target type) in ' +
+        'the open project: names lists the objects, attributes maps an attribute name to its new value, and ' +
+        'value_types optionally maps an attribute name to auto, string, boolean or integer for the conversion. ' +
+        'group_path restricts the lookup to one group; omit it to search recursively. WRITES to the project, so ' +
+        'dry_run defaults to true and the result reports every before/after pair. Maps to the SetBlockAttributes ' +
+        'operation. Fails with block_not_found, type_not_found, attribute_not_writeable, attribute_write_failed ' +
+        'or invalid_params.',
+      parameters: {
+        target: {
+          type: 'string',
+          enum: ['block', 'type'],
+          description: "Object family names refers to: 'block' (the default) or 'type' (PLC types / UDTs).",
+        },
+        names: { type: 'array', required: true, items: { type: 'string' }, description: 'Names of the blocks or PLC types to change.' },
+        group_path: { type: 'string', description: 'Group path the names are looked up in. Omit to search recursively.' },
+        attributes: {
+          type: 'object',
+          required: true,
+          additionalProperties: true,
+          description: 'Attribute name to new value. Every value is passed through as given, converted according to value_types.',
+        },
+        value_types: {
+          type: 'object',
+          additionalProperties: true,
+          description: "Optional attribute name to conversion ('auto', 'string', 'boolean' or 'integer'). Attributes without an entry use 'auto'.",
+        },
+        dry_run: {
+          type: 'boolean',
+          description: 'Defaults to true because this tool writes to the project. Set false to apply the attributes.',
+        },
+      },
+      output: {
+        schema: OUTCOME_SCHEMA,
+        render: (_args, value) => [{ type: 'text', text: renderValue(value, verbose) }],
+      },
+      async execute(args, exec) {
+        const params: JsonRecord = {
+          target: args.target ?? 'block',
+          names: args.names,
+          attributes: args.attributes,
+          dry_run: args.dry_run ?? true,
+        }
+        if (args.group_path !== undefined) params['group_path'] = args.group_path
+        if (args.value_types !== undefined) params['value_types'] = args.value_types
+        return asJsonOutcome(await runOperation(dependencies, 'SetBlockAttributes', params, exec.signal))
+      },
+    }),
+  )
+
+  register(
+    defineTool({
+      name: 'protect_blocks',
+      description:
+        'Protect blocks with a know-how password (action protect) or remove that protection again (action ' +
+        'unprotect), applied to every name in block_names and optionally restricted to group_path. The password ' +
+        'is handed to Openness as a SecureString and is never echoed back in the result. WRITES to the project, ' +
+        'so dry_run defaults to true. The result lists the blocks whose protection changed and, per block, the ' +
+        'code and message of the ones that failed, so one bad block does not hide the rest. Maps to the ' +
+        'ProtectBlocks operation. Fails with block_not_found, protection_unavailable (the block offers no ' +
+        'protection service), protect_failed, unprotect_failed or invalid_params.',
+      parameters: {
+        block_names: { type: 'array', required: true, items: { type: 'string' }, description: 'Names of the blocks to protect or unprotect.' },
+        action: {
+          type: 'string',
+          required: true,
+          enum: ['protect', 'unprotect'],
+          description: "'protect' sets the know-how protection; 'unprotect' removes it again.",
+        },
+        password: {
+          type: 'string',
+          required: true,
+          description: 'Know-how password. It is passed to Openness as a SecureString and is never returned in the result.',
+        },
+        group_path: { type: 'string', description: 'Group path the block names are looked up in. Omit to search recursively.' },
+        dry_run: {
+          type: 'boolean',
+          description: 'Defaults to true because this tool changes block protection. Set false to protect or unprotect.',
+        },
+      },
+      output: {
+        schema: OUTCOME_SCHEMA,
+        render: (_args, value) => [{ type: 'text', text: renderValue(value, verbose) }],
+      },
+      async execute(args, exec) {
+        const params: JsonRecord = {
+          block_names: args.block_names,
+          action: args.action,
+          password: args.password,
+          dry_run: args.dry_run ?? true,
+        }
+        if (args.group_path !== undefined) params['group_path'] = args.group_path
+        return asJsonOutcome(await runOperation(dependencies, 'ProtectBlocks', params, exec.signal))
+      },
+    }),
+  )
+
+  register(
+    defineTool({
+      name: 'generate_source',
+      description:
+        'Generate SCL/STL source from blocks and PLC types of the open project into one output_file: block_names ' +
+        'selects blocks (the extension follows the language — .scl for SCL, .awl for STL, .db for data blocks) ' +
+        'and type_names selects PLC types (extension .udt is required); with_dependencies also writes the objects ' +
+        'those blocks depend on. Only the file system is written, so dry_run defaults to false; overwrite=true is ' +
+        'required to replace an existing file. Maps to the GenerateSource operation. Fails with invalid_params, ' +
+        'object_not_found, file_exists or generate_source_failed.',
+      parameters: {
+        output_file: { type: 'string', required: true, description: 'Absolute path of the source file to write.' },
+        block_names: { type: 'array', items: { type: 'string' }, description: 'Names of the blocks to generate source from.' },
+        type_names: { type: 'array', items: { type: 'string' }, description: 'Names of the PLC types to generate; output_file must end in .udt.' },
+        with_dependencies: { type: 'boolean', description: 'True to also generate the objects the selected blocks depend on. Defaults to false.' },
+        overwrite: { type: 'boolean', description: 'True to replace an existing output_file; false (the default) fails with file_exists.' },
+        dry_run: {
+          type: 'boolean',
+          description: 'Defaults to false because it only writes that file. True reports what would be generated.',
+        },
+      },
+      output: {
+        schema: OUTCOME_SCHEMA,
+        render: (_args, value) => [{ type: 'text', text: renderValue(value, verbose) }],
+      },
+      async execute(args, exec) {
+        const params: JsonRecord = {
+          output_file: args.output_file,
+          with_dependencies: args.with_dependencies ?? false,
+          overwrite: args.overwrite ?? false,
+          dry_run: args.dry_run ?? false,
+        }
+        if (args.block_names !== undefined) params['block_names'] = args.block_names
+        if (args.type_names !== undefined) params['type_names'] = args.type_names
+        return asJsonOutcome(await runOperation(dependencies, 'GenerateSource', params, exec.signal))
+      },
+    }),
+  )
+
+  register(
+    defineTool({
+      name: 'watch_and_force_tables',
+      description:
+        'Manage watch and force tables of the open project: action create, delete, export or import, with kind ' +
+        'watch (the default) or force. create, delete and export need name; export also needs output_file, and ' +
+        'import needs import_paths together with import_options none (the default) or override. create_group=true ' +
+        'creates a missing group_path and overwrite=true allows replacing an exported file. Every action is ' +
+        'treated as a write (create/delete change the project, export writes a file), so dry_run defaults to true; ' +
+        'import reports the imported tables and whether the transaction committed. Maps to the ' +
+        'WatchAndForceTables operation. Fails with watch_table_not_found, force_table_not_found, ' +
+        'table_create_failed, table_delete_failed, export_failed, import_failed or invalid_params.',
+      parameters: {
+        action: {
+          type: 'string',
+          required: true,
+          enum: ['create', 'delete', 'export', 'import'],
+          description: 'Operation to perform on the watch or force table.',
+        },
+        kind: {
+          type: 'string',
+          enum: ['watch', 'force'],
+          description: "Table family: 'watch' (the default) or 'force'.",
+        },
+        group_path: { type: 'string', description: 'Group path the table lives in, or the parent group a created table goes into.' },
+        name: { type: 'string', description: 'Name of the table. Required for action create, delete and export.' },
+        output_file: { type: 'string', description: 'Absolute file the table is exported to. Required for action export.' },
+        import_paths: { type: 'array', items: { type: 'string' }, description: 'Files to import. Required for action import.' },
+        import_options: {
+          type: 'string',
+          enum: ['none', 'override'],
+          description: "Import only: 'none' (the default) fails when a table already exists, 'override' replaces it.",
+        },
+        create_group: { type: 'boolean', description: 'True to create a missing group_path when creating a table. Defaults to false.' },
+        overwrite: { type: 'boolean', description: 'True to replace an existing export file. Defaults to false.' },
+        dry_run: {
+          type: 'boolean',
+          description: 'Defaults to true because these actions write. Set false to create, delete, export or commit the import.',
+        },
+      },
+      output: {
+        schema: OUTCOME_SCHEMA,
+        render: (_args, value) => [{ type: 'text', text: renderValue(value, verbose) }],
+      },
+      async execute(args, exec) {
+        const params: JsonRecord = {
+          action: args.action,
+          kind: args.kind ?? 'watch',
+          import_options: args.import_options ?? 'none',
+          create_group: args.create_group ?? false,
+          overwrite: args.overwrite ?? false,
+          dry_run: args.dry_run ?? true,
+        }
+        if (args.group_path !== undefined) params['group_path'] = args.group_path
+        if (args.name !== undefined) params['name'] = args.name
+        if (args.output_file !== undefined) params['output_file'] = args.output_file
+        if (args.import_paths !== undefined) params['import_paths'] = args.import_paths
+        return asJsonOutcome(await runOperation(dependencies, 'WatchAndForceTables', params, exec.signal))
+      },
+    }),
+  )
+
+  register(
+    defineTool({
+      name: 'software_units',
+      description:
+        'List and change the software units of the PLC software of the open project. action=list (the default) ' +
+        'reports every unit with its object counts and its relations; create and delete add or remove the unit ' +
+        'named by name, and relation_create/relation_delete change the relation of that unit to related_object ' +
+        'with relation_type software_unit (the default), non_unit_db or to_db. Everything except list writes, so ' +
+        'dry_run defaults to true. Maps to the SoftwareUnits operation. Fails with unit_provider_unavailable ' +
+        '(software units are not enabled for this software), unit_not_found, unit_exists, unit_create_failed, ' +
+        'unit_delete_failed, relation_create_failed or invalid_params.',
+      parameters: {
+        action: {
+          type: 'string',
+          enum: ['list', 'create', 'delete', 'relation_create', 'relation_delete'],
+          description: "What to do: 'list' (the default), 'create', 'delete', 'relation_create' or 'relation_delete'.",
+        },
+        name: { type: 'string', description: 'Name of the software unit. Required for every action except list.' },
+        related_object: { type: 'string', description: 'Name of the object the unit is related to. Required for action relation_create.' },
+        relation_type: {
+          type: 'string',
+          enum: ['software_unit', 'non_unit_db', 'to_db'],
+          description: "Kind of relation for the relation_* actions: 'software_unit' (the default), 'non_unit_db' or 'to_db'.",
+        },
+        dry_run: {
+          type: 'boolean',
+          description: 'Defaults to true because everything except list writes to the project. Set false to apply the change.',
+        },
+      },
+      output: {
+        schema: OUTCOME_SCHEMA,
+        render: (_args, value) => [{ type: 'text', text: renderValue(value, verbose) }],
+      },
+      async execute(args, exec) {
+        const params: JsonRecord = {
+          action: args.action ?? 'list',
+          relation_type: args.relation_type ?? 'software_unit',
+          dry_run: args.dry_run ?? true,
+        }
+        if (args.name !== undefined) params['name'] = args.name
+        if (args.related_object !== undefined) params['related_object'] = args.related_object
+        return asJsonOutcome(await runOperation(dependencies, 'SoftwareUnits', params, exec.signal))
+      },
+    }),
+  )
+
+  register(
+    defineTool({
+      name: 'safety_status',
+      description:
+        'Report the F-related Openness state of the open project and of one PLC software: the global settings, ' +
+        'the safety settings and the safety administration, plus every runtime group when ' +
+        'include_runtime_groups is true (the default). A PLC that does not support F is not an error — the ' +
+        'affected section reports available=false with a reason. Read-only, with no dry_run; with_window=true ' +
+        'reads through a visible TIA Portal instance. Maps to the SafetyStatus operation. Fails with ' +
+        'project_not_open or openness_unavailable.',
+      parameters: {
+        include_runtime_groups: { type: 'boolean', description: 'True (the default) to include the F runtime groups with their FOB and cycle times.' },
+        include_settings: { type: 'boolean', description: 'True (the default) to include the safety settings section.' },
+        with_window: { type: 'boolean', description: 'True to read through a visible TIA Portal instance; false (the default) uses the headless one.' },
+      },
+      output: {
+        schema: OUTCOME_SCHEMA,
+        render: (_args, value) => [{ type: 'text', text: renderValue(value, verbose) }],
+      },
+      async execute(args, exec) {
+        const params: JsonRecord = {
+          include_runtime_groups: args.include_runtime_groups ?? true,
+          include_settings: args.include_settings ?? true,
+          with_window: args.with_window ?? false,
+        }
+        return asJsonOutcome(await runOperation(dependencies, 'SafetyStatus', params, exec.signal))
+      },
+    }),
+  )
+
+  register(
+    defineTool({
+      name: 'set_safety_settings',
+      description:
+        'Change the global safety settings of the TIA Portal instance: safety_modifications_possible and ' +
+        'username_for_f_change_history, at least one of which is required. WRITES to those settings, so dry_run ' +
+        'defaults to true; the result reports the before and after value of every item and whether it changed. ' +
+        'Maps to the SetSafetySettings operation. Fails with global_settings_unavailable, safety_setting_failed ' +
+        'or invalid_params.',
+      parameters: {
+        safety_modifications_possible: {
+          type: 'boolean',
+          description: 'New value for whether safety modifications are possible in this TIA Portal installation.',
+        },
+        username_for_f_change_history: {
+          type: 'string',
+          description: 'New user name recorded in the F-change history.',
+        },
+        dry_run: {
+          type: 'boolean',
+          description: 'Defaults to true because this tool writes to the safety settings. Set false to apply the change.',
+        },
+      },
+      output: {
+        schema: OUTCOME_SCHEMA,
+        render: (_args, value) => [{ type: 'text', text: renderValue(value, verbose) }],
+      },
+      async execute(args, exec) {
+        const params: JsonRecord = { dry_run: args.dry_run ?? true }
+        if (args.safety_modifications_possible !== undefined) {
+          params['safety_modifications_possible'] = args.safety_modifications_possible
+        }
+        if (args.username_for_f_change_history !== undefined) {
+          params['username_for_f_change_history'] = args.username_for_f_change_history
+        }
+        return asJsonOutcome(await runOperation(dependencies, 'SetSafetySettings', params, exec.signal))
+      },
+    }),
+  )
+
+  register(
+    defineTool({
+      name: 'safety_signatures',
+      description:
+        'Read the safety signatures of the F blocks of one PLC software in the open project: block_names and ' +
+        'type_names select the objects (omit both for all blocks) and group_path restricts the lookup. Read-only, ' +
+        'with no dry_run. Blocks that are not F blocks are counted but have no signature, and a signature that ' +
+        'does not exist or is no longer valid is reported as 0. signature_type is block_offline_signature. Maps ' +
+        'to the SafetySignatures operation. Fails with block_not_found, signature_read_failed or ' +
+        'project_not_open.',
+      parameters: {
+        block_names: { type: 'array', items: { type: 'string' }, description: 'Names of the blocks to read signatures from. Omit to read every block.' },
+        type_names: { type: 'array', items: { type: 'string' }, description: 'Names of the PLC types to read signatures from.' },
+        group_path: { type: 'string', description: 'Group path the names are looked up in. Omit to search recursively.' },
+        signature_type: {
+          type: 'string',
+          enum: ['block_offline_signature'],
+          description: "Kind of signature to read. Only 'block_offline_signature' exists, and it is the default.",
+        },
+      },
+      output: {
+        schema: OUTCOME_SCHEMA,
+        render: (_args, value) => [{ type: 'text', text: renderValue(value, verbose) }],
+      },
+      async execute(args, exec) {
+        const params: JsonRecord = { signature_type: args.signature_type ?? 'block_offline_signature' }
+        if (args.block_names !== undefined) params['block_names'] = args.block_names
+        if (args.type_names !== undefined) params['type_names'] = args.type_names
+        if (args.group_path !== undefined) params['group_path'] = args.group_path
+        return asJsonOutcome(await runOperation(dependencies, 'SafetySignatures', params, exec.signal))
       },
     }),
   )
