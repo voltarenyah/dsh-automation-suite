@@ -91,7 +91,7 @@
 |---|---|---|---|---|
 | **1** | **工控软件接口插件族**<br>（以 TIA 为例即 `tia-openness`；按**软件版本 × 能力层级**切分：V17/V18… × **min/std/pro**） | ① 接入层 | 与工控软件对接、**读写工程对象**；为后续分析提供**素材**与**验证工具**；并**附带文档**说清每个能力"何时调用 / 怎么调用 / 调用后的数据怎么用" | 🟡 已有 **V17 × min**（定位是验证基础功能） |
 | **2** | **工程上下文管理插件** | 作用域（横向） | 管住用户的**多个 TIA 项目 × 多个分支 × 多个历史版本**；对工程对象做优化适配（路径内容、变更识别与跟进）；用**「待办清单」式工具承载工程变更上下文**，在合适的时候交给 LLM 辅助判断用户意图；版本间变更明确易读、工程对象可交叉关联 | 🟡 部分实现（P0：作用域 + 工程注册表，3 个工具；**已登记进蓝图**，见 [`packages/dsh-engineering-context/docs/`](packages/dsh-engineering-context/docs/)） |
-| **3** | **工程知识图谱管理插件** | ② 语义层 | **准确翻译 XML 中的 PLC 语法**（兼容性强）：解析工程源文件 → **建立图数据库** → 暴露接口给出工程细节 | ⬜ 规划中 |
+| **3** | **工程知识图谱管理插件** | ② 语义层 | **准确翻译 XML 中的 PLC 语法**（兼容性强）：解析工程源文件 → **建立图数据库** → 暴露接口给出工程细节 | 🟡 部分实现（引擎 + 协议 + 3 个工具；**未登记进蓝图**） |
 
 编号沿用需求的表述顺序，**不代表实现顺序**；依赖关系与建议顺序见 [`docs/roadmap.md`](docs/roadmap.md) §5。
 每个插件族的定位、期望与边界见 [`docs/architecture.md`](docs/architecture.md) §4。
@@ -167,7 +167,7 @@ PLC 对象增删改、监视表与软件单元、F 相关服务、编译与关�
 |---|---|---|
 | **1 工控软件接口插件** | 把工控软件暴露的能力整体变成 LLM 的能力范围（含配套文档） | 🟡 **V17 × min**（块·UDT·标签表）；std/pro 能力层级与 V18+ 待补 |
 | **2 工程上下文管理插件** | 管住多项目 × 多分支 × 多版本，让答案对得上版本、也看得懂用户意图 | 🟡 **部分实现**：P0 作用域 + 工程注册表、P1 版本层（4 个工具，44 项单测）；指纹变更检测/变更台账未做。**已登记进蓝图**（`--dump-config` 实测 1520 行） |
-| **3 工程知识图谱管理插件** | 准确翻译 XML 中的 PLC 语法，XML → 图数据库 → 按需给出工程细节 | ⬜ 未开始 |
+| **3 工程知识图谱管理插件** | 准确翻译 XML 中的 PLC 语法，XML → 图数据库 → 按需给出工程细节 | 🟡 **部分实现**：Simatic ML → 图 → SQLite 已通（7 个真实 fixture 出 72 节点 / 153 边，覆盖 15 种节点种类），引擎协议 + 3 个工具（46 项单测，含经真实引擎的端到端）；**新鲜度/增量、按需下钻工具、兼容层未做**。**未登记进蓝图** |
 
 逐项进度、缺口与验收口径见 [`docs/roadmap.md`](docs/roadmap.md)；
 已定的取舍见 [`docs/decisions.md`](docs/decisions.md)，**34 条待决策问题在
@@ -183,11 +183,13 @@ PLC 对象增删改、监视表与软件单元、F 相关服务、编译与关�
 | `@voltarenyah/dsh-tia-openness-v17-min` | 插件 bundle | 0.1.0 | **26 个工具**：工程生命周期与工程数据 8（`create_project` / `save_project` / `archive_project` / `project_info` / `project_languages` / `project_texts` / `update_project` / `portal_settings`）、PLC 设备数据 9（`list_plc_objects` / `create_plc_objects` / `delete_plc_objects` / `write_tags` / `set_block_attributes` / `protect_blocks` / `generate_source` / `watch_and_force_tables` / `software_units`）、F 相关 3（`safety_status` / `set_safety_settings` / `safety_signatures`）、块读写主线 5 + `controller_status`；外加 1 个随包出货的知识库 skill。v0.2 的 20 个新操作**尚未在真实项目上验证**（见该包 `docs/VERIFICATION-PLAN.md`） |
 | `dsh-tool-git` | 插件 bundle（vendor） | 0.1.3 | **12 个工具**：`git_status` / `git_diff` / `git_log` / `git_branch` / `git_stage` / `git_commit` / `git_stash` / `git_show` / `git_fetch` / `git_pull` / `git_remote` / `git_checkout`；外加破坏性命令闸门 |
 | `@voltarenyah/dsh-engineering-context` | 插件 bundle | 0.1.0 | **P0 + P1：4 个工具**（`eng_status` / `eng_project` / `eng_scope` / `eng_version`）—— 作用域解析（会话工作目录 → workspace / 工程 / 分支 / 版本）、工程注册表（`_dsh-eng/projects.json`）与版本层（内部 git：`current` / `commit` / `log` / `diff`，只版本化导出物 + 工程状态）。**未实现**：指纹变更检测、变更台账 |
-| `profile/dsh-automation-suite` | profile 蓝图 | 0.1.0 | 把官方 Web 组合（`dsh-base` + `dsh-web-app`）与上面两个插件叠成一个可直接启动的 profile |
+| `@voltarenyah/dsh-engineering-graph` | 插件 bundle（**未登记进蓝图**） | 0.1.0 | **3 个工具**（`knowledge_schema` / `knowledge_ingest` / `knowledge_query`）—— Simatic ML XML → 属性图 → SQLite，引擎以 net8 子进程运行（`engine/`）。**未实现**：新鲜度/增量更新、按需下钻工具（某个块、某变量用法）、兼容层。**因为它不在 `dsh.profile.bundles` 里，它的 3 个工具不出现在任何会话的工具面中**（下面的 42 个不变）；登记条件见 [`docs/roadmap.md`](docs/roadmap.md) §4 |
+| `profile/dsh-automation-suite` | profile 蓝图 | 0.1.0 | 把官方 Web 组合（`dsh-base` + `dsh-web-app`）与上面的本地插件叠成一个可直接启动的 profile |
 | `scripts/start-env.ps1` | 启动器 | — | 一条命令完成"物化 profile + 装插件 + 起服务 + 带 token 开浏览器" |
 | `scripts/clean-build.mjs` | 工具 | — | 只清理 `lib/`、`dist/`，遇链接只 unlink、不递归下降 |
 
 合计 **42 个模型可见工具**，全部在同一个会话里可用 —— 例如"改完这个块，顺便把导出目录提交一下"。
+（族 3 的 3 个工具**未登记进蓝图，因此不计入**；登记后是 45 个。）
 
 ---
 
@@ -587,6 +589,13 @@ packages/
     test/                          node:test 套件（44 项，跑真实运行时与真实 git 临时仓库）
     scripts/                       link-dsh-runtime.mjs / tsc.mjs / run-tests.mjs
     docs/                          ARCHITECTURE.md / PATH-RULES.md / decisions.md
+  dsh-engineering-graph/           工程知识图谱管理插件（插件族 3）：**引擎 + 协议 + 3 个工具已实现，未登记进蓝图**
+    src/                           NDJSON 协议客户端、3 个知识工具（tsc → lib/）
+    test/                          node:test 套件（46 项，含经真实引擎的端到端与传输层故障注入）
+    engine/                        C# 引擎（net8 + Microsoft.Data.Sqlite）：Simatic ML → 图 → SQLite
+                                   Graph/ Parsing/ Import/ 为 vendored（命名空间拍平，见 D17）；
+                                   build.ps1 构建到 engine/bin（**不进 git**），fixtures/ 是 7 个真实 V17 导出物
+    scripts/                       link-dsh-runtime.mjs / tsc.mjs / run-tests.mjs
 profile/
   dsh-automation-suite/            发行版的 profile 蓝图
     package.json                   dsh.profile.bundles = 组合顺序

@@ -138,18 +138,24 @@ pnpm run clean:build      # 清构建产物（只碰 lib/ dist/）
 ## 4. 测试与验收
 
 ```powershell
-pnpm test          # 全仓：TIA 62 项（61 通过 / 1 跳过）+ dsh-tool-git 33 项 + engineering-context 44 项
+pnpm test          # 全仓：TIA 77 项（76 通过 / 1 跳过）+ dsh-tool-git 33 项 + engineering-context 44 项 + engineering-graph 46 项
 pnpm -r build
 pnpm -r typecheck
 ```
 
-三个插件用**两种测试运行器**，`pnpm -r test` 会把三者都跑到：
+四个插件用**两种测试运行器**，`pnpm -r test` 会把四者都跑到：
 
 | 包 | 运行器 | 命令 |
 |---|---|---|
 | `dsh-tia-openness-v17-min` | `node:test` | `node --test test/*.test.mjs` |
 | `dsh-tool-git` | `vitest` | `vitest run` |
 | `dsh-engineering-context` | `node:test` | `node scripts/run-tests.mjs`（**先构建再跑**，因为它不提交 `lib/`） |
+| `dsh-engineering-graph` | `node:test` | `node scripts/run-tests.mjs`（**先构建再跑**，同上） |
+
+⚠️ `dsh-engineering-graph` 还有一个 **C# 引擎**（`engine/`，net8）。`pnpm -r build` 只构建 TypeScript ——
+引擎要用 `pwsh -NoProfile -File engine/build.ps1` 构建到 `engine/bin/`（**不进 git**，与族 1 的控制器同理）。
+它有一项测试**驱动该引擎**（跑 `--self-test`：原生 SQLite 加载 + 真实导出物解析 + 只读闸门），
+引擎没构建时那条测试会 **skip 并打印构建命令**，而不是失败 —— 所以"全绿"不等于"引擎也验过了"。
 
 单测都需要**真实的** `@deepseek-ai/*` 运行时（不是 stub）。裸 checkout 首次运行时，
 各包的测试自举会各自自动触发抽取；也可以手动：
@@ -158,6 +164,7 @@ pnpm -r typecheck
 pnpm --filter @voltarenyah/dsh-tia-openness-v17-min run link:runtime
 pnpm --filter dsh-tool-git run link:runtime
 pnpm --filter @voltarenyah/dsh-engineering-context run link:runtime
+pnpm --filter @voltarenyah/dsh-engineering-graph run link:runtime
 ```
 
 前两者从**已安装 app 自己的 `resources/app.asar`** 里求闭包（约 32 个包 / 8 MB / <1 s），
@@ -165,9 +172,9 @@ pnpm --filter @voltarenyah/dsh-engineering-context run link:runtime
 `runtime.json` 记下宿主版本，宿主升级后自动重抽。环境变量覆盖：`DSH_APP_ASAR`（asar 路径）、
 `DSH_HOME`（harness home）。
 
-⚠️ `dsh-engineering-context` 的链接脚本只链 `@deepseek-ai/*`，且**从不抽取**：它只读已存在的
-`<DSH_HOME>/plugin-runtime`，缺包就报错并让你去跑兄弟包的抽取器。理由：抽取会删除并重建
-一个**在仓库之外、无法用 git 恢复**的目录。它的依赖（`typescript` / `@types/node`）由
+⚠️ `dsh-engineering-context` 与 `dsh-engineering-graph` 的链接脚本只链 `@deepseek-ai/*`，且**从不抽取**：
+它们只读已存在的 `<DSH_HOME>/plugin-runtime`，缺包就报错并让你去跑兄弟包的抽取器。理由：抽取会删除并重建
+一个**在仓库之外、无法用 git 恢复**的目录。它们的依赖（`typescript` / `@types/node`）由
 `pnpm install` 提供 —— **手工链接绝不能指向另一个 workspace 包的 `node_modules`**，
 否则 pnpm 的链接阶段会以 ENOENT 失败（实测事故见该包 `docs/decisions.md` P0-14）。
 
@@ -203,6 +210,9 @@ dsh --profile dsh-automation-suite --dump-config
 - id: tool-git
   name: dsh-tool-git
 ```
+
+> 注意：族 3（`@voltarenyah/dsh-engineering-graph`）**刻意还没登记进蓝图**，所以下面的
+> 预期输出里**没有它**，行数也不含它；它一登记，每个本地插件就是 4 × 3 行。
 
 装 tarball 的验收链路：
 
