@@ -11,6 +11,7 @@
 // stderr, exactly as family 1's controller does, because a diagnostic on stdout
 // would corrupt the channel.
 using System.Diagnostics;
+using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 
@@ -18,8 +19,13 @@ namespace EngineeringGraph.Engine;
 
 internal static class Program
 {
+    /// <summary>UTF-8 without a BOM: the channel's contract, and a BOM would corrupt the first frame.</summary>
+    private static readonly UTF8Encoding Utf8 = new(encoderShouldEmitUTF8Identifier: false);
+
     private static int Main(string[] args)
     {
+        PinStandardStreams();
+
         if (args.Length > 0)
         {
             switch (args[0])
@@ -41,6 +47,39 @@ internal static class Program
         }
 
         return ServeStdio();
+    }
+
+    /// <summary>
+    /// Pin stdout/stdin/stderr to UTF-8 instead of inheriting the environment.
+    ///
+    /// `Console.Out` is created against the console's code page when a console is
+    /// attached -- a legacy page in many locales -- and that silently turns every
+    /// non-ASCII code point into '?'. Redirected stdio already defaults to UTF-8, so
+    /// the observable behaviour used to depend on *how* the engine was launched: the
+    /// plugin's pipe was lossless while a human running <c>--call</c> in a terminal
+    /// saw mangled non-ASCII. Network titles and object names in real projects are
+    /// routinely non-ASCII, so the behaviour must not depend on the launch mode.
+    ///
+    /// Re-wrapping the streams (rather than assigning <c>Console.OutputEncoding</c>)
+    /// is deliberate: that property mutates the *caller's* console code page, which
+    /// is a side effect this process has no business causing.
+    ///
+    /// The line terminator is LF, per NDJSON. Autoflush keeps a frame from being lost
+    /// when the process exits immediately after writing it.
+    /// </summary>
+    private static void PinStandardStreams()
+    {
+        Console.SetOut(new StreamWriter(Console.OpenStandardOutput(), Utf8)
+        {
+            AutoFlush = true,
+            NewLine = "\n",
+        });
+        Console.SetIn(new StreamReader(Console.OpenStandardInput(), Utf8));
+        Console.SetError(new StreamWriter(Console.OpenStandardError(), Utf8)
+        {
+            AutoFlush = true,
+            NewLine = "\n",
+        });
     }
 
     private static void PrintHelp()
