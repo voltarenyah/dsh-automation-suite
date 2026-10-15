@@ -309,16 +309,19 @@ commit `b5c7041`）**逐字**打进包里，并注册成模型可见的**一个*
 | `closeProject(opts)` | `CloseProject` | **`dryRun` 是必填参数** —— 调用方是代码，不替它默认 |
 | `listObjects(query)` | `ListPlcObjects` | 把每族的 `{count,items,truncated}` 摊平成一行一对象；默认 `max_items=1000` |
 | `exportObjects(query)` | `ExportBlocks` | 与 `export_blocks` 同参；只写文件，不动工程 |
+| `saveProjectAs(dir)` | `SaveProject` + `save_as_dir` | 另存到指定目录；**回读** TIA 实际产出的路径（项目名改不了，只有目录是新的） |
+| `readTiaSession()` | `ProjectInfo` | 控制器在不在 + TIA 开着哪个项目 + 设备清单；**从不启动控制器** |
+| `rebuildSource(root, opts)` | `ProjectInfo` + 每 device 两次 `ExportBlocks` | **`<root>/<device>/{blocks,types,tag_tables}/…` 的布局由它定死**；被 TIA 拒绝的对象逐条回报 |
 
 - **与工具走同一条路径**：每个方法都构造与对应工具**相同**的操作与参数、复用 `runOperation`，
   所以模型面与服务面不会在默认值或错误形状上互相漂移。
 - **失败语义与 §8 一致**：操作级失败（TIA 拒绝、块不存在）返回 `ok:false` + 结构化 `error`；
   传输级失败（找不到 exe、超时、协议不匹配）**抛出**。
-- **不新增 C# 能力**：五个方法全部落在已有的白名单操作上，所以工具数（26）与操作数（25）不变。
+- **不新增 C# 能力**：八个方法全部落在已有的白名单操作上，所以工具数（26）与操作数（25）不变。
 - **它是可选的**：消费方按名取（`ctx.get('engineeringAccess')`），取不到就降级 ——
   读上一次的指纹工件并**明确报过期**，而不是装作数据是新的。
-- 为什么"翻页"在 V17 上不存在、为什么 `closeProject` 这样定：
-  [`docs/decisions.md`](docs/decisions.md) **D20**；契约镜像在
+- 为什么"翻页"在 V17 上不存在、为什么 `closeProject` 这样定、`source/` 布局为什么归本插件：
+  [`docs/decisions.md`](docs/decisions.md) **D20** / **D21**；契约镜像在
   [`packages/dsh-engineering-context/docs/ARCHITECTURE.md`](../dsh-engineering-context/docs/ARCHITECTURE.md) §5.3。
 
 ---

@@ -448,3 +448,50 @@ The block name 'FB_Array_Handling' is invalid. An object with this name or this 
 操作失败作为数据返回而传输失败抛出。另：`test/helpers/harness.mjs` 的替身 ctx 补上了
 `fiber` / `reflect.provide` / `get`，否则真实 `Service` 无法在替身上构造（这是这次改动**修掉的
 一个测试基建缺口**，不是放宽断言）。
+
+---
+
+## D21. 给族 2 的三个方法：另存 / 重建源 / 读会话；`source/` 布局归本插件
+
+**背景**：族 2 的 `create_engineering_project` 要一口气完成"另存进 workspace → 全量导出源文件"，
+而它按架构**不允许自己与 TIA Portal 对话**。所以这三个动作必须由本插件以**服务方法**提供。
+
+**决定**：
+
+| 方法 | 做什么 | 关键约束 |
+|---|---|---|
+| `saveProjectAs(directory)` | `SaveProject` + `save_as_dir` | SaveAs **只认目录**、项目名不可改（D20 已实测）；**回读** `savedAs` / `requestedSaveAsDir` / `projectPath`，调用方必须记录实际落点，而不是它请求的路径 |
+| `readTiaSession()` | 报"控制器在不在 + TIA 开着哪个项目" | **从不启动控制器**（停着就回 `running:false`，一个操作都不发）；没有项目时 `project_not_open` 是**状态**不是异常，回 `projectOpen:false` + reason；有项目时读 `attributes`（name/path/isModified）+ `software`（device/software/blockCount） |
+| `rebuildSource(sourceRoot, opts)` | 每 device 全量导出 + 逐条报告被拒对象 | **`sourceRoot` 以下的一切由本方法定死**（见下） |
+
+**`source/` 以下的布局（本插件独占，代码即权威）**：
+
+```
+<sourceRoot>/<device>/blocks/<group>/<name>.xml
+<sourceRoot>/<device>/types/<group>/<name>.xml
+<sourceRoot>/<device>/tag_tables/<name>.xml
+```
+
+**为什么是两次 `ExportBlocks` 而不是一次**：控制器**没有 layout 选项**，而 TIA 把 blocks 写在
+传入 `output_dir` 的**根**上（只有 `types/`、`tag_tables/` 各占子目录）。要让 blocks 也落在
+`blocks/` 这一层，就得把它单独导出到 `<device>/blocks`。代价很小：第二次只导 types + tag_tables
+（真实项目里 210 个类型 + 7 张表，远快于 1151 个块那次）。**好处是不用改 C#。**
+
+**连带事实（消费方必须知道）**：
+
+- 每个 device 最多**两份** `_tia-openness-manifest.json`（blocks 那次一份、其余那次一份），
+  各描述自己写出的文件。消费方**读 manifest / 读服务返回**，**不要自己拼路径** ——
+  这是防"约定失效"的机制：路径是运行时返回的事实，不是两边各自维护的约定。
+- 设备名做文件系统安全化，撞名追加 `~2`（与控制器对对象名的做法一致）。
+- 被 TIA 拒绝的对象**逐条**进 `failures`（device / category / name / code / message），不静默丢。
+- `skipped` 与 `verificationFailed` 是**调用级**数字，因此如实标在 device 上；
+  **不**硬拆到每个 family（拆了就是编数字）。family 级只给可精确归属的 `exported` / `failed` / `manifest`。
+
+**不注册成模型工具**：三个方法都只走服务（`engineeringAccess`），族 1 的模型面仍是 **26 个工具**。
+模型只调族 2 的 `create_engineering_project`，由它按顺序调这三个 ——
+这样"何时建项目、怎么建"是一次可审阅的编排，而不是让模型自己拼步骤。
+
+**验证**：[`test/08-access-service.test.mjs`](../test/08-access-service.test.mjs) 新增 6 项：
+`saveProjectAs` 的参数与回读、`readTiaSession` 的三态（停着**一个操作都不发** / 无项目 / 有项目）、
+`rebuildSource` 的两次调用与三段路径、被拒对象归属到 family、目录安全化与撞名消解、
+设备过滤与 `missingDevices`、以及无控制器 / 无项目时**拒绝导出**。

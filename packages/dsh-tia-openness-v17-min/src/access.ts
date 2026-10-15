@@ -29,6 +29,7 @@
 
 import { Service } from '@deepseek-ai/cordis'
 import type { Context } from '@deepseek-ai/cordis'
+import { join } from 'node:path'
 
 import type { JsonRecord } from './protocol.js'
 import { runOperation, type ToolDependencies } from './tools.js'
@@ -193,6 +194,120 @@ export interface ExportObjectsQuery {
   writeManifest?: boolean
   dryRun?: boolean
   signal?: AbortSignal
+}
+
+export interface SaveProjectAsOptions {
+  /** True to report what would happen without writing anything. */
+  dryRun?: boolean
+  signal?: AbortSignal
+}
+
+/** One PLC software the open project holds. */
+export interface AccessPlcSoftware {
+  /** Device that owns it (TIA's own device name). */
+  device: string
+  /** The PLC software name inside that device. */
+  software: string
+  /** Blocks TIA reports for it; 0 when it could not be counted. */
+  blockCount: number
+}
+
+/**
+ * What the controller currently has open.
+ *
+ * `running` is about the controller process; `projectOpen` is about TIA. The two
+ * are separate on purpose — a running controller with no project is a normal state
+ * — and reading this **never starts** anything.
+ */
+export interface AccessTiaSession {
+  running: boolean
+  projectOpen: boolean
+  projectName: string | null
+  projectPath: string | null
+  /** Null when the project state could not be read. */
+  isModified: boolean | null
+  software: AccessPlcSoftware[]
+  /** Why the session could not be read, when it could not. */
+  reason: string | null
+}
+
+export interface RebuildSourceOptions {
+  /** True to replace existing files; false (the default) skips them and reports. */
+  overwrite?: boolean
+  /** True to report the plan without writing. */
+  dryRun?: boolean
+  /** Limit the rebuild to these device names; omit for every PLC software. */
+  deviceNames?: readonly string[]
+  signal?: AbortSignal
+}
+
+/** One family's outcome inside one device's source tree. */
+export interface RebuiltFamily {
+  /** Objects TIA wrote for this family. */
+  exported: number
+  /** Objects TIA refused for this family (also listed in `failures`). */
+  failed: number
+  /** Absolute directory the family landed in. */
+  directory: string
+  /** Absolute path of the manifest describing it, when one was written. */
+  manifest: string | null
+}
+
+/** What one device's rebuild produced. */
+export interface RebuiltDevice {
+  device: string
+  software: string
+  /** `<sourceRoot>/<device>` — the directory everything below belongs to. */
+  directory: string
+  /** Blocks TIA reported before the export. */
+  blockCount: number
+  /** Files left alone because they already existed (both export calls). */
+  skipped: number
+  /** Objects the controller failed to verify after writing (both calls). */
+  verificationFailed: number
+  blocks: RebuiltFamily
+  types: RebuiltFamily
+  tagTables: RebuiltFamily
+}
+
+/** One object TIA refused to export (never silently dropped). */
+export interface RebuildFailure {
+  device: string
+  category: string
+  name: string
+  code: string
+  message: string
+}
+
+/** The outcome of a whole `rebuildSource` run. */
+export interface RebuildSourceResult extends AccessCallResult {
+  /** The directory the caller passed; everything below it is TIA's output. */
+  sourceRoot: string
+  devices: RebuiltDevice[]
+  /** Every object TIA refused, across all devices. */
+  failures: RebuildFailure[]
+  /** Devices that were asked for but are not in the project. */
+  missingDevices: string[]
+}
+
+/**
+ * One path segment safe for the source tree.
+ *
+ * TIA device names may contain characters a filesystem rejects, and two names may
+ * collapse onto the same segment. This mirrors what the controller's own exporter
+ * does to object names, so the two never disagree about a folder.
+ *
+ * @param name - the raw name (usually a device name).
+ * @returns a segment that can be created on disk.
+ */
+function sanitizeSegment(name: string): string {
+  const cleaned = name
+    // eslint-disable-next-line no-control-regex
+    .replace(/[\\/:*?"<>|\u0000-\u001f]/gu, '_')
+    .replace(/^[. ]+|[. ]+$/gu, '')
+  if (cleaned.length === 0) return '_'
+  if (/^(con|prn|aux|nul|com[0-9]|lpt[0-9])$/iu.test(cleaned.split('.')[0] ?? cleaned)) return `_${cleaned}`
+  return cleaned
 }
 
 function record(value: unknown): JsonRecord | null {
@@ -453,4 +568,365 @@ export class EngineeringAccess extends Service {
     if (query.softwareName !== undefined) params['software_name'] = query.softwareName
     return toCallResult(await runOperation(this.dependencies, 'ExportBlocks', params, query.signal))
   }
+
+  /**
+   * Save the open project into another directory ("save as").
+   *
+   * The directory is the caller's decision — this method knows nothing about
+   * workspaces or projects. Two TIA facts the caller must live with, both from the
+   * `save_project` tool's verified behaviour: SaveAs takes **only a directory**, and
+   * the project **keeps its own name** (`Project.Name` is read-only and there is no
+   * `SaveAs(folder, newName)` overload). So the requested directory and the path TIA
+   * actually produces can differ, and the caller must record what came back
+   * (`savedAs` / `projectPath`), never what it asked for.
+   *
+   * @param directory - target directory; TIA decides the layout below it.
+   * @param options - dry run and cancellation.
+   */
+  async saveProjectAs(directory: string, options: SaveProjectAsOptions = {}): Promise<AccessCallResult> {
+    if (typeof directory !== 'string' || directory.trim().length === 0) {
+      throw new TypeError('saveProjectAs needs a non-empty target directory')
+    }
+    const params: JsonRecord = { save_as_dir: directory }
+    if (options.dryRun !== undefined) params['dry_run'] = options.dryRun
+    const outcome = await runOperation(this.dependencies, 'SaveProject', params, options.signal)
+    const result = toCallResult(outcome)
+    const data = outcome.data
+    return {
+      ...result,
+      // Surfaced explicitly: these are the two facts a caller must not guess at.
+      data:
+        data === null
+          ? null
+          : {
+              ...data,
+              savedAs: data['savedAs'] ?? null,
+              requestedSaveAsDir: data['requestedSaveAsDir'] ?? directory,
+              projectPath: data['projectPath'] ?? null,
+            },
+    }
+  }
+
+  /**
+   * Report what the controller and TIA currently have open.
+   *
+   * Never starts anything: a stopped controller is reported as `running: false`.
+   * When the controller is running but TIA holds no project, that comes back as
+   * `projectOpen: false` with a reason — the `project_not_open` failure the
+   * controller reports is a **state**, not an error to throw.
+   *
+   * @param options - cancellation.
+   */
+  async readTiaSession(options: { signal?: AbortSignal } = {}): Promise<AccessTiaSession> {
+    const snapshot = this.dependencies.status() as unknown as JsonRecord
+    const state = text(snapshot['state']) ?? 'unknown'
+    const pid = snapshot['pid']
+    const running = state !== 'stopped' && pid !== null && pid !== undefined
+
+    const empty: AccessTiaSession = {
+      running,
+      projectOpen: false,
+      projectName: null,
+      projectPath: null,
+      isModified: null,
+      software: [],
+      reason: running ? null : 'the controller is not running, so no TIA session is open',
+    }
+    if (!running) return empty
+
+    const outcome = await runOperation(
+      this.dependencies,
+      'ProjectInfo',
+      { sections: ['attributes', 'software'], max_objects: 500 },
+      options.signal,
+    )
+    if (!outcome.ok) {
+      const code = outcome.error?.code ?? 'unknown'
+      return {
+        ...empty,
+        reason: code === 'project_not_open' ? 'the controller is running but no project is open' : (outcome.error?.message ?? code),
+      }
+    }
+
+    const data = outcome.data
+    const attributes = record(data?.['attributes'])
+    const software = record(data?.['software'])
+    const items: AccessPlcSoftware[] = []
+    for (const entry of list(software?.['items'])) {
+      const item = record(entry)
+      if (item === null) continue
+      items.push({
+        device: text(item['device']) ?? '?',
+        software: text(item['software']) ?? '?',
+        blockCount: numberOf(item['blockCount']) ?? 0,
+      })
+    }
+
+    return {
+      running: true,
+      projectOpen: true,
+      projectName: text(attributes?.['name']) ?? null,
+      projectPath: text(attributes?.['path']) ?? null,
+      isModified: typeof attributes?.['isModified'] === 'boolean' ? attributes['isModified'] : null,
+      software: items,
+      reason: null,
+    }
+  }
+
+  /**
+   * Materialize the **complete** source tree of every PLC software into one root.
+   *
+   * This is the operation that owns the `source/` layout, which is why the layout
+   * lives here in code and not in a prompt: callers pass only the root, and
+   * everything below it is decided by this method (and documented in
+   * `docs/decisions.md` D21). Two export calls per device produce it, because the
+   * controller has no "layout" option and TIA writes blocks at the root of whatever
+   * `output_dir` it is given:
+   *
+   *   <sourceRoot>/<device>/blocks/<group>/<name>.xml
+   *   <sourceRoot>/<device>/types/<group>/<name>.xml
+   *   <sourceRoot>/<device>/tag_tables/<name>.xml
+   *
+   * Each call writes its own `_tia-openness-manifest.json` beside what it wrote, so
+   * a device with blocks and types has two manifests — each describing exactly its
+   * own files, which is what a consumer should read instead of reconstructing paths.
+   *
+   * A device that TIA refuses blocks on is **not** skipped silently: its failures
+   * come back in `failures`, one entry per object.
+   *
+   * @param sourceRoot - directory to build the tree under (created by TIA's export).
+   * @param options - overwrite, dry run, device filter and cancellation.
+   */
+  async rebuildSource(sourceRoot: string, options: RebuildSourceOptions = {}): Promise<RebuildSourceResult> {
+    if (typeof sourceRoot !== 'string' || sourceRoot.trim().length === 0) {
+      throw new TypeError('rebuildSource needs a non-empty source root')
+    }
+
+    const session = await this.readTiaSession({ signal: options.signal })
+    if (!session.running) {
+      return {
+        ok: false,
+        operation: 'ExportBlocks',
+        dryRun: true,
+        summary: 'Nothing was exported: the controller is not running, so no project is open.',
+        error: { code: 'controller_not_running', message: session.reason ?? 'the controller is not running', details: null },
+        data: null,
+        durationMs: 0,
+        changes: [],
+        diagnostics: [],
+        sourceRoot,
+        devices: [],
+        failures: [],
+        missingDevices: [],
+      }
+    }
+    if (!session.projectOpen) {
+      return {
+        ok: false,
+        operation: 'ExportBlocks',
+        dryRun: true,
+        summary: 'Nothing was exported: the controller has no project open.',
+        error: { code: 'project_not_open', message: session.reason ?? 'no project is open', details: null },
+        data: null,
+        durationMs: 0,
+        changes: [],
+        diagnostics: [],
+        sourceRoot,
+        devices: [],
+        failures: [],
+        missingDevices: [],
+      }
+    }
+
+    const devices = session.software
+    const wanted = options.deviceNames
+    const selected = wanted === undefined ? devices : devices.filter((entry) => wanted.includes(entry.device))
+    const missingDevices = wanted === undefined ? [] : wanted.filter((name) => !devices.some((entry) => entry.device === name))
+
+    const failures: RebuildFailure[] = []
+    const rebuilt: RebuiltDevice[] = []
+    const used = new Set<string>()
+
+    for (const entry of selected) {
+      let folder = sanitizeSegment(entry.device)
+      // Two device names can collapse onto one folder; make the second distinct
+      // instead of letting one overwrite the other.
+      if (used.has(folder.toLowerCase())) {
+        let index = 2
+        while (used.has(`${folder}~${index}`.toLowerCase())) index += 1
+        folder = `${folder}~${index}`
+      }
+      used.add(folder.toLowerCase())
+
+      const deviceDirectory = join(sourceRoot, folder)
+      const emptyFamily = (directory: string): RebuiltFamily => ({
+        exported: 0,
+        failed: 0,
+        directory,
+        manifest: null,
+      })
+      // Blocks go to <device>/blocks so the tree is type-first; the controller
+      // writes them at the root of whatever directory it is handed.
+      const blocksFamily = emptyFamily(join(deviceDirectory, 'blocks'))
+      const typesFamily = emptyFamily(join(deviceDirectory, 'types'))
+      const tagTablesFamily = emptyFamily(join(deviceDirectory, 'tag_tables'))
+
+      const blocksOutcome = await runOperation(
+        this.dependencies,
+        'ExportBlocks',
+        {
+          output_dir: blocksFamily.directory,
+          categories: ['blocks'],
+          recursive: true,
+          overwrite: options.overwrite ?? false,
+          export_options: 'with_defaults',
+          write_manifest: true,
+          dry_run: options.dryRun ?? false,
+          device_name: entry.device,
+          software_name: entry.software,
+        },
+        options.signal,
+      )
+      if (!blocksOutcome.ok) {
+        return {
+          ...toCallResult(blocksOutcome),
+          sourceRoot,
+          devices: rebuilt,
+          failures,
+          missingDevices,
+        }
+      }
+      applyFamily(blocksFamily, blocksOutcome.data, entry.device, failures)
+
+      const restOutcome = await runOperation(
+        this.dependencies,
+        'ExportBlocks',
+        {
+          output_dir: deviceDirectory,
+          categories: ['types', 'tag_tables'],
+          recursive: true,
+          overwrite: options.overwrite ?? false,
+          export_options: 'with_defaults',
+          write_manifest: true,
+          dry_run: options.dryRun ?? false,
+          device_name: entry.device,
+          software_name: entry.software,
+        },
+        options.signal,
+      )
+      if (!restOutcome.ok) {
+        return {
+          ...toCallResult(restOutcome),
+          sourceRoot,
+          devices: rebuilt,
+          failures,
+          missingDevices,
+        }
+      }
+      applyFamily(typesFamily, restOutcome.data, entry.device, failures, 'types')
+      applyFamily(tagTablesFamily, restOutcome.data, entry.device, failures, 'tagTables')
+
+      rebuilt.push({
+        device: entry.device,
+        software: entry.software,
+        directory: deviceDirectory,
+        blockCount: entry.blockCount,
+        ...callTotals(blocksOutcome.data, restOutcome.data),
+        blocks: blocksFamily,
+        types: typesFamily,
+        tagTables: tagTablesFamily,
+      })
+    }
+
+    const exported = rebuilt.reduce(
+      (total, device) => total + device.blocks.exported + device.types.exported + device.tagTables.exported,
+      0,
+    )
+    const failed = rebuilt.reduce(
+      (total, device) => total + device.blocks.failed + device.types.failed + device.tagTables.failed,
+      0,
+    )
+
+    return {
+      ok: true,
+      operation: 'ExportBlocks',
+      dryRun: options.dryRun ?? false,
+      summary:
+        selected.length === 0
+          ? 'No PLC software was selected, so nothing was exported.'
+          : `Rebuilt the source tree of ${selected.length} device(s) under ${sourceRoot}: ${exported} object(s) exported, ${failed} refused by TIA.`,
+      error: null,
+      data: { sourceRoot, devices: rebuilt, failures, missingDevices },
+      durationMs: 0,
+      changes: [],
+      diagnostics: [],
+      sourceRoot,
+      devices: rebuilt,
+      failures,
+      missingDevices,
+    }
+  }
+}
+
+/**
+ * Fold one export call's payload into the family it produced.
+ *
+ * Only exactly attributable numbers are taken: `exported` from `counts[family]`,
+ * `failed` from the `failures` entries whose `category` matches, and the manifest
+ * path the controller wrote. Call-level totals (`skipped`, `verificationFailed`)
+ * are summed by {@link callTotals} instead, because they cannot honestly be split
+ * across families.
+ *
+ * @param family - the family record to fill in (mutated).
+ * @param data - the controller payload of one `ExportBlocks` call.
+ * @param device - device name, used to label the failures.
+ * @param failures - the run's failure list (appended to).
+ * @param countKey - which key of `counts` this call populates.
+ */
+function applyFamily(
+  family: RebuiltFamily,
+  data: JsonRecord | null,
+  device: string,
+  failures: RebuildFailure[],
+  countKey: 'blocks' | 'types' | 'tagTables' = 'blocks',
+): void {
+  const counts = record(data?.['counts'])
+  family.exported = numberOf(counts?.[countKey]) ?? 0
+  family.manifest = text(data?.['manifest']) ?? null
+
+  const wantedCategory = countKey === 'blocks' ? 'blocks' : countKey === 'types' ? 'types' : 'tag_tables'
+  for (const entry of list(data?.['failures'])) {
+    const item = record(entry)
+    if (item === null) continue
+    const category = text(item['category']) ?? ''
+    if (category !== wantedCategory) continue
+    family.failed += 1
+    failures.push({
+      device,
+      category,
+      name: text(item['name']) ?? '?',
+      code: text(item['code']) ?? 'export_failed',
+      message: text(item['message']) ?? '',
+    })
+  }
+}
+
+/**
+ * The call-level totals of two export calls, which are the only numbers that
+ * cannot be attributed to one family.
+ *
+ * @param payloads - the controller payloads to sum over.
+ */
+function callTotals(...payloads: ReadonlyArray<JsonRecord | null>): {
+  skipped: number
+  verificationFailed: number
+} {
+  let skipped = 0
+  let verificationFailed = 0
+  for (const payload of payloads) {
+    const summary = record(payload?.['summary'])
+    skipped += numberOf(summary?.['skipped']) ?? 0
+    verificationFailed += numberOf(summary?.['verificationFailed']) ?? 0
+  }
+  return { skipped, verificationFailed }
 }

@@ -308,3 +308,187 @@ test('operation failures come back as data; transport failures are thrown', asyn
   await assert.rejects(() => broken.service.listObjects(), /controller_not_found/u)
   await assert.rejects(() => broken.service.openProject('C:\\p\\x.ap17'), /controller_not_found/u)
 })
+
+/** A running controller, as the session reader sees it. */
+const RUNNING = { state: 'ready', exePath: 'C:\\ctl.exe', exeExists: true, pid: 4242, ready: { openness: { available: true } } }
+
+/** The controller payload for the session's device list. */
+function softwareFrame(devices) {
+  return frame('ProjectInfo', undefined, {
+    data: {
+      attributes: { name: 'PEI_SinoARP', path: 'C:\\work\\tia\\PEI_SinoARP\\tia.ap17', isModified: false },
+      software: { count: devices.length, items: devices },
+    },
+  })
+}
+
+test('saveProjectAs sends the target directory and surfaces what TIA actually produced', async () => {
+  const { service, calls } = serviceWith(() =>
+    frame('SaveProject', undefined, {
+      data: { savedAs: 'C:\\w\\tia\\Proj\\tia.ap17', requestedSaveAsDir: 'C:\\w\\tia\\Proj', projectPath: 'C:\\w\\tia\\Proj' },
+    }),
+  )
+
+  const result = await service.saveProjectAs('C:\\w\\tia\\Proj')
+  assert.equal(calls[0].operation, 'SaveProject')
+  assert.deepEqual(calls[0].params, { save_as_dir: 'C:\\w\\tia\\Proj' })
+  assert.equal(result.data.savedAs, 'C:\\w\\tia\\Proj\\tia.ap17')
+  assert.equal(result.data.requestedSaveAsDir, 'C:\\w\\tia\\Proj')
+
+  await service.saveProjectAs('C:\\w\\tia\\Proj', { dryRun: true })
+  assert.deepEqual(calls[1].params, { save_as_dir: 'C:\\w\\tia\\Proj', dry_run: true })
+
+  await assert.rejects(() => service.saveProjectAs(''), TypeError)
+})
+
+test('readTiaSession never starts the controller and reads the open project when it can', async () => {
+  // Stopped: no operation may be sent at all.
+  const stopped = serviceWith(undefined, { state: 'stopped', exePath: 'C:\\ctl.exe', exeExists: true, pid: null, ready: null })
+  const stoppedSession = await stopped.service.readTiaSession()
+  assert.equal(stoppedSession.running, false)
+  assert.equal(stoppedSession.projectOpen, false)
+  assert.match(stoppedSession.reason, /not running/u)
+  assert.equal(stopped.calls.length, 0, 'reading the session must not start the controller')
+
+  // Running but nothing open: the controller's project_not_open is a state.
+  const empty = serviceWith(
+    () => frame('ProjectInfo', undefined, { ok: false, error: { code: 'project_not_open', message: 'no project' } }),
+    RUNNING,
+  )
+  const emptySession = await empty.service.readTiaSession()
+  assert.equal(emptySession.running, true)
+  assert.equal(emptySession.projectOpen, false)
+  assert.match(emptySession.reason, /no project is open/u)
+
+  // Running with a project: name, path, dirty flag and the PLC software list.
+  const open = serviceWith(
+    () => softwareFrame([{ device: 'S7-1500', software: 'PLC_1', blockCount: 1152 }]),
+    RUNNING,
+  )
+  const session = await open.service.readTiaSession()
+  assert.equal(session.projectOpen, true)
+  assert.equal(session.projectName, 'PEI_SinoARP')
+  assert.equal(session.isModified, false)
+  assert.deepEqual(session.software, [{ device: 'S7-1500', software: 'PLC_1', blockCount: 1152 }])
+  assert.deepEqual(open.calls[0].params, { sections: ['attributes', 'software'], max_objects: 500 })
+})
+
+test('rebuildSource lays one device out by type, and reports every refusal', async () => {
+  const devices = [{ device: 'S7-1500', software: 'PLC_1', blockCount: 3 }]
+  const { service } = serviceWith(
+    (operation, params) => {
+      if (operation === 'ProjectInfo') return softwareFrame(devices)
+      const portable = params.output_dir.replace(/\\/gu, '/')
+      if (portable.endsWith('/blocks')) {
+        return frame('ExportBlocks', params, {
+          data: {
+            counts: { blocks: 2, types: 0, tagTables: 0 },
+            manifest: `${params.output_dir}\\_tia-openness-manifest.json`,
+            summary: { exported: 2, skipped: 0, failed: 1, verificationFailed: 0 },
+            failures: [{ category: 'blocks', name: 'FOB_SAFETY', code: 'export_failed', message: 'not permitted' }],
+          },
+        })
+      }
+      return frame('ExportBlocks', params, {
+        data: {
+          counts: { blocks: 0, types: 3, tagTables: 1 },
+          manifest: `${params.output_dir}\\_tia-openness-manifest.json`,
+          summary: { exported: 4, skipped: 1, failed: 0, verificationFailed: 0 },
+        },
+      })
+    },
+    RUNNING,
+  )
+
+  const result = await service.rebuildSource('C:\\w\\source')
+  assert.equal(result.ok, true)
+  assert.equal(result.devices.length, 1)
+  const device = result.devices[0]
+  assert.equal(device.directory, 'C:\\w\\source\\S7-1500')
+  assert.equal(device.blocks.directory, 'C:\\w\\source\\S7-1500\\blocks')
+  assert.equal(device.types.directory, 'C:\\w\\source\\S7-1500\\types')
+  assert.equal(device.tagTables.directory, 'C:\\w\\source\\S7-1500\\tag_tables')
+  assert.equal(device.blocks.exported, 2)
+  assert.equal(device.blocks.failed, 1)
+  assert.equal(device.types.exported, 3)
+  assert.equal(device.tagTables.exported, 1)
+  assert.equal(device.skipped, 1, 'skipped comes from the call summaries and is device-level')
+  assert.equal(device.verificationFailed, 0)
+  assert.match(device.blocks.manifest, /blocks\\_tia-openness-manifest\.json$/u)
+  assert.match(device.types.manifest, /S7-1500\\_tia-openness-manifest\.json$/u)
+
+  // The refusal is attributed to its family and never dropped.
+  assert.deepEqual(result.failures, [
+    { device: 'S7-1500', category: 'blocks', name: 'FOB_SAFETY', code: 'export_failed', message: 'not permitted' },
+  ])
+})
+
+test('rebuildSource names folders safely and keeps colliding device names apart', async () => {
+  const devices = [
+    { device: 'S7-1500/2', software: 'PLC_1', blockCount: 0 },
+    { device: 'S7-1500_2', software: 'PLC_2', blockCount: 0 },
+  ]
+  const { service } = serviceWith((operation, params) =>
+    operation === 'ProjectInfo'
+      ? softwareFrame(devices)
+      : frame('ExportBlocks', params, { data: { counts: { blocks: 0, types: 0, tagTables: 0 }, summary: {} } }),
+    RUNNING,
+  )
+  const result = await service.rebuildSource('C:\\w\\source')
+  assert.deepEqual(
+    result.devices.map((entry) => entry.directory),
+    ['C:\\w\\source\\S7-1500_2', 'C:\\w\\source\\S7-1500_2~2'],
+  )
+})
+
+test('rebuildSource honours a device filter and names the ones it could not find', async () => {
+  const devices = [
+    { device: 'A', software: 'PLC_A', blockCount: 1 },
+    { device: 'B', software: 'PLC_B', blockCount: 1 },
+  ]
+  const { service, calls } = serviceWith((operation, params) =>
+    operation === 'ProjectInfo'
+      ? softwareFrame(devices)
+      : frame('ExportBlocks', params, { data: { counts: { blocks: 0, types: 0, tagTables: 0 }, summary: {} } }),
+    RUNNING,
+  )
+
+  const result = await service.rebuildSource('C:\\w\\source', { deviceNames: ['A', 'Nope'] })
+  assert.deepEqual(result.devices.map((entry) => entry.device), ['A'])
+  assert.deepEqual(result.missingDevices, ['Nope'])
+  // Only device A was exported: two calls, both naming it.
+  const exports = calls.filter((call) => call.operation === 'ExportBlocks')
+  assert.equal(exports.length, 2)
+  for (const call of exports) {
+    assert.equal(call.params.device_name, 'A')
+    assert.equal(call.params.software_name, 'PLC_A')
+    assert.equal(call.params.write_manifest, true)
+    assert.equal(call.params.overwrite, false)
+    assert.equal(call.params.dry_run, false)
+  }
+  assert.deepEqual(exports[0].params.categories, ['blocks'])
+  assert.deepEqual(exports[1].params.categories, ['types', 'tag_tables'])
+})
+
+test('rebuildSource reports a missing controller or project instead of exporting nothing quietly', async () => {
+  const stopped = serviceWith(undefined, { state: 'stopped', exePath: 'x', exeExists: true, pid: null, ready: null })
+  const noController = await stopped.service.rebuildSource('C:\\w\\source')
+  assert.equal(noController.ok, false)
+  assert.equal(noController.error.code, 'controller_not_running')
+  assert.equal(stopped.calls.length, 0, 'a stopped controller must not be started to find this out')
+
+  const noProject = serviceWith(
+    () => frame('ProjectInfo', undefined, { ok: false, error: { code: 'project_not_open', message: 'no project' } }),
+    RUNNING,
+  )
+  const nothingOpen = await noProject.service.rebuildSource('C:\\w\\source')
+  assert.equal(nothingOpen.ok, false)
+  assert.equal(nothingOpen.error.code, 'project_not_open')
+  assert.equal(
+    noProject.calls.some((call) => call.operation === 'ExportBlocks'),
+    false,
+    'no export may be attempted without a project',
+  )
+})
+
+
