@@ -399,6 +399,48 @@ crawl 模式 7/7 个 fixture、**72 节点 / 153 边**，节点种类覆盖
 
 ---
 
+## D19 · 族 3 的引擎协议、操作与工具命名 ✅
+
+**背景**：族 3 的引擎（vendored `Graph`/`Parsing`/`Import`）能解析、能建库，但**没有任何操作入口**，
+所以插件一个工具都注册不了。这一步把入口打通，并把"协议长什么样"固定下来。
+
+**决定**：
+
+1. **协议照族 1 的 NDJSON 帧模型**（`packages/dsh-tia-openness-v17-min/controller/Protocol.cs`）：
+   一行一个 JSON 对象；`ready` 帧宣告就绪并列出操作目录，每个请求恰好一个 `result` 帧，
+   中间可有 `progress` 帧；请求形如 `{id, type:"operation", operation, params}`。
+   **操作目录是安全边界**，不在此列的名字一律 `unsupported_operation`。
+   两处**刻意偏离**：net8 直接用 `System.Text.Json`（族 1 因 net48 无依赖才手写）；
+   错误对象在族 1 的 `code`/`message`/`details` 之外**保留来源库的 `remediation`** ——
+   是超集，不丢信息，两个消费端都能渲染。
+2. **引擎四个模式**：无参 = stdio 服务；`--call <Op> [json]` 一次性执行并打印结果帧
+   （人工排障与不走 TS 的端到端验证）；`--self-test [exportRoot]`；`--version` / `--help`。
+   stdout **只承载帧**，一切人类可读说明走 stderr。
+3. **本切片只有三个操作**：`GetSchema` / `Ingest` / `Query`。
+   SQL 与只读校验**逐函数**从来源库的工具层搬来、语句未改（来源行号记在各函数注释里）。
+   **`status` 刻意不做**：来源库里根本没有这个操作，新鲜度逻辑住在消费端应用里 ——
+   它属于 D13 的第 4 步（freshness），本切片不凭空造一个。
+4. **工具名带族前缀**：`knowledge_schema` / `knowledge_ingest` / `knowledge_query`。
+   裸名 `query` 在共享会话里太泛，将来必然与别的插件撞。`knowledge_query` 是唯一的
+   "逃生舱"（任意只读 SQL），按 **D16** 先暴露、收口后置。
+5. **工具返回本仓的 canonical envelope**（`ok` / `operation` / `summary` / `data` /
+   `changes` / `diagnostics` / `error` / `durationMs`，见族 1 `docs/OUTPUT-CONTRACT.md` §1），
+   而不是直接把引擎的错误对象交给模型。**只有传输层失败**（找不到可执行文件、超时、
+   进程中途死亡、协议不匹配）才抛；操作失败一律 `ok:false` + `error.code`。
+
+**临时口径（待 D13 落地时替换）**：`Ingest` 的 `dbPath` 缺省为
+`<exportRoot>/plc-knowledge.db`（照搬来源库）。这是**过渡值**：D13 已定"每个 PLC device 一张图"，
+但 db 的具体位置仍未定（见待办清单第 6 条），定下来后要改这里并回写 `PATH-RULES.md` §2/§8。
+
+**验证（2026-10-15）**：`dotnet build` 0 warning / 0 error；`--self-test` 覆盖四项 ——
+原生 SQLite 往返、真实导出物 crawl（7/7、72 节点 / 153 边）、
+**经真实分发的 `Ingest` → `Query`**（查询出 15 种节点种类）、以及**只读闸门拒绝 `DROP`**（`QUERY_REJECTED`）。
+stdio 通道实测：`ready` 帧列出三个操作，`GetSchema` 返回 34 字节十六进制版本哈希，
+`Ingest` 产出 3 条 `progress` 帧后 276 ms 返回，四条错误路径
+（`DB_PATH_REQUIRED` / `unsupported_operation` / `unsupported_frame` / `bad_request`）都按契约返回。
+
+---
+
 ## 待办验证清单（由以上决策派生）
 
 | # | 待验证 | 来源 |
