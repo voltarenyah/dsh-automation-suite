@@ -62,6 +62,25 @@ test('the engine self test passes: native SQLite loads and real exports parse', 
   assert.ok(Number(nodes) > 0, 'the crawl produced no nodes')
   assert.ok(Number(edges) > 0, 'the crawl produced no edges')
 
-  // 3. Every check that ran reported success.
+  // 3. The three checks the TypeScript half relies on: an ingest into a real
+  //    database, a query that returns rows, and the read-only guard refusing a
+  //    write statement. The exact counts belong to the fixture set, so only the
+  //    same invariants as above are asserted.
+  const ingest = /\[ok\] ingest: filesFound=(\d+) filesImported=(\d+) nodes=(\d+) edges=(\d+)/.exec(output)
+  assert.ok(ingest, `no ingest summary in the output:\n${output}`)
+  const [, ingestFound, ingestImported, ingestNodes, ingestEdges] = ingest
+  assert.equal(ingestImported, ingestFound, `only ${ingestImported} of ${ingestFound} fixtures ingested:\n${output}`)
+  assert.ok(Number(ingestImported) > 0, 'the ingest wrote nothing')
+  assert.ok(Number(ingestNodes) > 0, 'the ingest produced no nodes')
+  assert.ok(Number(ingestEdges) > 0, 'the ingest produced no edges')
+
+  const query = /\[ok\] query: columns=(\d+) rows=(\d+)/.exec(output)
+  assert.ok(query, `no query summary in the output:\n${output}`)
+  assert.ok(Number(query[1]) > 0, 'the query returned no columns')
+  assert.ok(Number(query[2]) > 0, 'the query returned no rows')
+
+  assert.match(output, /\[ok\] read-only guard: DROP rejected with QUERY_REJECTED/, output)
+
+  // 4. Every check that ran reported success.
   assert.match(output, /self-test: OK/, output)
 })

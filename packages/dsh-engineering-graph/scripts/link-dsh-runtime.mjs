@@ -34,13 +34,14 @@ import { fileURLToPath } from 'node:url'
  * Every `@deepseek-ai/*` this package's `src/` imports must be listed here, or a
  * bare checkout resolves it from nothing (root AGENTS.md §4).
  *
- * Deliberately absent: `@deepseek-ai/dsh-tools`. The plugin declares
- * `inject = ['tools']` but does not *import* the registry module — it registers
- * no tools yet, so nothing here would import it (family 2 lists it because its
- * tools module imports `defineTool`). Add it the moment a tool lands.
+ * `@deepseek-ai/dsh-tools` is listed because `src/tools.ts` imports `defineTool`
+ * and the schema types from it. Only directly imported packages belong here: the
+ * links are junctions, so Node resolves a dependency of a dependency through the
+ * flat `plugin-runtime/node_modules` tree above it.
  */
 export const RUNTIME_ROOTS = [
   '@deepseek-ai/cordis',
+  '@deepseek-ai/dsh-tools',
   '@deepseek-ai/schemastery',
 ]
 
