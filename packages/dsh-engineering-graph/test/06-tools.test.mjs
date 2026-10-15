@@ -144,7 +144,7 @@ test('knowledge_query says the statement is read-only and points at knowledge_sc
   assert.match(description, /QUERY_REJECTED/)
 })
 
-test('every tool declares a presentCall in the family presentation shape', async () => {
+test('every tool declares a presentCall in the plugin presentation shape', async () => {
   const { byName } = await harness(() => resultFrame('GetSchema'))
 
   const schema = byName['knowledge_schema'].presentCall({})

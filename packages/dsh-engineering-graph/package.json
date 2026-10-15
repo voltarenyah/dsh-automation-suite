@@ -2,7 +2,7 @@
   "name": "@voltarenyah/dsh-engineering-graph",
   "version": "0.1.0",
   "private": false,
-  "description": "DSH plugin (family 3): engineering knowledge graph — the TypeScript half that will drive the vendored C# `engine/` over engineering artefacts (block logic, cross-references), with no dependency on TIA Portal.",
+  "description": "DSH plugin: engineering knowledge graph — the TypeScript half that will drive the vendored C# `engine/` over engineering artefacts (block logic, cross-references), with no dependency on TIA Portal.",
   "type": "module",
   "license": "MIT",
   "engines": {

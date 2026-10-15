@@ -1,6 +1,6 @@
 /**
  * dsh-engineering-context — engineering project context for DeepSeek Harness
- * (plugin family 2).
+ * (engineering-context plugin).
  *
  * What this build implements (P0 of `docs/ARCHITECTURE.md` §10):
  *
@@ -12,7 +12,7 @@
  *   three workflow tools  eng_status, eng_project, eng_scope
  *
  * What it deliberately does not do yet: version control (P1), fingerprint change
- * detection (P2 — family 1's seam), and the change ledger (P3). It never touches
+ * detection (P2 — the TIA Openness plugin's seam), and the change ledger (P3). It never touches
  * TIA Portal, never starts a process, and never parses engineering content.
  *
  * The plugin holds no owned resource, so `apply` registers tools and returns:

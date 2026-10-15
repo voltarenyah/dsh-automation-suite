@@ -60,7 +60,7 @@
 | `ctx.spillStore.saveText()` | 按会话归属、工件由 backend 决定过期（`@deepseek-ai/dsh-spill` README）；只配当**临时工件**，当基线会在某天静默失效 |
 | `DSH_HOME` 下按路径哈希分目录 | 不污染工程目录，但**换机器就丢**，变更检测失去跨机器意义（与 [`docs/open-questions.md`](../../../docs/open-questions.md) A14 的倾向相反） |
 
-**后果**：工程目录里会多一个 `_dsh-eng/`（与族 1 已经在导出目录写 `_tia-openness-manifest.json` 同类）。
+**后果**：工程目录里会多一个 `_dsh-eng/`（与接口插件族已经在导出目录写 `_tia-openness-manifest.json` 同类）。
 
 ---
 
@@ -77,33 +77,33 @@
 
 ---
 
-## D5 · 【缝 A】族 1 注册一个可选的 cordis 服务 ✅
+## D5 · 【缝 A】接口插件族注册一个可选的 cordis 服务 ✅
 
-**背景**：指纹**必须开项目**才拿得到（D6），而族 1 的边界是"唯一与工控软件对话的插件"
-（[`docs/architecture.md`](../../../docs/architecture.md) §4.2）。所以族 2 必然要向族 1 要一项**能力**。
+**背景**：指纹**必须开项目**才拿得到（D6），而接口插件族的边界是"唯一与工控软件对话的插件"
+（[`docs/architecture.md`](../../../docs/architecture.md) §4.2）。所以工程上下文插件必然要向接口插件族要一项**能力**。
 
-**决定**：族 1 在 `apply()` 里注册一个 cordis `Service`（名字为实现值，例如 `engineeringAccess`），
+**决定**：接口插件族在 `apply()` 里注册一个 cordis `Service`（名字为实现值，例如 `engineeringAccess`），
 暴露 §5.3 列出的最小接口面（`status` / `openProject` / `closeProject` / `listObjects` / `exportObjects`）；
-族 2 用 `ctx.inject(['…'], …)` **可选**注入，缺席时降级。
+工程上下文插件用 `ctx.inject(['…'], …)` **可选**注入，缺席时降级。
 
 **被否掉的候选**：
 
 | 候选 | 为什么不选 |
 |---|---|
-| 族 2 用 `ctx.tools.execute({name:'list_plc_objects'})` 间接调 | 受族 1 工具面重构影响（**A15** 要把原子工具默认隐藏）；解析是**按可见性**的（`dsh-tools/lib/index.js:3058`）；还要过 `tools/pre-execute` 闸门 |
-| 纯文件契约（只读指纹工件） | "谁触发指纹"变成"模型得记得先让族 1 跑一次"，退回 [`docs/tool-surface.md`](../../../docs/tool-surface.md) §1 要消灭的模型编排 |
+| 工程上下文插件用 `ctx.tools.execute({name:'list_plc_objects'})` 间接调 | 受接口插件族工具面重构影响（**A15** 要把原子工具默认隐藏）；解析是**按可见性**的（`dsh-tools/lib/index.js:3058`）；还要过 `tools/pre-execute` 闸门 |
+| 纯文件契约（只读指纹工件） | "谁触发指纹"变成"模型得记得先让接口插件族跑一次"，退回 [`docs/tool-surface.md`](../../../docs/tool-surface.md) §1 要消灭的模型编排 |
 
-**回报**：这条路径**不经过族 1 的工具面**，所以 A15 怎么定都不影响它。
+**回报**：这条路径**不经过接口插件族的工具面**，所以 A15 怎么定都不影响它。
 **与 D10（不抽共享包）不冲突**：这是服务契约，不是共享包。
 
-**连带工作项（属族 1，记录在此以免遗忘）**：注册服务 + 把两个方法接到已有控制器操作上
+**连带工作项（属接口插件族，记录在此以免遗忘）**：注册服务 + 把两个方法接到已有控制器操作上
 （`list_plc_objects` 已支持 `include_fingerprints`、`export_blocks` 已支持 `block_names`，
 **不需要新的 C# 能力**）。
 
-**待验证**：~~具体服务名与接口面两边同步后跑通一次~~ → **✅ 已落地**：族 1 侧实现了
+**待验证**：~~具体服务名与接口面两边同步后跑通一次~~ → **✅ 已落地**：接口插件族侧实现了
 `engineeringAccess`（见 `packages/dsh-tia-openness-v17-min/src/access.ts` 与该包的
 `docs/decisions.md` **D20**），接口面镜像在本包 [`ARCHITECTURE.md`](ARCHITECTURE.md) §5.3。
-族 2 **尚未调用它** —— 消费代码属于 P2（`eng_changes` / `eng_export`）。
+工程上下文插件 **尚未调用它** —— 消费代码属于 P2（`eng_changes` / `eng_export`）。
 
 ---
 
@@ -136,7 +136,7 @@
 
 1. **默认**用 `category + group + name` 复合键，并在结果里标 `identity: "by-name"`；
 2. **改名兜底**：同一基线里"消失 A、出现 B"且结构相似 → 产出 `rename-candidate` 进变更台账等人确认；
-3. **目标态**：族 1 在导出物/指纹结果里补 `tiaObjectId`（并实测改名/编辑/重导/另存后的稳定性）。
+3. **目标态**：接口插件族在导出物/指纹结果里补 `tiaObjectId`（并实测改名/编辑/重导/另存后的稳定性）。
 
 **理由**：身份键错会让跨版本关联**静默断链**（[`docs/decisions.md`](../../../docs/decisions.md) D7 原话）。
 宁可在结果里显式声明"身份按名字推断"，也不要让模型以为这是可靠关联。
@@ -232,8 +232,8 @@ TIA 包已因此把 31 个上游 skill 收敛为 1 个）；项目级 skill **�
 
 ## D14 · 边界去重：不产出语义、不做文件级变更记录 ✅
 
-**决定**：本插件不解析 XML、不建图（族 3）；不重做宿主的按轮次文件级变更记录
-（`dsh-workspace-changes`）；不做 agent 的计划清单（`todo_write`）；不起控制器（族 1）。
+**决定**：本插件不解析 XML、不建图（工程知识图谱插件）；不重做宿主的按轮次文件级变更记录
+（`dsh-workspace-changes`）；不做 agent 的计划清单（`todo_write`）；不起控制器（接口插件族）。
 
 **理由**：[`docs/architecture.md`](../../../docs/architecture.md) §2 的三条正交轴 —— 作用域 / 语义 / 素材
 任意两者都不能互相替代；重复实现会让两个来源对同一件事给出不同答案。
@@ -251,7 +251,7 @@ TIA 包已因此把 31 个上游 skill 收敛为 1 个）；项目级 skill **�
 | **N2** | session 的 cwd **不是**已登记的 workspace 时怎么办 | 仍以 cwd 为根工作，但结果里标 `workspace.registered: false` | 两条候选里，"拒绝工作"会让插件在"还没登记 workspace"时完全不可用；"标记未登记"不夸大身份、也不阻塞。且 `initializeDefault` 与启动时的历史引导会让绝大多数 cwd 本来就是已登记的 | 改成拒绝（`requireWorkspace: true` 且 `registered` 必须为 true）只需改一处判断 |
 | **N3** | `_dsh-eng/` 放 workspace 根还是每个工程一份（原问题有歧义） | **workspace 根一份**，每个工程一个**子目录**：`_dsh-eng/<project-id>/…` | 兼顾"一份注册表管多个工程"（避免同一 workspace 内多份 `current` 指针互相矛盾）与"按工程隔离"。且与锁定的答案措辞"workspace 内 `_dsh-eng/`"一致 | 移动目录 + 改 `PATH-RULES.md` §2 一处 |
 | **N4** | 一个 workspace 一个 git 仓库，还是每工程一个 | **workspace 根一个** | 基线必须与它描述的导出物同版本（D4）；workspace 本就是作用域一级概念 | 改 D4 + `PATH-RULES.md` §6 |
-| **N5** | 开放问题里答复哪几条 | 只答 **A8 / B7 / B8 / B9**（本插件设计真正决定得了的） | 其余属于族 1（A14–A17 工具面）、族 3（A10–A13）、或纯用户偏好（A12 的最终取值），替用户决定会越权 | 在 `docs/open-questions.md` 里改回去即可 |
+| **N5** | 开放问题里答复哪几条 | 只答 **A8 / B7 / B8 / B9**（本插件设计真正决定得了的） | 其余属于接口插件族（A14–A17 工具面）、工程知识图谱插件（A10–A13）、或纯用户偏好（A12 的最终取值），替用户决定会越权 | 在 `docs/open-questions.md` 里改回去即可 |
 | **N6** | 要不要顺手改 `docs/architecture.md` §4.2 的正文 | **不改** | 不在授权清单里。发行版级的目标架构改动应该由你确认后再动；本文只在 `roadmap`/`README`/`decisions`/`open-questions` 落"状态与答复" | 下次要改时按 architecture §4.2 措辞更新 |
 | **N7** | 提交策略 | **两个提交**：① 单独提交工作区里**既有的新文件** `docs/tool-surface.md`；② 再提交其余（既有的交叉引用编辑 + 本次全部设计文档）。**都不 push** | 那批调研材料与本次设计作者/意图不同，能分开就分开。但**同一文件内的改动已无法再拆**：我编辑的 `README.md` / `docs/open-questions.md` / `docs/roadmap.md` 本来就带着未提交的交叉引用编辑，所以第二个提交会一并带上，并在提交信息里写明 | `git reset --soft HEAD~2`，或按需 `git revert` |
 
@@ -262,9 +262,9 @@ TIA 包已因此把 31 个上游 skill 收敛为 1 个）；项目级 skill **�
 | # | 事项 | 影响 | 谁来收 |
 |---|---|---|---|
 | 1 | **V17 上 `FingerprintProvider` 的可得性与粒度** | P2 的分面能力；拿不到就只能退到"变没变"（`PlcChecksumProvider`） | **用户报告已在另一代码库验证可用**（2026-10-14）—— 用户侧证据，**不是本仓实测**；本仓首次真机跑 P2 时仍要留证据 |
-| 2 | **`tiaObjectId` 能否拿到、改名/重导后是否稳定** | 期望三（跨版本关联）；D7 的降级路径是兜底不是目标 | 需族 1 补字段 + 实测（发行版级待验证清单第 2 条） |
+| 2 | **`tiaObjectId` 能否拿到、改名/重导后是否稳定** | 期望三（跨版本关联）；D7 的降级路径是兜底不是目标 | 需接口插件族补字段 + 实测（发行版级待验证清单第 2 条） |
 | 3 | 一次**全项目指纹**的耗时与帧大小（1152 块） | 决定要不要做"指纹缓存 + 只重算可疑对象" | 真机实测 |
-| 4 | ~~缝 A 的**服务名与接口面**最终取值~~ | — | ✅ **已定**：`engineeringAccess`（族 1 `src/access.ts` + 该包 D20）；镜像见 `ARCHITECTURE.md` §5.3 |
+| 4 | ~~缝 A 的**服务名与接口面**最终取值~~ | — | ✅ **已定**：`engineeringAccess`（接口插件族 `src/access.ts` + 该包 D20）；镜像见 `ARCHITECTURE.md` §5.3 |
 | 5 | `PATH-RULES.md` §10 的三项（git 位置、目录名、`source/` 保留） | 影响交付物形态，不影响 P0 可开工 | 你的判断 |
 
 ---
@@ -347,14 +347,14 @@ workspace 内的注册表加一条记录、`forget` 就能撤销它 —— 要�
 
 ### P0-7 · `adopt` 在本阶段只做字节复制，并把这一点说出来 ✅
 
-**决定**：`adopt` = `copyFile(source, work)`；结果里明确写"TIA 侧另存属 P2 的族 1 缝"，
+**决定**：`adopt` = `copyFile(source, work)`；结果里明确写"TIA 侧另存属 P2 的接口插件族缝"，
 并提示"若工程正在 TIA 里打开，请先保存"。
 
-**理由**：D5 的理想形态是 agent 让 TIA「打开并另存」，那需要族 1 的服务缝（D5/缝 A），P0 没有。
+**理由**：D5 的理想形态是 agent 让 TIA「打开并另存」，那需要接口插件族的服务缝（D5/缝 A），P0 没有。
 退而做纯文件复制是**可逆、无破坏**的（源文件只读、目标在工作区内、默认 dry-run），
 而且能让 P0 独立产生价值（用户随后自己用 TIA 打开副本即可）。
 
-**回退**：缝 A 落地后把 `adopt` 改成经族 1 触发另存，并在结果里去掉这段说明。
+**回退**：缝 A 落地后把 `adopt` 改成经接口插件族触发另存，并在结果里去掉这段说明。
 
 ### P0-8 · `link:runtime` 脚本**从不抽取**运行时缓存 ✅
 
@@ -450,9 +450,9 @@ P1 填值时不必让模型重新学。结果里同时给出 `phases.pending`，
 
 **决定**：
 
-1. 族 1 的 `engineeringAccess.listObjects` 把默认上限抬到 **1000**（`DEFAULT_LIST_MAX_ITEMS`），
+1. 接口插件族的 `engineeringAccess.listObjects` 把默认上限抬到 **1000**（`DEFAULT_LIST_MAX_ITEMS`），
    并**如实返回**每族的 `{count, returned, truncated}` 与顶层 `truncated`；
-2. 族 2 在 P2 必须**把这个 `truncated` 照实写进 `eng_changes` 的 `notCovered`** ——
+2. 工程上下文插件在 P2 必须**把这个 `truncated` 照实写进 `eng_changes` 的 `notCovered`** ——
    "没取全"和"没变"是两件完全不同的事，混在一起就是假报告；
 3. 本包 `ARCHITECTURE.md` §5.1 与 §5.3 已按此更正；`docs/tool-surface.md` §5.1 也加了一条更正注记
    （那份是提案，不是现状）。

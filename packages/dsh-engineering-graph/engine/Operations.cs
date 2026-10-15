@@ -1,6 +1,6 @@
 // The engine's operations.
 //
-// SQL and validation logic are ported near-verbatim from the family-3 source's
+// SQL and validation logic are ported near-verbatim from the source library's
 // MCP tool layer (Tools/KnowledgeTools.cs in the origin repository). That layer
 // is *not* vendored as a whole -- it is coupled to the MCP SDK and to a
 // CallToolResult envelope this engine does not have -- so the parts an operation
@@ -90,7 +90,7 @@ internal static class Operations
             ?? throw new EngineException(
                 "EXPORT_ROOT_REQUIRED",
                 "exportRoot is required.",
-                "Pass the device export folder, i.e. the directory that mcp-engineering / family 1 filled.");
+                "Pass the device export folder, i.e. the directory that mcp-engineering / the TIA Openness plugin filled.");
 
         if (!Directory.Exists(exportRoot))
         {

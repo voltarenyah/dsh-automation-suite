@@ -8,7 +8,7 @@
 //   --version | --help    report identity / usage
 //
 // stdout carries frames and nothing else -- every human-readable note goes to
-// stderr, exactly as family 1's controller does, because a diagnostic on stdout
+// stderr, exactly as the TIA Openness plugin's controller does, because a diagnostic on stdout
 // would corrupt the channel.
 using System.Diagnostics;
 using System.Text;

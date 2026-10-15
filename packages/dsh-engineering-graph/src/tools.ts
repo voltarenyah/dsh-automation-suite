@@ -1,5 +1,5 @@
 /**
- * The model-facing tools of plugin family 3.
+ * The model-facing tools of the engineering-graph plugin.
  *
  * Three tools over the engine's three operations, each returning the same
  * canonical envelope, so a model always sees `ok`, a one-line `summary`, the
@@ -7,7 +7,7 @@
  * structured `error` carrying the engine's code, message and remediation.
  *
  * **The tool names are deliberate**: `knowledge_schema`, `knowledge_ingest`,
- * `knowledge_query`. They keep the names the family-3 origin
+ * `knowledge_query`. They keep the names the origin library
  * (`Tools/KnowledgeTools.cs`, see `engine/Operations.cs`) exposed to a model, so
  * prompts, notes and muscle memory written against that surface keep working after
  * the move into DSH. The DSH house style would be an unprefixed verb_noun
@@ -266,7 +266,7 @@ export function outcomeOf(operation: Operation, frame: ResultFrame): ToolOutcome
     summary: summarize(operation, frame),
     data: record(frame.data),
     // The engine reports neither today; the keys stay so the envelope has one
-    // shape across the plugin families.
+    // shape across the plugins.
     changes: [],
     diagnostics: [],
     error: failure,
@@ -352,7 +352,7 @@ export function registerTools(ctx: Context, dependencies: ToolDependencies): str
           type: 'string',
           required: true,
           description:
-            'Absolute path of the device export folder to crawl, i.e. the directory family 1 filled with exports. ' +
+            'Absolute path of the device export folder to crawl, i.e. the directory the TIA Openness plugin filled with exports. ' +
             'It must already exist; a missing folder is EXPORT_ROOT_NOT_FOUND and an empty one is NO_SOURCE_FILES.',
         },
         db_path: {

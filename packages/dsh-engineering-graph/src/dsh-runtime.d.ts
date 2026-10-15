@@ -16,7 +16,7 @@
  * - `Context.effect` comes from the fiber mixin (`cordis/src/fiber.ts:415-418`,
  *   `declare module './context.ts'`) and takes an effect body returning a
  *   disposer — the body runs when the effect is registered, and the returned
- *   disposer runs on unload. Family 1 uses it exactly that way to own a
+ *   disposer runs on unload. The TIA Openness plugin uses it exactly that way to own a
  *   subprocess, and this plugin now attaches the engine client's `stop()` to it.
  * - `ctx.logger` is both callable (`ctx.logger(name)`) and a logger
  *   (`ctx.logger.warn(...)`), `cordis/src/context.ts:28` + `logger.ts`.

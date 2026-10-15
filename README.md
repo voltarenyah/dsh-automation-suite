@@ -87,14 +87,16 @@
 
 ### 目标插件构成
 
-| # | 插件族 | 对应层 | 负责什么 | 现状 |
-|---|---|---|---|---|
-| **1** | **工控软件接口插件族**<br>（以 TIA 为例即 `tia-openness`；按**软件版本 × 能力层级**切分：V17/V18… × **min/std/pro**） | ① 接入层 | 与工控软件对接、**读写工程对象**；为后续分析提供**素材**与**验证工具**；并**附带文档**说清每个能力"何时调用 / 怎么调用 / 调用后的数据怎么用" | 🟡 已有 **V17 × min**（定位是验证基础功能） |
-| **2** | **工程上下文管理插件** | 作用域（横向） | 管住用户的**多个 TIA 项目 × 多个分支 × 多个历史版本**；对工程对象做优化适配（路径内容、变更识别与跟进）；用**「待办清单」式工具承载工程变更上下文**，在合适的时候交给 LLM 辅助判断用户意图；版本间变更明确易读、工程对象可交叉关联 | 🟡 部分实现（P0：作用域 + 工程注册表，3 个工具；**已登记进蓝图**，见 [`packages/dsh-engineering-context/docs/`](packages/dsh-engineering-context/docs/)） |
-| **3** | **工程知识图谱管理插件** | ② 语义层 | **准确翻译 XML 中的 PLC 语法**（兼容性强）：解析工程源文件 → **建立图数据库** → 暴露接口给出工程细节 | 🟡 部分实现（引擎 + 协议 + 3 个工具；**未登记进蓝图**） |
+| 名称 | 对应层 | 负责什么 | 现状 |
+|---|---|---|---|
+| **工控软件接口插件族**<br>（以 TIA 为例即 `tia-openness`；按**软件版本 × 能力层级**切分：V17/V18… × **min/std/pro**） | ① 接入层 | 与工控软件对接、**读写工程对象**；为后续分析提供**素材**与**验证工具**；并**附带文档**说清每个能力"何时调用 / 怎么调用 / 调用后的数据怎么用" | 🟡 已有 **V17 × min**（定位是验证基础功能） |
+| **工程上下文插件** | 作用域（横向） | 管住用户的**多个 TIA 项目 × 多个分支 × 多个历史版本**；对工程对象做优化适配（路径内容、变更识别与跟进）；用**「待办清单」式工具承载工程变更上下文**，在合适的时候交给 LLM 辅助判断用户意图；版本间变更明确易读、工程对象可交叉关联 | 🟡 部分实现（P0：作用域 + 工程注册表，3 个工具；**已登记进蓝图**，见 [`packages/dsh-engineering-context/docs/`](packages/dsh-engineering-context/docs/)） |
+| **工程知识图谱插件** | ② 语义层 | **准确翻译 XML 中的 PLC 语法**（兼容性强）：解析工程源文件 → **建立图数据库** → 暴露接口给出工程细节 | 🟡 部分实现（引擎 + 协议 + 3 个工具；**未登记进蓝图**） |
 
-编号沿用需求的表述顺序，**不代表实现顺序**；依赖关系与建议顺序见 [`docs/roadmap.md`](docs/roadmap.md) §5。
-每个插件族的定位、期望与边界见 [`docs/architecture.md`](docs/architecture.md) §4。
+插件不再编号：**只有接口插件族是"一族多成员"**（成员 = 软件版本 × 能力层级），工程上下文插件与
+工程知识图谱插件都是**单一插件**。编号只保留给 [`docs/vision.md`](docs/vision.md) §3 的**层**
+（① 接入层 / ② 语义层 / ③ 管理与协作层）。依赖关系与建议顺序见 [`docs/roadmap.md`](docs/roadmap.md) §5。
+各插件的定位、期望与边界见 [`docs/architecture.md`](docs/architecture.md) §4。
 
 ### ① 接入层：先打通工具层面的障碍
 
@@ -163,11 +165,11 @@ PLC 对象增删改、监视表与软件单元、F 相关服务、编译与关�
 
 ### 当前进度与路线图
 
-| 插件族 | 目标 | 状态 |
+| 插件 | 目标 | 状态 |
 |---|---|---|
-| **1 工控软件接口插件** | 把工控软件暴露的能力整体变成 LLM 的能力范围（含配套文档） | 🟡 **V17 × min**（块·UDT·标签表）；std/pro 能力层级与 V18+ 待补 |
-| **2 工程上下文管理插件** | 管住多项目 × 多分支 × 多版本，让答案对得上版本、也看得懂用户意图 | 🟡 **部分实现**：P0 作用域 + 工程注册表、P1 版本层（4 个工具，44 项单测）；指纹变更检测/变更台账未做。**已登记进蓝图**（`--dump-config` 实测 1520 行） |
-| **3 工程知识图谱管理插件** | 准确翻译 XML 中的 PLC 语法，XML → 图数据库 → 按需给出工程细节 | 🟡 **部分实现**：Simatic ML → 图 → SQLite 已通（7 个真实 fixture 出 72 节点 / 153 边，覆盖 15 种节点种类），引擎协议 + 3 个工具（46 项单测，含经真实引擎的端到端）；**新鲜度/增量、按需下钻工具、兼容层未做**。**未登记进蓝图** |
+| **工控软件接口插件族** | 把工控软件暴露的能力整体变成 LLM 的能力范围（含配套文档） | 🟡 **V17 × min**（块·UDT·标签表）；std/pro 能力层级与 V18+ 待补 |
+| **工程上下文插件** | 管住多项目 × 多分支 × 多版本，让答案对得上版本、也看得懂用户意图 | 🟡 **部分实现**：P0 作用域 + 工程注册表、P1 版本层（4 个工具，44 项单测）；指纹变更检测/变更台账未做。**已登记进蓝图**（`--dump-config` 实测 1520 行） |
+| **工程知识图谱插件** | 准确翻译 XML 中的 PLC 语法，XML → 图数据库 → 按需给出工程细节 | 🟡 **部分实现**：Simatic ML → 图 → SQLite 已通（7 个真实 fixture 出 72 节点 / 153 边，覆盖 15 种节点种类），引擎协议 + 3 个工具（46 项单测，含经真实引擎的端到端）；**新鲜度/增量、按需下钻工具、兼容层未做**。**未登记进蓝图** |
 
 逐项进度、缺口与验收口径见 [`docs/roadmap.md`](docs/roadmap.md)；
 已定的取舍见 [`docs/decisions.md`](docs/decisions.md)，**34 条待决策问题在
@@ -189,7 +191,7 @@ PLC 对象增删改、监视表与软件单元、F 相关服务、编译与关�
 | `scripts/clean-build.mjs` | 工具 | — | 只清理 `lib/`、`dist/`，遇链接只 unlink、不递归下降 |
 
 合计 **42 个模型可见工具**，全部在同一个会话里可用 —— 例如"改完这个块，顺便把导出目录提交一下"。
-（族 3 的 3 个工具**未登记进蓝图，因此不计入**；登记后是 45 个。）
+（工程知识图谱插件的 3 个工具**未登记进蓝图，因此不计入**；登记后是 45 个。）
 
 ---
 
@@ -584,12 +586,12 @@ packages/
     src/safety.ts                  tools/pre-execute 破坏性命令闸门
     tests/                         vitest 套件（33 项）
     README.md / README.zh.md       上游 README（英/中）
-  dsh-engineering-context/         工程上下文管理插件（插件族 2）：**P0 + P1 已实现并登记进蓝图**
+  dsh-engineering-context/         工程上下文插件：**P0 + P1 已实现并登记进蓝图**
     src/                           作用域解析、工程注册表、版本层（内部 git）、4 个工作流工具（tsc → lib/）
     test/                          node:test 套件（44 项，跑真实运行时与真实 git 临时仓库）
     scripts/                       link-dsh-runtime.mjs / tsc.mjs / run-tests.mjs
     docs/                          ARCHITECTURE.md / PATH-RULES.md / decisions.md
-  dsh-engineering-graph/           工程知识图谱管理插件（插件族 3）：**引擎 + 协议 + 3 个工具已实现，未登记进蓝图**
+  dsh-engineering-graph/           工程知识图谱插件：**引擎 + 协议 + 3 个工具已实现，未登记进蓝图**
     src/                           NDJSON 协议客户端、3 个知识工具（tsc → lib/）
     test/                          node:test 套件（46 项，含经真实引擎的端到端与传输层故障注入）
     engine/                        C# 引擎（net8 + Microsoft.Data.Sqlite）：Simatic ML → 图 → SQLite
@@ -606,7 +608,7 @@ scripts/
   clean-build.mjs                  只清理 lib/ dist/ 的构建产物清理器
 docs/
   vision.md                        愿景：问题、三层方案、每层职责与设计原则
-  architecture.md                  目标架构：三个插件族的职责、边界、契约与数据流
+  architecture.md                  目标架构：接口插件族与两个工程插件的职责、边界、契约与数据流
   decisions.md                     发行版级决策记录（已定的取舍 + 待验证项）
   open-questions.md                开放问题（34 条，可直接编辑填写答复）
   roadmap.md                       路线图与现状：逐项进度、缺口、验收口径
@@ -815,13 +817,13 @@ TIA 排障第一步永远是让模型调：
 | 文档 | 内容 |
 |---|---|
 | [`docs/vision.md`](docs/vision.md) | **愿景**：PLC 项目为何对 LLM 不可达、三层方案（接入 / 语义 / 管理）各自的职责与接口、贯穿各层的设计原则、术语与非目标 |
-| [`docs/architecture.md`](docs/architecture.md) | **目标架构**：三个插件族（接口 / 上下文 / 图谱）的职责、期望与边界，三条正交轴，数据流，插件间契约与依赖顺序 |
+| [`docs/architecture.md`](docs/architecture.md) | **目标架构**：接口插件族与两个工程插件的职责、期望与边界，三条正交轴，数据流，插件间契约与依赖顺序 |
 | [`docs/decisions.md`](docs/decisions.md) | **决策记录（发行版级）**：已定的 12 条取舍（能力分层、workspace 模型、指纹变更识别、对象身份、图底座、工程上下文插件的状态落点…）与 5 项待验证 |
 | [`docs/open-questions.md`](docs/open-questions.md) | **开放问题（34 条）**：A 部分 17 条会阻塞动手（含 A14–A17 工具面问题），B 部分 17 条影响细节与验收口径；已答 16 条 |
-| [`docs/roadmap.md`](docs/roadmap.md) | **路线图与现状**：按三个插件族逐项记录进度、缺口、验收口径 |
+| [`docs/roadmap.md`](docs/roadmap.md) | **路线图与现状**：按插件逐项记录进度、缺口、验收口径 |
 | [`docs/tool-surface.md`](docs/tool-surface.md) | **工具面重设计（调研 + 提案）**：现状体检（26 工具 1:1、20 行渲染上限、~14k tokens 常驻目录）、用户工作流清单、目标工具面与返回契约、从哪一步开始 |
-| [`packages/dsh-engineering-context/README.md`](packages/dsh-engineering-context/README.md) | 工程上下文管理插件（**插件族 2**）的用法、配置与开发命令（**P0 已实现**：作用域 + 工程注册表） |
-| [`packages/dsh-engineering-context/docs/`](packages/dsh-engineering-context/docs/) | 该族的设计与取舍：`ARCHITECTURE.md`（核心架构、作用域模型、变更引擎、工具面）、`PATH-RULES.md`（workspace 内路径规则）、`decisions.md`（编号决策 D1–D14、夜间自主决定 N1–N7、**P0 实现期的决定 P0-1–P0-13**） |
+| [`packages/dsh-engineering-context/README.md`](packages/dsh-engineering-context/README.md) | 工程上下文插件的用法、配置与开发命令（**P0 已实现**：作用域 + 工程注册表） |
+| [`packages/dsh-engineering-context/docs/`](packages/dsh-engineering-context/docs/) | 该插件的设计与取舍：`ARCHITECTURE.md`（核心架构、作用域模型、变更引擎、工具面）、`PATH-RULES.md`（workspace 内路径规则）、`decisions.md`（编号决策 D1–D14、夜间自主决定 N1–N7、**P0 实现期的决定 P0-1–P0-13**） |
 | [`profile/dsh-automation-suite/README.md`](profile/dsh-automation-suite/README.md) | 蓝图的组成、三种部署方式、验收方式 |
 | [`packages/dsh-tia-openness-v17-min/README.md`](packages/dsh-tia-openness-v17-min/README.md) | TIA 插件的完整说明（验证状态、协议、工具、错误码、V17 API 要点） |
 | [`packages/dsh-tia-openness-v17-min/docs/`](packages/dsh-tia-openness-v17-min/docs/) | `PROTOCOL.md`（线路协议权威描述）、`decisions.md`（技术取舍）、`REAL-RUN.md`（真实项目实测）、`FUNCTIONAL-TEST.md`、`verification.md`（验证清单）、`ECOSYSTEM-COMPAT.md`（生态兼容与事故记录） |

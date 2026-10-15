@@ -9,7 +9,7 @@
  *
  * The message always begins with the code (`<code>: <message>`), so a caller that
  * only has the text — a log line, a tool error surfaced by the framework — still
- * sees the stable classification first. This mirrors family 1's
+ * sees the stable classification first. This mirrors the TIA Openness plugin's
  * `dsh-tia-openness-v17-min/src/errors.ts`, deliberately: the two plugins use the
  * same failure style for the same kind of event.
  *

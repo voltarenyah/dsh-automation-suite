@@ -1,4 +1,4 @@
-# 核心架构：工程上下文管理插件（插件族 2）
+# 核心架构：工程上下文插件
 
 > **状态：设计定稿；P0 已实现（作用域 + 工程注册表 + 3 个工具）。**
 > 本文描述这个插件"要做成什么样"：定位与边界、核心架构、主要功能、实现方式、验收口径与风险。
@@ -8,7 +8,7 @@
 > - 本文的接口名、工具名、字段名都是**设计值**，实现时可以改；改了必须同步本文与该包的
 >   [`decisions.md`](decisions.md)（实现期的取舍记在该文件的「P0 实现期的决定」一节）。
 > - 引用代码/运行时一律带 `path:line`；凡属**推断**都显式标注，不与"已实测"混写。
-> - 与发行版级文档的关系：[`docs/architecture.md`](../../../docs/architecture.md) §4.2 给出这一族的
+> - 与发行版级文档的关系：[`docs/architecture.md`](../../../docs/architecture.md) §4.2 给出这个插件的
 >   职责与边界，[`docs/decisions.md`](../../../docs/decisions.md) D5–D7、D12 给出已定的取舍，
 >   本文把它们落成可实现的形态。
 >
@@ -30,19 +30,19 @@
 
 | 它做 | 它**不做** | 依据 |
 |---|---|---|
-| 解析作用域（workspace/project/branch/version） | **不解析 XML、不建图** | [`docs/architecture.md`](../../../docs/architecture.md) §4.2 边界；那是族 3 |
-| 管 workspace 内的路径规则与工程注册表 | **不直接驱动 Openness、不起控制器** | §4.2 / §9「写入只有一个通道」；族 1 是唯一通道 |
-| 消费族 1 的**指纹**做工程级变更检测 | 不做**文件级、按轮次**的变更记录 | 宿主已有 `dsh-workspace-changes`（见 §2.1） |
+| 解析作用域（workspace/project/branch/version） | **不解析 XML、不建图** | [`docs/architecture.md`](../../../docs/architecture.md) §4.2 边界；那是工程知识图谱插件 |
+| 管 workspace 内的路径规则与工程注册表 | **不直接驱动 Openness、不起控制器** | §4.2 / §9「写入只有一个通道」；接口插件族是唯一通道 |
+| 消费接口插件族的**指纹**做工程级变更检测 | 不做**文件级、按轮次**的变更记录 | 宿主已有 `dsh-workspace-changes`（见 §2.1） |
 | 用内部 git 管导出物的分支/历史/差异 | **不把原始 git 暴露给模型** | [`docs/open-questions.md`](../../../docs/open-questions.md) A8 的补充分析 |
 | 维护工程变更台账（期望二） | 不做 agent 的会话计划清单 | 那是 `@deepseek-ai/dsh-tool-todo` |
 | 决定**范围** | 不决定**含义** | §4.2 边界 |
 
 ### 1.2 一个刻意的性质：没有 TIA 也能用
 
-作用域、注册表、版本层、变更台账全是"文件 + git"，只有变更引擎依赖族 1 的指纹。
+作用域、注册表、版本层、变更台账全是"文件 + git"，只有变更引擎依赖接口插件族的指纹。
 因此本插件**可以在没有 TIA Portal 的机器上独立交付价值**（"我现在在哪个工程的哪一版"、
 "导出物的历史与差异"），这也与 [`docs/architecture.md`](../../../docs/architecture.md) §7
-"② 已确认可以脱离图谱独立起步"一致。
+"工程上下文插件已确认可以脱离图谱独立起步"一致。
 
 ---
 
@@ -104,7 +104,7 @@
                 │         【缝 A】可选服务注入 │            │
                 │                │            │            │
                 │         ┌──────┴───────┐    │            │
-                │         │ 族 1 接口插件 │    │            │
+                │         │ 接口插件族   │    │            │
                 │         │ 指纹/开关项目 │    │            │
                 │         │ 导出/编译/写回│    │            │
                 │         └──────┬───────┘    │            │
@@ -198,7 +198,7 @@ resolveScope() → project + .ap17 + exportDir + baseline
 1. **没有"翻页"这回事（已实测更正）。** 控制器的 `max_items` **只能截断** ——
    `controller/OpennessHost.Plc.cs:152,166` 在超过上限后**继续累加 `total` 但停止添加 items**，
    没有任何 offset/skip 参数，所以"请求下一页"不存在。唯一正确的做法是
-   **把上限抬到预期规模**（族 1 的 `listObjects` 默认已抬到 1000），并**如实传播 `truncated`**：
+   **把上限抬到预期规模**（接口插件族的 `listObjects` 默认已抬到 1000），并**如实传播 `truncated`**：
    调用方看到它就是"我没取全"，要么用更大的上限重试、要么把"未覆盖"写进结果。
    顺带更正：[`docs/tool-surface.md`](../../../docs/tool-surface.md) §5.1 写的"按片请求"
    在这一版控制器上也做不到（那份是提案）。
@@ -244,26 +244,26 @@ resolveScope() → project + .ap17 + exportDir + baseline
 |---|---|---|
 | 现在（默认） | `category + group + name` 复合键 | **改名即断链**，必须显式承认 |
 | 兜底 | 同一基线里"消失 A、出现 B"且结构相似 → 产出 `rename-candidate` | 进变更台账等人工确认 |
-| 目标 | 族 1 在导出物/指纹结果里补 `tiaObjectId`（并实测其稳定性） | 需要族 1 一个小改动 + 一次实测 |
+| 目标 | 接口插件族在导出物/指纹结果里补 `tiaObjectId`（并实测其稳定性） | 需要接口插件族一个小改动 + 一次实测 |
 
 **纪律**：任何"身份不确定"的对象，在 `eng_changes` 结果里都要**带标记**，
 不许静默按名字对齐 —— 身份键错会让跨版本关联**静默断链**（D7 的原话）。
 
-### 5.3 【缝 A】与族 1 的服务契约（已定）
+### 5.3 【缝 A】与接口插件族的服务契约（已定）
 
-族 1 的边界是"唯一与工控软件对话的插件"，而指纹**必须开项目**才拿得到（D6）。
-所以族 2 必然要向族 1 要一项**能力**（不是文件）。**决定：族 1 注册一个可选的 cordis 服务**，
-族 2 按名取用。
+接口插件族的边界是"唯一与工控软件对话的插件"，而指纹**必须开项目**才拿得到（D6）。
+所以工程上下文插件必然要向接口插件族要一项**能力**（不是文件）。**决定：接口插件族注册一个可选的 cordis 服务**，
+工程上下文插件按名取用。
 
-> **状态：✅ 已实现（族 1 侧）。** 服务名 **`engineeringAccess`**，由
+> **状态：✅ 已实现（接口插件族侧）。** 服务名 **`engineeringAccess`**，由
 > `packages/dsh-tia-openness-v17-min/src/access.ts` 提供，在 `apply()` 里构造，随该插件的
-> 卸载一起消失。族 1 的 [`docs/decisions.md`](../../dsh-tia-openness-v17-min/docs/decisions.md) **D20**
+> 卸载一起消失。接口插件族的 [`docs/decisions.md`](../../dsh-tia-openness-v17-min/docs/decisions.md) **D20**
 > 是提供方那一侧的权威描述；**本节的接口面是消费方的镜像**，两边改一处必须改另一处。
 
-实际的接口面（族 1 的 `src/access.ts` 是权威；族 2 **不 import 它**，只按名取服务并自行声明形状，D10）：
+实际的接口面（接口插件族的 `src/access.ts` 是权威；工程上下文插件 **不 import 它**，只按名取服务并自行声明形状，D10）：
 
 ```ts
-// 由族 1 提供；族 2 只使用这一面。ctx.get('engineeringAccess') 取不到就降级。
+// 由接口插件族提供；工程上下文插件只使用这一面。ctx.get('engineeringAccess') 取不到就降级。
 interface EngineeringAccess {
   readonly name: string                       // 'engineeringAccess'
   status(): {
@@ -311,7 +311,7 @@ interface AccessListResult extends AccessCallResult {
     attributes: unknown
     fingerprints: Array<{ id: string; value: string | null; error: string | null }> | null
   }>
-  /** 每族 count/returned/truncated（族 1 把 `{count,items,truncated}` 信封摊平了）。 */
+  /** 每族 count/returned/truncated（接口插件族把 `{count,items,truncated}` 信封摊平了）。 */
   families: Record<string, { count: number; returned: number; truncated: boolean }>
   truncated: boolean
   missing: unknown
@@ -322,17 +322,17 @@ interface AccessListResult extends AccessCallResult {
 
 1. **没有 `tiaObjectId`**：V17 拿不到（D7 / §5.2），所以行里根本没有这个字段 —— 身份仍由
    `category + group + name` 决定，不确定时在结果里标 `identity`。
-2. **`families` 里的 `truncated` 必须向上传播**：族 1 如实报，族 2 必须**照实**写进
+2. **`families` 里的 `truncated` 必须向上传播**：接口插件族如实报，工程上下文插件必须**照实**写进
    `eng_changes` 的 `notCovered`，不能让它看起来"没变"。
-3. **`closeProject` 的 `dryRun` 是必填参数**：族 2 目前**不调用**它（A16 的倾向是复用已开会话），
+3. **`closeProject` 的 `dryRun` 是必填参数**：工程上下文插件目前**不调用**它（A16 的倾向是复用已开会话），
    真要调用时必须显式表态。
 
 **为什么不用另外两条路**（已评估）：
 
 | 方案 | 为什么不选 |
 |---|---|
-| 族 2 用 `ctx.tools.execute({name:'list_plc_objects', …})` 间接调族 1 的工具 | 脆弱：受族 1 工具面重构（[`docs/open-questions.md`](../../../docs/open-questions.md) **A15** 要把原子工具默认隐藏）影响；解析是**按可见性**的（`dsh-tools/lib/index.js:3058`）；还要过 `tools/pre-execute` 闸门 |
-| 纯文件契约：族 1 写 `fingerprints.json`，族 2 只读 | 零耦合，但"谁触发指纹"变成"模型得记得先让族 1 跑一次" —— 正好退回 [`docs/tool-surface.md`](../../../docs/tool-surface.md) §1 要消灭的"模型自己编排几十次调用" |
+| 工程上下文插件用 `ctx.tools.execute({name:'list_plc_objects', …})` 间接调接口插件族的工具 | 脆弱：受接口插件族工具面重构（[`docs/open-questions.md`](../../../docs/open-questions.md) **A15** 要把原子工具默认隐藏）影响；解析是**按可见性**的（`dsh-tools/lib/index.js:3058`）；还要过 `tools/pre-execute` 闸门 |
+| 纯文件契约：接口插件族写 `fingerprints.json`，工程上下文插件只读 | 零耦合，但"谁触发指纹"变成"模型得记得先让接口插件族跑一次" —— 正好退回 [`docs/tool-surface.md`](../../../docs/tool-surface.md) §1 要消灭的"模型自己编排几十次调用" |
 
 **服务缺席时的降级**（必须实现，P2）：读**上一次**的指纹工件，并在结果里明确标注
 `stale: true` + 工件时间 + "指纹未刷新"的原因；**绝不**静默拿旧数据当现状
@@ -356,8 +356,8 @@ git 的调用全在插件代码里，路径来自插件自己解析的 workspace
 **已实现的动作**：`current`（HEAD / 分支 / 未提交改动）、`commit`（导出树 + `_dsh-eng/<id>`，
 默认 dry-run）、`log`、`diff`（默认给文件名与状态计数，`full: true` 时把完整 patch 写成工件）。
 
-**尚未实现**：`show`（单次提交的详情）与 `materialize`（把某版本物化成导出物供族 3 解析）——
-后者是 P2/P3 与族 3 的接口，等图那边要了再做。
+**尚未实现**：`show`（单次提交的详情）与 `materialize`（把某版本物化成导出物供工程知识图谱插件解析）——
+后者是 P2/P3 与工程知识图谱插件的接口，等图那边要了再做。
 
 **两条实现期定下的契约**（[`decisions.md`](decisions.md) P1-1 / P1-4）：
 `runGit` 的非零退出是**数据**（"这里不是仓库"是状态，不是异常），只有找不到可执行文件才抛；
@@ -604,8 +604,8 @@ packages/dsh-engineering-context/
 |---|---|---|---|---|
 | **P0** | 作用域 + 工程注册表（`eng_status` / `eng_project` / `eng_scope`） | 纯 FS + 宿主 registry | "我现在在哪个工程的哪一版" —— **不需要 TIA** | ✅ **已实现**（37 项测试通过） |
 | **P1** | 版本层（`eng_version`）+ 导出物入库 | git | 导出的文本源终于有分支与历史 | ✅ **已实现**（7 项测试，真实 git 临时仓库） |
-| **P2** | 变更引擎（`eng_changes` / `eng_export`）+ 增量闭环 | 缝 A ✅ 已就绪（族 1 的 `engineeringAccess`）；指纹可得性已由**用户在另一代码库**验证 | D6/D9 的工作循环 | ⬜ |
-| **P3** | 变更台账（`eng_context`）+ 项目级 skill + 对族 3 暴露 `ctx.engineeringScope` | P2 | 期望二 | ⬜ |
+| **P2** | 变更引擎（`eng_changes` / `eng_export`）+ 增量闭环 | 缝 A ✅ 已就绪（接口插件族的 `engineeringAccess`）；指纹可得性已由**用户在另一代码库**验证 | D6/D9 的工作循环 | ⬜ |
+| **P3** | 变更台账（`eng_context`）+ 项目级 skill + 对工程知识图谱插件暴露 `ctx.engineeringScope` | P2 | 期望二 | ⬜ |
 
 **P0 的实际产出**：`src/` 下 7 个模块 + `src/tools/` 下 5 个文件、`test/` 4 个测试文件
 （37 项，全通过、无跳过）、`scripts/` 3 个脚本。**没有** `ctx.effect` —— 本插件不持有任何
@@ -634,17 +634,17 @@ packages/dsh-engineering-context/
 | # | 事项 | 影响 | 处置 |
 |---|---|---|---|
 | 1 | **V17 上 `FingerprintProvider` 的可得性与粒度** | P2 的分面能力；若拿不到，只能退到"变没变"（`PlcChecksumProvider`） | **用户报告已在另一个代码库验证可用**（2026-10-14）—— 这是**用户侧证据，不是本仓实测**；本仓第一次真机跑 P2 时仍要记录证据（发行版待验证清单第 1 条） |
-| 2 | **对象身份键缺位**（§5.2） | 期望三（跨版本关联） | 需族 1 补 `tiaObjectId` + 实测改名/重导后的稳定性 |
+| 2 | **对象身份键缺位**（§5.2） | 期望三（跨版本关联） | 需接口插件族补 `tiaObjectId` + 实测改名/重导后的稳定性 |
 | 3 | **一次全项目指纹的耗时与帧大小未测** | 决定要不要做"指纹缓存 + 只重算可疑对象" | 手册说 `GetFingerprints()` **每次重算**；1152 块项目未测 |
-| 4 | ~~缝 A 的服务名与接口面未定~~ | — | ✅ **已定**：`engineeringAccess`（族 1 `src/access.ts`、该包 D20）；接口面镜像见 §5.3 |
+| 4 | ~~缝 A 的服务名与接口面未定~~ | — | ✅ **已定**：`engineeringAccess`（接口插件族 `src/access.ts`、该包 D20）；接口面镜像见 §5.3 |
 | 5 | 宿主 workspace 服务是**可选**的（组合里没挂 `dsh-workspace` 时 `ctx.get` 返回 `undefined`） | `registered` 恒为 false | 已设计降级（§4.1 / N2），不阻塞 |
 
 ---
 
 ## 12. 非目标
 
-- ❌ 不解析 XML、不建图（族 3）。
-- ❌ 不自己起控制器、不直接调 Openness（族 1；且一宿主只允许一个控制器，D2）。
+- ❌ 不解析 XML、不建图（工程知识图谱插件）。
+- ❌ 不自己起控制器、不直接调 Openness（接口插件族；且一宿主只允许一个控制器，D2）。
 - ❌ 不重做宿主的 workspace/session 分组，也不改宿主的 workspace 记录。
 - ❌ 不复用 `todo_write` 承载工程变更台账，也不复用 `ctx.workspaceChanges` 当工程级变更检测。
 - ❌ 不把 `.ap17` 纳入 git；不用 manifest 的 `sha256` 当变更键。

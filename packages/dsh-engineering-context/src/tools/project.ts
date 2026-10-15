@@ -338,7 +338,7 @@ async function adoptProject(scope: ResolvedScope, args: ProjectArgs): Promise<En
   const plan = [
     `Copy ${source} to ${record.work}`,
     targetExists ? 'The target exists; overwrite=true was given, so it will be replaced.' : 'The target does not exist yet.',
-    'This build performs a plain byte copy. The TIA-side "save as" is the family 1 seam and lands in P2, so if the project is open in TIA Portal, save it there first or the copy may be stale.',
+    'This build performs a plain byte copy. The TIA-side "save as" is the TIA Openness plugin seam and lands in P2, so if the project is open in TIA Portal, save it there first or the copy may be stale.',
   ]
 
   if (args.dry_run !== false) {

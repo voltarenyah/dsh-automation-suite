@@ -4,7 +4,7 @@
 #   pwsh -NoProfile -File engine/build.ps1 -Configuration Debug
 #   pwsh -NoProfile -File engine/build.ps1 -ExportRoot <dir>   # self-test against a real export tree
 #
-# Requires only the .NET SDK. Unlike family 1's controller this needs no TIA
+# Requires only the .NET SDK. Unlike the TIA Openness plugin's controller this needs no TIA
 # Portal, no Siemens assemblies and no .NET Framework targeting pack: the engine
 # is pure XML + SQLite on net8.
 #

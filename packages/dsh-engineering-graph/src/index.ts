@@ -1,6 +1,6 @@
 /**
  * dsh-engineering-graph — engineering knowledge graph for DeepSeek Harness
- * (plugin family 3).
+ * (engineering-graph plugin).
  *
  * The plugin is the TypeScript half of a two-part design:
  *
@@ -22,7 +22,7 @@
  * A missing engine is never a load failure. `apply` warns with the path, where
  * that path came from (`config` or `package`) and how to build the engine, then
  * continues: the plugin must load on a machine that has never built the C# half,
- * exactly like family 1 loads without TIA Portal installed. The tools are
+ * exactly like the TIA Openness plugin loads without TIA Portal installed. The tools are
  * registered either way and fail per call with the honest transport error
  * (`engine_not_found`), which is what tells the model the difference between "the
  * engine refused this" and "there is no engine".

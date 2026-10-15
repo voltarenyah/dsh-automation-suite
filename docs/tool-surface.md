@@ -150,11 +150,11 @@
 | **W4** | **"自上次以来哪些块变了、改了哪一部分"** | 数据 1 次可取，但**没有 baseline、没有 diff**：模型要自己比 ~1152×(1–11) 对 `{id,value}`，且文本只看得到 20 行 | `open-questions.md:126`（A6 原话"以这个为硬依据"）；D6；`roadmap.md:131` | ✅ **纯插件侧** |
 | **W5** | 只导出变化的块并刷新下游（D9 工作循环） | 依赖 W4 的"变化集合"，现在不存在 | D9（`decisions.md:160-162`）；`roadmap.md:136` | ✅ `block_names` 已支持 |
 | **W6** | 导入别人的导出树 / 处理冲突 | 5 次；冲突与组归属要模型自己判断 | `packages/dsh-tia-openness-v17-min/docs/EXPORT-COMPARISON.md:131-133`（**推断**） | ✅ `mirror_groups`/`override` 已有 |
-| **W7** | 版本之间的"工程级差异说明 + 提交信息" | 无工具；1151 个 XML 的裸 diff 对模型无意义 | `vision.md:96`；`roadmap.md:137`；`open-questions.md:468` | ❌ 依赖族 3（图谱） |
+| **W7** | 版本之间的"工程级差异说明 + 提交信息" | 无工具；1151 个 XML 的裸 diff 对模型无意义 | `vision.md:96`；`roadmap.md:137`；`open-questions.md:468` | ❌ 依赖工程知识图谱插件（图谱） |
 | **W8** | 跨版本认出同一个对象（改名后仍关联） | 无工具；manifest 里**没有** TIA 唯一 id | D7；`packages/dsh-tia-openness-v17-min/docs/MANIFEST-GAP-ANALYSIS.md:46` | ❌ 需先补 `id` 落盘 |
 | **W9** | workspace 引导（新建/另存/归档/取回 + 路径规则） | 4–6 次；4 个生命周期工具**全部未在真实项目验证** | `open-questions.md:108`（A5）；D5；`roadmap.md:129`；`packages/dsh-tia-openness-v17-min/README.md:62` | ✅（操作存在，⏳ 未验证） |
 | **W10** | 变更上下文"待办清单" | 完全不存在 | `roadmap.md:134`；`architecture.md:165-169` | ✅ 纯插件侧 |
-| **W11** | 调用关系 / 影响面 | 不存在 | `roadmap.md:171`；A13 | ❌ 需新操作或族 3 |
+| **W11** | 调用关系 / 影响面 | 不存在 | `roadmap.md:171`；A13 | ❌ 需新操作或工程知识图谱插件 |
 | **W12** | 由块/UDT 生成 SCL/STL 源给模型读 | 3 次；一次只能一个输出文件，块与类型不能同文件 | `packages/dsh-tia-openness-v17-min/README.md:206`（**推断**） | ✅ |
 | **W13** | 标签表/变量批量维护 | 6 次；`write_tags` 一次只能一张表 | `packages/dsh-tia-openness-v17-min/README.md:203`（**推断**） | ✅（控制器一次一张表，插件可循环） |
 | **W14** | F 安全程序核对（签名 / 安全设置） | 4–5 次；`safety_status` 与 `safety_signatures` 本该一份报告 | `packages/dsh-tia-openness-v17-min/README.md:216`（**推断**） | ✅（需装 STEP 7 Safety 才能验） |
@@ -163,7 +163,7 @@
 **W4 → W5 → W1 → W3 → W2 → W9 → W6 → W12/W13/W14 → W10 → W7/W8/W11**。
 
 > 一句话读法：**只有 W2 是被完整服务的**；W1/W3/W4/W5/W9 都只差"一层插件侧的中间层"；
-> W7/W8/W11 卡在族 2/3，不是卡在控制器。
+> W7/W8/W11 卡在工程上下文插件/工程知识图谱插件，不是卡在控制器。
 
 ---
 
@@ -261,7 +261,7 @@ R1 的 4 KB 也必须这样定 —— 越过 8192 字符会被 Pruner 从中间�
 > ⚠️ **2026-10-14 更正（实现"缝 A"时核对 C# 得到）**：本节的"**按片请求**"做不到。
 > 控制器的 `max_items` **只能截断** —— `controller/OpennessHost.Plc.cs:152,166` 在超过上限后
 > 继续累加 `total` 但停止添加 `items`，**没有 offset/skip 参数**，所以不存在"下一页"。
-> 可行的做法是**把上限抬到预期规模**（族 2 消费的服务 `listObjects` 默认抬到 1000）并
+> 可行的做法是**把上限抬到预期规模**（工程上下文插件消费的服务 `listObjects` 默认抬到 1000）并
 > **如实传播 `truncated`**；下半句"TS 侧合并、去重、聚合"仍然成立（多族合并仍然要在插件侧做）。
 > 详见 `packages/dsh-engineering-context/docs/decisions.md` **P0-15**。
 
@@ -277,9 +277,9 @@ R1 的 4 KB 也必须这样定 —— 越过 8192 字符会被 Pruner 从中间�
 
 - diff 需要一个"上次"：`{项目 → 对象 → facets → 指纹值}` 的 JSON。
 - 三个候选：① 调用方显式传 `baseline_path`，默认落在项目目录旁（`<project_dir>\_tia-openness\fingerprints.json`）；
-  ② 落在 `DSH_HOME` 下按项目路径哈希分目录；③ 交给 workspace（族 2 的路径规则，**尚未存在**）。
+  ② 落在 `DSH_HOME` 下按项目路径哈希分目录；③ 交给 workspace（工程上下文插件的路径规则，**尚未存在**）。
 - 建议：**① 为默认 + 允许显式覆盖**，理由：可携带、可进 git、与 D5 的 workspace 模型天然兼容；
-  等族 2 的路径规则定稿（B7）再让默认值跟随它。
+  等工程上下文插件的路径规则定稿（B7）再让默认值跟随它。
 - 两个现成的锚点（§4.4 实测）：会话工作目录 `exec.agent.session.header.cwd`（决定"相对路径解析到哪"）、
   框架自带的 `ctx.spillStore.saveText()`（临时工件可以完全交给它，连目录都不用自己定）。
 - 工件统一放 `<workspace 或项目目录>\_tia-openness\`：`fingerprints.json`（基线）、
@@ -377,7 +377,7 @@ R1 的 4 KB 也必须这样定 —— 越过 8192 字符会被 Pruner 从中间�
 | # | 问题 | 我的倾向 |
 |---|---|---|
 | **A14** | 基线快照与工件放在哪？（项目目录旁 / DSH_HOME / 等 workspace） | 项目目录旁 `_tia-openness\`，允许显式覆盖；workspace 定了再跟随 |
-| **A15** | 原子层怎么处理？彻底下架 / 保留但默认不暴露（配置开关） / 只保留只读的 | **保留但默认不暴露**：排障、测试与族 2/3 的内部调用都需要它，删除的代价高于收益 |
+| **A15** | 原子层怎么处理？彻底下架 / 保留但默认不暴露（配置开关） / 只保留只读的 | **保留但默认不暴露**：排障、测试与工程上下文插件/工程知识图谱插件的内部调用都需要它，删除的代价高于收益 |
 | **A16** | 工作流工具要不要自己开关工程？（每次调用自开自闭 vs 复用已开会话） | 复用已开会话，但每个工具在结果里显式回报会话状态；冷启动 70.1 s、热 9.8–24.2 s（`packages/dsh-tia-openness-v17-min/README.md:81`），自闭会毁掉可用性 |
 | **A17** | 长操作怎么表示？阶段摘要 / 句柄 / 只给 timeout 参数 | 先做阶段摘要 + `timeout_ms`，句柄等确认框架支持再上（`defineTool` 的 `timeoutMs` 是声明性的，注册表不执行超时，见 §4.4） |
 | **待验证** | V17 指纹可得性与粒度、全项目指纹的耗时与帧大小 | 见 §6.1 前置风险 |

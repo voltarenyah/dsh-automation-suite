@@ -11,7 +11,7 @@
 packages/*   插件包。每个都是可安装的 DSH bundle（声明 dsh.bundle.patch）
 profile/*    profile 蓝图。物化成 ~/.dsh/profiles/<name>/ 后使用
 scripts/     Monorepo 级工具脚本
-docs/        发行版层面的文档：vision.md（愿景与分层方案）、architecture.md（三个插件族的目标架构）、
+docs/        发行版层面的文档：vision.md（愿景与分层方案）、architecture.md（接口插件族与两个工程插件的目标架构）、
              decisions.md（已定的取舍）、open-questions.md（待决策问题，用户直接在里面填答复）、
              roadmap.md（路线图与现状）
 ```
@@ -153,7 +153,7 @@ pnpm -r typecheck
 | `dsh-engineering-graph` | `node:test` | `node scripts/run-tests.mjs`（**先构建再跑**，同上） |
 
 ⚠️ `dsh-engineering-graph` 还有一个 **C# 引擎**（`engine/`，net8）。`pnpm -r build` 只构建 TypeScript ——
-引擎要用 `pwsh -NoProfile -File engine/build.ps1` 构建到 `engine/bin/`（**不进 git**，与族 1 的控制器同理）。
+引擎要用 `pwsh -NoProfile -File engine/build.ps1` 构建到 `engine/bin/`（**不进 git**，与接口插件族的控制器同理）。
 它有一项测试**驱动该引擎**（跑 `--self-test`：原生 SQLite 加载 + 真实导出物解析 + 只读闸门），
 引擎没构建时那条测试会 **skip 并打印构建命令**，而不是失败 —— 所以"全绿"不等于"引擎也验过了"。
 
@@ -211,7 +211,7 @@ dsh --profile dsh-automation-suite --dump-config
   name: dsh-tool-git
 ```
 
-> 注意：族 3（`@voltarenyah/dsh-engineering-graph`）**刻意还没登记进蓝图**，所以下面的
+> 注意：工程知识图谱插件（`@voltarenyah/dsh-engineering-graph`）**刻意还没登记进蓝图**，所以下面的
 > 预期输出里**没有它**，行数也不含它；它一登记，每个本地插件就是 4 × 3 行。
 
 装 tarball 的验收链路：

@@ -1,7 +1,7 @@
 # Engine fixtures
 
 Seven **trimmed real TIA Portal V17 exports**, used by `--self-test` and by the
-parser tests. They are committed on purpose: plugin family 3 is defined as pure
+parser tests. They are committed on purpose: the engineering-graph plugin is defined as pure
 text parsing, so it must be developable and testable **offline**, with no TIA
 Portal installation and no Windows dependency (see `docs/roadmap.md` §4, the
 "离线可 CI" acceptance criterion, and `docs/decisions.md` D15).

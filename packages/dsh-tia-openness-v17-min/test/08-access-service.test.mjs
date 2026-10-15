@@ -1,8 +1,8 @@
 /**
  * The `engineeringAccess` service: the seam the engineering-context plugin
- * (family 2) consumes.
+ * (the engineering-context plugin) consumes.
  *
- * What is asserted is the contract family 2 depends on: each method sends the
+ * What is asserted is the contract the engineering-context plugin depends on: each method sends the
  * same controller operation and parameters as the matching model-facing tool,
  * the per-family envelopes are flattened into one row list, a truncated answer
  * says so instead of looking complete, `closeProject` cannot be called without
@@ -91,7 +91,7 @@ test('apply exposes engineeringAccess, and unloading takes it away', async () =>
 
   plugin.apply(harness.ctx, {})
   const service = harness.ctx.get(ENGINEERING_ACCESS_SERVICE)
-  assert.notEqual(service, undefined, 'apply must register the service family 2 looks up')
+  assert.notEqual(service, undefined, 'apply must register the service the engineering-context plugin looks up')
   for (const method of ['status', 'openProject', 'closeProject', 'listObjects', 'exportObjects']) {
     assert.equal(typeof service[method], 'function', `${method} must be callable`)
   }

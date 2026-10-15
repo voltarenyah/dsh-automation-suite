@@ -5,7 +5,7 @@
  * arrives, a request that is never answered, a process that dies mid-request — are
  * exactly the ones a *correct* engine never produces, so the real executable
  * cannot exercise them. This stub can, and the client is pointed at it with
- * `launchArgs` (the same seam family 1 documents for its controller stub).
+ * `launchArgs` (the same seam the TIA Openness plugin documents for its controller stub).
  *
  * It is a Node script, so the client launches it as
  * `<node executable> <this file> <mode>`: the client's spawn takes an executable

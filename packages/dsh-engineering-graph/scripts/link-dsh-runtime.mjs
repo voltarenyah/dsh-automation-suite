@@ -10,7 +10,7 @@
  * The dev dependencies (`typescript`, `@types/node`) are **not** this script's
  * business: `pnpm install` at the repository root provides them. Linking them by
  * hand would fight the package manager, which cannot relink a directory another
- * project is reaching into (the incident family 2 recorded as P0-14).
+ * project is reaching into (the incident the engineering-context plugin recorded as P0-14).
  *
  * This script **never writes outside this package**. In particular it never
  * extracts the runtime cache: the sibling package's extractor deletes and

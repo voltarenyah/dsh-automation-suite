@@ -8,7 +8,7 @@
  * is loaded without the loader's schema resolution (for example by a test
  * harness).
  *
- * The conventions are family 1's (`dsh-tia-openness-v17-min/src/config.ts`),
+ * The conventions are the TIA Openness plugin's (`dsh-tia-openness-v17-min/src/config.ts`),
  * because this plugin will own a subprocess for the C# engine the same way that
  * one owns the TIA controller: timeouts are non-negative natural numbers with a
  * floor rather than a rejection, an empty path means "the copy shipped with this

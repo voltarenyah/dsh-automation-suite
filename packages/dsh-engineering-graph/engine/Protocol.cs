@@ -1,14 +1,14 @@
 // Transport layer for the engine's NDJSON channel.
 //
-// The shape is deliberately the same as family 1's controller protocol
+// The shape is deliberately the same as the TIA Openness plugin's controller protocol
 // (packages/dsh-tia-openness-v17-min/controller/Protocol.cs): a `ready` frame when
 // the channel is up, one `result` frame per request, optional `progress` frames
 // in between. Two things differ, both on purpose:
 //
-//   * JSON is System.Text.Json, not a hand-rolled writer. Family 1 needed that
+//   * JSON is System.Text.Json, not a hand-rolled writer. The TIA Openness plugin needed that
 //     because it targets net48 with no dependencies; this engine is net8.
 //   * Failures carry `code` / `message` / `remediation` / `details`, which is
-//     family 1's `code`/`message`/`details` plus the `remediation` field the
+//     the TIA Openness plugin's `code`/`message`/`details` plus the `remediation` field the
 //     family-3 source used for every tool error. Keeping both loses nothing and
 //     lets the TypeScript half render either.
 using System.Text.Encodings.Web;

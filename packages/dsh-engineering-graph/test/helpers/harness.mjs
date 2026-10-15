@@ -11,7 +11,7 @@
  * The stand-in context carries exactly what this plugin touches: `logger`
  * (callable and usable directly, like the real one), `get(name)` for optional
  * services, `effect(execute, label)` for the lifecycle seam, and
- * `tools.register`, whose returned disposer is honoured (family 1's harness does
+ * `tools.register`, whose returned disposer is honoured (the TIA Openness plugin's harness does
  * the same). `unload()` runs those disposers in reverse, which is how a test
  * guarantees that no engine subprocess outlives it.
  *
@@ -135,7 +135,7 @@ export const stubEnginePath = join(packageRoot, 'test', 'helpers', 'stub-engine.
  * A client pointed at the stub engine in one of its failure modes.
  *
  * The stub is a Node script, so it is launched as `<node> <stub> <mode>`; the
- * client's `launchArgs` is the documented seam for exactly this (family 1's
+ * client's `launchArgs` is the documented seam for exactly this (the TIA Openness plugin's
  * controller stub uses the same one).
  *
  * @param {'ready' | 'mismatch' | 'unknown-operations' | 'silent' | 'stall' | 'die'} mode

@@ -5,16 +5,16 @@
  * request per line, one `result` frame per request, plus a `ready` frame when the
  * channel comes up and any number of `progress` frames in between. This module is
  * the TypeScript view of that contract, plus the tolerant readers used to validate
- * frames that arrive from the child process. It mirrors family 1's
+ * frames that arrive from the child process. It mirrors the TIA Openness plugin's
  * `dsh-tia-openness-v17-min/src/protocol.ts`, with two deliberate differences:
  *
  * - Failures carry `remediation` as its own field, because that is what the
  *   engine's `EngineException` serializes (`engine/Protocol.cs`) and what the
- *   family-3 tool envelope rendered.
+ *   engineering-graph tool envelope rendered.
  * - There is no `log` frame and no `changes` / `diagnostics` list: the engine's
  *   human-readable notes go to stderr, and no operation reports either today. The
  *   canonical envelope below keeps both keys anyway, empty, so a consumer of this
- *   family sees one shape whether the payload is full or not.
+ *   plugin sees one shape whether the payload is full or not.
  *
  * @module dsh-engineering-graph/protocol
  */
@@ -153,7 +153,7 @@ export interface ToolOutcome {
   readonly operation: string
   /**
    * Always false: the engine has no dry-run mode (nothing in `GetSchema`,
-   * `Ingest` or `Query` is a simulation), so the envelope keeps family 1's field
+   * `Ingest` or `Query` is a simulation), so the envelope keeps the TIA Openness plugin's field
    * without pretending otherwise.
    */
   readonly dryRun: boolean

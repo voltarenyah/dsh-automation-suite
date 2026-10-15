@@ -1,7 +1,7 @@
 # 路径规则：workspace 内的工程布局
 
 > **状态：设计定稿（答复 [`docs/open-questions.md`](../../../docs/open-questions.md) 的 B7）。**
-> 本文是插件族 2 的**交付物**之一：它规定"workspace 里放什么、怎么放"，
+> 本文是工程上下文插件的**交付物**之一：它规定"workspace 里放什么、怎么放"，
 > 以及"哪些路径是插件可以碰的"。核心架构见 [`ARCHITECTURE.md`](ARCHITECTURE.md)，
 > 为什么这样定见 [`decisions.md`](decisions.md)。
 >
@@ -17,7 +17,7 @@
 | workspace 里"放什么、怎么放" | §2 / §4 |
 | 插件**能碰哪些路径** | §4 的越界校验（fail-closed） |
 | 什么进 git、什么不进 | §6 |
-| 与族 1 的导出物怎么对接 | §7 |
+| 与接口插件族的导出物怎么对接 | §7 |
 
 **适用范围**：workspace 根 = 会话的工作目录（`exec.agent.session.header.cwd`），
 也就是宿主 workspace 注册表里的那个目录（判定规则见 [`ARCHITECTURE.md`](ARCHITECTURE.md) §2.1）。
@@ -36,9 +36,9 @@
 │       │   └── <name>.ap17
 │       ├── work/                             ← 工作副本：**唯一会被修改的** .ap17
 │       │   └── <name>.ap17
-│       └── export/                           ← 导出物（派生视图，供族 3 解析）
-│           ├── _tia-openness-manifest.json   ← 族 1 产出的清单（既有契约，不改）
-│           ├── <用户组路径>/<块名>.xml        ← blocks 直接放在 export/ 下（族 1 的既有布局）
+│       └── export/                           ← 导出物（派生视图，供工程知识图谱插件解析）
+│           ├── _tia-openness-manifest.json   ← 接口插件族产出的清单（既有契约，不改）
+│           ├── <用户组路径>/<块名>.xml        ← blocks 直接放在 export/ 下（接口插件族的既有布局）
 │           ├── types/<组>/<类型名>.xml
 │           └── tag_tables/<表名>.xml
 │
@@ -117,7 +117,7 @@ assertInside(workspaceRoot, candidate):
 | `project-id` | 由 title 生成的 slug（小写、非字母数字→`-`、折叠连续 `-`）；**一旦生成不再变**（它是路径的一部分） |
 | slug 冲突 | 追加 `-2`、`-3`…（不静默覆盖） |
 | `<name>.ap17` | 保留源项目的文件名；同名不同工程由 `<project-id>` 目录区分 |
-| 导出物文件名 | **沿用族 1 的既有规则**（文件名 = 对象名 + `.xml`，非法字符替换为 `_`，撞名写 `<名>~2.xml` 并发 warning）—— 本文不重复定义，见 `packages/dsh-tia-openness-v17-min/docs/OUTPUT-CONTRACT.md` §2 |
+| 导出物文件名 | **沿用接口插件族的既有规则**（文件名 = 对象名 + `.xml`，非法字符替换为 `_`，撞名写 `<名>~2.xml` 并发 warning）—— 本文不重复定义，见 `packages/dsh-tia-openness-v17-min/docs/OUTPUT-CONTRACT.md` §2 |
 | 时间戳后缀 `<ts>` | ISO-8601 的紧凑形式 `2026-10-14T09-12Z`（文件名安全、可排序、无冒号） |
 | 已存在的目录/文件 | 默认**不覆盖**；需要覆盖时由调用方显式传 `overwrite: true` |
 
@@ -162,11 +162,11 @@ projects/*/source/
 
 ---
 
-## 7. 与族 1 导出物布局的对接
+## 7. 与接口插件族导出物布局的对接
 
-**不改族 1 的既有契约**，只消费它：
+**不改接口插件族的既有契约**，只消费它：
 
-| 族 1 的产出 | 本插件怎么用 |
+| 接口插件族的产出 | 本插件怎么用 |
 |---|---|
 | `export/_tia-openness-manifest.json` | 读 `counts` / `blocks[]` / `failures[]`，用于"导出物是否完整、哪些对象被 TIA 拒绝" |
 | 清单里的 `sha256` | **只作完整性审计**（同一份 manifest 内防篡改）。**不作变更键**（它含 `<DocumentInfo><Created>`，每次导出都变，见 `MANIFEST-GAP-ANALYSIS.md` §3） |
@@ -185,7 +185,7 @@ projects/*/source/
 |---|---|---|---|---|
 | **项目文件（源）** | `projects/<id>/source/<name>.ap17` | `eng_project adopt`（一次） | ❌ | 可以（丢溯源，不影响工作） |
 | **工作副本** | `projects/<id>/work/<name>.ap17` | `eng_project adopt`；之后由 **TIA** 改 | ❌ | **不可以**（丢了要重新 adopt） |
-| **导出物** | `projects/<id>/export/**` | 族 1 经 `eng_export` 触发 | ✅ | 可以（可由 `.ap17` 重建，慢） |
+| **导出物** | `projects/<id>/export/**` | 接口插件族经 `eng_export` 触发 | ✅ | 可以（可由 `.ap17` 重建，慢） |
 | **基线** | `_dsh-eng/<id>/fingerprints.json` | `eng_changes`（`update_baseline`） | ✅ | 可以，但会丢"自上次以来"的能力 |
 | **变更集** | `_dsh-eng/<id>/changes-<ts>.json` | `eng_changes` | ✅ | 可以 |
 | **变更台账** | `_dsh-eng/<id>/change-context.json` | `eng_context` | ✅ | **不可以**（人工录入，无法重建） |

@@ -107,7 +107,7 @@ export function statusTool(dependencies: ToolDependencies): ToolDefinition {
           },
           phases: {
             implemented: ['scope', 'project-registry'],
-            pending: { P1: 'git version layer', P2: 'fingerprint change detection (family 1 seam)', P3: 'change ledger' },
+            pending: { P1: 'git version layer', P2: 'fingerprint change detection (the TIA Openness plugin seam)', P3: 'change ledger' },
           },
         },
         { details, warnings: scope.view.warnings, dryRun: true },

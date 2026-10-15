@@ -1,11 +1,11 @@
 # @voltarenyah/dsh-engineering-context
 
-DeepSeek Harness 插件（**插件族 2 · 工程上下文管理**）：在一个 workspace 里管住
+DeepSeek Harness 插件（**工程上下文插件**）：在一个 workspace 里管住
 **"现在谈的是哪个工程、哪一版"**，并维护该 workspace 的**工程注册表**。
 
 > **实现状态：P0 与 P1 已完成。**
 > 已实现：作用域解析、工程注册表、版本层（内部 git），4 个工作流工具。
-> 未实现：指纹变更检测（P2，需要族 1 的 `engineeringAccess` 服务 —— 该服务**已就绪**）、变更台账（P3）。
+> 未实现：指纹变更检测（P2，需要接口插件族的 `engineeringAccess` 服务 —— 该服务**已就绪**）、变更台账（P3）。
 > 设计文档在 [`docs/`](docs/)：`ARCHITECTURE.md`（核心架构）、`PATH-RULES.md`（路径规则）、
 > `decisions.md`（技术取舍，含 P0/P1 实现期的决定）。
 
@@ -46,7 +46,7 @@ DeepSeek Harness 插件（**插件族 2 · 工程上下文管理**）：在一�
 │   └── <project-id>/              # 该工程的插件状态（P2/P3：指纹基线、变更集、变更台账）
 └── projects/<project-id>/
     ├── work/<name>.ap17           # 工作副本（adopt 写入；之后由 TIA 改）
-    └── export/                    # 导出物（P2，由族 1 写入）
+    └── export/                    # 导出物（P2，由接口插件族写入）
 ```
 
 源 `.ap17` **只被读取一次**（`adopt` 的字节复制），此后永不读写。
@@ -84,6 +84,6 @@ node scripts/tsc.mjs -p tsconfig.json --noEmit # 只做类型检查
 
 ## 6. 边界
 
-不做：解析 XML / 建图（族 3）、直接调用 Openness 或起控制器（族 1）、
+不做：解析 XML / 建图（工程知识图谱插件）、直接调用 Openness 或起控制器（接口插件族）、
 agent 的会话计划清单（`dsh-tool-todo`）、按轮次的文件级变更记录（宿主已有 `dsh-workspace-changes`）、
-把原始 git 暴露给模型。写入工程的唯一通道始终是族 1。
+把原始 git 暴露给模型。写入工程的唯一通道始终是接口插件族。

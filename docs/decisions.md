@@ -95,7 +95,7 @@
 
 - 作用域隔离从"约定"变成"结构"（不同 workspace 不串味）；
 - 工作副本与源项目分离：agent 动的是 workspace 里的副本；
-- 路径规则（workspace 里放什么、怎么放）成为插件族 2 的**交付物**，见
+- 路径规则（workspace 里放什么、怎么放）成为工程上下文插件的**交付物**，见
   [`roadmap.md`](roadmap.md) §3（B7 仍待细化到字段级）。
 
 ---
@@ -166,7 +166,7 @@ V17 子集需实测确认；该包 `docs/EXTENDED-SURFACE.md` 已在接线 `incl
 
 ---
 
-## D10 · 插件族之间先各自独立，不抽共享包 ✅
+## D10 · 各插件之间先各自独立，不抽共享包 ✅
 
 **决定**：公共类型、协议、作用域标识**暂不**抽 core 包，各插件独立，靠文件契约对接。
 出现第三处重复时再抽。
@@ -180,9 +180,9 @@ V17 子集需实测确认；该包 `docs/EXTENDED-SURFACE.md` 已在接线 `incl
 
 ---
 
-## D12 · 工程上下文管理插件（族 2）：作用域锚定宿主 workspace，状态落 workspace 内 ✅
+## D12 · 工程上下文插件：作用域锚定宿主 workspace，状态落 workspace 内 ✅
 
-**背景**：插件族 2 进入设计（产出：[`packages/dsh-engineering-context/docs/ARCHITECTURE.md`](../packages/dsh-engineering-context/docs/ARCHITECTURE.md)）。
+**背景**：工程上下文插件进入设计（产出：[`packages/dsh-engineering-context/docs/ARCHITECTURE.md`](../packages/dsh-engineering-context/docs/ARCHITECTURE.md)）。
 设计前核对了运行中的宿主，发现 **D5 的 workspace 模型在宿主里已经存在**：
 服务 `ctx.workspaceRegistry`（`@deepseek-ai/dsh-workspace`），
 而会话归属判定 = session 的 `header.cwd` 归一后**等于** workspace 路径
@@ -194,14 +194,14 @@ V17 子集需实测确认；该包 `docs/EXTENDED-SURFACE.md` 已在接线 `incl
 1. **作用域锚定宿主的 workspace，不自建**：作用域根 = `exec.agent.session.header.cwd`；
    宿主身份用 `ctx.workspaceRegistry.resolveByPath()` 认领；**只读**注册表 ——
    从不 `create` / `attachSession` / `archiveSession`（建 workspace 是用户在 GUI 的显式动作）。
-   ⇒ **D5 不需要这一族实现一遍**，"不串味"由"每次调用从 cwd 重新解析 + 路径包含性校验"结构性保证。
+   ⇒ **D5 不需要这个插件实现一遍**，"不串味"由"每次调用从 cwd 重新解析 + 路径包含性校验"结构性保证。
 2. **状态落 workspace 内**：`<workspace>/_dsh-eng/`（工程注册表、**指纹基线**、变更集、变更台账），
    可携带、可进 git；宿主 `ctx.storageDomain` 只承担**可再生**的作用域指针。
    `ctx.spillStore` 因按会话归属且工件会过期，**不用于基线**。
-3. **与族 1 的接缝 = 服务，不抽包**：族 1 注册一个可选的 cordis `Service`
-   （只读能力：状态 / 开关项目 / 列对象含指纹 / 导出），族 2 可选注入，缺席时降级读旧工件并**报过期**。
+3. **与接口插件族的接缝 = 服务，不抽包**：接口插件族注册一个可选的 cordis `Service`
+   （只读能力：状态 / 开关项目 / 列对象含指纹 / 导出），工程上下文插件可选注入，缺席时降级读旧工件并**报过期**。
    与 **D10**（先各自独立、不抽共享包）不冲突 —— 这是**服务契约**，不是共享包；
-   且它不经过族 1 的工具面，所以 **A15** 怎么定都不影响这条路径。
+   且它不经过接口插件族的工具面，所以 **A15** 怎么定都不影响这条路径。
 
 **随设计一并定的两条口径**：变更键**只用 TIA 指纹**，manifest 的 `sha256` 只作完整性审计
 （它含 `<DocumentInfo><Created>`，每次导出都变，见
@@ -212,15 +212,15 @@ V17 子集需实测确认；该包 `docs/EXTENDED-SURFACE.md` 已在接线 `incl
 **后果**：
 
 - 落地位置定为 `packages/dsh-engineering-context`；
-- 新增两个**族 1 侧**的工作项：注册该服务；补 `tiaObjectId`（后者仍待实测）；
+- 新增两个**接口插件族侧**的工作项：注册该服务；补 `tiaObjectId`（后者仍待实测）；
 - 开放问题 **A8 / B7 / B8 / B9** 已答（见 [`open-questions.md`](open-questions.md)）；
 - 状态同步：[`roadmap.md`](roadmap.md) §1/§3 与根 [`README.md`](../README.md) §2 两处。
 
 **进展（2026-10-14）**：
 
-- **D12 第 3 条的"缝 A"已落地**：族 1 注册了 **`engineeringAccess`** 服务
+- **D12 第 3 条的"缝 A"已落地**：接口插件族注册了 **`engineeringAccess`** 服务
   （`packages/dsh-tia-openness-v17-min/src/access.ts`，该包 `docs/decisions.md` **D20**），
-  接口面镜像在族 2 的 `docs/ARCHITECTURE.md` §5.3。族 2 的**消费代码属 P2**，尚未接入。
+  接口面镜像在工程上下文插件的 `docs/ARCHITECTURE.md` §5.3。工程上下文插件的**消费代码属 P2**，尚未接入。
 - **实现进度**：**P0（作用域 + 工程注册表）与 P1（版本层 `eng_version`）都已实现，并已登记进蓝图**；
   `--dump-config` 实测 1520 行；本包 44 项单测全通过。
   P1 只版本化"导出物 + 工程状态"，`.ap17` 由 `.gitignore` 挡在库外，提交默认 dry-run，
@@ -228,11 +228,11 @@ V17 子集需实测确认；该包 `docs/EXTENDED-SURFACE.md` 已在接线 `incl
 - **指纹可得性**：**用户报告已在另一个代码库验证可用**（用户侧证据，**不是本仓实测**）——
   本仓第一次在 V17 真机跑 P2 时仍需留下证据（见待办清单第 1 条）。
 - **一处实测更正**：控制器的 `max_items` 只能截断、**没有 offset**，所以"按片翻页"不可行
-  （族 2 `docs/decisions.md` **P0-15**）；这条同时更正了 `docs/tool-surface.md` §5.1 的措辞。
+  （工程上下文插件 `docs/decisions.md` **P0-15**）；这条同时更正了 `docs/tool-surface.md` §5.1 的措辞。
 
 ---
 
-## D13 · 图谱分区与更新（族 3 的数据模型）🟡
+## D13 · 图谱分区与更新（工程知识图谱插件的数据模型）🟡
 
 **背景**：[A10](open-questions.md) 问"图怎么分区、怎么更新"；图底座已由 **D8** 定为 SQLite + Graph DB。
 
@@ -247,16 +247,16 @@ V17 子集需实测确认；该包 `docs/EXTENDED-SURFACE.md` 已在接线 `incl
 **后果**：
 
 - **全量重建保持离线**：它只读 `projects/<id>/export/`，符合 D6"离线能力留给图谱层"。
-  **但增量路径需要开项目** —— 指纹来自 Openness（D6），与族 2 的工作循环
-  （[`roadmap.md`](roadmap.md) §3 第 8 项）是**同一条依赖**，不是族 3 自己能满足的。
+  **但增量路径需要开项目** —— 指纹来自 Openness（D6），与工程上下文插件的工作循环
+  （[`roadmap.md`](roadmap.md) §3 第 8 项）是**同一条依赖**，不是工程知识图谱插件自己能满足的。
 - ⚠️ **contentHash 兜底必须归一化**（先剥掉 `<DocumentInfo>` / `<Created>`），否则标签表
   每次重新导出都会被判为"变了"。**D6 / D12 已经因为同一理由拒绝把 manifest 的 `sha256`
   当变更键**，依据见 [`MANIFEST-GAP-ANALYSIS.md`](../packages/dsh-tia-openness-v17-min/docs/MANIFEST-GAP-ANALYSIS.md) §3。
-- ⚠️ **"用 fingerprint 区分块有没有变"本来就是族 2 的职责**（D6 + 族 2 P2 的指纹基线
-  `_dsh-eng/<id>/fingerprints.json`）。所以族 3 有两条落地路径：**① 消费族 2 的变更集**
-  （默认 —— 避免两处各自算指纹导致口径漂移）／**② 自己经族 1 的 `engineeringAccess` 服务取指纹**
-  （族 2 缺席时的降级）。**这一条仍需拍板**，见文末待办清单。
-- **db 的具体路径仍未定**：它是族 3 的状态，**倾向** `_dsh-eng/<project-id>/` —— 因为
+- ⚠️ **"用 fingerprint 区分块有没有变"本来就是工程上下文插件的职责**（D6 + 工程上下文插件 P2 的指纹基线
+  `_dsh-eng/<id>/fingerprints.json`）。所以工程知识图谱插件有两条落地路径：**① 消费工程上下文插件的变更集**
+  （默认 —— 避免两处各自算指纹导致口径漂移）／**② 自己经接口插件族的 `engineeringAccess` 服务取指纹**
+  （工程上下文插件缺席时的降级）。**这一条仍需拍板**，见文末待办清单。
+- **db 的具体路径仍未定**：它是工程知识图谱插件的状态，**倾向** `_dsh-eng/<project-id>/` —— 因为
   [`PATH-RULES.md`](../packages/dsh-engineering-context/docs/PATH-RULES.md) §2 的哲学是
   `projects/` 属用户、`_dsh-eng/` 属插件。**无论选哪里，都要回写该文件 §2/§8** ——
   那里现在没有它的位置。
@@ -312,7 +312,7 @@ V17 子集需实测确认；该包 `docs/EXTENDED-SURFACE.md` 已在接线 `incl
 **后果**：
 
 - **`get_schema` 类能力保留为工具**（返回活的 DDL / 词表），**不做成 bundled skill**。
-  这与族 1 的 skill 形态（`packages/dsh-tia-openness-v17-min/src/skills.ts` / **D4**）**不冲突** ——
+  这与接口插件族的 skill 形态（`packages/dsh-tia-openness-v17-min/src/skills.ts` / **D4**）**不冲突** ——
   那一条服务的是**静态手册知识**，两者载体不同。
 - **需要一个子 agent 的 preset**（在 profile 蓝图 `profile/dsh-automation-suite/cordis.patch.yml` 里），
   把图谱工具列进去、把操作层工具排除。
@@ -321,14 +321,14 @@ V17 子集需实测确认；该包 `docs/EXTENDED-SURFACE.md` 已在接线 `incl
 - **工具目录成本不再由主 agent 承担**，所以 B16 **不再需要**"工作流层 / 原子层两层收口"
   来省常驻字符。但 `query`（任意只读 SQL）**是否进子 agent 面仍是独立取舍** —— 见
   [`architecture.md`](architecture.md) §6「不向模型暴露任意代码执行」。
-- **待验证**：DSH 里"按 agent 隐藏工具"的**确切机制**（族 2 `ARCHITECTURE.md` §5.3 提到工具解析
+- **待验证**：DSH 里"按 agent 隐藏工具"的**确切机制**（工程上下文插件 `ARCHITECTURE.md` §5.3 提到工具解析
   "按可见性"，`dsh-tools/lib/index.js:3058`）—— **写工具层之前必须先核实，别猜**。
 
 ---
 
-## D17 · 族 3 的包名与 C# 命名照族 1 的规则 🟡
+## D17 · 工程知识图谱插件的包名与 C# 命名照接口插件族的规则 🟡
 
-**背景**：族 3 开工前定包名与 C# 工程命名。第一次 vendoring 时**沿用了来源库的
+**背景**：工程知识图谱插件开工前定包名与 C# 工程命名。第一次 vendoring 时**沿用了来源库的
 `Mcp.Knowledge.*` 命名空间**，理由是"最小偏离、便于与来源库 re-sync"——**该理由被否决**，
 要求按**本仓既有风格**取名。
 
@@ -339,16 +339,16 @@ V17 子集需实测确认；该包 `docs/EXTENDED-SURFACE.md` 已在接线 `incl
 
 **决定**：
 
-1. **包名** `@voltarenyah/dsh-engineering-graph`（与族 2 的 `@voltarenyah/dsh-engineering-context` 平行）。
+1. **包名** `@voltarenyah/dsh-engineering-graph`（与工程上下文插件的 `@voltarenyah/dsh-engineering-context` 平行）。
 2. **C# 目录** `engine/`，项目文件 `EngineeringGraph.Engine.csproj`。
-3. **`AssemblyName` = `RootNamespace` = `EngineeringGraph.Engine`** —— 规则同族 1 的
+3. **`AssemblyName` = `RootNamespace` = `EngineeringGraph.Engine`** —— 规则同接口插件族的
    `<产品 PascalCase>.<角色>`：产品取自包名去掉 `dsh-` 前缀，角色取自目录名
-   （族 1 = 包 `dsh-tia-openness-v17-min` + 目录 `controller/` → `TiaOpennessV17Min.Controller`，
+   （该族当前成员 = 包 `dsh-tia-openness-v17-min` + 目录 `controller/` → `TiaOpennessV17Min.Controller`，
    见其 `.csproj` 的 `AssemblyName` / `RootNamespace`）。
 4. **12 个 vendored `.cs` 全部拍平为单一命名空间 `EngineeringGraph.Engine`** ——
-   照族 1 的**实际做法**（族 1 的 14 个 `.cs` 共用一个扁平命名空间，**不按子目录再分子命名空间**）。
+   照接口插件族的**实际做法**（该族当前成员的 14 个 `.cs` 共用一个扁平命名空间，**不按子目录再分子命名空间**）。
    改名后的文件用**文件级** `namespace EngineeringGraph.Engine;`
-   （net8 + `LangVersion latest` 允许；族 1 因 `LangVersion 7.3` 只能用块级）。
+   （net8 + `LangVersion latest` 允许；该族当前成员因 `LangVersion 7.3` 只能用块级）。
 5. **默认引擎路径** `engine/bin/EngineeringGraph.Engine.exe`。
 
 **后果**：
@@ -380,8 +380,8 @@ crawl 模式 7/7 个 fixture、**72 节点 / 153 边**，节点种类覆盖
 
 **已发生的两次**（记在这里，免得下次重新踩）：
 
-1. 族 1 的稳定对象 id 待办（本会话写的 `roadmap.md` §2）被上一会话的提交 `b69ae24` 连带带入；
-2. 族 2 的 P1 状态同步（上一会话写的 `README.md` 多处 + `roadmap.md` §1/§3）留在工作树未提交，
+1. 接口插件族的稳定对象 id 待办（本会话写的 `roadmap.md` §2）被上一会话的提交 `b69ae24` 连带带入；
+2. 工程上下文插件的 P1 状态同步（上一会话写的 `README.md` 多处 + `roadmap.md` §1/§3）留在工作树未提交，
    最后由本会话的 `2c1dc1e` 带入 —— 其中 README 的"对话"行由**两边共同改动**
    （先 `38 → 41`，再 `41 → 42`），是**同一个 hunk**，无法干净拆分。
 
@@ -389,7 +389,7 @@ crawl 模式 7/7 个 fixture、**72 节点 / 153 边**，节点种类覆盖
 
 - **能拆就拆**：按 **hunk** 切分提交。本会话的做法是 `git diff -U3` 取全文，
   按 `@@ -<起始行>` 把对方的 hunk 单独写成补丁，再 `git apply --cached` 只暂存那一份
-  （实例：`5dc2c26` 只含族 2 的三处 hunk，本会话的内容留在后续提交）。
+  （实例：`5dc2c26` 只含工程上下文插件的三处 hunk，本会话的内容留在后续提交）。
   注意 `-U0` 的补丁需要 `git apply --unidiff-zero`，用默认 `-U3` 更省事。
 - **拆不开就在提交信息里写明**：同一个 hunk 被两边共同改动时，接受混在一个提交里，
   但**必须**在提交信息里指出哪部分不是本会话写的（实例：`2c1dc1e` 的 `ATTRIBUTION` 段）。
@@ -399,19 +399,19 @@ crawl 模式 7/7 个 fixture、**72 节点 / 153 边**，节点种类覆盖
 
 ---
 
-## D19 · 族 3 的引擎协议、操作与工具命名 ✅
+## D19 · 工程知识图谱插件的引擎协议、操作与工具命名 ✅
 
-**背景**：族 3 的引擎（vendored `Graph`/`Parsing`/`Import`）能解析、能建库，但**没有任何操作入口**，
+**背景**：工程知识图谱插件的引擎（vendored `Graph`/`Parsing`/`Import`）能解析、能建库，但**没有任何操作入口**，
 所以插件一个工具都注册不了。这一步把入口打通，并把"协议长什么样"固定下来。
 
 **决定**：
 
-1. **协议照族 1 的 NDJSON 帧模型**（`packages/dsh-tia-openness-v17-min/controller/Protocol.cs`）：
+1. **协议照接口插件族的 NDJSON 帧模型**（`packages/dsh-tia-openness-v17-min/controller/Protocol.cs`）：
    一行一个 JSON 对象；`ready` 帧宣告就绪并列出操作目录，每个请求恰好一个 `result` 帧，
    中间可有 `progress` 帧；请求形如 `{id, type:"operation", operation, params}`。
    **操作目录是安全边界**，不在此列的名字一律 `unsupported_operation`。
-   两处**刻意偏离**：net8 直接用 `System.Text.Json`（族 1 因 net48 无依赖才手写）；
-   错误对象在族 1 的 `code`/`message`/`details` 之外**保留来源库的 `remediation`** ——
+   两处**刻意偏离**：net8 直接用 `System.Text.Json`（接口插件族因 net48 无依赖才手写）；
+   错误对象在接口插件族的 `code`/`message`/`details` 之外**保留来源库的 `remediation`** ——
    是超集，不丢信息，两个消费端都能渲染。
 2. **引擎四个模式**：无参 = stdio 服务；`--call <Op> [json]` 一次性执行并打印结果帧
    （人工排障与不走 TS 的端到端验证）；`--self-test [exportRoot]`；`--version` / `--help`。
@@ -420,11 +420,11 @@ crawl 模式 7/7 个 fixture、**72 节点 / 153 边**，节点种类覆盖
    SQL 与只读校验**逐函数**从来源库的工具层搬来、语句未改（来源行号记在各函数注释里）。
    **`status` 刻意不做**：来源库里根本没有这个操作，新鲜度逻辑住在消费端应用里 ——
    它属于 D13 的第 4 步（freshness），本切片不凭空造一个。
-4. **工具名带族前缀**：`knowledge_schema` / `knowledge_ingest` / `knowledge_query`。
+4. **工具名带 `knowledge_` 前缀**：`knowledge_schema` / `knowledge_ingest` / `knowledge_query`。
    裸名 `query` 在共享会话里太泛，将来必然与别的插件撞。`knowledge_query` 是唯一的
    "逃生舱"（任意只读 SQL），按 **D16** 先暴露、收口后置。
 5. **工具返回本仓的 canonical envelope**（`ok` / `operation` / `summary` / `data` /
-   `changes` / `diagnostics` / `error` / `durationMs`，见族 1 `docs/OUTPUT-CONTRACT.md` §1），
+   `changes` / `diagnostics` / `error` / `durationMs`，见接口插件族 `docs/OUTPUT-CONTRACT.md` §1），
    而不是直接把引擎的错误对象交给模型。**只有传输层失败**（找不到可执行文件、超时、
    进程中途死亡、协议不匹配）才抛；操作失败一律 `ok:false` + `error.code`。
 
@@ -449,9 +449,9 @@ stdio 通道实测：`ready` 帧列出三个操作，`GetSchema` 返回 34 字�
 | 2 | 导出物里的 id 在改名/编辑/重导/另存后的稳定性 | D7 |
 | 3 | 以 min 为依赖被 std 复用时，插件行与控制器生命周期是否干净（一次会话） | D2 |
 | 4 | ~~workspace 路径规则的字段级定义~~ → **已定稿**：[`packages/dsh-engineering-context/docs/PATH-RULES.md`](../packages/dsh-engineering-context/docs/PATH-RULES.md) §8（其 §10 三项待确认） | D5 → B7 |
-| 5 | ~~族 1 的服务缝（服务名与接口面）~~ → **✅ 已定并实现**：`engineeringAccess`（族 1 `src/access.ts` / 该包 D20）。**剩**：族 2 的消费代码（P2）跑通一次 | D12 |
+| 5 | ~~接口插件族的服务缝（服务名与接口面）~~ → **✅ 已定并实现**：`engineeringAccess`（接口插件族 `src/access.ts` / 该包 D20）。**剩**：工程上下文插件的消费代码（P2）跑通一次 | D12 |
 | 6 | 图谱 db 的具体路径（倾向 `_dsh-eng/<project-id>/`）+ 回写 `PATH-RULES.md` §2/§8 | D13（A10） |
 | 7 | contentHash 兜底必须归一化（剥 `<DocumentInfo>`/`<Created>`）才可用作变更键 | D13 |
-| 8 | 族 3 取指纹的路径：消费族 2 的变更集（默认）还是自己经族 1 `engineeringAccess` 服务 | D13（A10） |
+| 8 | 工程知识图谱插件取指纹的路径：消费工程上下文插件的变更集（默认）还是自己经接口插件族 `engineeringAccess` 服务 | D13（A10） |
 | 9 | DSH 按 agent 隐藏工具的确切机制（子 agent preset 如何排除操作层工具） | D16（B16） |
-| 10 | ~~族 3 把 12 个文件拍平到单一命名空间后是否撞名~~ → **✅ 已验证无撞名**（`dotnet build` 0 error / 0 warning，37 个顶层类型无重名） | D17 |
+| 10 | ~~工程知识图谱插件把 12 个文件拍平到单一命名空间后是否撞名~~ → **✅ 已验证无撞名**（`dotnet build` 0 error / 0 warning，37 个顶层类型无重名） | D17 |

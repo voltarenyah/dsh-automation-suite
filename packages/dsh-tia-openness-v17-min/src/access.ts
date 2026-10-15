@@ -1,11 +1,12 @@
 /**
  * The `engineeringAccess` service: the seam the engineering-context plugin
- * (family 2) uses to ask this plugin for project data.
+ * uses to ask this plugin for project data.
  *
  * Why it exists: fingerprints — the only hard evidence that an engineering
  * object changed (decision D6) — can only be read with a project open, and
- * **this** is the plugin that is allowed to talk to TIA Portal. Family 2 must
- * therefore ask, not do (docs/ARCHITECTURE.md §5.3 in that package, and the
+ * **this** is the plugin that is allowed to talk to TIA Portal. The
+ * engineering-context plugin must therefore ask, not do
+ * (docs/ARCHITECTURE.md §5.3 in that package, and the
  * "seam A" decision D12 in `docs/decisions.md`).
  *
  * Three properties matter more than the method list:
@@ -34,7 +35,7 @@ import { join } from 'node:path'
 import type { JsonRecord } from './protocol.js'
 import { runOperation, type ToolDependencies } from './tools.js'
 
-/** The service name family 2 looks up. It is not an import, by design (D10). */
+/** The service name the engineering-context plugin looks up. It is not an import, by design (D10). */
 export const ENGINEERING_ACCESS_SERVICE = 'engineeringAccess'
 
 /**
@@ -43,7 +44,7 @@ export const ENGINEERING_ACCESS_SERVICE = 'engineeringAccess'
  * The controller only ever **truncates**: its `max_items` has no offset
  * companion (`controller/OpennessHost.Plc.cs:152,166` keeps counting `total` but
  * stops adding items), so "fetch the next page" does not exist. Raising the cap
- * and reporting `truncated` honestly is the only correct behaviour; family 2
+ * and reporting `truncated` honestly is the only correct behaviour; the engineering-context plugin
  * retries with a larger value when it sees one.
  */
 export const DEFAULT_LIST_MAX_ITEMS = 1000

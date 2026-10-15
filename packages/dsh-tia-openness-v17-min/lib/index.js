@@ -68,7 +68,7 @@ export function apply(ctx, config) {
         log,
     };
     const registered = registerTools(ctx, dependencies);
-    // The seam the engineering-context plugin (family 2) consumes: fingerprints and
+    // The seam the engineering-context plugin consumes: fingerprints and
     // exports can only be obtained with a project open, and this is the plugin
     // allowed to talk to TIA Portal. Constructing the service registers it on this
     // context and ties it to this plugin's fiber, so unloading this plugin removes

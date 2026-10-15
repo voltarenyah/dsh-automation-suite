@@ -1,6 +1,6 @@
 # @voltarenyah/dsh-engineering-graph
 
-DeepSeek Harness 插件（**插件族 3 · 工程知识图谱**）：在工程产物（块逻辑、交叉引用等）之上
+DeepSeek Harness 插件（**工程知识图谱插件**）：在工程产物（块逻辑、交叉引用等）之上
 建立可查询的知识图谱。
 
 > **实现状态：TypeScript 半边已接通引擎。**
@@ -23,11 +23,11 @@ DeepSeek Harness 插件（**插件族 3 · 工程知识图谱**）：在工程�
 | **插件** | 本目录的 TypeScript 外壳：解析配置、定位引擎、持有引擎子进程的生命周期（`EngineClient` + `ctx.effect`） |
 | **工具面** | 三个工具：`knowledge_schema` / `knowledge_ingest` / `knowledge_query`（见 §4） |
 
-工具名刻意保留族 3 来源（`Tools/KnowledgeTools.cs`）的 `knowledge_*` 命名，而不是本仓
+工具名刻意保留来源库（`Tools/KnowledgeTools.cs`）的 `knowledge_*` 命名，而不是本仓
 verb_noun 风格：改名会静默打断按旧名字写的提示词与调用方。
 
-与族 1/族 2 的分工：族 1（`dsh-tia-openness-v17-min`）是唯一允许打开 TIA Portal 的插件；
-族 2（`dsh-engineering-context`）管"现在谈的是哪个工程、哪一版"；本包只消费导出的工程产物，
+与接口插件族/工程上下文插件的分工：接口插件族（`dsh-tia-openness-v17-min`）是唯一允许打开 TIA Portal 的插件；
+工程上下文插件（`dsh-engineering-context`）管"现在谈的是哪个工程、哪一版"；本包只消费导出的工程产物，
 不直接调用 Openness、不启动 TIA Portal。
 
 ## 2. 引擎缺席时的行为（硬约束）
@@ -83,7 +83,7 @@ spawn（`apply` 不预热，所以缺引擎时加载没有任何副作用），�
 | `startupTimeoutMs` | `30000` | 引擎 ready 握手的截止时间（毫秒），下限 1000 |
 | `logEngineOutput` | `false` | 是否把引擎自身的 stdout/stderr 转发到插件日志 |
 
-时间字段用 `Schema.natural()`（非负整数），与族 1 的写法一致；`resolveConfig` 重新施加
+时间字段用 `Schema.natural()`（非负整数），与接口插件族的写法一致；`resolveConfig` 重新施加
 同一套默认值与范围校验（钳到下限而不是拒绝），所以即使不经 loader 的 schema 解析
 （例如测试直接调用 `apply`）行为也一致。
 
@@ -122,19 +122,19 @@ node $pnpm --filter @voltarenyah/dsh-engineering-graph run typecheck
 node $pnpm --filter @voltarenyah/dsh-engineering-graph run test          # 先构建再跑
 ```
 
-- **构建形态**：`tsc` → `lib/`，测试 `node:test`，`lib/` **不提交**（与族 2 一致；
-  登记进蓝图后按族 1 的约定改为提交）。
+- **构建形态**：`tsc` → `lib/`，测试 `node:test`，`lib/` **不提交**（与工程上下文插件一致；
+  登记进蓝图后按接口插件族的约定改为提交）。
 - `scripts/link-dsh-runtime.mjs` 只链 `@deepseek-ai/*`（`RUNTIME_ROOTS` = 本包 `src/`
   与 `test/` 真正直接 import 的那些：`cordis`、`dsh-tools`、`schemastery`），且**从不抽取**
   运行时缓存 —— 那个目录在仓库之外、无法用 git 恢复；缺缓存时请先跑兄弟包的抽取器。
   `typescript` / `@types/node` 由根 `pnpm install` 提供。测试的 harness 在裸 checkout 上会
-  自行调 `linkRuntime()` 补链接（与族 1 一致），但同样绝不抽取缓存。
+  自行调 `linkRuntime()` 补链接（与接口插件族一致），但同样绝不抽取缓存。
 - `src/dsh-runtime.d.ts` 是手写的宿主运行时环境声明：抽取出来的运行时不含 `.d.ts`。
   新增任何 `@deepseek-ai/*` import 或访问新成员时，必须同步该文件与 `RUNTIME_ROOTS`。
 
 ## 6. 边界
 
-不做：直接调用 Openness / 启动 TIA Portal（族 1）、工程注册表与版本层（族 2）、
+不做：直接调用 Openness / 启动 TIA Portal（接口插件族）、工程注册表与版本层（工程上下文插件）、
 解析 XML 与建图逻辑本身（在 C# `engine/` 里）。本包只负责"模型怎么问、引擎怎么被拥有"。
 
 已知限制（实测，2026-10）：
@@ -145,6 +145,6 @@ node $pnpm --filter @voltarenyah/dsh-engineering-graph run test          # 先�
   `Console.OutputEncoding = new UTF8Encoding(false)`），本包不猜代码页。
   `engine/fixtures` 除 BOM 外全是 ASCII，所以测试套件不依赖这条。
 - `stop()` 的优雅路径是关 stdin（引擎读到 EOF 即退出）；宽限期 `SHUTDOWN_GRACE_MS = 5000`，
-  之后强杀。这是常量而**不是**配置项：引擎不持有会话状态（族 1 的 `shutdownGraceMs` 是为
+  之后强杀。这是常量而**不是**配置项：引擎不持有会话状态（接口插件族的 `shutdownGraceMs` 是为
   TIA Portal 会话存在的），profile 没有理由调它。
 - 工具**不**暴露 `dry_run`：引擎的 `Ingest` 没有预演模式，凭空造一个参数就是撒谎。

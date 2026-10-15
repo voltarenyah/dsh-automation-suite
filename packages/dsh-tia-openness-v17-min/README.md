@@ -295,10 +295,10 @@ commit `b5c7041`）**逐字**打进包里，并注册成模型可见的**一个*
 
 ---
 
-### 4.5 给插件族 2 的服务：`engineeringAccess`
+### 4.5 给工程上下文插件的服务：`engineeringAccess`
 
 除了 26 个模型可见的工具，插件还注册一个 **cordis 服务** `engineeringAccess`
-（[`src/access.ts`](src/access.ts)），供**工程上下文插件**（插件族 2）调用 —— 它要指纹做工程级
+（[`src/access.ts`](src/access.ts)），供**工程上下文插件**调用 —— 它要指纹做工程级
 变更检测，而按架构规定它**自己不允许与 TIA Portal 对话**（发行版
 [`docs/decisions.md`](../../docs/decisions.md) **D12** 的"缝 A"）。
 

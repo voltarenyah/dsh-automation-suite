@@ -1,11 +1,11 @@
 // ---------------------------------------------------------------------------
-// Vendored into dsh-engineering-graph (DSH plugin family 3) from:
+// Vendored into dsh-engineering-graph from:
 //   C:\Users\Ansel\orca\projects\AgentAssistPlcDev\src\Mcp.Knowledge\Graph\ComponentProvenanceStore.cs
 //   on 2026-10-15.
 //
 // Adaptations applied by this vendoring pass (nothing else was touched):
 //   * namespace Mcp.Knowledge.<Graph|Parsing|Import>  ->  EngineeringGraph.Engine
-//     (flattened to ONE namespace, following family 1's TiaOpennessV17Min.Controller,
+//     (flattened to ONE namespace, following the TIA Openness plugin's TiaOpennessV17Min.Controller,
 //      which uses a single flat namespace for its whole executable)
 //   * the now-redundant `using Mcp.Knowledge.*;` lines were removed
 //   * the temp-directory segment "Mcp.Knowledge" -> "EngineeringGraph.Engine"

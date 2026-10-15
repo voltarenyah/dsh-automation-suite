@@ -11,8 +11,8 @@
 |---|---|
 | `@deepseek-ai/dsh-base` | DSH 基础层（会话、工具注册表、LLM……） |
 | `@deepseek-ai/dsh-web-app` | Web 应用层 —— 没有它这个 profile 启动后没有 app 可跑 |
-| `@voltarenyah/dsh-tia-openness-v17-min` | 本发行版的第一个插件（接口族：与 TIA Portal 对话） |
-| `@voltarenyah/dsh-engineering-context` | 工程上下文插件（族 2）：作用域 + 工程注册表。排在接口插件之后，因为它要消费前者暴露的服务 |
+| `@voltarenyah/dsh-tia-openness-v17-min` | 本发行版的第一个插件（接口插件族：与 TIA Portal 对话） |
+| `@voltarenyah/dsh-engineering-context` | 工程上下文插件：作用域 + 工程注册表。排在接口插件之后，因为它要消费前者暴露的服务 |
 | `dsh-tool-git` | 结构化 Git 工具族 + 破坏性命令闸门（vendor 自上游 `lxj808624/dsh-tool-git` v0.1.3） |
 
 `dsh-web-app` 是**超出最初清单额外加的**：只列 `dsh-base` 的话 profile 能 `--dump-config`，

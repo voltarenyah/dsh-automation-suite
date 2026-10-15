@@ -401,12 +401,12 @@ The block name 'FB_Array_Handling' is invalid. An object with this name or this 
 
 ---
 
-## D20. 给插件族 2 暴露 `engineeringAccess` 服务（发行版 D12 的"缝 A"）
+## D20. 给工程上下文插件暴露 `engineeringAccess` 服务（发行版 D12 的"缝 A"）
 
-**背景**：工程上下文插件（族 2）需要**指纹**才能做工程级变更检测（发行版 D6），而指纹只能
-在工程打开时经 Openness 读到。族 2 的边界又明确规定"不与工控软件对话"—— 所以它只能**要**，
+**背景**：工程上下文插件需要**指纹**才能做工程级变更检测（发行版 D6），而指纹只能
+在工程打开时经 Openness 读到。工程上下文插件的边界又明确规定"不与工控软件对话"—— 所以它只能**要**，
 不能自己做。发行版 [`docs/decisions.md`](../../../docs/decisions.md) **D12** 因此定下"缝 A"：
-由本插件注册一个可选服务，族 2 按名取用、缺席即降级。
+由本插件注册一个可选服务，工程上下文插件按名取用、缺席即降级。
 
 **决定**：新增 [`src/access.ts`](../src/access.ts)，`apply` 里构造 `EngineeringAccess`
 （cordis `Service` 子类，名字 `engineeringAccess`），暴露五个方法：
@@ -433,12 +433,12 @@ The block name 'FB_Array_Handling' is invalid. An object with this name or this 
    所以"翻页取下一页"根本不存在。抬高上限 + 如实说"没取全"是唯一正确做法，
    调用方看到 `truncated` 就带更大的值重试。
 
-**为什么不走别的缝**（发行版 D12 已论证，这里只记结论）：让族 2 用 `ctx.tools.execute`
+**为什么不走别的缝**（发行版 D12 已论证，这里只记结论）：让工程上下文插件用 `ctx.tools.execute`
 间接调工具，会受 A15（原子工具可能默认隐藏）影响，且解析是**按可见性**的；纯文件契约则把
 "谁触发指纹"推回给模型编排。服务缝两者都不占。
 
 **代价与边界**：本插件因此多了一个对外契约面 —— 改 `access.ts` 的方法签名/参数属于**跨包
-破坏性变更**，要同时改该包的 `ARCHITECTURE.md` §5.3 与族 2 的镜像声明。
+破坏性变更**，要同时改该包的 `ARCHITECTURE.md` §5.3 与工程上下文插件的镜像声明。
 服务**不新增任何 C# 能力**：五个方法全部落在已有的白名单操作上（`OPENNESS_OPERATIONS` 仍是 25 条、
 工具仍是 26 个，`matrix:check` 因此不受影响）。
 
@@ -451,9 +451,9 @@ The block name 'FB_Array_Handling' is invalid. An object with this name or this 
 
 ---
 
-## D21. 给族 2 的三个方法：另存 / 重建源 / 读会话；`source/` 布局归本插件
+## D21. 给工程上下文插件的三个方法：另存 / 重建源 / 读会话；`source/` 布局归本插件
 
-**背景**：族 2 的 `create_engineering_project` 要一口气完成"另存进 workspace → 全量导出源文件"，
+**背景**：工程上下文插件的 `create_engineering_project` 要一口气完成"另存进 workspace → 全量导出源文件"，
 而它按架构**不允许自己与 TIA Portal 对话**。所以这三个动作必须由本插件以**服务方法**提供。
 
 **决定**：
@@ -487,8 +487,8 @@ The block name 'FB_Array_Handling' is invalid. An object with this name or this 
 - `skipped` 与 `verificationFailed` 是**调用级**数字，因此如实标在 device 上；
   **不**硬拆到每个 family（拆了就是编数字）。family 级只给可精确归属的 `exported` / `failed` / `manifest`。
 
-**不注册成模型工具**：三个方法都只走服务（`engineeringAccess`），族 1 的模型面仍是 **26 个工具**。
-模型只调族 2 的 `create_engineering_project`，由它按顺序调这三个 ——
+**不注册成模型工具**：三个方法都只走服务（`engineeringAccess`），接口插件族的模型面仍是 **26 个工具**。
+模型只调工程上下文插件的 `create_engineering_project`，由它按顺序调这三个 ——
 这样"何时建项目、怎么建"是一次可审阅的编排，而不是让模型自己拼步骤。
 
 **验证**：[`test/08-access-service.test.mjs`](../test/08-access-service.test.mjs) 新增 6 项：

@@ -4,7 +4,7 @@
  * The engine is the vendored C# half of this plugin (`engine/`, renamed and
  * flattened to `EngineeringGraph.Engine` by docs/decisions.md D17). This module
  * is the single place that knows its packaged location, so both `apply` and the
- * tests resolve it the same way — exactly how family 1 resolves its controller
+ * tests resolve it the same way — exactly how the TIA Openness plugin resolves its controller
  * (`dsh-tia-openness-v17-min/src/controller.ts`).
  *
  * @module dsh-engineering-graph/engine-path
@@ -42,7 +42,7 @@ export type EnginePathSource = 'config' | 'package'
  * Resolves the engine to run: an explicit configuration wins, otherwise the
  * executable shipped with this package.
  *
- * There is deliberately no environment override (family 1 has one for its
+ * There is deliberately no environment override (the TIA Openness plugin has one for its
  * controller): a profile can already point `enginePath` anywhere, and a second,
  * invisible source of truth would only make the reported `source` less useful.
  *

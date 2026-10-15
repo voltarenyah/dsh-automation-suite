@@ -4,7 +4,7 @@
  * The engine is one long-lived child process per plugin instance. It is spawned on
  * demand — the first request pays for it — and it is terminated by the disposer
  * the plugin registers through `ctx.effect`, so unloading the plugin never leaves
- * the engine behind. The mechanics mirror family 1's controller client
+ * the engine behind. The mechanics mirror the TIA Openness plugin's controller client
  * (`dsh-tia-openness-v17-min/src/controller.ts`) deliberately: the two plugins own
  * the same kind of resource, and one of them being subtly different would be a
  * defect, not a feature.
@@ -17,7 +17,7 @@
  * - **Hard deadlines.** A request that cannot be cancelled is abandoned by
  *   terminating the process. The next request starts a fresh engine, and because
  *   every operation is a pure function of its parameters (no session state), that
- *   costs only the process start — unlike family 1, nothing is lost.
+ *   costs only the process start — unlike the TIA Openness plugin, nothing is lost.
  * - **ASCII-safe framing.** Request lines escape every non-ASCII code point, which
  *   makes the channel immune to the console code page the child inherited. The
  *   engine's own output is UTF-8 and is decoded as such.
@@ -83,7 +83,7 @@ export interface EngineClientOptions {
    * protocol). Tests substitute a stub peer here to exercise the transport
    * failures — a protocol mismatch, a silent handshake, a stalled request, a
    * process that dies mid-request — that a working engine never produces. This is
-   * family 1's `launchArgs`, for the same reason.
+   * the TIA Openness plugin's `launchArgs`, for the same reason.
    */
   launchArgs?: readonly string[]
 }
@@ -131,7 +131,7 @@ const TAIL_LIMIT = 40
  * `ServeStdio` returns as soon as `ReadLine` reports EOF, so the graceful path is
  * immediate; the grace period only covers a process that is busy finishing a
  * write. Deliberately not a config field: a profile has no reason to tune it, and
- * family 1's equivalent (`shutdownGraceMs`) exists for a controller that holds a
+ * the TIA Openness plugin's equivalent (`shutdownGraceMs`) exists for a controller that holds a
  * TIA Portal session, which this engine does not.
  */
 export const SHUTDOWN_GRACE_MS = 5_000
