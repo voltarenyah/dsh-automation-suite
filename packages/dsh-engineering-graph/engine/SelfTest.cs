@@ -1,13 +1,16 @@
-// Self test for the vendored engine. Two independent checks:
+// Self test for the engine. Everything here is a check that a successful
+// compilation cannot make:
 //
-//   1. a SQLite round trip through SqliteSemanticGraphStore — this is the only
-//      thing that proves the native provider (e_sqlite3) actually loads at run
-//      time, which compilation never proves;
-//   2. when an export root is passed, a crawl of that tree through
-//      ExportFolderCrawler — the real parse path (Simatic ML XML -> graph).
+//   1. a SQLite round trip through the store -- the only proof that the native
+//      provider (e_sqlite3) actually loads at run time;
+//   2. a crawl of a real export tree through the vendored parser;
+//   3. the actual operation dispatch: Ingest writes a database, Query reads it
+//      back, and the read-only guard refuses a write.
 //
-// Exit code 0 means every check that ran succeeded. It never touches the network
-// and never needs TIA Portal.
+// It never touches the network and never needs TIA Portal. Exit code 0 means
+// every check that ran succeeded.
+using System.Text.Json.Nodes;
+
 namespace EngineeringGraph.Engine;
 
 internal static class SelfTest
@@ -17,13 +20,15 @@ internal static class SelfTest
         var failures = 0;
 
         failures += CheckSqliteRoundTrip();
-        if (!string.IsNullOrWhiteSpace(exportRoot))
+
+        if (string.IsNullOrWhiteSpace(exportRoot))
         {
-            failures += CheckExportCrawl(exportRoot);
+            Console.WriteLine("[skip] export crawl and operations (no export root given)");
         }
         else
         {
-            Console.WriteLine("[skip] export crawl (no export root given)");
+            failures += CheckExportCrawl(exportRoot);
+            failures += CheckOperations(exportRoot);
         }
 
         Console.WriteLine(failures == 0
@@ -34,9 +39,7 @@ internal static class SelfTest
 
     private static int CheckSqliteRoundTrip()
     {
-        var dbPath = Path.Combine(
-            Path.GetTempPath(),
-            $"{BuildInfo.Name}-self-test-{Guid.NewGuid():N}.db");
+        var dbPath = TempDbPath();
         try
         {
             var graph = new SemanticPlcGraph();
@@ -65,7 +68,7 @@ internal static class SelfTest
             }
 
             Console.WriteLine(
-                $"[ok] sqlite round-trip: nodes={loaded.Nodes.Count} edges={loaded.Edges.Count} db={Path.GetFileName(dbPath)}");
+                $"[ok] sqlite round-trip: nodes={loaded.Nodes.Count} edges={loaded.Edges.Count}");
             return 0;
         }
         catch (Exception ex)
@@ -93,15 +96,15 @@ internal static class SelfTest
                 exportRoot,
                 progress: message => Console.WriteLine($"[crawl] {message}"));
 
-            var byKind = result.Graph.Nodes
+            var byKind = string.Join(", ", result.Graph.Nodes
                 .GroupBy(node => node.Kind)
                 .OrderBy(group => group.Key, StringComparer.Ordinal)
-                .Select(group => $"{group.Key}={group.Count()}");
+                .Select(group => $"{group.Key}={group.Count()}"));
 
             Console.WriteLine(
                 $"[ok] export crawl ({result.Source}): filesFound={result.FilesFound} filesImported={result.FilesImported} " +
                 $"nodes={result.Graph.Nodes.Count} edges={result.Graph.Edges.Count}");
-            Console.WriteLine($"[crawl] by kind: {string.Join(", ", byKind)}");
+            Console.WriteLine($"[crawl] by kind: {byKind}");
 
             foreach (var warning in result.Warnings)
             {
@@ -122,6 +125,104 @@ internal static class SelfTest
             return 1;
         }
     }
+
+    /// <summary>
+    /// Drives the same dispatch the protocol uses, so this covers ingestion,
+    /// querying and the read-only guard rather than the operations in isolation.
+    /// </summary>
+    private static int CheckOperations(string exportRoot)
+    {
+        var dbPath = TempDbPath();
+        try
+        {
+            var ingest = Program.Execute(
+                "self-test",
+                OperationCatalog.Ingest,
+                new JsonObject { ["exportRoot"] = exportRoot, ["dbPath"] = dbPath },
+                NullProgressSink.Instance);
+
+            var ingestError = DescribeError(ingest);
+            if (ingestError is not null)
+            {
+                Console.WriteLine($"[FAIL] ingest: {ingestError}");
+                return 1;
+            }
+
+            var ingestData = ingest["data"] as JsonObject;
+            Console.WriteLine(
+                $"[ok] ingest: filesFound={ingestData?["filesFound"]} filesImported={ingestData?["filesImported"]} " +
+                $"nodes={ingestData?["nodes"]} edges={ingestData?["edges"]}");
+
+            var query = Program.Execute(
+                "self-test",
+                OperationCatalog.Query,
+                new JsonObject
+                {
+                    ["dbPath"] = dbPath,
+                    ["sql"] = "SELECT kind, COUNT(*) AS count FROM graph_nodes GROUP BY kind ORDER BY kind;",
+                },
+                NullProgressSink.Instance);
+
+            var queryError = DescribeError(query);
+            if (queryError is not null)
+            {
+                Console.WriteLine($"[FAIL] query: {queryError}");
+                return 1;
+            }
+
+            var queryData = query["data"] as JsonObject;
+            var columns = queryData?["columns"] as JsonArray;
+            if (columns is null)
+            {
+                Console.WriteLine("[FAIL] query: the result carried no columns");
+                return 1;
+            }
+
+            var rows = queryData?["rows"] as JsonArray;
+            Console.WriteLine($"[ok] query: columns={columns.Count} rows={rows?.Count ?? 0}");
+
+            // The read-only guard must refuse a write even though the caller is the
+            // engine itself: it is the backstop, not a convenience.
+            var write = Program.Execute(
+                "self-test",
+                OperationCatalog.Query,
+                new JsonObject { ["dbPath"] = dbPath, ["sql"] = "DROP TABLE graph_nodes;" },
+                NullProgressSink.Instance);
+
+            var writeCode = (write["error"] as JsonObject)?["code"]?.GetValue<string>();
+            if (write["ok"]?.GetValue<bool>() != false || writeCode != "QUERY_REJECTED")
+            {
+                Console.WriteLine($"[FAIL] read-only guard: a DROP was not rejected with QUERY_REJECTED (got {writeCode ?? "ok=true"})");
+                return 1;
+            }
+
+            Console.WriteLine("[ok] read-only guard: DROP rejected with QUERY_REJECTED");
+            return 0;
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[FAIL] operations: {ex.GetType().Name}: {ex.Message}");
+            return 1;
+        }
+        finally
+        {
+            TryDelete(dbPath);
+        }
+    }
+
+    private static string? DescribeError(JsonObject frame)
+    {
+        if (frame["ok"]?.GetValue<bool>() == true)
+        {
+            return null;
+        }
+
+        var error = frame["error"] as JsonObject;
+        return $"{error?["code"]}: {error?["message"]}";
+    }
+
+    private static string TempDbPath() =>
+        Path.Combine(Path.GetTempPath(), $"{Protocol.EngineName}-self-test-{Guid.NewGuid():N}.db");
 
     private static void TryDelete(string path)
     {
