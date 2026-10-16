@@ -168,7 +168,7 @@ PLC 对象增删改、监视表与软件单元、F 相关服务、编译与关�
 | 插件 | 目标 | 状态 |
 |---|---|---|
 | **工控软件接口插件族** | 把工控软件暴露的能力整体变成 LLM 的能力范围（含配套文档） | 🟡 **V17 × min**（块·UDT·标签表）；std/pro 能力层级与 V18+ 待补 |
-| **工程上下文插件** | 管住"现在谈的是哪个工程、它在 workspace 的哪里" | 🟡 **部分实现**：`create_engineering_project` 一个工具（33 项单测）—— 把 TIA 打开的工程另存进 workspace、把源文件树读出来；指纹变更检测/变更台账未做。P0 的工程注册表与 P1 的内部 git 版本层**已删除**（该包 D22）。**已登记进蓝图**（`--dump-config` 实测 1520 行） |
+| **工程上下文插件** | 管住"现在谈的是哪个工程、它在 workspace 的哪里" | 🟡 **部分实现**：`create_engineering_project` 一个工具（34 项单测）—— 把 TIA 打开的工程另存进 workspace、把源文件树读出来；指纹变更检测/变更台账未做。P0 的工程注册表与 P1 的内部 git 版本层**已删除**（该包 D22）。**已登记进蓝图**（`--dump-config` 实测 1520 行） |
 | **工程知识图谱插件** | 准确翻译 XML 中的 PLC 语法，XML → 图数据库 → 按需给出工程细节 | 🟡 **部分实现**：Simatic ML → 图 → SQLite 已通（7 个真实 fixture 出 72 节点 / 153 边，覆盖 15 种节点种类），引擎协议 + 3 个工具（46 项单测，含经真实引擎的端到端）；**新鲜度/增量、按需下钻工具、兼容层未做**。**未登记进蓝图** |
 
 逐项进度、缺口与验收口径见 [`docs/roadmap.md`](docs/roadmap.md)；
@@ -588,7 +588,7 @@ packages/
     README.md / README.zh.md       上游 README（英/中）
   dsh-engineering-context/         工程上下文插件：**已登记进蓝图；1 个工具（D22）**
     src/                           作用域解析、工程注册表、版本层（内部 git）、4 个工作流工具（tsc → lib/）
-    test/                          node:test 套件（33 项，假 TIA 服务 + 真实运行时 schema 校验）
+    test/                          node:test 套件（34 项，假 TIA 服务 + 真实运行时 schema 校验）
     scripts/                       link-dsh-runtime.mjs / tsc.mjs / run-tests.mjs
     docs/                          ARCHITECTURE.md / PATH-RULES.md / decisions.md
   dsh-engineering-graph/           工程知识图谱插件：**引擎 + 协议 + 3 个工具已实现，未登记进蓝图**
@@ -635,8 +635,8 @@ pnpm run clean:build      # 清构建产物（只碰 lib/ dist/）
 | 包 | 运行器 | 测试规模 |
 |---|---|---|
 | `dsh-tia-openness-v17-min` | `node:test`（`node --test test/*.test.mjs`） | 62 项：61 通过 / 1 跳过（跳过项是"控制器未构建"的降级路径） |
-| `dsh-tool-git` | `vitest`（`vitest run`） | 33 项全通过 |
-| `@voltarenyah/dsh-engineering-context` | `node:test`（`node scripts/run-tests.mjs`，先构建再跑） | 33 项全通过 |
+| `dsh-tool-git` | `vitest`（`vitest run`） | 34 项全通过 |
+| `@voltarenyah/dsh-engineering-context` | `node:test`（`node scripts/run-tests.mjs`，先构建再跑） | 34 项全通过 |
 
 单测都需要**真实的** `@deepseek-ai/*` 运行时（不是 stub）。裸 checkout 首次运行时，
 两个包的测试自举会各自自动触发抽取；也可以手动：

@@ -612,7 +612,7 @@ P0-4 / P0-5 / P0-6 / P0-10 / P0-11、P1-1…P1-6（版本层与 patch 工件）�
    每个 device 的目录、manifest 路径与计数 + totals。
 2. **写之前比对身份**：索引里记的是**另一个工程** → `source_belongs_to_another_project` 并拒绝
    （结果里给出两个工程名，以及替代做法：换个 workspace，或自己确认后删掉那棵树）。
-   索引存在但读不出来 → 只 warning：现有文件本来就是"跳过不覆盖"，所以仍然安全。
+   索引存在但读不出来 → 只 warning：现有文件本来就是"跳过不覆盖"，所以仍然安全。**身份按索引里记录的工程文件路径判定，不按名字** —— TIA 会把另存进 `tia/` 的副本命名为 `tia`（真机实测），只比名字会让工具拒绝自己写过的工程（见下面的真机发现）。
 3. **`source_project` 是唯一的路径参数**：TIA 没打开工程时必填，否则 `source_project_required`
    （消息里明说"向用户要路径，不要扫盘"）；已有工程时若传了**别的**路径 → `project_already_open`
    （控制器的 `OpenProject` 本来就会拒绝第二个，所以不去试探）。打开失败 → `open_failed` 并带上
@@ -627,8 +627,8 @@ P0-4 / P0-5 / P0-6 / P0-10 / P0-11、P1-1…P1-6（版本层与 patch 工件）�
 **服务端同时改了导出布局**（接口插件 **D24**：三类各占一个目录、每 device 一次调用、一份 manifest），
 所以"每 device 多份 manifest、消费方要合并"这件事不再存在 —— 本插件只读它返回的结果。
 
-**验证**：`test/02-create-project.test.mjs`（21 项）+ `test/03-plugin.test.mjs`（6 项）+
-`test/01-paths.test.mjs`（5 项）= **33 项全通过**。新增/改写的用例覆盖：没打开工程时要路径、
+**验证**：`test/02-create-project.test.mjs`（23 项）+ `test/03-plugin.test.mjs`（6 项）+
+`test/01-paths.test.mjs`（5 项）= **34 项全通过**。新增/改写的用例覆盖：没打开工程时要路径、
 给了路径就打开（`with_window` / `allow_upgrade` 的传参）、别的工程已打开时拒绝且不试探、
 打开被拒时的提示、升级被点名、目标目录与工程名无关、索引写入与身份守卫、索引损坏只 warning。
 

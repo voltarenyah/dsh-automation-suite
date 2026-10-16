@@ -131,6 +131,10 @@ async function samePath(left: string, right: string | null): Promise<boolean> {
 interface SourceIndex {
   /** The project name it belongs to, or null when the file is there but unusable. */
   project: string | null
+  /** The project file the run recorded, or null. */
+  savedAs: string | null
+  /** The project that was open when the run recorded it, or null. */
+  path: string | null
 }
 
 /**
@@ -146,15 +150,35 @@ async function readSourceIndex(file: string): Promise<SourceIndex | null> {
     raw = await readFile(file, 'utf8')
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === 'ENOENT') return null
-    return { project: null }
+    return { project: null, savedAs: null, path: null }
   }
   try {
-    const parsed = JSON.parse(raw) as { project?: { name?: unknown } }
+    const parsed = JSON.parse(raw) as { project?: { name?: unknown; savedAs?: unknown; path?: unknown } }
     const name = parsed.project?.name
-    return { project: typeof name === 'string' && name.length > 0 ? name : null }
+    return {
+      project: typeof name === 'string' && name.length > 0 ? name : null,
+      savedAs: typeof parsed.project?.savedAs === 'string' ? parsed.project.savedAs : null,
+      path: typeof parsed.project?.path === 'string' ? parsed.project.path : null,
+    }
   } catch {
-    return { project: null }
+    return { project: null, savedAs: null, path: null }
   }
+}
+
+/**
+ * Whether the project in play is the one the index recorded.
+ *
+ * The **recorded path** decides, not the name: TIA names the project it saves into
+ * a directory after that directory, so after the first run the copy is called
+ * `tia` while the recorded name is still the source project's. Refusing on the
+ * name alone would make the tool reject the very project it wrote (found in a live
+ * session).
+ */
+async function isRecordedProject(recorded: SourceIndex, projectPath: string | null): Promise<boolean> {
+  for (const value of [recorded.savedAs, recorded.path]) {
+    if (value !== null && value.length > 0 && (await samePath(value, projectPath))) return true
+  }
+  return false
 }
 
 /** The index document, as it is written to disk. */
@@ -369,7 +393,10 @@ export function createProjectTool(dependencies: ToolDependencies): ToolDefinitio
         // tree is what makes that checkable instead of aspirational.
         const indexFile = sourceIndexPath(config, root)
         const recorded = await readSourceIndex(indexFile)
-        if (recorded !== null && recorded.project !== null && recorded.project.toLowerCase() !== name.toLowerCase()) {
+        const recordedNameMatches =
+          recorded !== null && recorded.project !== null && recorded.project.toLowerCase() === name.toLowerCase()
+        const recordedArtifactMatches = recorded === null ? false : await isRecordedProject(recorded, projectPath)
+        if (recorded !== null && recorded.project !== null && !recordedNameMatches && !recordedArtifactMatches) {
           throw new EngineeringContextError(
             'source_belongs_to_another_project',
             `This workspace's ${toPortable(root, sourceRoot)}/ belongs to the project ${recorded.project}, but the project in play ` +
@@ -399,6 +426,12 @@ export function createProjectTool(dependencies: ToolDependencies): ToolDefinitio
           warnings.push(
             `The index ${toPortable(root, indexFile)} could not be read, so this tool cannot tell which project the existing source ` +
               'tree came from; existing files are skipped rather than replaced.',
+          )
+        } else if (recorded !== null && !recordedNameMatches && recordedArtifactMatches) {
+          warnings.push(
+            `The index records the project ${recorded.project}, but TIA reports ${name} for the same project file — TIA names the ` +
+              'project it saves into a directory after that directory, so the name changes when it is saved into the workspace. The ' +
+              'identity follows the recorded path, and the index is refreshed with the new name.',
           )
         }
         if (!skipSave && projectDirStatus.kind !== 'missing') {

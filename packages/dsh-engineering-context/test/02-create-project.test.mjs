@@ -647,6 +647,32 @@ test('one workspace manages one project: another project\'s tree is refused', as
   )
 })
 
+test('TIA renaming the saved copy does not make the tool reject its own tree', async (t) => {
+  const root = await tempWorkspace(t)
+  // What a live session showed: the copy is saved into `tia/`, so TIA names the
+  // project `tia` while the index still records the source project's name.
+  const copy = join(root, 'tia', 'tia.ap17')
+  await makeFile(copy, 'project bytes')
+  await makeFile(
+    join(root, 'source', '_dsh-engineering-context.json'),
+    JSON.stringify({
+      schemaVersion: 1,
+      project: { name: 'PEI_SinoARP_SWT2', path: 'C:\\src\\PEI_SinoARP_SWT2.ap17', savedAs: copy },
+    }),
+  )
+  const { tool } = setup({ session: sessionReport({ projectName: 'tia', projectPath: copy }) })
+
+  const outcome = await executeTool(tool, { dry_run: false }, fakeExec(root))
+
+  assert.equal(outcome.ok, true, 'the recorded path identifies the project, not the name TIA rewrote')
+  assert.ok(
+    outcome.warnings.some((warning) => /TIA reports tia for the same project file/u.test(warning)),
+    'the rename is reported rather than hidden',
+  )
+  const index = JSON.parse(await readFile(join(root, 'source', '_dsh-engineering-context.json'), 'utf8'))
+  assert.equal(index.project.name, 'tia', 'the index is refreshed with the name TIA now reports')
+})
+
 test('a transport failure is reported as data, and the workspace is left alone', async (t) => {
   const root = await tempWorkspace(t)
 

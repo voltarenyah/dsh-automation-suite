@@ -438,7 +438,7 @@ workspace 就是一个普通 git 仓库，"哪些文件该入库"由 `source/` �
 
 | # | 工具 | 回答什么问题 | 写？ | 依赖 | 状态 |
 |---|---|---|---|---|---|
-| 1 | `create_engineering_project` | 把工程接进 workspace：没打开就**打开**（`source_project`），另存进 `tia/`，并把**源文件树**重建到 `source/<device>/`；默认只给计划 | 是（TIA 写工程、接口插件写源文件、本插件只追加一行 `.gitignore`） | ① + 缝 A | ✅ **已实现**（33 项测试） |
+| 1 | `create_engineering_project` | 把工程接进 workspace：没打开就**打开**（`source_project`），另存进 `tia/`，并把**源文件树**重建到 `source/<device>/`；默认只给计划 | 是（TIA 写工程、接口插件写源文件、本插件只追加一行 `.gitignore`） | ① + 缝 A | ✅ **已实现**（34 项测试） |
 | 2 | `eng_changes` | **自上次基线以来，哪些块/UDT 变了、改了哪一面**；可选更新基线 | 否（`update_baseline` 时写基线） | 缝 A + 基线 | ⬜ P2 |
 | 3 | `eng_export` | 把**变化的那批对象**导出/刷新进源文件树（D9 工作循环闭环），更新 manifest | 只写文件 | 缝 A + 基线 | ⬜ P2 |
 | 4 | `eng_context` | 工程变更台账：`record` / `list` / `resolve` / `pending` | 状态 | 台账存储 | ⬜ P3 |
@@ -564,7 +564,7 @@ packages/dsh-engineering-context/
 │   └── tools/            outcome.ts（共用信封）/ create-project.ts / index.ts
 ├── scripts/              link-dsh-runtime.mjs（**从不抽取**缓存）/ tsc.mjs / run-tests.mjs
 ├── docs/                 本文 / PATH-RULES.md / decisions.md
-└── test/                 node:test（33 项）+ helpers/harness.mjs
+└── test/                 node:test（34 项）+ helpers/harness.mjs
 ```
 
 **已删除**（D22）：`src/registry.ts`（工程注册表）、`src/git.ts`（内部 git 版本层）、
@@ -605,12 +605,12 @@ packages/dsh-engineering-context/
 | 期 | 做什么 | 依赖 | 独立交付的价值 | 状态 |
 |---|---|---|---|---|
 | ❌ **P0 / P1** | ~~作用域 + 工程注册表（`eng_status`/`eng_project`/`eng_scope`）+ 版本层（`eng_version`）~~ | — | — | **已删除**（D22） |
-| **create** | `create_engineering_project`：打开/另存进 `tia/`、重建源文件树到 `source/<device>/`，默认只给计划 | 缝 A ✅ 已就绪（接口插件族的 `engineeringAccess`） | **A5 的流程第一次能跑通**：工程进 workspace、源文件读出来 | ✅ **已实现**（33 项测试） |
+| **create** | `create_engineering_project`：打开/另存进 `tia/`、重建源文件树到 `source/<device>/`，默认只给计划 | 缝 A ✅ 已就绪（接口插件族的 `engineeringAccess`） | **A5 的流程第一次能跑通**：工程进 workspace、源文件读出来 | ✅ **已实现**（34 项测试） |
 | **P2** | 变更引擎（`eng_changes` / `eng_export`）+ 增量闭环 | 缝 A ✅ 已就绪；指纹可得性已由**用户在另一代码库**验证 | D6/D9 的工作循环 | ⬜ |
 | **P3** | 变更台账（`eng_context`）+ 项目级 skill | P2 | 期望二 | ⬜ |
 
 **当前的实际产出**：`src/` 下 8 个模块 + `src/tools/` 下 4 个文件、`test/` 3 个测试文件
-（33 项，全通过、无跳过）、`scripts/` 3 个脚本。**没有** `ctx.effect` —— 本插件不持有任何
+（34 项，全通过、无跳过）、`scripts/` 3 个脚本。**没有** `ctx.effect` —— 本插件不持有任何
 自有资源（不起子进程、不开句柄），所以 `apply` 注册完工具就返回。
 **没有** `skills/`：文档交付物（D4 三问）在 P3 与项目级 skill 一起做，现在的三问写在工具描述里。
 
