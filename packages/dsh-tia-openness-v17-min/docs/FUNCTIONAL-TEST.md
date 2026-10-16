@@ -1,7 +1,7 @@
 # 功能测试：导出 → 修改 → 导入 → 编译
 
 本文件描述**必须由人在真实 TIA Portal V17 项目上执行**的那一步。
-自动化测试覆盖了协议、生命周期、白名单、dry-run、schema、Simatic ML 解析与 C# 自检，
+自动化测试覆盖了协议、生命周期、白名单、dry-run（仅仍保留该参数的工具）、schema、Simatic ML 解析与 C# 自检，
 但"块真的在 TIA 里进出"只能对着真实项目验证。
 
 > 准备：一个 **V17** 项目（`.ap17`），里面至少有一个 PLC，且至少包含
@@ -47,15 +47,6 @@ open_project({ "project_path": "D:\\Demo\\Demo.ap17" })
 ---
 
 ## 2. 导出块
-
-先预演（不写任何文件）：
-
-```jsonc
-export_blocks({ "output_dir": "D:\\Demo\\export", "dry_run": true })
-```
-期望：`data.files[]` 列出每个块的 `action`（`create`/`overwrite`/`skip`）与目标路径。
-
-真导出：
 
 ```jsonc
 export_blocks({ "output_dir": "D:\\Demo\\export" })
@@ -142,13 +133,12 @@ import_blocks({ "import_paths": ["D:\\Demo\\export\\broken.xml"], "dry_run": fal
 ## 5. 编译验证
 
 ```jsonc
-compile_plc({})                          // dry-run：列出将被编译的块
-compile_plc({ "dry_run": false })        // 真编译
+compile_plc({})                          // 直接编译；编译会改变工程的编译状态
 ```
 
 **期望**
 
-- 真编译返回 `data.state`（`Success`/`Warning`/`Error`）、`data.errorCount`、
+- 返回 `data.state`（`Success`/`Warning`/`Error`）、`data.errorCount`、
   `data.warningCount`、`data.messages[]`；
 - 刚导入的块可编译：`errorCount = 0`（warning 允许）；
 - 若 `errorCount > 0`：这是**数据**而不是工具错误，请按 `messages[].description` / `path` 定位；

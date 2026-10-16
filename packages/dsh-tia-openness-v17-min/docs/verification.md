@@ -115,19 +115,23 @@ controller\bin\TiaOpennessV17Min.Controller.exe --self-test
 
 ### A7. 写入操作有 dry-run 模式和写后验证 —— ✅ 已验证
 
+> **2026-10 更新（决策 [D22](decisions.md)）**：`dry_run` 已收敛到 7 个"预览带信息量"的工具，
+> 其余 14 个删除。下表已按新策略重写；历史划分见 D5，理由与代价见 D22。
+
 **dry-run 默认值**（图表见 README §4.2，逐字段证据）：
 
 | 操作 | 默认 | 位置 |
 |---|---|---|
-| `ImportBlocks` | `dry_run = true` | `controller/Operations.cs:441` |
-| `CompilePlc` | `dry_run = true` | `controller/Operations.cs:927` |
-| `CloseProject` | `dry_run = true` | `controller/Operations.cs:1041` |
-| `OpenProject` | `dry_run = false`（升级写入由 `allow_upgrade=false` 独立把关） | `controller/Operations.cs:100` |
-| `ExportBlocks` | `dry_run = false`（只读项目、只写文件系统） | `controller/Operations.cs:148` |
+| `OpenProject` | `dry_run = false`（零 TIA 接触：连 TIA Portal 都不启动；升级写入由 `allow_upgrade=false` 独立把关） | `Operations.cs` `OpenProject` |
+| `ImportBlocks` | `dry_run = true` | `Operations.cs` `ImportBlocks` |
+| `CloseProject` | `dry_run = true` | `Operations.cs` `CloseProject` |
+| `DeletePlcObjects` / `WriteTags` / `SetBlockAttributes` / `ProtectBlocks` | `dry_run = true` | `OperationsPlc.cs` |
+| 其余 14 个操作 | **无 `dry_run`**（`data.dryRun` 恒为 `false`） | — |
 
-插件侧同样施加默认值（模型不传也有确定语义）：`src/tools.ts:412 / :485 / :517 / :548`，
-测试 `test/04-tools.test.mjs:113`（import 默认 dry-run）、`:143`（compile / close 默认 dry-run）、
-`:90`（export 默认**不是** dry-run）。
+插件侧同样施加默认值（模型不传也有确定语义）：`src/tools.ts` 里 7 个保留工具各自的
+`args.dry_run ?? …`；测试 `test/04-tools.test.mjs` 的 "only the tools whose preview carries
+information keep a dry run" 双向断言：14 个工具的 params 里**没有** `dry_run`，4 个写入类工具
+默认 `true`（`import_blocks` / `close_project` 各自另有专测）。
 
 **写后验证**：
 
@@ -157,12 +161,14 @@ controller\bin\TiaOpennessV17Min.Controller.exe --self-test
 
 ### A9. 工具 `description` 清晰描述功能 —— ✅ 已验证
 
-- 6 个工具的描述都在 `src/tools.ts`（`open_project:319`、`export_blocks:368`、
-  `import_blocks:424`、`compile_plc:497`、`close_project:528`、`controller_status:557`）。
-- 每个描述都写明：做什么、**是否写入**、dry-run 策略、关键参数语义、以及会返回哪些错误码。
-- 测试：`test/01-load.test.mjs:91` 断言 `import_blocks` 描述里出现 `dry_run`、`transaction`、
-  `verification_failed`；`export_blocks` 出现 `block_not_found`；`compile_plc` 出现 `dry_run`、
-  `errorCount`；`controller_status` 出现 `Siemens TIA Openness`；并断言每个描述长度 > 120 字符。
+- 26 个工具的描述都在 `src/tools.ts`（`open_project`、`export_blocks`、`import_blocks`、`compile_plc`、
+  `close_project`、`controller_status`，以及 v0.2 的 20 个）。
+- 每个描述都写明：做什么、**是否写入**、dry-run 策略（保留该参数的工具写明默认值与如何关闭；
+  没有该参数的工具直接写"WRITES to the project"）、关键参数语义、以及会返回哪些错误码。
+- 测试：`test/01-load.test.mjs` 断言 `import_blocks` 描述里出现 `dry_run`、`transaction`、
+  `verification_failed`；`export_blocks` 出现 `block_not_found`；`compile_plc` **不再**出现 `dry_run`
+  （决策 D22）而出现 `errorCount`；`controller_status` 出现 `Siemens TIA Openness`；
+  并断言每个描述长度 > 120 字符。
 
 ### A10. 错误被转换为结构化输出 —— ✅ 已验证
 

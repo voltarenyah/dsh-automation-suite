@@ -297,7 +297,6 @@ export class EngineeringAccess extends Service {
             overwrite: query.overwrite ?? false,
             export_options: query.exportOptions ?? 'with_defaults',
             write_manifest: query.writeManifest ?? true,
-            dry_run: query.dryRun ?? false,
         };
         if (query.blockNames !== undefined)
             params['block_names'] = [...query.blockNames];
@@ -323,15 +322,13 @@ export class EngineeringAccess extends Service {
      * (`savedAs` / `projectPath`), never what it asked for.
      *
      * @param directory - target directory; TIA decides the layout below it.
-     * @param options - dry run and cancellation.
+     * @param options - cancellation.
      */
     async saveProjectAs(directory, options = {}) {
         if (typeof directory !== 'string' || directory.trim().length === 0) {
             throw new TypeError('saveProjectAs needs a non-empty target directory');
         }
         const params = { save_as_dir: directory };
-        if (options.dryRun !== undefined)
-            params['dry_run'] = options.dryRun;
         const outcome = await runOperation(this.dependencies, 'SaveProject', params, options.signal);
         const result = toCallResult(outcome);
         const data = outcome.data;
@@ -506,7 +503,6 @@ export class EngineeringAccess extends Service {
                 overwrite: options.overwrite ?? false,
                 export_options: 'with_defaults',
                 write_manifest: true,
-                dry_run: options.dryRun ?? false,
                 device_name: entry.device,
                 software_name: entry.software,
             }, options.signal);
@@ -527,7 +523,6 @@ export class EngineeringAccess extends Service {
                 overwrite: options.overwrite ?? false,
                 export_options: 'with_defaults',
                 write_manifest: true,
-                dry_run: options.dryRun ?? false,
                 device_name: entry.device,
                 software_name: entry.software,
             }, options.signal);
@@ -558,7 +553,7 @@ export class EngineeringAccess extends Service {
         return {
             ok: true,
             operation: 'ExportBlocks',
-            dryRun: options.dryRun ?? false,
+            dryRun: false,
             summary: selected.length === 0
                 ? 'No PLC software was selected, so nothing was exported.'
                 : `Rebuilt the source tree of ${selected.length} device(s) under ${sourceRoot}: ${exported} object(s) exported, ${failed} refused by TIA.`,

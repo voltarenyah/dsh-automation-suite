@@ -495,3 +495,89 @@ The block name 'FB_Array_Handling' is invalid. An object with this name or this 
 `saveProjectAs` 的参数与回读、`readTiaSession` 的三态（停着**一个操作都不发** / 无项目 / 有项目）、
 `rebuildSource` 的两次调用与三段路径、被拒对象归属到 family、目录安全化与撞名消解、
 设备过滤与 `missingDevices`、以及无控制器 / 无项目时**拒绝导出**。
+
+---
+
+## D22. `dry_run` 收敛到 7 个工具（其余 14 个删除）
+
+**决定**：`dry_run` 只保留在**预览本身带信息量**的工具上，其余一律删除：
+
+| 保留（7） | 删除（14） |
+|---|---|
+| `open_project`、`import_blocks`、`close_project`、`delete_plc_objects`、`write_tags`、`set_block_attributes`、`protect_blocks` | `export_blocks`、`compile_plc`、`create_project`、`save_project`、`archive_project`、`project_languages`、`project_texts`、`update_project`、`portal_settings`、`create_plc_objects`、`generate_source`、`watch_and_force_tables`、`software_units`、`set_safety_settings` |
+
+（`project_info`、`list_plc_objects`、`safety_status`、`safety_signatures`、`controller_status` 本来就没有。）
+
+**判据（两条同时成立才留）**：
+
+1. **预览必须算出调用方自己算不出来的东西** —— `preview = f(inputs, world)`，而且 `f` 需要
+   "特权限"（遍历对象树、解析名字/路径、跨对象比对）。若 `preview ≈ inputs`（只回一个
+   `wouldWrite: true`），那是仪式；
+2. **风险落在写入本身**（多对象、批量、不可逆），而不是"具名对象写错名，真的调用会在写入前干净失败"。
+
+**理由（带实测数字）**：
+
+- **代价**：`dry_run` 在工具面里占 **6,246 字符 ≈ 1,509 token**，即本插件工具块的 **12.3 %**
+  （参数块 3,221 + 描述句 3,025），比那条 26 次重复的 `KNOWLEDGE_HINT`（2,834 字符）还大 2.2 倍。
+  另外 14 个默认 `true` 的工具在正常路径上要求模型**调两次**，第二次把枚举/解析整跑一遍。
+- **保留者为什么值**：`import_blocks` 的预览会逐文件解析、解析目标块名、给出
+  `existsInProject` / `existingGroup` / `groupMismatch` / `action`（这条 `groupMismatch` 揭示的是
+  "TIA 在**整个 PLC** 范围评估名字/编号冲突，住别处的块即使 Override 也覆盖不了"，别处看不到）；
+  `delete_plc_objects` 给出解析后的 `planned` + 只数**存在**对象的 `wouldDelete`；
+  `write_tags` / `set_block_attributes` 给出逐项 before/after；`protect_blocks` 给出当前
+  `IsKnowHowProtected` 与 `protectionAvailable`；`close_project` 给出 `isModified`（会丢什么）；
+  `open_project` 是唯一的**零 TIA 接触**预检（连 TIA Portal 都不启动）。
+- **删除者为什么可以删**：它们要么只写一两个具名对象、真的调用会在写入前干净失败
+  （`object_already_exists`、`group_not_found`、`language_not_found`、`setting_not_found`、`file_exists`），
+  要么预览只是入参复述（`portal_settings` 的预览只有一个 `wouldWrite: true`；`save_project` 那份
+  12 行 plan 的字段都能从 `project_info` + 入参推出）。`project_languages` 的预览虽然会解析语言名，
+  但 `action=list` 这个**只读**分支本来就返回完整当前设置，且"写语言"是随时可改回的低风险操作。
+
+**没有做（刻意）**：不加 plan hash / 两阶段提交。预览与提交之间**没有**凭据绑定，因此它仍是
+"参考"而不是"契约"（这是它**固有**的局限，不是本次引入的）；要真做成契约需要
+`expected_plan_hash` 一类的协议改动，那属于**增加复杂度**，在当前阶段（基本功能尚未在真实项目上
+跑通）不做。若将来要做，`planned` 已经是 `JsonObject` 列表，`Hashing.Sha256OfFile` 也已在用。
+
+**已知的静默行为（实测，必须记住）**：`defineTool` 编译出的参数 schema **不禁止多余属性**——
+实测给 `export_blocks` / `compile_plc` 传一个已删除的 `dry_run`，校验结果是
+`NONE (accepted and ignored)`，即**不报错、直接忽略**。后果：按旧文档/旧习惯传
+`dry_run: true` 期待"预演"的调用，会**真的写入**。缓解办法（本次**未**实施，因为要加代码）：
+在 `registerTools` 的共享 `register()` 里集中拒绝未声明的 `dry_run`（约 5 行），
+把静默忽略变成一条自解释的错误。目前靠文档与模型读到的实时 schema 兜着。
+
+**代价与例外（必须记住）**：
+
+- `project_texts` 的 `action=import` **不包在事务里**（Openness 手册禁止事务内做 ProjectText 导入），
+  所以它**无法回滚**；删掉 dry-run 后这一处没有确认步骤。若将来要补，正确机制是**用户审批**
+  （DSH approval 门），而不是一个零信息量的预演。
+- `set_safety_settings` 也是"一个布尔开关"型写入，删除的依据与 `portal_settings` 相同；
+  它改的是 `SafetyModificationsPossible`，属于安全相关设置，但预览只是入参复述，删了不损失信息。
+- **`project_languages` 的多项写入不是事务性的**：`SetProjectLanguages` 逐个
+  `ActiveLanguages.Add/Remove`，`FindLanguage` 对未知 culture 抛 `invalid_params` /
+  `language_not_found`，但它发生在**循环内部**，因此 `active_languages: ["de-DE","xx-XX"]`
+  可能"改了一半才失败"。**这不是本次引入的**（写路径一直如此，直接传 `dry_run: false` 的调用者
+  早就能撞上），但过去 `dry_run` 默认 `true`，预演会**先**把整列名字解析一遍，使默认路径是
+  全有或全无。删掉 `dry_run` 后这条暴露面变成首次调用即可达。它没到"必须现在修"的程度
+  （项目语言随时可改回，且 `data.added` / `data.removed` 如实报告已经改了什么），
+  真要修，正确做法是**在写入前预解析整列**或把这段放进事务，而**不是**恢复一个入参复述式的预演。
+
+**改动面**（本次一起改完，缺一处 `npm run check` 就会失败）：
+
+- `src/tools.ts`：14 个工具的 `dry_run` 参数与参数搬运删除、描述改写；8 处因删除而变成死代码的
+  渲染分支（export/compile/create/save/archive×2/createPlcObjects/generateSource）删除。
+- `controller/Operations*.cs`：18 个 dry 分支 + 14 处 `p.Bool("dry_run", …)` 删除；
+  `Add("dryRun", dryRun)` → `false`；`OperationsProject.cs` 的 `PortalSettings` 里
+  `else if` 因为 `if (dryRun)` 被删而必须改回 `if`，`AccessPortalSetting(..., !dryRun)` → `true`。
+- `src/access.ts`：`ExportObjectsQuery.dryRun`、`SaveProjectAsOptions.dryRun`、
+  `RebuildSourceOptions.dryRun` 删除（它们映射的正是被删的三个操作，留着就是**说谎的选项**）。
+- 测试：`01-load`、`04-tools`、`08-access-service` 中编码旧默认值的断言改为新策略；
+  `04-tools` 新增"只有预览带信息量的工具保留 dry-run"一项，双向断言 14 个不发 `dry_run`、4 个默认 `true`。
+- 文档：README §4 表格与 §4.2、`docs/EXTENDED-SURFACE.md`、`docs/PROTOCOL.md`、
+  `docs/VERIFICATION-PLAN.md`、`docs/FUNCTIONAL-TEST.md`；覆盖矩阵用 `npm run matrix:build` 重建
+  （`src/tools.ts` 的参数面变了，代码指纹随之变）。
+- **D5 不修改**：它记录的是当时的划分（历史），其表已被本条取代。
+
+**验证**：`npm test` = 77 项（76 通过 / 1 跳过 / 0 失败）；`npm run build` 与 C# `dotnet build`
+（0 warning / 0 error）+ `--self-test` 全绿；`npm run matrix:check`、`npm run skills:check` 通过。
+
+**回退**：`git checkout -- packages/dsh-tia-openness-v17-min`（本条与代码同一提交，无跨提交依赖）。

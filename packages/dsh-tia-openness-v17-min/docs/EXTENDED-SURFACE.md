@@ -19,8 +19,10 @@
 
 - 每个操作返回同一个信封：`ok` / `operation` / `dryRun` / `summary` / `data` / `changes` /
   `diagnostics` / `error` / `durationMs`。`data.dryRun` 会被提升为帧级 `dryRun`。
-- **写入类操作默认 `dry_run: true`**；只写文件系统而不改项目的操作（`ArchiveProject` 的
-  archive、`ProjectTexts` 的 export、`GenerateSource` 的落盘）默认 `false`。
+- **`dry_run` 只留给"预览带信息量"的操作**（决策 D22）：`OpenProject`、`ImportBlocks`、
+  `CloseProject` 与 `DeletePlcObjects`、`WriteTags`、`SetBlockAttributes`、`ProtectBlocks`。
+  其余操作**没有** `dry_run` —— 它们要么写的是一两个具名对象、真的调用会在写入前干净失败，
+  要么预览只是把入参复述一遍。删掉 `dry_run` 的操作，`data.dryRun` 恒为 `false`。
 - 时间戳一律 UTC（控制器 `JsonWriter` 已统一）。
 - 密码类参数只以 `SecureString` 传给 Openness，**永不回显**，`data` 里只说"已提供"。
 
@@ -35,10 +37,8 @@
 | `author` | string | — | 可选创建参数 |
 | `comment` | string | — | 可选创建参数 |
 | `with_window` | boolean | false | true 则用带界面的 TIA Portal |
-| `dry_run` | boolean | **false** | true 只报告将要创建的路径 |
 
 `data`：`{ projectName, projectPath, projectDir, targetPath, created, author?, comment?, withUserInterface, plcSoftware, blockSummary, dryRun }`
-dry-run 时没有 `created`/`plcSoftware`，而有 `targetPath` 与 `wouldWrite: true`。
 错误码：`project_already_open` `project_create_failed` `invalid_params`。
 
 ## 2. SaveProject / `save_project`
@@ -46,10 +46,8 @@ dry-run 时没有 `created`/`plcSoftware`，而有 `targetPath` 与 `wouldWrite:
 | 参数 | 类型 | 默认 |
 |---|---|---|
 | `save_as_dir` | string | — |
-| `dry_run` | boolean | **false** |
 
 `data`：`{ projectName, projectPath, saved, requestedSaveAsDir?, savedAs?, locationChanged?, isModifiedBeforeSave, isModified, dryRun }`
-dry-run：`{ projectName, projectPath, isModified, saveAs, saveAsDir?, wouldWrite: true, dryRun: true }`
 错误码：`project_not_open` `project_save_failed`。
 
 **关于 `save_as_dir` 的两条硬事实**（都不是本插件的限制，而是 Openness / TIA 的语义）：
@@ -82,14 +80,12 @@ Open/Close Global Library、**`Project Create`**、**`Project Open`**、**`Proje
 `action` = `archive` | `retrieve`（默认 `archive`）。
 
 archive 参数：`target_dir`（必填）、`target_name`（必填）、
-`mode` = `none` | `compressed` | `discard_restorable_data` | `discard_restorable_data_and_compressed`（默认 `compressed`）、
-`dry_run`（默认 **false**）。
+`mode` = `none` | `compressed` | `discard_restorable_data` | `discard_restorable_data_and_compressed`（默认 `compressed`）。
 `data`：`{ action:'archive', projectName, projectPath, targetDir, targetName, mode, archivedPath, isModifiedBeforeArchive, dryRun }`
 错误码：`project_not_open` `project_not_saved`（项目有未保存改动）`archive_failed`。
 
 retrieve 参数：`archive_path`（必填）、`target_dir`（必填）、`upgrade`（boolean，默认 false）、
-`project_open_mode` = `primary` | `secondary`（默认 `primary`）、`with_window`（默认 false）、
-`dry_run`（默认 **false**）。
+`project_open_mode` = `primary` | `secondary`（默认 `primary`）、`with_window`（默认 false）。
 `data`：`{ action:'retrieve', archivePath, targetDir, upgraded, projectOpenMode, projectName, projectPath, plcSoftware, blockSummary, dryRun }`
 错误码：`project_already_open` `archive_not_found` `retrieve_failed`。
 
@@ -124,17 +120,16 @@ retrieve 参数：`archive_path`（必填）、`target_dir`（必填）、`upgra
 | `active_mode` | `add` \| `remove` | `add` |
 | `editing_language` | string（culture 名） | — |
 | `reference_language` | string（culture 名） | — |
-| `dry_run` | boolean | **true** |
 
-`data`（list）：`{ supportedCount, supportedLanguages:[{culture, name, displayName}], activeCount, activeLanguages:[...], editingLanguage, referenceLanguage, dryRun:true }`
-`data`（set）：`{ added:[culture], removed:[culture], activeLanguages:[...], editingLanguage, referenceLanguage, dryRun }`
+`data`（list）：`{ supportedCount, supportedLanguages:[{culture, name, displayName}], activeCount, activeLanguages:[...], editingLanguage, referenceLanguage, dryRun:false }`
+`data`（set）：`{ added:[culture], removed:[culture], activeLanguages:[...], editingLanguage, referenceLanguage, dryRun:false }`
 错误码：`project_not_open` `language_not_found`（`details.available` 列出支持的语言）`invalid_params`。
 
 ## 6. ProjectTexts / `project_texts`
 
 `action` = `export` | `import`（必填）。
 参数：`file`（必填）、`source_language`（culture，export 必填）、`target_language`（culture，export 必填）、
-`update_source_language`（boolean，默认 false，import）、`dry_run`（export 默认 **false**，import 默认 **true**）。
+`update_source_language`（boolean，默认 false，import）。
 `data`（export）：`{ action:'export', file, sourceLanguage, targetLanguage, bytes, sha256, dryRun:false }`
 `data`（import）：`{ action:'import', file, updateSourceLanguage, state, resultPath, dryRun }`（`state` 是 `Info|Warning|Error`）
 错误码：`project_not_open` `project_text_export_failed` `project_text_import_failed` `invalid_params`。
@@ -149,7 +144,6 @@ retrieve 参数：`archive_path`（必填）、`target_dir`（必填）、`upgra
 | `simulation_during_block_compilation` | boolean | — |
 | `comment_language` | string（culture 名） | — |
 | `comment_text` | string | — |
-| `dry_run` | boolean | **true** |
 
 `data`：`{ simulationDuringBlockCompilation?: {before, after, changed}, comment?: {language, before, after, changed}, dryRun }`
 至少要给一个可写项，否则 `invalid_params`。
@@ -165,7 +159,6 @@ retrieve 参数：`archive_path`（必填）、`target_dir`（必填）、`upgra
 | `value` | string \| number \| boolean | —（set 必填） |
 | `value_type` | `auto` \| `string` \| `boolean` \| `integer` \| `culture` | `auto` |
 | `with_window` | boolean | false |
-| `dry_run` | boolean | **true** |
 
 `data`（list）：`{ folderCount, folders:[{name, settings:[{name, valueType, value, writeable}]}] }`
 `data`（set）：`{ folder, setting, valueType, before, after, changed, dryRun }`
@@ -226,7 +219,6 @@ retrieve 参数：`archive_path`（必填）、`target_dir`（必填）、`upgra
 | `instance_of` | string | —（`instance_db` 必填） |
 | `auto_number` | boolean | true（`instance_db`） |
 | `number` | integer | 0（`instance_db`） |
-| `dry_run` | boolean | **true** |
 
 `data`：`{ kind, name, groupPath, fullPath, created, dryRun }`
 错误码：`invalid_params` `group_not_found` `group_create_failed` `object_already_exists` `object_create_failed` `unit_provider_unavailable`。
@@ -305,7 +297,6 @@ dry-run 时的 `tags` / `constants` 是计划而不是结果：每项只有 `{na
 | `type_names` | string[] | —（要求扩展名 `.udt`） |
 | `with_dependencies` | boolean | false |
 | `overwrite` | boolean | false |
-| `dry_run` | boolean | **false** |
 
 扩展名规则（手册 "Generate source from block"）：SCL 块 `.scl`，STL 块 `.awl`，DB `.db`，UDT `.udt`。
 `data`：`{ outputFile, extension, withDependencies, blockCount, typeCount, bytes, sha256, dryRun }`
@@ -324,7 +315,6 @@ dry-run 时的 `tags` / `constants` 是计划而不是结果：每项只有 `{na
 | `import_options` | `none` \| `override` | `none` |
 | `create_group` | boolean | false |
 | `overwrite` | boolean | false |
-| `dry_run` | boolean | **true** |
 
 `data`：create → `{action, kind, name, group, created, dryRun}`；
 delete → `{action, kind, name, group, deleted, dryRun}`；
@@ -340,7 +330,6 @@ import → `{action, imported:[{file, name}], committed, dryRun}`
 | `name` | string | —（create/delete/relation_* 必填） |
 | `related_object` | string | —（relation_create 必填） |
 | `relation_type` | `software_unit` \| `non_unit_db` \| `to_db` | `software_unit` |
-| `dry_run` | boolean | **true** |
 
 `data`：list → `{ available, unitCount, units:[{name, author, comment, blockCount, typeCount, tagTableCount, externalSourceCount, relations:[{relatedObject, relationType}]}] }`；
 其余 → `{ action, name, relatedObject?, relationType?, created?, deleted?, dryRun }`
@@ -377,7 +366,6 @@ import → `{action, imported:[{file, name}], committed, dryRun}`
 |---|---|---|
 | `safety_modifications_possible` | boolean | — |
 | `username_for_f_change_history` | string | — |
-| `dry_run` | boolean | **true** |
 
 `data`：`{ safetyModificationsPossible?: {before, after, changed}, usernameForFChangeHistory?: {before, after, changed}, dryRun }`
 至少要给一个参数，否则 `invalid_params`。

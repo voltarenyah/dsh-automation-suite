@@ -158,7 +158,6 @@ The five operations below are the original block read/write surface. v0.2 added 
 | `overwrite` | bool | `false` | replace existing files |
 | `export_options` | enum | `with_defaults` | `none` \| `with_defaults` \| `with_read_only` |
 | `write_manifest` | bool | `true` | write `_tia-openness-manifest.json` |
-| `dry_run` | bool | `false` | list the files that would be written |
 
 `data`: `device`, `software`, `outputDir`, `exportOptions`, `blockCount`,
 `summary{exported,skipped,failed}`, `files[]{name,group,file,bytes,sha256,verified,declaredName,…}`,
@@ -202,7 +201,6 @@ method: "read_back_block_composition", message }`.
 |---|---|---|---|
 | `device_name` / `software_name` | string | auto | PLC selection |
 | `max_messages` | int | `200` | cap on returned compiler messages |
-| `dry_run` | bool | **`true`** | list the blocks instead of compiling |
 
 `data`: `device`, `software`, `state` (`Success`/`Information`/`Warning`/`Error`),
 `errorCount`, `warningCount`, `messageCount`, `messagesTruncated`,

@@ -26,7 +26,7 @@
 
 * **自主列出全部 6 个工具**并给出准确用途（说明工具描述足够模型推导）；
 * 调用 `controller_status` → `ready`，控制器 exe 路径指向**隔离 home 的 node_modules**，Openness `1700.7.501.6` 可用，用户组 `Siemens TIA Openness` 成员 = 是；
-* 调用 `export_blocks`（`dry_run`）且未打开项目 → 得到结构化错误 **`project_not_open`**，模型正确识别"这是项目未打开，而不是目录无效"，并**并行调用宿主自带的 `pwsh` 工具**做 `Test-Path` 独立验证（生态内工具共存 ✓）；
+* 调用 `export_blocks`（当时传了 `dry_run`）且未打开项目 → 得到结构化错误 **`project_not_open`**，模型正确识别"这是项目未打开，而不是目录无效"，并**并行调用宿主自带的 `pwsh` 工具**做 `Test-Path` 独立验证（生态内工具共存 ✓）；
 * 最终答复给出 4 行中文总结，明确"全程未打开项目、未做任何写操作"。
 
 ## 3. L3 desktop profile（可回滚）
@@ -92,3 +92,8 @@ npm pack ; dsh plugin --profile tia-test add <repo>\dsh-tia-openness-v17-min-0.1
 # L2（需要把 ~/.dsh/.credentials.yaml 复制进隔离 home）
 dsh --profile tia-headless --json "列出 TIA/PLC 相关工具；调用 controller_status；对不存在的目录 export_blocks dry_run"
 ```
+
+> ⚠️ **这份记录写在 v0.1（6 个工具）时期**：上面两处出现的 `dry_run` 现在对 `export_blocks` 已不存在
+> （决策 D22）。**注意未知参数是静默忽略的**（`defineTool` 编译出的 schema 不禁止多余属性），
+> 所以照抄第 4 节的命令不会再报参数错误 —— 它只是不再有"预演"效果。该场景本身仍然安全
+> （未打开项目 → `project_not_open` 在任何写入之前发生），但不要在别的场景里沿用这个写法。

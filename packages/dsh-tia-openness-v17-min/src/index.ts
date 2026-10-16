@@ -88,7 +88,7 @@ export function apply(ctx: Context, config?: Partial<PluginConfig>): void {
 
   // The knowledge base is optional by design: `ctx.inject` only starts this
   // child plugin once the skill registry exists, so a profile without
-  // `@deepseek-ai/dsh-skill` keeps the six tools and never blocks on a service
+  // `@deepseek-ai/dsh-skill` keeps the 26 tools and never blocks on a service
   // that is not there. See `skills.ts`.
   registerSkillProvider(ctx, log)
 

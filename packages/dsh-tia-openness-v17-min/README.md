@@ -3,10 +3,10 @@
 > DeepSeek Harness 插件：通过 TIA Portal V17 Openness 对 PLC 程序块做**最小化**读写
 > （导出 / 导入 Simatic ML、外部源生成块、编译验证）。
 >
-> A DeepSeek Harness plugin that exposes TIA Portal V17 Openness as six model-facing
-> tools backed by a whitelisted C# controller subprocess. Writes are dry-run by
-> default, run in an exclusive-access transaction, and are read back for
-> verification.
+> A DeepSeek Harness plugin that exposes TIA Portal V17 Openness as 26 model-facing
+> tools backed by a whitelisted C# controller subprocess. Every write runs in an
+> exclusive-access transaction and is read back for verification; the operations
+> whose preview carries information are dry-run by default.
 
 ---
 
@@ -174,9 +174,9 @@ plugin_manager(action: "install_bundle", target: "C:\\Users\\Ansel\\dsh-automati
 | 工具 | 作用 | 写入 | 默认 dry-run |
 |---|---|---|---|
 | `open_project` | 打开（或附加到已运行的）TIA Portal V17 项目 | 仅当 `allow_upgrade=true` | 否（升级写入由 `allow_upgrade` 单独把关） |
-| `export_blocks` | 导出 PLC 块为 Simatic ML XML（每块一个文件，保留用户组目录） | 否（只写文件系统） | 否 |
+| `export_blocks` | 导出 PLC 块为 Simatic ML XML（每块一个文件，保留用户组目录） | 否（只写文件系统） | —（无 `dry_run`） |
 | `import_blocks` | 导入 Simatic ML XML 或 SCL/STL 外部源 | **是** | **是** |
-| `compile_plc` | 编译 PLC 软件并返回编译结果 | 是（编译状态） | **是** |
+| `compile_plc` | 编译 PLC 软件并返回编译结果 | 是（编译状态） | —（无 `dry_run`） |
 | `close_project` | 关闭项目（可选保存、可选关掉 TIA Portal 实例） | 是（保存/关闭会话） | **是** |
 | `controller_status` | 报告控制器子进程与 Openness 环境状态 | 否 | —（不启动控制器） |
 
@@ -184,35 +184,35 @@ plugin_manager(action: "install_bundle", target: "C:\\Users\\Ansel\\dsh-automati
 
 | 工具 | 作用 | 写入 | 默认 dry-run |
 |---|---|---|---|
-| `create_project` | 新建工程（可选 Author/Comment），并保持打开 | **是**（新目录 + 新工程） | 否 |
-| `save_project` | 保存工程，或另存到 `save_as_dir` | **是** | 否 |
-| `archive_project` | `action=archive` 归档当前工程；`action=retrieve` 取回归档并打开 | 归档只写文件；取回打开工程 | 否 |
+| `create_project` | 新建工程（可选 Author/Comment），并保持打开 | **是**（新目录 + 新工程） | —（无 `dry_run`） |
+| `save_project` | 保存工程，或另存到 `save_as_dir` | **是** | —（无 `dry_run`） |
+| `archive_project` | `action=archive` 归档当前工程；`action=retrieve` 取回归档并打开 | 归档只写文件；取回打开工程 | —（无 `dry_run`） |
 | `project_info` | 只读汇总：工程属性、注释、语言、历史、已用产品、设备树、PLC 软件、TIA 设置 | 否 | —（无 `dry_run`） |
-| `project_languages` | 列出/设置支持语言、活动语言、编辑语言、参考语言 | **是**（`action=set`） | **是** |
-| `project_texts` | 导出/导入整工程文本（xlsx，`ExportProjectTexts`/`ImportProjectTexts`） | 导出只写文件；导入改工程 | 导出否 / 导入**是** |
-| `update_project` | 写"块编译时仿真支持"与工程注释（多语言文本） | **是** | **是** |
-| `portal_settings` | 列出/修改 TIA Portal 设置（`SettingsFolders`，如 General/SearchInProject） | 是（`action=set`） | **是** |
+| `project_languages` | 列出/设置支持语言、活动语言、编辑语言、参考语言 | **是**（`action=set`） | —（无 `dry_run`） |
+| `project_texts` | 导出/导入整工程文本（xlsx，`ExportProjectTexts`/`ImportProjectTexts`） | 导出只写文件；导入改工程（**无事务，不可回滚**） | —（无 `dry_run`） |
+| `update_project` | 写"块编译时仿真支持"与工程注释（多语言文本） | **是** | —（无 `dry_run`） |
+| `portal_settings` | 列出/修改 TIA Portal 设置（`SettingsFolders`，如 General/SearchInProject） | 是（`action=set`） | —（无 `dry_run`） |
 
 **PLC 设备数据（v0.2 新增）**
 
 | 工具 | 作用 | 写入 | 默认 dry-run |
 |---|---|---|---|
 | `list_plc_objects` | 只读枚举块/PLC 类型/标签表（含变量与常量）/外部源/监视表/力表/软件单元，可带属性与指纹 | 否 | —（无 `dry_run`） |
-| `create_plc_objects` | 建块组/类型组/标签表组/标签表/监视表/软件单元/单实例 DB | **是** | **是** |
+| `create_plc_objects` | 建块组/类型组/标签表组/标签表/监视表/软件单元/单实例 DB | **是** | —（无 `dry_run`） |
 | `delete_plc_objects` | 删块/类型/标签表/监视表/软件单元/各类组/变量/用户常量 | **是** | **是** |
 | `write_tags` | 建/改/删 PLC 变量与用户常量（含注释、外部可见性） | **是** | **是** |
 | `set_block_attributes` | 通用 `SetAttribute` 写块/UDT 属性（如 OB 的 `Priority`） | **是** | **是** |
 | `protect_blocks` | 设置/解除块 know-how 保护（`PlcBlockProtectionProvider`） | **是** | **是** |
-| `generate_source` | 由块/UDT 生成 `.scl`/`.awl`/`.db`/`.udt` 源文件 | 只写文件 | 否 |
-| `watch_and_force_tables` | 监视表的建/删/导出/导入、力表的导出/导入 | **是** | **是** |
-| `software_units` | 软件单元的列出/创建/删除、关系增删 | **是** | **是** |
+| `generate_source` | 由块/UDT 生成 `.scl`/`.awl`/`.db`/`.udt` 源文件 | 只写文件 | —（无 `dry_run`） |
+| `watch_and_force_tables` | 监视表的建/删/导出/导入、力表的导出/导入 | **是** | —（无 `dry_run`） |
+| `software_units` | 软件单元的列出/创建/删除、关系增删 | **是** | —（无 `dry_run`） |
 
 **F 相关（v0.2 新增）**
 
 | 工具 | 作用 | 写入 | 默认 dry-run |
 |---|---|---|---|
 | `safety_status` | 只读：`GlobalSettings` 两个动作、`SafetySettings`、`SafetyAdministration`、运行时组 | 否 | —（无 `dry_run`） |
-| `set_safety_settings` | 写 `SafetyModificationsPossible` 与 `UsernameForFChangeHistory` | **是** | **是** |
+| `set_safety_settings` | 写 `SafetyModificationsPossible` 与 `UsernameForFChangeHistory` | **是** | —（无 `dry_run`） |
 | `safety_signatures` | 只读：逐块 `SafetySignatureProvider` 的 F 签名（`BlockOfflineSignature`） | 否 | —（无 `dry_run`） |
 
 ### 4.1 典型流程：导出 → 修改 → 导入 → 编译
@@ -234,8 +234,7 @@ plugin_manager(action: "install_bundle", target: "C:\\Users\\Ansel\\dsh-automati
 //    → data.committed=true，data.verification.passed=true（读回块集合验证）
 
 // 5) 编译验证
-{ "compile_plc": {} }                       // 预演：列出会被编译的块
-{ "dry_run": false }                        // 真编译：返回 state/errorCount/warningCount/messages
+{ "compile_plc": {} }                       // 真编译：返回 state/errorCount/warningCount/messages
 
 // 6) 保存并关闭
 { "save": true, "dry_run": false }
@@ -243,16 +242,27 @@ plugin_manager(action: "install_bundle", target: "C:\\Users\\Ansel\\dsh-automati
 
 ### 4.2 dry-run 与写入策略
 
-- **写入类操作默认 dry-run**：`import_blocks`、`compile_plc`、`close_project`，以及 v0.2 的
-  `project_languages`、`update_project`、`portal_settings`、`create_plc_objects`、`delete_plc_objects`、
-  `write_tags`、`set_block_attributes`、`protect_blocks`、`watch_and_force_tables`、`software_units`、
-  `set_safety_settings`、`project_texts`（仅 `action=import`）的 `dry_run` 默认 `true`，必须显式传
-  `dry_run: false` 才真正执行。
-- 默认 `dry_run: false` 的都是"不修改工程内容"或"改的是用户明确要求的一次性动作"：
-  `open_project`（写入只由 `allow_upgrade` 把关）、`create_project`、`save_project`、
-  `archive_project`（归档只写文件）、`generate_source`（只写文件）、`project_texts` 的 export。
-- 读操作（`project_info`、`list_plc_objects`、`safety_status`、`safety_signatures`）不声明 `dry_run`：
+`dry_run` **只留给"预览本身带信息量"的工具**（决策 [D22](docs/decisions.md)）：预览要能把模型
+自己算不出来的东西查出来 —— 把名字/路径解析成真实对象、把冲突与现有状态 diff 出来 —— 而且
+真正的风险落在**写入那一步**。满足这两条的只有 7 个：
+
+- **默认 `dry_run: true`**（必须先预演，再显式传 `dry_run: false`）：`import_blocks`（逐文件解析 +
+  目标块名解析 + 冲突与组不匹配）、`delete_plc_objects`（解析出真实删除集合与存在性）、
+  `write_tags`、`set_block_attributes`、`protect_blocks`（逐对象 before/after 与当前保护状态）、
+  `close_project`（会丢弃哪些未保存改动）。
+- **`open_project`** 的 `dry_run` 默认 `false` 且是**零 TIA 接触**：它连 TIA Portal 都不启动，
+  只校验路径；唯一可能的写入（升级重写项目）由独立的 `allow_upgrade`（默认 `false`）把关。
+- **其余 14 个工具没有 `dry_run`**：`export_blocks`、`compile_plc`、`create_project`、`save_project`、
+  `archive_project`、`project_languages`、`project_texts`、`update_project`、`portal_settings`、
+  `create_plc_objects`、`generate_source`、`watch_and_force_tables`、`software_units`、
+  `set_safety_settings`。理由分两类：(a) 它们写的是一两个具名对象，**真的调用会在写入前干净失败**
+  （`object_already_exists`、`group_not_found`、`language_not_found`、`setting_not_found`、`file_exists`），
+  预演买不到额外安全；(b) 预览只是把入参复述一遍（`wouldWrite: true`），没有信息量。
+- **读操作**（`project_info`、`list_plc_objects`、`safety_status`、`safety_signatures`）不声明 `dry_run`：
   它们不写任何东西。
+- **例外需要记一笔**：`project_texts` 的 `action=import` **不包在事务里**（Openness 手册禁止在事务内做
+  ProjectText 导入），所以它无法回滚；去掉 dry-run 后这一处没有确认步骤，若将来要补，正确机制是
+  用户审批（DSH 的 approval 门），而不是一个零信息量的预演。
 - 每个工具的 `description` 都写明了上述策略，模型可以直接读到。
 
 ### 4.3 写后验证
@@ -421,10 +431,10 @@ npm run test:controller  # 只跑 C# 控制器自检
 
 | 文件 | 覆盖 |
 |---|---|
-| `01-load.test.mjs` | **加载测试**：模块级 `name`/`inject`/`Config`/`apply`；26 个工具按注册顺序注册；参数与输出 schema 用**真实** `@deepseek-ai/dsh-tools` 编译器编译；校验器拒绝缺参/错类型/越界枚举；工具描述包含 dry-run 与错误码；工具返回值通过 output schema 校验；控制器缺失时仍能加载并给出结构化原因 |
+| `01-load.test.mjs` | **加载测试**：模块级 `name`/`inject`/`Config`/`apply`；26 个工具按注册顺序注册；参数与输出 schema 用**真实** `@deepseek-ai/dsh-tools` 编译器编译；校验器拒绝缺参/错类型/越界枚举；工具描述包含 dry-run 策略与错误码；工具返回值通过 output schema 校验；控制器缺失时仍能加载并给出结构化原因 |
 | `02-lifecycle.test.mjs` | **生命周期测试**：用真实 exe 启动控制器，断言操作系统可见该进程；`ctx.effect` 的 disposer 卸载后断言**进程已消失**；卸载幂等；配置了不存在的路径时调用失败为 `controller_not_found`。注意：触发卸载的是测试里忠实模拟 `ctx.effect` 语义的 disposer，不是真实 DSH loader 的 HMR 路径（该环待人工验证） |
 | `03-controller-protocol.test.mjs` | **协议测试**：握手、白名单拒绝、参数校验、`project_not_open`、ASCII 转义、进度帧、请求串行化、队列上限；用 stub 控制器覆盖**卡死超时→终止→重启**、请求中途退出、协议版本不匹配、stdout 噪声（这一组还捕获并回归了一个真实的 bug：被替换的旧子进程的迟到 `exit` 事件会清掉新子进程引用，导致进程泄漏） |
-| `04-tools.test.mjs` | **工具语义**：每个工具发送的参数与默认值（写入类默认 dry-run）、只发送白名单操作、`controller_status` 不触碰控制器、渲染文本包含错误码/提示/诊断 |
+| `04-tools.test.mjs` | **工具语义**：每个工具发送的参数与默认值、dry-run 只留给预览带信息量的 7 个工具（决策 D22）、只发送白名单操作、`controller_status` 不触碰控制器、渲染文本包含错误码/提示/诊断 |
 | `05-controller-cli.test.mjs` | **C# 控制器**：`--self-test` 14 项检查全绿；Openness 探测与用户组；`--version`/`--help`；命令行输出重定向为结构化帧；`--param` 重复值成数组 |
 | `06-skills.test.mjs` | **知识库（替身注册表）**：`ctx.inject(['skills'], …)` 注册；没有 skills 服务的 profile 仍加载 26 个工具；目录只多一条且 description ≤ 500；`get()` 正文无 frontmatter、引用的每个上游文件都存在、正文 < 8192；vendored 树与 `UPSTREAM.json` 一致；每个工具描述都指向该 skill |
 | `07-skills-registry.test.mjs` | **知识库（真实注册表）**：把 `@deepseek-ai/dsh-skill` 的真实 `SkillRegistry` 挂到裸 cordis context 上，验证 candidate 被真实校验接受、重名注册被拒、`get()` 能加载、`renderSkillContent` 带上 base directory、卸载插件后目录项消失 |

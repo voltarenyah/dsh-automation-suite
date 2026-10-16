@@ -97,7 +97,7 @@ test('open_project forwards only the parameters it was given', async (t) => {
   assert.deepEqual(calls[1].params, { project_path: 'C:\\P\\P.ap17', with_window: true, allow_upgrade: true, dry_run: true })
 })
 
-test('export_blocks applies its documented defaults and is not a dry run by default', async (t) => {
+test('export_blocks applies its documented defaults and writes directly', async (t) => {
   const { calls, byName } = await harness(t)
 
   await byName['export_blocks'].execute({ output_dir: 'C:\\out' }, {})
@@ -108,17 +108,16 @@ test('export_blocks applies its documented defaults and is not a dry run by defa
     overwrite: false,
     export_options: 'with_defaults',
     write_manifest: true,
-    dry_run: false,
   })
 
   await byName['export_blocks'].execute(
-    { output_dir: 'C:\\out', block_names: ['Main', 'FB1'], device_name: 'PLC_1', overwrite: true, dry_run: true },
+    { output_dir: 'C:\\out', block_names: ['Main', 'FB1'], device_name: 'PLC_1', overwrite: true },
     {},
   )
   assert.deepEqual(calls[1].params.block_names, ['Main', 'FB1'])
   assert.equal(calls[1].params.device_name, 'PLC_1')
   assert.equal(calls[1].params.overwrite, true)
-  assert.equal(calls[1].params.dry_run, true)
+  assert.ok(!('dry_run' in calls[1].params), 'export_blocks only writes files, so it has no dry run')
 })
 
 test('import_blocks is a dry run unless it is explicitly switched off', async (t) => {
@@ -157,20 +156,14 @@ test('import_blocks is a dry run unless it is explicitly switched off', async (t
   assert.deepEqual(calls[1].params.sw_import_options, ['ignore_structural_changes'])
 })
 
-test('compile_plc and close_project are dry runs unless they are explicitly switched off', async (t) => {
+test('close_project is a dry run unless it is explicitly switched off', async (t) => {
   const { calls, byName } = await harness(t)
 
-  await byName['compile_plc'].execute({}, {})
-  assert.deepEqual(calls[0].params, { dry_run: true })
-
-  await byName['compile_plc'].execute({ device_name: 'PLC_1', software_name: 'PLC_1', max_messages: 10, dry_run: false }, {})
-  assert.deepEqual(calls[1].params, { device_name: 'PLC_1', software_name: 'PLC_1', max_messages: 10, dry_run: false })
-
   await byName['close_project'].execute({}, {})
-  assert.deepEqual(calls[2].params, { save: false, close_portal: false, dry_run: true })
+  assert.deepEqual(calls[0].params, { save: false, close_portal: false, dry_run: true })
 
   await byName['close_project'].execute({ save: true, close_portal: true, dry_run: false }, {})
-  assert.deepEqual(calls[3].params, { save: true, close_portal: true, dry_run: false })
+  assert.deepEqual(calls[1].params, { save: true, close_portal: true, dry_run: false })
 })
 
 test('controller_status never talks to the controller and hides the captured output by default', async (t) => {
@@ -223,42 +216,42 @@ test('every tool maps onto exactly one whitelisted controller operation', async 
   }
 })
 
-test('the new write-capable tools keep their documented dry-run defaults', async (t) => {
+test('only the tools whose preview carries information keep a dry run', async (t) => {
   const { calls, byName } = await harness(t)
 
-  await byName['create_project'].execute({ project_dir: 'C:\\P', project_name: 'P' }, {})
-  assert.equal(calls.at(-1).operation, 'CreateProject')
-  assert.equal(calls.at(-1).params.dry_run, false)
-
-  await byName['save_project'].execute({}, {})
-  assert.equal(calls.at(-1).params.dry_run, false)
-
-  await byName['archive_project'].execute({ target_dir: 'C:\\A', target_name: 'A' }, {})
-  assert.equal(calls.at(-1).params.dry_run, false)
-
-  await byName['generate_source'].execute({ output_file: 'C:\\o.scl', block_names: ['Main'] }, {})
-  assert.equal(calls.at(-1).operation, 'GenerateSource')
-  assert.equal(calls.at(-1).params.dry_run, false)
-
-  await byName['project_texts'].execute({ action: 'export', file: 'C:\\t.xlsx', source_language: 'en-US', target_language: 'de-DE' }, {})
-  assert.equal(calls.at(-1).params.dry_run, false, 'exporting project texts only writes a file')
-  await byName['project_texts'].execute({ action: 'import', file: 'C:\\t.xlsx' }, {})
-  assert.equal(calls.at(-1).params.dry_run, true, 'importing project texts changes the project')
-
+  // Dropped (decisions D22): every one of these either writes a single named
+  // object and fails cleanly before writing, or the preview only echoed the
+  // caller's own inputs.
   for (const [name, args] of [
+    ['export_blocks', { output_dir: 'C:\\out' }],
+    ['compile_plc', {}],
+    ['create_project', { project_dir: 'C:\\P', project_name: 'P' }],
+    ['save_project', {}],
+    ['archive_project', { target_dir: 'C:\\A', target_name: 'A' }],
     ['project_languages', { action: 'set', editing_language: 'en-US' }],
+    ['project_texts', { action: 'import', file: 'C:\\t.xlsx' }],
+    ['update_project', { simulation_during_block_compilation: true }],
     ['portal_settings', { action: 'set', setting: 'SearchInProject', value: true }],
     ['create_plc_objects', { kind: 'tag_table', name: 'T1' }],
-    ['delete_plc_objects', { block_names: ['FB1'] }],
-    ['write_tags', { tag_table: 'T1', tags: [{ name: 'Tag1' }] }],
-    ['set_block_attributes', { names: ['Main'], attributes: { Priority: 14 } }],
-    ['protect_blocks', { block_names: ['FB1'], action: 'protect', password: 'x' }],
+    ['generate_source', { output_file: 'C:\\o.scl', block_names: ['Main'] }],
     ['watch_and_force_tables', { action: 'create', name: 'W1' }],
     ['software_units', { action: 'create', name: 'U1' }],
     ['set_safety_settings', { safety_modifications_possible: false }],
   ]) {
     await byName[name].execute(args, {})
-    assert.equal(calls.at(-1).params.dry_run, true, `${name} must default to a dry run`)
+    assert.ok(!('dry_run' in calls.at(-1).params), `${name} must not send dry_run any more`)
+  }
+
+  // Kept: the preview resolves names into objects and diffs the project, and the
+  // write is where the risk lands.
+  for (const [name, args] of [
+    ['delete_plc_objects', { block_names: ['FB1'] }],
+    ['write_tags', { tag_table: 'T1', tags: [{ name: 'Tag1' }] }],
+    ['set_block_attributes', { names: ['Main'], attributes: { Priority: 14 } }],
+    ['protect_blocks', { block_names: ['FB1'], action: 'protect', password: 'x' }],
+  ]) {
+    await byName[name].execute(args, {})
+    assert.equal(calls.at(-1).params.dry_run, true, `${name} still previews by default`)
   }
 })
 

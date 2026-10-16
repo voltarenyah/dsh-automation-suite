@@ -125,16 +125,6 @@ function renderData(operation, data, verbose) {
             if (categoryCounts !== null) {
                 lines.push(`Categories: blocks=${numberOf(categoryCounts['blocks']) ?? 0}, types=${numberOf(categoryCounts['types']) ?? 0}, tagTables=${numberOf(categoryCounts['tagTables']) ?? 0}`);
             }
-            if (data['dryRun'] === true) {
-                lines.push(`Would export ${numberOf(data['blockCount']) ?? 0} block(s):`);
-                for (const item of list(data['files']).slice(0, MAX_LISTED)) {
-                    const entry = record(item);
-                    if (entry === null)
-                        continue;
-                    lines.push(`  ${text(entry['action']) ?? 'write'} ${text(entry['file']) ?? '?'} (${text(entry['name']) ?? '?'})`);
-                }
-                break;
-            }
             lines.push(`Exported ${numberOf(field(data, 'summary', 'exported')) ?? 0}, skipped ${numberOf(field(data, 'summary', 'skipped')) ?? 0}, ` +
                 `refused by Openness ${numberOf(field(data, 'summary', 'failed')) ?? 0}, unreadable after writing ${numberOf(field(data, 'summary', 'verificationFailed')) ?? 0}`);
             const refused = list(data['failures']);
@@ -195,10 +185,6 @@ function renderData(operation, data, verbose) {
             break;
         }
         case 'CompilePlc': {
-            if (data['dryRun'] === true) {
-                lines.push(`Would compile ${numberOf(data['blockCount']) ?? 0} block(s) of ${text(data['device']) ?? '?'} / ${text(data['software']) ?? '?'}.`);
-                break;
-            }
             lines.push(`Compile state: ${text(data['state']) ?? '?'}, errors: ${numberOf(data['errorCount']) ?? 0}, ` +
                 `warnings: ${numberOf(data['warningCount']) ?? 0}, messages: ${numberOf(data['messageCount']) ?? 0}`);
             for (const item of list(data['messages']).slice(0, MAX_LISTED)) {
@@ -225,10 +211,6 @@ function renderData(operation, data, verbose) {
             const targetPath = text(data['targetPath']) ?? text(data['projectPath']);
             if (targetPath !== undefined)
                 lines.push(`Target path: ${targetPath}`);
-            if (data['dryRun'] === true) {
-                lines.push('Dry run: nothing was created; pass dry_run=false to create the project.');
-                break;
-            }
             lines.push(`Created: ${data['created'] === true ? 'yes' : 'no'}, user interface: ${data['withUserInterface'] === true ? 'visible' : 'headless'}`);
             const author = text(data['author']);
             if (author !== undefined)
@@ -243,11 +225,6 @@ function renderData(operation, data, verbose) {
         }
         case 'SaveProject': {
             lines.push(`Project: ${text(data['projectName']) ?? '?'} (${text(data['projectPath']) ?? '?'})`);
-            if (data['dryRun'] === true) {
-                const saveAs = text(data['saveAs']);
-                lines.push(`Dry run: would save ${saveAs === undefined ? 'in place' : `as ${saveAs}`} (modified: ${data['isModified'] === true ? 'yes' : 'no'}).`);
-                break;
-            }
             lines.push(`Saved: ${data['saved'] === true ? 'yes' : 'no'}, modified before saving: ${data['isModifiedBeforeSave'] === true ? 'yes' : 'no'}, ` +
                 `modified now: ${data['isModified'] === true ? 'yes' : 'no'}`);
             const savedAs = text(data['savedAs']);
@@ -269,10 +246,6 @@ function renderData(operation, data, verbose) {
             if ((text(data['action']) ?? 'archive') === 'retrieve') {
                 lines.push(`Retrieve archive: ${text(data['archivePath']) ?? '?'} -> ${text(data['targetDir']) ?? '?'}`);
                 lines.push(`Project open mode: ${text(data['projectOpenMode']) ?? 'primary'}, upgrade: ${data['upgraded'] === true ? 'yes' : 'no'}`);
-                if (data['dryRun'] === true) {
-                    lines.push('Dry run: nothing was retrieved; pass dry_run=false to retrieve the archive.');
-                    break;
-                }
                 lines.push(`Project: ${text(data['projectName']) ?? '?'} (${text(data['projectPath']) ?? '?'})`);
                 const software = record(data['plcSoftware']);
                 if (software !== null)
@@ -281,10 +254,6 @@ function renderData(operation, data, verbose) {
             }
             lines.push(`Archive project: ${text(data['projectName']) ?? '?'} (${text(data['projectPath']) ?? '?'})`);
             lines.push(`Target: ${text(data['targetDir']) ?? '?'} / ${text(data['targetName']) ?? '?'} (mode ${text(data['mode']) ?? 'compressed'})`);
-            if (data['dryRun'] === true) {
-                lines.push('Dry run: nothing was archived; pass dry_run=false to write the archive.');
-                break;
-            }
             const archivedPath = text(data['archivedPath']);
             if (archivedPath !== undefined)
                 lines.push(`Archive: ${archivedPath}`);
@@ -553,7 +522,7 @@ function renderData(operation, data, verbose) {
             const fullPath = text(data['fullPath']);
             if (fullPath !== undefined)
                 lines.push(`Full path: ${fullPath}`);
-            lines.push(data['dryRun'] === true ? 'Dry run: nothing was created.' : `Created: ${data['created'] === true ? 'yes' : 'no'}`);
+            lines.push(`Created: ${data['created'] === true ? 'yes' : 'no'}`);
             break;
         }
         case 'DeletePlcObjects': {
@@ -648,8 +617,7 @@ function renderData(operation, data, verbose) {
             lines.push(`Source file: ${text(data['outputFile']) ?? '?'} (${text(data['extension']) ?? '?'})`);
             lines.push(`Blocks: ${numberOf(data['blockCount']) ?? 0}, types: ${numberOf(data['typeCount']) ?? 0}, ` +
                 `with dependencies: ${data['withDependencies'] === true ? 'yes' : 'no'}`);
-            if (data['dryRun'] !== true)
-                lines.push(`Written: ${numberOf(data['bytes']) ?? 0} bytes, sha256 ${text(data['sha256']) ?? '?'}`);
+            lines.push(`Written: ${numberOf(data['bytes']) ?? 0} bytes, sha256 ${text(data['sha256']) ?? '?'}`);
             break;
         }
         case 'WatchAndForceTables': {
@@ -972,7 +940,6 @@ export function registerTools(ctx, dependencies) {
                 description: "TIA's ExportOptions: 'with_defaults' (default) exports default values, 'with_read_only' adds read-only information.",
             },
             write_manifest: { type: 'boolean', description: 'True (default) to write _tia-openness-manifest.json with sizes and SHA-256 hashes.' },
-            dry_run: { type: 'boolean', description: 'True to list the files that would be written without writing anything.' },
         },
         output: {
             schema: OUTCOME_SCHEMA,
@@ -986,7 +953,6 @@ export function registerTools(ctx, dependencies) {
                 overwrite: args.overwrite ?? false,
                 export_options: args.export_options ?? 'with_defaults',
                 write_manifest: args.write_manifest ?? true,
-                dry_run: args.dry_run ?? false,
             };
             if (args.block_names !== undefined)
                 params['block_names'] = args.block_names;
@@ -1099,8 +1065,7 @@ export function registerTools(ctx, dependencies) {
         name: 'compile_plc',
         description: 'Compile the PLC software of the open project and report the compiler result (state, error count, warning ' +
             'count and the individual messages). Use it to verify that imported blocks really are consistent. ' +
-            'Compiling changes the project compile state, so it defaults to dry_run: the call lists the blocks that would ' +
-            'be compiled. Pass dry_run=false to compile. ' +
+            'Compiling changes the project compile state. ' +
             'Compile errors are reported as data (state "Error", errorCount > 0) and are not an error of this tool. ' +
             'Fails with project_not_open, plc_software_not_found, plc_software_ambiguous, compile_provider_unavailable ' +
             'or compile_failed.',
@@ -1108,14 +1073,13 @@ export function registerTools(ctx, dependencies) {
             device_name: { type: 'string', description: 'Device that owns the PLC software. Only needed when the project has several PLCs.' },
             software_name: { type: 'string', description: 'PLC software name. Only needed when one device holds several PLC software instances.' },
             max_messages: { type: 'integer', description: 'Maximum number of compiler messages to return (default 200).' },
-            dry_run: { type: 'boolean', description: 'Defaults to true: list what would be compiled. Set false to compile.' },
         },
         output: {
             schema: OUTCOME_SCHEMA,
             render: (_args, value) => [{ type: 'text', text: renderValue(value, verbose) }],
         },
         async execute(args, exec) {
-            const params = { dry_run: args.dry_run ?? true };
+            const params = {};
             if (args.device_name !== undefined)
                 params['device_name'] = args.device_name;
             if (args.software_name !== undefined)
@@ -1155,8 +1119,7 @@ export function registerTools(ctx, dependencies) {
         description: 'Create a new TIA Portal V17 project: make the project folder and .ap17 file below project_dir and open it ' +
             'in the TIA Portal instance the controller holds, so the other project tools can work on it immediately. ' +
             'author and comment are the optional creation parameters, and with_window=true creates the project in a ' +
-            'visible TIA Portal instead of the default headless instance. Creating the project is the point of the ' +
-            'call, so dry_run defaults to false; pass dry_run=true to only report the target path. Maps to the ' +
+            'visible TIA Portal instead of the default headless instance. Maps to the ' +
             'CreateProject operation. Fails with project_already_open, project_create_failed or invalid_params.',
         parameters: {
             project_dir: {
@@ -1175,10 +1138,6 @@ export function registerTools(ctx, dependencies) {
                 type: 'boolean',
                 description: 'True to create the project in a visible TIA Portal instance; false (the default) uses a headless instance.',
             },
-            dry_run: {
-                type: 'boolean',
-                description: 'Defaults to false because creating the project is the purpose of this call. True only reports the target path.',
-            },
         },
         output: {
             schema: OUTCOME_SCHEMA,
@@ -1189,7 +1148,6 @@ export function registerTools(ctx, dependencies) {
                 project_dir: args.project_dir,
                 project_name: args.project_name,
                 with_window: args.with_window ?? false,
-                dry_run: args.dry_run ?? false,
             };
             if (args.author !== undefined)
                 params['author'] = args.author;
@@ -1201,8 +1159,7 @@ export function registerTools(ctx, dependencies) {
     register(defineTool({
         name: 'save_project',
         description: 'Save the open TIA Portal project, optionally as a copy: save_as_dir saves the project into a different ' +
-            'location. WRITES the project file, so dry_run defaults to false; pass dry_run=true to only report whether ' +
-            'the project is modified and where it would be saved. Two things about save_as_dir matter: ' +
+            'location. WRITES the project file. Two things about save_as_dir matter: ' +
             '(1) TIA moves the persistence location of the currently open project there, exactly like the UI\'s ' +
             '"Save as" — the original folder keeps its files but stops being the project the controller holds, so later ' +
             'saves and close_project(save=true) write to the new location. (2) SaveAs takes only a target directory: ' +
@@ -1219,17 +1176,13 @@ export function registerTools(ctx, dependencies) {
                     'folder below it and keeps the project name, so the resulting .ap17 path is reported back rather than ' +
                     'assumed.',
             },
-            dry_run: {
-                type: 'boolean',
-                description: 'Defaults to false because saving is the purpose of this call. True only reports the modified state and the target.',
-            },
         },
         output: {
             schema: OUTCOME_SCHEMA,
             render: (_args, value) => [{ type: 'text', text: renderValue(value, verbose) }],
         },
         async execute(args, exec) {
-            const params = { dry_run: args.dry_run ?? false };
+            const params = {};
             if (args.save_as_dir !== undefined)
                 params['save_as_dir'] = args.save_as_dir;
             return asJsonOutcome(await runOperation(dependencies, 'SaveProject', params, exec.signal));
@@ -1241,9 +1194,8 @@ export function registerTools(ctx, dependencies) {
             '(the default) writes target_dir/target_name using mode none, compressed (the default), ' +
             'discard_restorable_data or discard_restorable_data_and_compressed. action=retrieve reads archive_path into ' +
             'target_dir, optionally upgrading the project (upgrade) and opening it in a visible TIA Portal instance ' +
-            '(with_window) with project_open_mode primary or secondary. Archiving only writes the archive file and ' +
-            'retrieving opens a project, so dry_run defaults to false for both; pass dry_run=true to only report what ' +
-            'would happen. Maps to the ArchiveProject operation. Fails with project_not_open, project_not_saved ' +
+            '(with_window) with project_open_mode primary or secondary. Archiving writes the archive file; ' +
+            'retrieving opens a project. Maps to the ArchiveProject operation. Fails with project_not_open, project_not_saved ' +
             '(unsaved changes), archive_failed, project_already_open, archive_not_found or retrieve_failed.',
         parameters: {
             action: {
@@ -1273,10 +1225,6 @@ export function registerTools(ctx, dependencies) {
                 type: 'boolean',
                 description: 'Retrieve only: true opens the retrieved project in a visible TIA Portal instance. Defaults to false.',
             },
-            dry_run: {
-                type: 'boolean',
-                description: 'Defaults to false for both actions. True reports the archive path or the retrieve plan without writing or opening anything.',
-            },
         },
         output: {
             schema: OUTCOME_SCHEMA,
@@ -1284,7 +1232,7 @@ export function registerTools(ctx, dependencies) {
         },
         async execute(args, exec) {
             const action = args.action ?? 'archive';
-            const params = { action, dry_run: args.dry_run ?? false };
+            const params = { action };
             if (args.target_dir !== undefined)
                 params['target_dir'] = args.target_dir;
             if (action === 'archive') {
@@ -1345,8 +1293,7 @@ export function registerTools(ctx, dependencies) {
         description: 'List or change the languages of the open project. action=list (the default) reports the supported ' +
             'language catalog plus the active, editing and reference language; action=set adds or removes ' +
             'active_languages (active_mode add, the default, or remove) and sets editing_language and/or ' +
-            'reference_language. Only action=set writes to the project, so dry_run defaults to true; pass ' +
-            'dry_run=false to apply it. Maps to the ProjectLanguages operation. Fails with project_not_open, ' +
+            'reference_language. Only action=set writes to the project. Maps to the ProjectLanguages operation. Fails with project_not_open, ' +
             'language_not_found (details.available lists the supported cultures) or invalid_params.',
         parameters: {
             action: {
@@ -1366,10 +1313,6 @@ export function registerTools(ctx, dependencies) {
             },
             editing_language: { type: 'string', description: "Culture name to set as the project's editing language in action=set." },
             reference_language: { type: 'string', description: "Culture name to set as the project's reference language in action=set." },
-            dry_run: {
-                type: 'boolean',
-                description: 'Defaults to true because action=set writes to the project. Set false to apply the change.',
-            },
         },
         output: {
             schema: OUTCOME_SCHEMA,
@@ -1379,7 +1322,6 @@ export function registerTools(ctx, dependencies) {
             const params = {
                 action: args.action ?? 'list',
                 active_mode: args.active_mode ?? 'add',
-                dry_run: args.dry_run ?? true,
             };
             if (args.active_languages !== undefined)
                 params['active_languages'] = args.active_languages;
@@ -1393,9 +1335,9 @@ export function registerTools(ctx, dependencies) {
     register(defineTool({
         name: 'project_texts',
         description: 'Export the project texts of the open project into an XLSX file, or import them back from one. ' +
-            'action=export needs source_language and target_language and writes file; it writes only that file and not ' +
-            'the project, so its dry_run defaults to false. action=import reads file into the project and therefore ' +
-            'defaults to dry_run=true; update_source_language=true also updates the source language column, and the ' +
+            'action=export needs source_language and target_language and writes file; it writes only that file, not the ' +
+            'project. action=import reads file into the project and is NOT wrapped in a transaction (the Openness manual ' +
+            'forbids ProjectText import inside one), so it cannot be rolled back; update_source_language=true also updates the source language column, and the ' +
             'result reports the import state (Info, Warning or Error) and the result path. Maps to the ProjectTexts ' +
             'operation. Fails with project_not_open, project_text_export_failed, project_text_import_failed or ' +
             'invalid_params.',
@@ -1413,10 +1355,6 @@ export function registerTools(ctx, dependencies) {
                 type: 'boolean',
                 description: 'Import only: true also updates the source language column from the file. Defaults to false.',
             },
-            dry_run: {
-                type: 'boolean',
-                description: 'Defaults to false for action=export (it only writes that file) and to true for action=import (which writes to the project).',
-            },
         },
         output: {
             schema: OUTCOME_SCHEMA,
@@ -1427,7 +1365,6 @@ export function registerTools(ctx, dependencies) {
             const params = {
                 action,
                 file: args.file,
-                dry_run: args.dry_run ?? action === 'import',
             };
             if (args.source_language !== undefined)
                 params['source_language'] = args.source_language;
@@ -1441,8 +1378,7 @@ export function registerTools(ctx, dependencies) {
     register(defineTool({
         name: 'update_project',
         description: "Change project-level settings of the open project: simulation_during_block_compilation and, per " +
-            'language, the project comment (comment_language plus comment_text). WRITES to the project, so dry_run ' +
-            'defaults to true; the result reports the before and after value of every item and whether it changed. At ' +
+            'language, the project comment (comment_language plus comment_text). WRITES to the project; the result reports the before and after value of every item and whether it changed. At ' +
             'least one writable item is required. Maps to the UpdateProject operation. Fails with project_not_open, ' +
             'project_update_failed, language_not_found or invalid_params.',
         parameters: {
@@ -1452,17 +1388,13 @@ export function registerTools(ctx, dependencies) {
             },
             comment_language: { type: 'string', description: "Culture name of the project comment to change, for example 'en-US'." },
             comment_text: { type: 'string', description: 'New project comment text for comment_language.' },
-            dry_run: {
-                type: 'boolean',
-                description: 'Defaults to true because this tool writes to the project. Set false to apply the changes.',
-            },
         },
         output: {
             schema: OUTCOME_SCHEMA,
             render: (_args, value) => [{ type: 'text', text: renderValue(value, verbose) }],
         },
         async execute(args, exec) {
-            const params = { dry_run: args.dry_run ?? true };
+            const params = {};
             if (args.simulation_during_block_compilation !== undefined) {
                 params['simulation_during_block_compilation'] = args.simulation_during_block_compilation;
             }
@@ -1478,8 +1410,7 @@ export function registerTools(ctx, dependencies) {
         description: 'Read or change TIA Portal settings, which live outside the project. action=list (the default) reports ' +
             'every setting folder and its settings with valueType, value and writeable; action=set changes the single ' +
             'setting named by setting in folder (default General) to value, which the controller converts according to ' +
-            'value_type (auto, string, boolean, integer or culture). Only action=set writes, so dry_run defaults to ' +
-            'true; with_window=true uses a visible TIA Portal instance, which some settings require. Maps to the ' +
+            'value_type (auto, string, boolean, integer or culture). Only action=set writes; with_window=true uses a visible TIA Portal instance, which some settings require. Maps to the ' +
             'PortalSettings operation. Fails with setting_not_found (details.availableFolders / ' +
             'details.availableSettings), setting_change_failed or invalid_params.',
         parameters: {
@@ -1504,10 +1435,6 @@ export function registerTools(ctx, dependencies) {
                 type: 'boolean',
                 description: 'True to use a visible TIA Portal instance; false (the default) uses the headless one. Some settings only exist with a window.',
             },
-            dry_run: {
-                type: 'boolean',
-                description: 'Defaults to true because action=set writes to the TIA Portal settings. Set false to apply the change.',
-            },
         },
         output: {
             schema: OUTCOME_SCHEMA,
@@ -1519,7 +1446,6 @@ export function registerTools(ctx, dependencies) {
                 folder: args.folder ?? 'General',
                 value_type: args.value_type ?? 'auto',
                 with_window: args.with_window ?? false,
-                dry_run: args.dry_run ?? true,
             };
             if (args.setting !== undefined)
                 params['setting'] = args.setting;
@@ -1620,7 +1546,7 @@ export function registerTools(ctx, dependencies) {
             'the three group kinds, where group_path is the path of the group to create instead. For the other kinds ' +
             'group_path is the parent group, and create_parents=true creates the missing groups on the way. An ' +
             'instance_db also needs instance_of (the function block it instantiates) and takes auto_number and number ' +
-            'for its DB number. WRITES to the project, so dry_run defaults to true. Maps to the CreatePlcObjects ' +
+            'for its DB number. WRITES to the project. Maps to the CreatePlcObjects ' +
             'operation. Fails with invalid_params, group_not_found, group_create_failed, object_already_exists, ' +
             'object_create_failed or unit_provider_unavailable.',
         parameters: {
@@ -1645,10 +1571,6 @@ export function registerTools(ctx, dependencies) {
             instance_of: { type: 'string', description: 'Name of the function block the new instance DB instantiates. Required for kind instance_db.' },
             auto_number: { type: 'boolean', description: 'instance_db only: true (the default) lets TIA assign the DB number, so number is ignored.' },
             number: { type: 'integer', description: 'instance_db only: DB number to use when auto_number is false. Defaults to 0.' },
-            dry_run: {
-                type: 'boolean',
-                description: 'Defaults to true because this tool writes to the project. Set false to create the object.',
-            },
         },
         output: {
             schema: OUTCOME_SCHEMA,
@@ -1659,7 +1581,6 @@ export function registerTools(ctx, dependencies) {
             const params = {
                 kind,
                 create_parents: args.create_parents ?? false,
-                dry_run: args.dry_run ?? true,
             };
             if (args.name !== undefined)
                 params['name'] = args.name;
@@ -1920,7 +1841,7 @@ export function registerTools(ctx, dependencies) {
         description: 'Generate SCL/STL source from blocks and PLC types of the open project into one output_file: block_names ' +
             'selects blocks (the extension follows the language — .scl for SCL, .awl for STL, .db for data blocks) ' +
             'and type_names selects PLC types (extension .udt is required); with_dependencies also writes the objects ' +
-            'those blocks depend on. Only the file system is written, so dry_run defaults to false; overwrite=true is ' +
+            'those blocks depend on. Only the file system is written; overwrite=true is ' +
             'required to replace an existing file. Maps to the GenerateSource operation. Fails with invalid_params, ' +
             'object_not_found, file_exists or generate_source_failed.',
         parameters: {
@@ -1929,10 +1850,6 @@ export function registerTools(ctx, dependencies) {
             type_names: { type: 'array', items: { type: 'string' }, description: 'Names of the PLC types to generate; output_file must end in .udt.' },
             with_dependencies: { type: 'boolean', description: 'True to also generate the objects the selected blocks depend on. Defaults to false.' },
             overwrite: { type: 'boolean', description: 'True to replace an existing output_file; false (the default) fails with file_exists.' },
-            dry_run: {
-                type: 'boolean',
-                description: 'Defaults to false because it only writes that file. True reports what would be generated.',
-            },
         },
         output: {
             schema: OUTCOME_SCHEMA,
@@ -1943,7 +1860,6 @@ export function registerTools(ctx, dependencies) {
                 output_file: args.output_file,
                 with_dependencies: args.with_dependencies ?? false,
                 overwrite: args.overwrite ?? false,
-                dry_run: args.dry_run ?? false,
             };
             if (args.block_names !== undefined)
                 params['block_names'] = args.block_names;
@@ -1957,9 +1873,8 @@ export function registerTools(ctx, dependencies) {
         description: 'Manage watch and force tables of the open project: action create, delete, export or import, with kind ' +
             'watch (the default) or force. create, delete and export need name; export also needs output_file, and ' +
             'import needs import_paths together with import_options none (the default) or override. create_group=true ' +
-            'creates a missing group_path and overwrite=true allows replacing an exported file. Every action is ' +
-            'treated as a write (create/delete change the project, export writes a file), so dry_run defaults to true; ' +
-            'import reports the imported tables and whether the transaction committed. Maps to the ' +
+            'creates a missing group_path and overwrite=true allows replacing an exported file. create/delete change the ' +
+            'project and export writes a file; import reports the imported tables and whether the transaction committed. Maps to the ' +
             'WatchAndForceTables operation. Fails with watch_table_not_found, force_table_not_found, ' +
             'table_create_failed, table_delete_failed, export_failed, import_failed or invalid_params.',
         parameters: {
@@ -1985,10 +1900,6 @@ export function registerTools(ctx, dependencies) {
             },
             create_group: { type: 'boolean', description: 'True to create a missing group_path when creating a table. Defaults to false.' },
             overwrite: { type: 'boolean', description: 'True to replace an existing export file. Defaults to false.' },
-            dry_run: {
-                type: 'boolean',
-                description: 'Defaults to true because these actions write. Set false to create, delete, export or commit the import.',
-            },
         },
         output: {
             schema: OUTCOME_SCHEMA,
@@ -2001,7 +1912,6 @@ export function registerTools(ctx, dependencies) {
                 import_options: args.import_options ?? 'none',
                 create_group: args.create_group ?? false,
                 overwrite: args.overwrite ?? false,
-                dry_run: args.dry_run ?? true,
             };
             if (args.group_path !== undefined)
                 params['group_path'] = args.group_path;
@@ -2019,8 +1929,7 @@ export function registerTools(ctx, dependencies) {
         description: 'List and change the software units of the PLC software of the open project. action=list (the default) ' +
             'reports every unit with its object counts and its relations; create and delete add or remove the unit ' +
             'named by name, and relation_create/relation_delete change the relation of that unit to related_object ' +
-            'with relation_type software_unit (the default), non_unit_db or to_db. Everything except list writes, so ' +
-            'dry_run defaults to true. Maps to the SoftwareUnits operation. Fails with unit_provider_unavailable ' +
+            'with relation_type software_unit (the default), non_unit_db or to_db. Everything except list writes to the project. Maps to the SoftwareUnits operation. Fails with unit_provider_unavailable ' +
             '(software units are not enabled for this software), unit_not_found, unit_exists, unit_create_failed, ' +
             'unit_delete_failed, relation_create_failed or invalid_params.',
         parameters: {
@@ -2036,10 +1945,6 @@ export function registerTools(ctx, dependencies) {
                 enum: ['software_unit', 'non_unit_db', 'to_db'],
                 description: "Kind of relation for the relation_* actions: 'software_unit' (the default), 'non_unit_db' or 'to_db'.",
             },
-            dry_run: {
-                type: 'boolean',
-                description: 'Defaults to true because everything except list writes to the project. Set false to apply the change.',
-            },
         },
         output: {
             schema: OUTCOME_SCHEMA,
@@ -2049,7 +1954,6 @@ export function registerTools(ctx, dependencies) {
             const params = {
                 action: args.action ?? 'list',
                 relation_type: args.relation_type ?? 'software_unit',
-                dry_run: args.dry_run ?? true,
             };
             if (args.name !== undefined)
                 params['name'] = args.name;
@@ -2087,8 +1991,7 @@ export function registerTools(ctx, dependencies) {
     register(defineTool({
         name: 'set_safety_settings',
         description: 'Change the global safety settings of the TIA Portal instance: safety_modifications_possible and ' +
-            'username_for_f_change_history, at least one of which is required. WRITES to those settings, so dry_run ' +
-            'defaults to true; the result reports the before and after value of every item and whether it changed. ' +
+            'username_for_f_change_history, at least one of which is required. WRITES to those settings; the result reports the before and after value of every item and whether it changed. ' +
             'Maps to the SetSafetySettings operation. Fails with global_settings_unavailable, safety_setting_failed ' +
             'or invalid_params.',
         parameters: {
@@ -2100,17 +2003,13 @@ export function registerTools(ctx, dependencies) {
                 type: 'string',
                 description: 'New user name recorded in the F-change history.',
             },
-            dry_run: {
-                type: 'boolean',
-                description: 'Defaults to true because this tool writes to the safety settings. Set false to apply the change.',
-            },
         },
         output: {
             schema: OUTCOME_SCHEMA,
             render: (_args, value) => [{ type: 'text', text: renderValue(value, verbose) }],
         },
         async execute(args, exec) {
-            const params = { dry_run: args.dry_run ?? true };
+            const params = {};
             if (args.safety_modifications_possible !== undefined) {
                 params['safety_modifications_possible'] = args.safety_modifications_possible;
             }

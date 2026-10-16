@@ -40,7 +40,6 @@ namespace TiaOpennessV17Min.Controller
             string author = p.String("author", null);
             string comment = p.String("comment", null);
             bool withWindow = p.Bool("with_window", false);
-            bool dryRun = p.Bool("dry_run", false);
 
             if (_host.HasProject)
             {
@@ -61,23 +60,6 @@ namespace TiaOpennessV17Min.Controller
             }
             string targetPath = Path.Combine(fullDirectory, projectName);
 
-            if (dryRun)
-            {
-                JsonObject plan = new JsonObject();
-                plan.Add("projectDir", fullDirectory);
-                plan.Add("projectName", projectName);
-                plan.Add("targetPath", targetPath);
-                plan.Add("directoryExists", Directory.Exists(fullDirectory));
-                plan.Add("targetPathExists", Directory.Exists(targetPath));
-                plan.AddIfPresent("author", author);
-                plan.AddIfPresent("comment", comment);
-                plan.Add("withUserInterface", withWindow);
-                plan.Add("wouldWrite", true);
-                plan.Add("dryRun", true);
-                log.Info("Dry run: no project was created. Re-run with dry_run disabled to create "
-                    + Text.Quote(projectName) + " in " + fullDirectory + ".");
-                return plan;
-            }
 
             progress.Report("create", "Creating the project " + Text.Quote(projectName) + " in " + fullDirectory);
             JsonObject data = _host.CreateProjectAt(fullDirectory, projectName, author, comment, withWindow, progress);
@@ -92,7 +74,6 @@ namespace TiaOpennessV17Min.Controller
         private JsonObject SaveProject(JsonArgs p, DiagnosticLog log, ChangeLog changes, IProgressSink progress)
         {
             string saveAsDir = p.String("save_as_dir", null);
-            bool dryRun = p.Bool("dry_run", false);
             bool saveAs = !string.IsNullOrWhiteSpace(saveAsDir);
             string requestedSaveAsDir = saveAs ? Path.GetFullPath(saveAsDir.Trim().Trim('"')) : null;
 
@@ -103,20 +84,6 @@ namespace TiaOpennessV17Min.Controller
                     "SaveProject requires an open project. Call OpenProject first.");
             }
 
-            if (dryRun)
-            {
-                JsonObject plan = new JsonObject();
-                plan.Add("projectName", JsonObject.ReadString(session, "projectName", null));
-                plan.Add("projectPath", JsonObject.ReadString(session, "projectPath", null));
-                plan.Add("isModified", JsonObject.ReadBool(session, "isModified", false));
-                plan.Add("saveAs", saveAs);
-                if (saveAs) plan.Add("saveAsDir", requestedSaveAsDir);
-                plan.Add("wouldWrite", true);
-                plan.Add("dryRun", true);
-                log.Info("Dry run: the project was not saved. Re-run with dry_run disabled "
-                    + (saveAs ? "to save it under a new name." : "to save it."));
-                return plan;
-            }
 
             bool wasModified = JsonObject.ReadBool(session, "isModified", false);
             string before = JsonObject.ReadString(session, "projectPath", null);
@@ -170,26 +137,10 @@ namespace TiaOpennessV17Min.Controller
             string targetDir = p.RequiredString("target_dir");
             string targetName = p.RequiredString("target_name");
             string mode = p.Enum("mode", ArchivationModeNames, "compressed");
-            bool dryRun = p.Bool("dry_run", false);
 
             string fullDirectory = Path.GetFullPath(targetDir.Trim().Trim('"'));
             string archivedPath = Path.Combine(fullDirectory, targetName);
 
-            if (dryRun)
-            {
-                JsonObject plan = new JsonObject();
-                plan.Add("action", "archive");
-                plan.Add("projectName", JsonObject.ReadString(_host.DescribeSession(), "projectName", null));
-                plan.Add("targetDir", fullDirectory);
-                plan.Add("targetName", targetName);
-                plan.Add("mode", mode);
-                plan.Add("archivedPath", archivedPath);
-                plan.Add("isModified", JsonObject.ReadBool(_host.DescribeSession(), "isModified", false));
-                plan.Add("wouldWrite", true);
-                plan.Add("dryRun", true);
-                log.Info("Dry run: nothing was archived. The archive would be written to " + archivedPath + ".");
-                return plan;
-            }
 
             progress.Report("archive", "Archiving the project to " + archivedPath + " (" + mode + ").");
             JsonObject data = _host.ArchiveProjectTo(fullDirectory, targetName, mode);
@@ -207,25 +158,10 @@ namespace TiaOpennessV17Min.Controller
             bool upgrade = p.Bool("upgrade", false);
             string openMode = p.Enum("project_open_mode", ProjectOpenModeNames, "primary");
             bool withWindow = p.Bool("with_window", false);
-            bool dryRun = p.Bool("dry_run", false);
 
             string fullArchive = Path.GetFullPath(archivePath.Trim().Trim('"'));
             string fullDirectory = Path.GetFullPath(targetDir.Trim().Trim('"'));
 
-            if (dryRun)
-            {
-                JsonObject plan = new JsonObject();
-                plan.Add("action", "retrieve");
-                plan.Add("archivePath", fullArchive);
-                plan.Add("archiveExists", File.Exists(fullArchive));
-                plan.Add("targetDir", fullDirectory);
-                plan.Add("upgraded", upgrade);
-                plan.Add("projectOpenMode", openMode);
-                plan.Add("wouldWrite", true);
-                plan.Add("dryRun", true);
-                log.Info("Dry run: nothing was retrieved. Re-run with dry_run disabled to retrieve and open the archive.");
-                return plan;
-            }
 
             progress.Report("retrieve", "Retrieving " + fullArchive + " into " + fullDirectory + ".");
             JsonObject data = _host.RetrieveProjectFrom(fullArchive, fullDirectory, upgrade, openMode, withWindow, progress);
@@ -300,7 +236,7 @@ namespace TiaOpennessV17Min.Controller
             {
                 JsonObject listed = _host.DescribeLanguageSettings();
                 listed.Add("action", "list");
-                listed.Add("dryRun", true);
+                listed.Add("dryRun", false);
                 return listed;
             }
 
@@ -308,7 +244,6 @@ namespace TiaOpennessV17Min.Controller
             string activeMode = p.Enum("active_mode", LanguageActiveModeNames, "add");
             string editingLanguage = p.String("editing_language", null);
             string referenceLanguage = p.String("reference_language", null);
-            bool dryRun = p.Bool("dry_run", true);
 
             if (activeLanguages.Count == 0
                 && string.IsNullOrWhiteSpace(editingLanguage)
@@ -318,22 +253,6 @@ namespace TiaOpennessV17Min.Controller
                     "action=set needs at least one of 'active_languages', 'editing_language' or 'reference_language'.");
             }
 
-            if (dryRun)
-            {
-                JsonObject plan = new JsonObject();
-                plan.Add("action", "set");
-                plan.Add("activeMode", activeMode);
-                plan.Add("resolvedActiveLanguages", _host.ResolveLanguageNames(activeLanguages));
-                plan.AddIfPresent("resolvedEditingLanguage",
-                    string.IsNullOrWhiteSpace(editingLanguage) ? null : _host.ResolveLanguageName(editingLanguage));
-                plan.AddIfPresent("resolvedReferenceLanguage",
-                    string.IsNullOrWhiteSpace(referenceLanguage) ? null : _host.ResolveLanguageName(referenceLanguage));
-                plan.Add("before", _host.DescribeLanguageSettings());
-                plan.Add("wouldWrite", true);
-                plan.Add("dryRun", true);
-                log.Info("Dry run: the project languages were not changed. Re-run with dry_run disabled to apply them.");
-                return plan;
-            }
 
             progress.Report("languages", "Updating the project languages.");
             JsonObject data = _host.SetProjectLanguages(activeLanguages, activeMode, editingLanguage, referenceLanguage);
@@ -354,31 +273,9 @@ namespace TiaOpennessV17Min.Controller
             string file = p.RequiredString("file");
             bool export = string.Equals(action, "export", StringComparison.Ordinal);
 
-            bool dryRun;
-            if (p.Raw("dry_run") == null)
-            {
-                // Exporting only writes a file; importing changes the project.
-                dryRun = !export;
-            }
-            else
-            {
-                dryRun = p.Bool("dry_run", !export);
-            }
-
             if (!export)
             {
                 bool updateSourceLanguage = p.Bool("update_source_language", false);
-                if (dryRun)
-                {
-                    JsonObject plan = new JsonObject();
-                    plan.Add("action", "import");
-                    plan.Add("file", Path.GetFullPath(file.Trim().Trim('"')));
-                    plan.Add("updateSourceLanguage", updateSourceLanguage);
-                    plan.Add("wouldWrite", true);
-                    plan.Add("dryRun", true);
-                    log.Info("Dry run: the project texts were not imported. Re-run with dry_run disabled to import them.");
-                    return plan;
-                }
 
                 progress.Report("texts", "Importing the project texts from " + file + ".");
                 // Deliberately NOT wrapped in a transaction: the manual's
@@ -399,18 +296,6 @@ namespace TiaOpennessV17Min.Controller
             string sourceLanguage = p.RequiredString("source_language");
             string targetLanguage = p.RequiredString("target_language");
 
-            if (dryRun)
-            {
-                JsonObject plan = new JsonObject();
-                plan.Add("action", "export");
-                plan.Add("file", Path.GetFullPath(file.Trim().Trim('"')));
-                plan.Add("sourceLanguage", sourceLanguage);
-                plan.Add("targetLanguage", targetLanguage);
-                plan.Add("wouldWrite", true);
-                plan.Add("dryRun", true);
-                log.Info("Dry run: nothing was exported. Re-run with dry_run disabled to export the project texts.");
-                return plan;
-            }
 
             progress.Report("texts", "Exporting the project texts to " + file + ".");
             JsonObject data = _host.ExportProjectTexts(file, sourceLanguage, targetLanguage);
@@ -429,7 +314,6 @@ namespace TiaOpennessV17Min.Controller
             bool hasSimulation = p.Has("simulation_during_block_compilation");
             string commentLanguage = p.String("comment_language", null);
             string commentText = p.String("comment_text", null);
-            bool dryRun = p.Bool("dry_run", true);
 
             if (!hasSimulation && string.IsNullOrWhiteSpace(commentLanguage))
             {
@@ -450,25 +334,6 @@ namespace TiaOpennessV17Min.Controller
 
             bool simulationValue = hasSimulation && p.Bool("simulation_during_block_compilation", false);
 
-            if (dryRun)
-            {
-                JsonObject plan = new JsonObject();
-                if (hasSimulation)
-                {
-                    plan.Add("simulationDuringBlockCompilation", JsonObject.Of(
-                        "before", _host.ReadSimulationSupport(),
-                        "after", simulationValue,
-                        "changed", _host.ReadSimulationSupport() != simulationValue));
-                }
-                if (!string.IsNullOrWhiteSpace(commentLanguage))
-                {
-                    plan.Add("comment", JsonObject.Of("language", _host.ResolveLanguageName(commentLanguage), "after", commentText));
-                }
-                plan.Add("wouldWrite", true);
-                plan.Add("dryRun", true);
-                log.Info("Dry run: the project was not updated. Re-run with dry_run disabled to apply the change.");
-                return plan;
-            }
 
             progress.Report("update", "Updating the project.");
             JsonObject data = new JsonObject();
@@ -532,17 +397,11 @@ namespace TiaOpennessV17Min.Controller
                 throw new ControllerException("invalid_params", "'value' is required when action=set.");
             }
             string valueType = p.Enum("value_type", Values.TypeNames, "auto");
-            bool dryRun = p.Bool("dry_run", true);
 
-            JsonObject result = _host.AccessPortalSetting(folder, setting, value, valueType, !dryRun);
+            JsonObject result = _host.AccessPortalSetting(folder, setting, value, valueType, true);
             result.Add("action", "set");
-            result.Add("dryRun", dryRun);
-            if (dryRun)
-            {
-                result.Add("wouldWrite", true);
-                log.Info("Dry run: the setting " + Text.Quote(setting) + " was not changed.");
-            }
-            else if (JsonObject.ReadBool(result, "changed", false))
+            result.Add("dryRun", false);
+            if (JsonObject.ReadBool(result, "changed", false))
             {
                 changes.Add("setting", folder + "/" + setting, "written",
                     JsonObject.ReadString(result, "before", "?") + " -> " + JsonObject.ReadString(result, "after", "?"));

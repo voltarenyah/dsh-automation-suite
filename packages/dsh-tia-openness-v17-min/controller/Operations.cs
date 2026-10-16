@@ -208,7 +208,6 @@ namespace TiaOpennessV17Min.Controller
             List<string> requestedNames = p.StringList("block_names");
             bool recursive = p.Bool("recursive", true);
             bool overwrite = p.Bool("overwrite", false);
-            bool dryRun = p.Bool("dry_run", false);
             bool writeManifest = p.Bool("write_manifest", true);
             string exportOptionName = p.Enum("export_options", ExportOptionNames, "with_defaults");
             ExportOptions exportOptions = ParseExportOptions(exportOptionName);
@@ -259,25 +258,8 @@ namespace TiaOpennessV17Min.Controller
             data.Add("categories", categories);
             data.Add("blockCount", plan.Count);
             data.Add("counts", categoryCounts);
-            data.Add("dryRun", dryRun);
+            data.Add("dryRun", false);
 
-            if (dryRun)
-            {
-                List<JsonObject> planned = new List<JsonObject>();
-                foreach (ExportPlanItem item in plan)
-                {
-                    planned.Add(JsonObject.Of(
-                        "category", item.Category,
-                        "name", item.Name,
-                        "group", item.GroupPath,
-                        "file", item.File,
-                        "exists", File.Exists(item.File),
-                        "action", File.Exists(item.File) && !overwrite ? "skip" : (File.Exists(item.File) ? "overwrite" : "create")));
-                }
-                data.Add("files", planned);
-                log.Info("Dry run: nothing was exported. " + plan.Count + " file(s) would be written under " + outputDir + ".");
-                return data;
-            }
 
             List<JsonObject> files = new List<JsonObject>();
             List<JsonObject> exportFailures = new List<JsonObject>();
@@ -800,7 +782,7 @@ List<string> categoryFilter = p.EnumList("categories", CategoryNames);
             data.Add("createGroup", createGroup);
             data.Add("mirrorGroups", mirrorGroups);
             data.AddIfPresent("targetGroup", string.IsNullOrWhiteSpace(targetGroupPath) ? null : targetGroupPath);
-            data.Add("dryRun", dryRun);
+            data.Add("dryRun", false);
             data.Add("fileCount", candidates.Count);
             data.AddIfPresent("categories", categoryFilter.Count > 0 ? categoryFilter : null);
             data.Add("plan", planned);
@@ -1459,7 +1441,6 @@ List<string> categoryFilter = p.EnumList("categories", CategoryNames);
         {
             string deviceName = p.String("device_name", null);
             string softwareName = p.String("software_name", null);
-            bool dryRun = p.Bool("dry_run", true);
             int maxMessages = p.Int("max_messages", DefaultMaxMessages);
             if (maxMessages <= 0) maxMessages = DefaultMaxMessages;
 
@@ -1468,21 +1449,8 @@ List<string> categoryFilter = p.EnumList("categories", CategoryNames);
             JsonObject data = new JsonObject();
             data.Add("device", software.DeviceName);
             data.Add("software", software.SoftwareName);
-            data.Add("dryRun", dryRun);
+            data.Add("dryRun", false);
 
-            if (dryRun)
-            {
-                List<JsonObject> items = new List<JsonObject>();
-                foreach (BlockRef block in _host.CollectBlocks(software.Software, null, true, false))
-                {
-                    items.Add(OpennessHost.DescribeBlock(block));
-                }
-                data.Add("blockCount", items.Count);
-                data.Add("blocks", items);
-                log.Info("Dry run: nothing was compiled. " + items.Count + " block(s) would be compiled in "
-                    + software.DisplayName + ".");
-                return data;
-            }
 
             ICompilable compilable = _host.CompilableFor(software.Software);
             progress.Report("compile", "Compiling " + software.DisplayName + " (this can take a while).");

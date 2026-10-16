@@ -229,7 +229,6 @@ namespace TiaOpennessV17Min.Controller
             string name = p.String("name", null);
             string groupPath = p.String("group_path", null);
             bool createParents = p.Bool("create_parents", false);
-            bool dryRun = p.Bool("dry_run", true);
             bool isGroup = kind == "block_group" || kind == "type_group" || kind == "tag_table_group";
 
             if (isGroup)
@@ -249,24 +248,6 @@ namespace TiaOpennessV17Min.Controller
             string normalizedGroup = OpennessHost.NormalizeGroupPath(groupPath);
             string label = isGroup ? normalizedGroup : name;
 
-            if (dryRun)
-            {
-                JsonObject plan = new JsonObject();
-                plan.Add("kind", kind);
-                plan.Add("name", label);
-                plan.AddIfPresent("groupPath", normalizedGroup);
-                plan.Add("createParents", createParents);
-                if (kind == "instance_db")
-                {
-                    plan.Add("instanceOf", p.RequiredString("instance_of"));
-                    plan.Add("autoNumber", p.Bool("auto_number", true));
-                    plan.Add("number", p.Int("number", 0));
-                }
-                plan.Add("wouldWrite", true);
-                plan.Add("dryRun", true);
-                log.Info("Dry run: " + kind + " " + Text.Quote(label) + " was not created.");
-                return plan;
-            }
 
             progress.Report("create", "Creating the " + kind + " " + Text.Quote(label) + ".");
             JsonObject data = new JsonObject();
@@ -696,7 +677,7 @@ namespace TiaOpennessV17Min.Controller
             JsonObject data = new JsonObject();
             data.Add("tagTable", tableName);
             data.AddIfPresent("groupPath", OpennessHost.NormalizeGroupPath(groupPath));
-            data.Add("dryRun", dryRun);
+            data.Add("dryRun", false);
 
             if (dryRun)
             {
@@ -1049,7 +1030,7 @@ namespace TiaOpennessV17Min.Controller
                 attributePayload.Add(attribute, Values.Printable(attributes.Raw(attribute)));
             }
             data.Add("attributes", attributePayload);
-            data.Add("dryRun", dryRun);
+            data.Add("dryRun", false);
 
             if (dryRun)
             {
@@ -1151,7 +1132,7 @@ namespace TiaOpennessV17Min.Controller
             JsonObject data = new JsonObject();
             data.Add("action", action);
             data.Add("passwordProvided", password.Length > 0);
-            data.Add("dryRun", dryRun);
+            data.Add("dryRun", false);
 
             if (dryRun)
             {
@@ -1253,7 +1234,6 @@ namespace TiaOpennessV17Min.Controller
             List<string> typeNames = p.StringList("type_names");
             bool withDependencies = p.Bool("with_dependencies", false);
             bool overwrite = p.Bool("overwrite", false);
-            bool dryRun = p.Bool("dry_run", false);
 
             if (blockNames.Count == 0 && typeNames.Count == 0)
             {
@@ -1326,15 +1306,8 @@ namespace TiaOpennessV17Min.Controller
             data.Add("withDependencies", withDependencies);
             data.Add("blockCount", blocks.Count);
             data.Add("typeCount", types.Count);
-            data.Add("dryRun", dryRun);
+            data.Add("dryRun", false);
 
-            if (dryRun)
-            {
-                data.Add("wouldWrite", true);
-                log.Info("Dry run: no source file was generated. " + (blocks.Count + types.Count)
-                    + " object(s) would be written to " + full + ".");
-                return data;
-            }
 
             progress.Report("source", "Generating " + full + ".");
             _host.GenerateSourceFile(software.Software, blocks, types, full, withDependencies);
@@ -1357,7 +1330,6 @@ namespace TiaOpennessV17Min.Controller
             string kind = p.Enum("kind", WatchAndForceKindNames, "watch");
             string groupPath = p.String("group_path", null);
             bool createGroup = p.Bool("create_group", false);
-            bool dryRun = p.Bool("dry_run", true);
             bool force = string.Equals(kind, "force", StringComparison.Ordinal);
 
             PlcSoftwareRef software = _host.FindPlcSoftware(p.String("device_name", null), p.String("software_name", null));
@@ -1370,18 +1342,6 @@ namespace TiaOpennessV17Min.Controller
                         "TIA Portal Openness V17 exposes no Create for force tables (PlcForceTableComposition has only "
                             + "Import/Find); import a force table XML instead of creating one.",
                         JsonObject.Of("kind", kind));
-                }
-                if (dryRun)
-                {
-                    JsonObject plan = new JsonObject();
-                    plan.Add("action", action);
-                    plan.Add("kind", kind);
-                    plan.AddIfPresent("groupPath", OpennessHost.NormalizeGroupPath(groupPath));
-                    plan.Add("name", p.RequiredString("name"));
-                    plan.Add("wouldWrite", true);
-                    plan.Add("dryRun", true);
-                    log.Info("Dry run: no watch table was created.");
-                    return plan;
                 }
                 string name = p.RequiredString("name");
                 JsonObject created;
@@ -1415,17 +1375,6 @@ namespace TiaOpennessV17Min.Controller
                             + Text.Quote(OpennessHost.NormalizeGroupPath(groupPath)) + ".",
                         JsonObject.Of("name", name, "group", OpennessHost.NormalizeGroupPath(groupPath)));
                 }
-                if (dryRun)
-                {
-                    JsonObject plan = new JsonObject();
-                    plan.Add("action", action);
-                    plan.Add("kind", kind);
-                    plan.Add("name", name);
-                    plan.AddIfPresent("group", OpennessHost.NormalizeGroupPath(groupPath));
-                    plan.Add("wouldWrite", true);
-                    plan.Add("dryRun", true);
-                    return plan;
-                }
                 using (TransactionScope scope = _host.BeginTransaction("Delete watch table"))
                 {
                     _host.DeleteWatchTable(table);
@@ -1458,11 +1407,6 @@ namespace TiaOpennessV17Min.Controller
                             "The file " + Text.Quote(full) + " already exists; pass overwrite=true to replace it.",
                             JsonObject.Of("outputFile", full));
                     }
-                    if (dryRun)
-                    {
-                        return JsonObject.Of("action", action, "kind", kind, "name", name, "file", full,
-                            "wouldWrite", true, "dryRun", true);
-                    }
                     _host.ExportForceTable(table, full);
                 }
                 else
@@ -1479,11 +1423,6 @@ namespace TiaOpennessV17Min.Controller
                         throw new ControllerException("file_exists",
                             "The file " + Text.Quote(full) + " already exists; pass overwrite=true to replace it.",
                             JsonObject.Of("outputFile", full));
-                    }
-                    if (dryRun)
-                    {
-                        return JsonObject.Of("action", action, "kind", kind, "name", name, "file", full,
-                            "wouldWrite", true, "dryRun", true);
                     }
                     _host.ExportWatchTable(table, full);
                 }
@@ -1537,19 +1476,6 @@ namespace TiaOpennessV17Min.Controller
                 throw new ControllerException("invalid_params", "No *.xml file was found in the given import paths.");
             }
 
-            if (dryRun)
-            {
-                JsonObject plan = new JsonObject();
-                plan.Add("action", action);
-                plan.Add("kind", kind);
-                plan.Add("importOptions", importOptionName);
-                plan.Add("files", files);
-                plan.AddIfPresent("groupPath", OpennessHost.NormalizeGroupPath(groupPath));
-                plan.Add("wouldWrite", true);
-                plan.Add("dryRun", true);
-                log.Info("Dry run: " + files.Count + " file(s) would be imported.");
-                return plan;
-            }
 
             progress.Report("import", "Importing " + files.Count + " watch/force table file(s).");
             List<JsonObject> imported = new List<JsonObject>();
@@ -1621,17 +1547,12 @@ namespace TiaOpennessV17Min.Controller
             }
 
             string name = p.RequiredString("name");
-            bool dryRun = p.Bool("dry_run", true);
 
             PlcUnit unit = _host.FindUnit(provider, name);
 
             if (string.Equals(action, "create", StringComparison.Ordinal))
             {
                 if (unit != null) throw OpennessHost.AlreadyExists("software unit", name);
-                if (dryRun)
-                {
-                    return JsonObject.Of("action", action, "name", name, "wouldWrite", true, "dryRun", true);
-                }
                 using (TransactionScope scope = _host.BeginTransaction("Create software unit"))
                 {
                     PlcUnit created = _host.CreateUnit(provider, name);
@@ -1655,10 +1576,6 @@ namespace TiaOpennessV17Min.Controller
                     throw new ControllerException("unit_not_found",
                         "The software unit " + Text.Quote(name) + " does not exist.",
                         JsonObject.Of("name", name, "available", names));
-                }
-                if (dryRun)
-                {
-                    return JsonObject.Of("action", action, "name", name, "wouldWrite", true, "dryRun", true);
                 }
                 using (TransactionScope scope = _host.BeginTransaction("Delete software unit"))
                 {
@@ -1686,11 +1603,6 @@ namespace TiaOpennessV17Min.Controller
                         "The unit " + Text.Quote(name) + " already has a relation to " + Text.Quote(relatedObject) + ".",
                         JsonObject.Of("unit", name, "relatedObject", relatedObject));
                 }
-                if (dryRun)
-                {
-                    return JsonObject.Of("action", action, "name", name, "relatedObject", relatedObject,
-                        "relationType", relationType, "wouldWrite", true, "dryRun", true);
-                }
                 using (TransactionScope scope = _host.BeginTransaction("Create unit relation"))
                 {
                     _host.CreateUnitRelation(unit, relatedObject, relationType);
@@ -1707,11 +1619,6 @@ namespace TiaOpennessV17Min.Controller
                 throw new ControllerException("unit_not_found",
                     "The unit " + Text.Quote(name) + " has no relation to " + Text.Quote(relatedObject) + ".",
                     JsonObject.Of("unit", name, "relatedObject", relatedObject));
-            }
-            if (dryRun)
-            {
-                return JsonObject.Of("action", action, "name", name, "relatedObject", relatedObject,
-                    "wouldWrite", true, "dryRun", true);
             }
             using (TransactionScope scope = _host.BeginTransaction("Delete unit relation"))
             {

@@ -222,7 +222,6 @@ test('exportObjects mirrors the tool defaults and writes nothing else', async ()
     overwrite: false,
     export_options: 'with_defaults',
     write_manifest: true,
-    dry_run: false,
     block_names: ['FB_Motor'],
   })
 
@@ -232,7 +231,6 @@ test('exportObjects mirrors the tool defaults and writes nothing else', async ()
     overwrite: true,
     exportOptions: 'none',
     writeManifest: false,
-    dryRun: true,
     deviceName: 'd',
     softwareName: 's',
   })
@@ -243,7 +241,6 @@ test('exportObjects mirrors the tool defaults and writes nothing else', async ()
     overwrite: true,
     export_options: 'none',
     write_manifest: false,
-    dry_run: true,
     device_name: 'd',
     software_name: 's',
   })
@@ -335,8 +332,8 @@ test('saveProjectAs sends the target directory and surfaces what TIA actually pr
   assert.equal(result.data.savedAs, 'C:\\w\\tia\\Proj\\tia.ap17')
   assert.equal(result.data.requestedSaveAsDir, 'C:\\w\\tia\\Proj')
 
-  await service.saveProjectAs('C:\\w\\tia\\Proj', { dryRun: true })
-  assert.deepEqual(calls[1].params, { save_as_dir: 'C:\\w\\tia\\Proj', dry_run: true })
+  await service.saveProjectAs('C:\\w\\tia\\Proj')
+  assert.deepEqual(calls[1].params, { save_as_dir: 'C:\\w\\tia\\Proj' })
 
   await assert.rejects(() => service.saveProjectAs(''), TypeError)
 })
@@ -464,7 +461,7 @@ test('rebuildSource honours a device filter and names the ones it could not find
     assert.equal(call.params.software_name, 'PLC_A')
     assert.equal(call.params.write_manifest, true)
     assert.equal(call.params.overwrite, false)
-    assert.equal(call.params.dry_run, false)
+    assert.ok(!('dry_run' in call.params), 'the rebuild exports directly; it has no dry run')
   }
   assert.deepEqual(exports[0].params.categories, ['blocks'])
   assert.deepEqual(exports[1].params.categories, ['types', 'tag_tables'])

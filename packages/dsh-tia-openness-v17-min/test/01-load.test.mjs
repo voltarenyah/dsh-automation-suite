@@ -103,7 +103,7 @@ test('the model-facing descriptions name the operation, the dry-run policy and t
   assert.match(exportBlocks.description, /block_not_found/, 'export_blocks names its error codes')
 
   const compilePlc = harness.definitions.find((definition) => definition.name === 'compile_plc')
-  assert.match(compilePlc.description, /dry_run/, 'compile_plc explains its dry-run default')
+  assert.doesNotMatch(compilePlc.description, /dry_run/, 'compile_plc no longer offers a dry run')
   assert.match(compilePlc.description, /errorCount/, 'compile_plc explains how compile errors are reported')
 
   const controllerStatus = harness.definitions.find((definition) => definition.name === 'controller_status')

@@ -193,13 +193,10 @@ export interface ExportObjectsQuery {
   overwrite?: boolean
   exportOptions?: 'none' | 'with_defaults' | 'with_read_only'
   writeManifest?: boolean
-  dryRun?: boolean
   signal?: AbortSignal
 }
 
 export interface SaveProjectAsOptions {
-  /** True to report what would happen without writing anything. */
-  dryRun?: boolean
   signal?: AbortSignal
 }
 
@@ -235,8 +232,6 @@ export interface AccessTiaSession {
 export interface RebuildSourceOptions {
   /** True to replace existing files; false (the default) skips them and reports. */
   overwrite?: boolean
-  /** True to report the plan without writing. */
-  dryRun?: boolean
   /** Limit the rebuild to these device names; omit for every PLC software. */
   deviceNames?: readonly string[]
   signal?: AbortSignal
@@ -560,7 +555,6 @@ export class EngineeringAccess extends Service {
       overwrite: query.overwrite ?? false,
       export_options: query.exportOptions ?? 'with_defaults',
       write_manifest: query.writeManifest ?? true,
-      dry_run: query.dryRun ?? false,
     }
     if (query.blockNames !== undefined) params['block_names'] = [...query.blockNames]
     if (query.typeNames !== undefined) params['type_names'] = [...query.typeNames]
@@ -582,14 +576,13 @@ export class EngineeringAccess extends Service {
    * (`savedAs` / `projectPath`), never what it asked for.
    *
    * @param directory - target directory; TIA decides the layout below it.
-   * @param options - dry run and cancellation.
+   * @param options - cancellation.
    */
   async saveProjectAs(directory: string, options: SaveProjectAsOptions = {}): Promise<AccessCallResult> {
     if (typeof directory !== 'string' || directory.trim().length === 0) {
       throw new TypeError('saveProjectAs needs a non-empty target directory')
     }
     const params: JsonRecord = { save_as_dir: directory }
-    if (options.dryRun !== undefined) params['dry_run'] = options.dryRun
     const outcome = await runOperation(this.dependencies, 'SaveProject', params, options.signal)
     const result = toCallResult(outcome)
     const data = outcome.data
@@ -782,7 +775,6 @@ export class EngineeringAccess extends Service {
           overwrite: options.overwrite ?? false,
           export_options: 'with_defaults',
           write_manifest: true,
-          dry_run: options.dryRun ?? false,
           device_name: entry.device,
           software_name: entry.software,
         },
@@ -809,7 +801,6 @@ export class EngineeringAccess extends Service {
           overwrite: options.overwrite ?? false,
           export_options: 'with_defaults',
           write_manifest: true,
-          dry_run: options.dryRun ?? false,
           device_name: entry.device,
           software_name: entry.software,
         },
@@ -851,7 +842,7 @@ export class EngineeringAccess extends Service {
     return {
       ok: true,
       operation: 'ExportBlocks',
-      dryRun: options.dryRun ?? false,
+      dryRun: false,
       summary:
         selected.length === 0
           ? 'No PLC software was selected, so nothing was exported.'

@@ -83,30 +83,27 @@ project_info({ "sections": ["attributes","comment","languages","products","softw
 ```jsonc
 project_languages({ "action": "list" })
 project_languages({ "action": "set", "active_languages": ["de-DE"], "active_mode": "add",
-                    "editing_language": "de-DE" })            // 默认 dry_run=true → 只预演
-project_languages({ "action": "set", "active_languages": ["de-DE"], "active_mode": "add",
-                    "editing_language": "de-DE", "dry_run": false })
-project_languages({ "action": "set", "active_languages": ["de-DE"], "active_mode": "remove", "dry_run": false })
+                    "editing_language": "de-DE" })
+project_languages({ "action": "set", "active_languages": ["de-DE"], "active_mode": "remove" })
 ```
 
-**期望**：dry-run 报 `resolvedActiveLanguages` 与 `before`；真跑后 `added:["de-DE"]`，
+**期望**：set 直接生效，报 `added:["de-DE"]`；
 `activeLanguages` 含 `de-DE`，`editingLanguage: "de-DE"`，TIA 的"项目语言"编辑器里同步变化；
 remove 后 `removed:["de-DE"]`。
 传一个工程不支持的语言（如 `"xx-XX"`）→ `language_not_found` 且 `details.available` 列出支持的语言。
 
 ⚠️ 改完编辑语言记得改回来（`en-US` 或原来的），否则工程注释/标签注释会落到别的语言上。
 
-☐ 2.4 list 与界面一致 ☐ 2.5 dry-run 不改变界面 ☐ 2.6 真跑生效且可回退 ☐ 2.7 未知语言报 `language_not_found`
+☐ 2.4 list 与界面一致 ☐ 2.5 真跑生效且可回退 ☐ 2.6 未知语言报 `language_not_found`
 
 ### 2.3 `update_project`（仿真支持 + 工程注释）
 
 ```jsonc
-update_project({ "simulation_during_block_compilation": true })          // dry_run 默认 true
-update_project({ "simulation_during_block_compilation": true, "dry_run": false })
-update_project({ "comment_language": "en-US", "comment_text": "verified by v0.2 plan", "dry_run": false })
+update_project({ "simulation_during_block_compilation": true })
+update_project({ "comment_language": "en-US", "comment_text": "verified by v0.2 plan" })
 ```
 
-**期望**：dry-run 给出 `before/after/changed` 且工程未变；真跑后 `changed:true`，
+**期望**：直接生效并给出 `before/after/changed`（`changed:true`），
 TIA 里"项目属性 → 编译时支持仿真"复选框同步；注释在"项目注释"里出现。
 `comment_language` 未激活时 → `comment.changed:false` + `reason`（**这是预期行为**，语言必须先激活）。
 两个参数都不给 → `invalid_params`。
@@ -118,13 +115,12 @@ TIA 里"项目属性 → 编译时支持仿真"复选框同步；注释在"项�
 ```jsonc
 portal_settings({ "action": "list" })
 portal_settings({ "action": "set", "folder": "General", "setting": "SearchInProject", "value": false })
-portal_settings({ "action": "set", "folder": "General", "setting": "SearchInProject", "value": false, "dry_run": false })
 portal_settings({ "action": "set", "folder": "General", "setting": "UserInterfaceLanguage",
                   "value": "de-DE", "value_type": "culture" })
 ```
 
-**期望**：list 列出 `General` 与其中的设置及 `writeable` 标记；set 的 dry-run 给出 `before/after`；
-真跑后 TIA 的"设置 → 常规 → 在项目中搜索"跟着变。
+**期望**：list 列出 `General` 与其中的设置及 `writeable` 标记；set 给出 `before/after`，
+TIA 的"设置 → 常规 → 在项目中搜索"跟着变。
 `setting: "NoSuchSetting"` → `setting_not_found` 且 `details.availableSettings` 有值。
 
 ⚠️ `UserInterfaceLanguage` 会改 TIA 界面语言，验证后改回来。
@@ -136,8 +132,7 @@ portal_settings({ "action": "set", "folder": "General", "setting": "UserInterfac
 ```jsonc
 project_texts({ "action": "export", "file": "D:\\Verify\\texts.xlsx",
                 "source_language": "en-US", "target_language": "de-DE" })
-project_texts({ "action": "import", "file": "D:\\Verify\\texts.xlsx" })              // dry_run 默认 true
-project_texts({ "action": "import", "file": "D:\\Verify\\texts.xlsx", "dry_run": false })
+project_texts({ "action": "import", "file": "D:\\Verify\\texts.xlsx" })              // 直接写入：导入不包事务，无法回滚
 ```
 
 **期望**：导出生成非空 xlsx（`bytes`>0、`sha256` 有值），Excel 打开能看到工程文本；
@@ -158,8 +153,7 @@ project_texts({ "action": "import", "file": "D:\\Verify\\texts.xlsx", "dry_run":
 ### 2.6 `save_project`（Save 与 SaveAs）
 
 ```jsonc
-save_project({})                                    // 默认 dry_run=false，真的保存
-save_project({ "dry_run": true })                   // 预演：给出 isModified 与 wouldWrite
+save_project({})                                    // 保存当前工程
 save_project({ "save_as_dir": "D:\\Verify\\tia" })  // 目标目录名与工程名不必相同
 ```
 
@@ -194,7 +188,7 @@ save_project({ "save_as_dir": "D:\\Verify\\tia" })  // 目标目录名与工程�
 ```jsonc
 close_project({ "save": true, "dry_run": false })
 create_project({ "project_dir": "D:\\Verify\\NewProj", "project_name": "V02Smoke",
-                 "author": "dsh-tia", "comment": "created by v0.2 verification" })   // dry_run 默认 false
+                 "author": "dsh-tia", "comment": "created by v0.2 verification" })
 ```
 
 **期望**：`D:\Verify\NewProj\V02Smoke\V02Smoke.ap17` 被创建，`projectPath` 指向它，
@@ -298,7 +292,7 @@ list_plc_objects({ "block_names": ["NoSuchBlock"], "include_fingerprints": true 
 
 ### 3.2 `create_plc_objects`（7 种 kind）
 
-逐个跑（每个都先 dry-run 看计划，再 `dry_run:false`）：
+逐个跑：
 
 ```jsonc
 create_plc_objects({ "kind": "block_group", "group_path": "V02/Sub" })                  // create_parents 默认 false
@@ -377,10 +371,9 @@ protect_blocks({ "block_names": ["FB_Motor"], "action": "unprotect", "password":
 ### 3.6 `generate_source`（由块/UDT 生成源）
 
 ```jsonc
-generate_source({ "output_file": "D:\\Verify\\V02_Motor.scl", "block_names": ["FB_Motor"] })
 generate_source({ "output_file": "D:\\Verify\\V02_Motor.scl", "block_names": ["FB_Motor"],
-                  "with_dependencies": true, "dry_run": false })
-generate_source({ "output_file": "D:\\Verify\\V02_UDT.udt", "type_names": ["MyUDT"], "dry_run": false })
+                  "with_dependencies": true })
+generate_source({ "output_file": "D:\\Verify\\V02_UDT.udt", "type_names": ["MyUDT"] })
 ```
 
 **期望**：文件生成且是 UTF-8 文本，含 `FUNCTION_BLOCK "FB_Motor"`；`sha256`/`bytes` 有值；
@@ -396,11 +389,10 @@ WithDependencies 时文件包含被调用的块与用到的 UDT。
 
 ```jsonc
 watch_and_force_tables({ "action": "create", "kind": "watch", "name": "V02_W2", "create_group": true,
-                         "group_path": "V02W", "dry_run": false })
-watch_and_force_tables({ "action": "export", "name": "V02_W2", "output_file": "D:\\Verify\\V02_W2.xml",
-                         "dry_run": false })
-watch_and_force_tables({ "action": "delete", "name": "V02_W2", "dry_run": false })
-watch_and_force_tables({ "action": "import", "import_paths": ["D:\\Verify\\V02_W2.xml"], "dry_run": false })
+                         "group_path": "V02W" })
+watch_and_force_tables({ "action": "export", "name": "V02_W2", "output_file": "D:\\Verify\\V02_W2.xml" })
+watch_and_force_tables({ "action": "delete", "name": "V02_W2" })
+watch_and_force_tables({ "action": "import", "import_paths": ["D:\\Verify\\V02_W2.xml"] })
 watch_and_force_tables({ "action": "create", "kind": "force", "name": "F1" })   // 必须报 table_create_failed
 watch_and_force_tables({ "action": "delete", "kind": "force", "name": "F1" })   // 必须报 table_delete_failed
 ```
@@ -415,11 +407,11 @@ V17 没有对应 API（限制 R15），而不是静默失败。若实测发现�
 
 ```jsonc
 software_units({})                                                              // action 默认 list
-software_units({ "action": "create", "name": "U_V02", "dry_run": false })
+software_units({ "action": "create", "name": "U_V02" })
 software_units({ "action": "relation_create", "name": "U_V02", "related_object": "FB_Motor",
-                 "relation_type": "software_unit" })                            // dry_run 默认 true
-software_units({ "action": "relation_delete", "name": "U_V02", "related_object": "FB_Motor", "dry_run": false })
-software_units({ "action": "delete", "name": "U_V02", "dry_run": false })
+                 "relation_type": "software_unit" })
+software_units({ "action": "relation_delete", "name": "U_V02", "related_object": "FB_Motor" })
+software_units({ "action": "delete", "name": "U_V02" })
 ```
 
 **期望**：普通工程 → list 报 `available:false` + reason，create 报 `unit_provider_unavailable`
@@ -479,18 +471,17 @@ TIA Portal 上装 STEP 7 Safety 才存在** —— 这条要写进矩阵的工�
 
 ```jsonc
 set_safety_settings({ "safety_modifications_possible": false })
-set_safety_settings({ "safety_modifications_possible": false, "dry_run": false })
-set_safety_settings({ "username_for_f_change_history": "v02-verify", "dry_run": false })
-set_safety_settings({ "safety_modifications_possible": true, "dry_run": false })   // 改回来
+set_safety_settings({ "username_for_f_change_history": "v02-verify" })
+set_safety_settings({ "safety_modifications_possible": true })   // 改回来
 ```
 
-**期望**：dry-run 给 `before/after/changed`；真跑后 TIA 的"安全设置 → 允许修改安全程序"复选框跟着变
+**期望**：直接生效并给出 `before/after/changed`；TIA 的"安全设置 → 允许修改安全程序"复选框跟着变
 （手册："false 时锁定对安全程序的修改"）。
 手册另有一句要确认：**没有配置口令时 `SafetyModificationsPossible(false)` 无效** —— 手工确认这一点，
 并把结论写进矩阵说明。
 没有 `GlobalSettings` 服务 → `global_settings_unavailable`。
 
-☐ 4.3 dry-run 不写 ☐ 4.4 真跑生效且可回退 ☐ 4.5 无口令时的行为符合手册 ☐ 4.6 缺服务时报 `global_settings_unavailable`
+☐ 4.4 真跑生效且可回退 ☐ 4.5 无口令时的行为符合手册 ☐ 4.6 缺服务时报 `global_settings_unavailable`
 
 ### 4.3 `safety_signatures`
 

@@ -102,7 +102,6 @@ namespace TiaOpennessV17Min.Controller
         {
             bool hasModifications = p.Has("safety_modifications_possible");
             string username = p.String("username_for_f_change_history", null);
-            bool dryRun = p.Bool("dry_run", true);
 
             if (!hasModifications && username == null)
             {
@@ -123,28 +122,6 @@ namespace TiaOpennessV17Min.Controller
 
             bool modificationsValue = hasModifications && p.Bool("safety_modifications_possible", false);
 
-            if (dryRun)
-            {
-                JsonObject before = _host.DescribeGlobalSettings(settings, null);
-                JsonObject plan = new JsonObject();
-                if (hasModifications)
-                {
-                    bool current = JsonObject.ReadBool(before, "safetyModificationsPossible", false);
-                    plan.Add("safetyModificationsPossible", JsonObject.Of(
-                        "before", current, "after", modificationsValue, "changed", current != modificationsValue));
-                }
-                if (username != null)
-                {
-                    string current = JsonObject.ReadString(before, "usernameForFChangeHistory", null);
-                    plan.Add("usernameForFChangeHistory", JsonObject.Of(
-                        "before", current, "after", username,
-                        "changed", !string.Equals(current, username, StringComparison.Ordinal)));
-                }
-                plan.Add("wouldWrite", true);
-                plan.Add("dryRun", true);
-                log.Info("Dry run: the F-related global settings were not changed.");
-                return plan;
-            }
 
             progress.Report("safety", "Updating the F-related global settings.");
             JsonObject data = _host.WriteGlobalSettings(settings, hasModifications ? (bool?)modificationsValue : null,
