@@ -55,6 +55,11 @@ namespace TiaOpennessV17Min.Controller
         private const string CategoryBlocks = "blocks";
         private const string CategoryTypes = "types";
         private const string CategoryTagTables = "tag_tables";
+        // One folder per family, so the three never share a namespace and a caller can
+        // export all of them in ONE call and still get a tree that says what each file
+        // is. Blocks used to be written at the root of output_dir, which is why a
+        // rebuild needed two calls per device (docs/decisions.md D24).
+        private const string BlockFolderName = "blocks";
         private const string TypeFolderName = "types";
         private const string TagTableFolderName = "tag_tables";
         private static readonly string[] CategoryNames = { CategoryBlocks, CategoryTypes, CategoryTagTables };
@@ -226,7 +231,7 @@ namespace TiaOpennessV17Min.Controller
                 if (string.Equals(category, CategoryBlocks, StringComparison.Ordinal))
                 {
                     List<BlockRef> blocks = _host.CollectBlocks(software.Software, requestedNames, recursive, true);
-                    plan.AddRange(BuildBlockExportPlan(blocks, outputDir, log));
+                    plan.AddRange(BuildBlockExportPlan(blocks, Path.Combine(outputDir, BlockFolderName), log));
                 }
                 else if (string.Equals(category, CategoryTypes, StringComparison.Ordinal))
                 {

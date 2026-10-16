@@ -370,27 +370,19 @@ test('readTiaSession never starts the controller and reads the open project when
   assert.deepEqual(open.calls[0].params, { sections: ['attributes', 'software'], max_objects: 500 })
 })
 
-test('rebuildSource lays one device out by type, and reports every refusal', async () => {
+test('rebuildSource lays one device out by type in a single call, and reports every refusal', async () => {
   const devices = [{ device: 'S7-1500', software: 'PLC_1', blockCount: 3 }]
-  const { service } = serviceWith(
+  const { service, calls } = serviceWith(
     (operation, params) => {
       if (operation === 'ProjectInfo') return softwareFrame(devices)
-      const portable = params.output_dir.replace(/\\/gu, '/')
-      if (portable.endsWith('/blocks')) {
-        return frame('ExportBlocks', params, {
-          data: {
-            counts: { blocks: 2, types: 0, tagTables: 0 },
-            manifest: `${params.output_dir}\\_tia-openness-manifest.json`,
-            summary: { exported: 2, skipped: 0, failed: 1, verificationFailed: 0 },
-            failures: [{ category: 'blocks', name: 'FOB_SAFETY', code: 'export_failed', message: 'not permitted' }],
-          },
-        })
-      }
+      // One call now carries all three families; each lands in its own folder and
+      // the device gets exactly one manifest (docs/decisions.md D24).
       return frame('ExportBlocks', params, {
         data: {
-          counts: { blocks: 0, types: 3, tagTables: 1 },
+          counts: { blocks: 2, types: 3, tagTables: 1 },
           manifest: `${params.output_dir}\\_tia-openness-manifest.json`,
-          summary: { exported: 4, skipped: 1, failed: 0, verificationFailed: 0 },
+          summary: { exported: 5, skipped: 1, failed: 1, verificationFailed: 0 },
+          failures: [{ category: 'blocks', name: 'FOB_SAFETY', code: 'export_failed', message: 'not permitted' }],
         },
       })
     },
@@ -401,6 +393,13 @@ test('rebuildSource lays one device out by type, and reports every refusal', asy
   assert.equal(result.ok, true)
   assert.equal(result.devices.length, 1)
   const device = result.devices[0]
+
+  // One round trip per device, covering all three families.
+  const exports = calls.filter((call) => call.operation === 'ExportBlocks')
+  assert.equal(exports.length, 1, 'a device must cost exactly one export call')
+  assert.deepEqual(exports[0].params.categories, ['blocks', 'types', 'tag_tables'])
+  assert.equal(exports[0].params.output_dir, 'C:\\w\\source\\S7-1500')
+
   assert.equal(device.directory, 'C:\\w\\source\\S7-1500')
   assert.equal(device.blocks.directory, 'C:\\w\\source\\S7-1500\\blocks')
   assert.equal(device.types.directory, 'C:\\w\\source\\S7-1500\\types')
@@ -409,10 +408,12 @@ test('rebuildSource lays one device out by type, and reports every refusal', asy
   assert.equal(device.blocks.failed, 1)
   assert.equal(device.types.exported, 3)
   assert.equal(device.tagTables.exported, 1)
-  assert.equal(device.skipped, 1, 'skipped comes from the call summaries and is device-level')
+  assert.equal(device.skipped, 1, 'skipped comes from the call summary and is device-level')
   assert.equal(device.verificationFailed, 0)
-  assert.match(device.blocks.manifest, /blocks\\_tia-openness-manifest\.json$/u)
-  assert.match(device.types.manifest, /S7-1500\\_tia-openness-manifest\.json$/u)
+  // One manifest per device, describing all three families: every family reports it.
+  assert.match(device.blocks.manifest, /S7-1500\\_tia-openness-manifest\.json$/u)
+  assert.equal(device.types.manifest, device.blocks.manifest)
+  assert.equal(device.tagTables.manifest, device.blocks.manifest)
 
   // The refusal is attributed to its family and never dropped.
   assert.deepEqual(result.failures, [
@@ -453,18 +454,15 @@ test('rebuildSource honours a device filter and names the ones it could not find
   const result = await service.rebuildSource('C:\\w\\source', { deviceNames: ['A', 'Nope'] })
   assert.deepEqual(result.devices.map((entry) => entry.device), ['A'])
   assert.deepEqual(result.missingDevices, ['Nope'])
-  // Only device A was exported: two calls, both naming it.
+  // Only device A was exported: one call, naming it and carrying all three families.
   const exports = calls.filter((call) => call.operation === 'ExportBlocks')
-  assert.equal(exports.length, 2)
-  for (const call of exports) {
-    assert.equal(call.params.device_name, 'A')
-    assert.equal(call.params.software_name, 'PLC_A')
-    assert.equal(call.params.write_manifest, true)
-    assert.equal(call.params.overwrite, false)
-    assert.ok(!('dry_run' in call.params), 'the rebuild exports directly; it has no dry run')
-  }
-  assert.deepEqual(exports[0].params.categories, ['blocks'])
-  assert.deepEqual(exports[1].params.categories, ['types', 'tag_tables'])
+  assert.equal(exports.length, 1)
+  assert.equal(exports[0].params.device_name, 'A')
+  assert.equal(exports[0].params.software_name, 'PLC_A')
+  assert.equal(exports[0].params.write_manifest, true)
+  assert.equal(exports[0].params.overwrite, false)
+  assert.ok(!('dry_run' in exports[0].params), 'the rebuild exports directly; it has no dry run')
+  assert.deepEqual(exports[0].params.categories, ['blocks', 'types', 'tag_tables'])
 })
 
 test('rebuildSource reports a missing controller or project instead of exporting nothing quietly', async () => {

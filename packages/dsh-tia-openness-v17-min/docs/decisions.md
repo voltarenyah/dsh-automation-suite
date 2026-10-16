@@ -477,9 +477,14 @@ The block name 'FB_Array_Handling' is invalid. An object with this name or this 
 `blocks/` 这一层，就得把它单独导出到 `<device>/blocks`。代价很小：第二次只导 types + tag_tables
 （真实项目里 210 个类型 + 7 张表，远快于 1151 个块那次）。**好处是不用改 C#。**
 
+> ⚠️ **本节被 [D24](#d24-三类各占一个目录rebuildsource-收敛成每-device-一次调用) 取代**：
+> 后来选择改 C#（`BlockFolderName`），让 blocks 与另两类对称，于是每 device 只需**一次**调用、
+> **一份** manifest。下面"两次调用 / 最多两份 manifest"的描述是 D21 当时的事实，保留作历史。
+
 **连带事实（消费方必须知道）**：
 
 - 每个 device 最多**两份** `_tia-openness-manifest.json`（blocks 那次一份、其余那次一份），
+  *（D24 起：每 device 一份，含三个 family。）*
   各描述自己写出的文件。消费方**读 manifest / 读服务返回**，**不要自己拼路径** ——
   这是防"约定失效"的机制：路径是运行时返回的事实，不是两边各自维护的约定。
 - 设备名做文件系统安全化，撞名追加 `~2`（与控制器对对象名的做法一致）。
@@ -581,3 +586,77 @@ The block name 'FB_Array_Handling' is invalid. An object with this name or this 
 （0 warning / 0 error）+ `--self-test` 全绿；`npm run matrix:check`、`npm run skills:check` 通过。
 
 **回退**：`git checkout -- packages/dsh-tia-openness-v17-min`（本条与代码同一提交，无跨提交依赖）。
+
+---
+
+## D23. `rebuildSource` 的已知缺口（2026-10 复盘；🟡 待修，行号按 D22 之后的工作树）
+
+**背景**：工程上下文插件上线了它的第一个工具 `create_engineering_project`（该包 **D22**），
+它按顺序调 `readTiaSession` / `saveProjectAs` / `rebuildSource` —— 也就是说 `rebuildSource` 第一次有了
+真实调用方。逐个核对 C# 之后的结论：happy path 是完整的（每 device 两次 `ExportBlocks`、三段布局、
+每 device 最多两份 manifest、逐条 `failures`、`missingDevices`、按设备过滤），但有五处不完整，
+其中第 1、2 条会产出**看起来正常的错答案**。
+
+| # | 缺口 | 证据（当前工作树行号） | 后果 | 状态 |
+|---|---|---|---|---|
+| 1 | `exported == 0 && plan.Count > 0` 不区分"全被跳过"与"全被拒绝" | [`controller/Operations.cs:346-353`](../controller/Operations.cs#L346-L353)（跳过见 `:273-279`） | 对**已建好**的树重跑（`overwrite=false`）返回 `export_failed`，消息却写着 "Openness refused all N object(s)"，真实原因是"文件都已在"；文件和 manifest 其实都写好了（manifest 在抛错**之前**的 `:335-341` 写出） | 🟡 消费方已兜住（工程上下文插件把它读成"什么都没写"并提示 `overwrite=true`）；**根因待修**：条件应为 `exported == 0 && skipped == 0 && plan.Count > 0` |
+| 2 | **Software Units 不被遍历** | `CollectBlocks` 只从 `software.BlockGroup` 递归（[`OpennessHost.cs:572-576`](../controller/OpennessHost.cs#L572-L576)、`:610`）；单元是另一棵树 `PlcUnit.BlockGroup`（[`OpennessHost.Plc.cs:1250`](../controller/OpennessHost.Plc.cs#L1250)）；`CollectTypes` / `CollectTagTables` 同理 | 用了软件单元的工程，源文件树**整整少一批对象而没有任何提示**（不报错、不 warning）—— 五条里唯一的**静默**错误 | ⬜ 待修（优先级最高） |
+| 3 | **从不清理陈旧文件** | 导出路径里没有任何 `Delete`（全仓只有 [`SelfTest.cs:55`](../controller/SelfTest.cs#L55) 删临时目录） | 在 TIA 里删掉的块，XML 永远留在磁盘；`overwrite=true` 也只替换同名文件 → 树是**增量堆积**而非快照，P2 的变更检测与图谱 ingest 会把"已删除"看成"还在" | ⬜ 待修（导到临时目录再整体换 / 按 manifest 的文件列表 prune） |
+| 4 | 一个文件读不回来 → **整次调用**失败 | [`Operations.cs:365-371`](../controller/Operations.cs#L365-L371)（`verificationFailures > 0` 即抛） | 文件全写完了，只要有一个读不回来（被其它进程锁住等），这个 device 的调用就是失败 | ⬜ 待定（也可能就是刻意的严格） |
+| 5 | 空集合被当成错误 | [`Operations.cs:243-249`](../controller/Operations.cs#L243-L249) | "这台设备没有块"或"没有类型也没有标签表"是**正常状态**，却报 `object_not_found`，还会中断后面的 device（本方法第一次失败就 return，见 `src/access.ts` 的两处 early return） | ⬜ 待定 |
+
+**另一条报告口径问题**（消费方已自行修正，提供方也值得改）：
+`counts[family]` 是 `CountByCategory(plan)`（[`Operations.cs:251`](../controller/Operations.cs#L251)，在写入**之前**算的），
+**包含被跳过的对象**；而 `src/access.ts` 的 `RebuiltFamily.exported` 注释写的是 "Objects TIA wrote for this family"，
+并不准确。真正写成功的数字是调用级的 `summary.exported`（`:326`），而它在**成功路径上没有**被服务暴露出来
+（失败路径反而有，因为失败帧带着部分 `data`，见 `controller/Program.cs:545-550`）。
+工程上下文插件因此自己算 `written = planned - skipped - refused`，并在失败帧里优先采信 `summary.exported`
+（该包 `src/access.ts` 的 `RebuildTotals`）。
+
+**与 D22 的接口**：`rebuildSource` 现在**没有** `dryRun` 了（随 D22 一起删）—— 重建一定写盘。
+这不影响消费方：它的"只给计划"由 `readTiaSession` 单独算得出来，从不依赖控制器的 dry run。
+
+**落地的机器约束**：动 `controller/*.cs` 必须重跑 `npm run matrix:build` 并让 `matrix:check` 通过
+（本包 AGENTS.md §1），且 `npm run build:controller` 需要本机 TIA Portal V17 + NuGet 源 ——
+所以这几条要留到**真机那一轮**一起做；现在改等于改一份编不了、也验不了的代码。
+
+> 第 1、5 条与 D24 有交互：D24 把每 device 的导出从两次并成一次，于是"计划为空"的机会从两次
+> 降到一次（只有整台设备三类全空才触发）；第 1 条（"全被跳过"被报成 `export_failed`）仍在。
+
+---
+
+## D24. 三类各占一个目录，`rebuildSource` 收敛成每 device 一次调用
+
+**背景**：D21 的布局是 `<device>/blocks/…` + `<device>/types/…` + `<device>/tag_tables/…`，
+但控制器只把 blocks 写到传入 `output_dir` 的**根**，types / tag_tables 各进子目录 ——
+所以"blocks 也落在 `blocks/` 下"是靠**两次导出**换来的：第一次 `output_dir=<device>/blocks`（只导 blocks），
+第二次 `output_dir=<device>`（导 types + tag_tables）。代价是每 device 两次 TIA 往返、两份 manifest、
+两次超时暴露，而且**块组恰好叫 `types` / `tag_tables` 时会与另外两类挤进同一个目录**。
+
+**决定**：让 blocks 与另两类**对称** —— 新增 `BlockFolderName = "blocks"`，
+`BuildBlockExportPlan(blocks, Path.Combine(outputDir, BlockFolderName), …)`。
+于是**一次调用**（`output_dir = <device>`、`categories: ['blocks','types','tag_tables']`）就得到：
+
+```
+<sourceRoot>/<device>/blocks/<group>/<name>.xml
+<sourceRoot>/<device>/types/<group>/<name>.xml
+<sourceRoot>/<device>/tag_tables/<name>.xml
+<sourceRoot>/<device>/_tia-openness-manifest.json      ← 一份，counts 含三个 family
+```
+
+**代价（破坏性）**：`export_blocks` 的**输出布局变了** —— 以前 blocks 落在调用方给的那个目录的根下，
+现在落 `blocks/` 子目录。任何"根目录下就是 blocks"的调用方/脚本都要跟着改
+（[`OUTPUT-CONTRACT.md`](OUTPUT-CONTRACT.md) §2 已改，并标明该节的真实例子是 D24 之前测的）。
+
+**收益**：① 三类的命名空间分开，组名撞目录的隐患消失；② 每 device 一次往返 ⇒ 超时暴露减半
+（对默认 5 分钟的 `requestTimeoutMs` 是实质差别）；③ D23 第 5 条（计划为空即抛错）的机会从两次降到一次；
+④ 每 device 一份覆盖三类的 manifest ⇒ 消费方不再需要自己合并，工程上下文插件因此**取消**了
+原计划的"工具侧合并清单"。
+
+**验证**：`test/08-access-service.test.mjs` 改成单次调用断言（`categories`、`output_dir`、
+三个 family 报同一份 manifest、设备过滤后仍是一次调用）；`npm test` 77 项（76 通过 / 1 跳过）；
+`npm run build:controller` 成功且 `--self-test` 全绿（本机 TIA Portal V17 的 PublicAPI 解析正常、
+Openness 用户组 `isMember: true`）；`npm run matrix:build` + `matrix:check` 通过。
+
+**未验证**：真机上的一次调用导出（需要 TIA Portal 里打开一个真实项目）。**注意**：
+`controller/bin/*.exe` 是随包出货的交付物，已按本条重新构建 —— 源码与二进制必须一起提交。

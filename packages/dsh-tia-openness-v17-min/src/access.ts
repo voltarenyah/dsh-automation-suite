@@ -259,7 +259,7 @@ export interface RebuiltDevice {
   blockCount: number
   /** Files left alone because they already existed (both export calls). */
   skipped: number
-  /** Objects the controller failed to verify after writing (both calls). */
+  /** Objects the controller failed to verify after writing. */
   verificationFailed: number
   blocks: RebuiltFamily
   types: RebuiltFamily
@@ -673,23 +673,22 @@ export class EngineeringAccess extends Service {
    * This is the operation that owns the `source/` layout, which is why the layout
    * lives here in code and not in a prompt: callers pass only the root, and
    * everything below it is decided by this method (and documented in
-   * `docs/decisions.md` D21). Two export calls per device produce it, because the
-   * controller has no "layout" option and TIA writes blocks at the root of whatever
-   * `output_dir` it is given:
+   * `docs/decisions.md` D21/D24). **One export call per device** produces it,
+   * because the controller writes each family into its own folder:
    *
    *   <sourceRoot>/<device>/blocks/<group>/<name>.xml
    *   <sourceRoot>/<device>/types/<group>/<name>.xml
    *   <sourceRoot>/<device>/tag_tables/<name>.xml
    *
-   * Each call writes its own `_tia-openness-manifest.json` beside what it wrote, so
-   * a device with blocks and types has two manifests — each describing exactly its
-   * own files, which is what a consumer should read instead of reconstructing paths.
+   * That call writes exactly one `_tia-openness-manifest.json` at
+   * `<sourceRoot>/<device>/`, and it covers all three families — which is what a
+   * consumer should read instead of reconstructing paths.
    *
-   * A device that TIA refuses blocks on is **not** skipped silently: its failures
+   * A device that TIA refuses objects on is **not** skipped silently: its failures
    * come back in `failures`, one entry per object.
    *
    * @param sourceRoot - directory to build the tree under (created by TIA's export).
-   * @param options - overwrite, dry run, device filter and cancellation.
+   * @param options - overwrite, device filter and cancellation.
    */
   async rebuildSource(sourceRoot: string, options: RebuildSourceOptions = {}): Promise<RebuildSourceResult> {
     if (typeof sourceRoot !== 'string' || sourceRoot.trim().length === 0) {
@@ -759,44 +758,18 @@ export class EngineeringAccess extends Service {
         directory,
         manifest: null,
       })
-      // Blocks go to <device>/blocks so the tree is type-first; the controller
-      // writes them at the root of whatever directory it is handed.
+      // Each family lands in its own folder, blocks included, so all three go out in
+      // ONE call and the device gets ONE manifest (docs/decisions.md D24).
       const blocksFamily = emptyFamily(join(deviceDirectory, 'blocks'))
       const typesFamily = emptyFamily(join(deviceDirectory, 'types'))
       const tagTablesFamily = emptyFamily(join(deviceDirectory, 'tag_tables'))
 
-      const blocksOutcome = await runOperation(
-        this.dependencies,
-        'ExportBlocks',
-        {
-          output_dir: blocksFamily.directory,
-          categories: ['blocks'],
-          recursive: true,
-          overwrite: options.overwrite ?? false,
-          export_options: 'with_defaults',
-          write_manifest: true,
-          device_name: entry.device,
-          software_name: entry.software,
-        },
-        options.signal,
-      )
-      if (!blocksOutcome.ok) {
-        return {
-          ...toCallResult(blocksOutcome),
-          sourceRoot,
-          devices: rebuilt,
-          failures,
-          missingDevices,
-        }
-      }
-      applyFamily(blocksFamily, blocksOutcome.data, entry.device, failures)
-
-      const restOutcome = await runOperation(
+      const outcome = await runOperation(
         this.dependencies,
         'ExportBlocks',
         {
           output_dir: deviceDirectory,
-          categories: ['types', 'tag_tables'],
+          categories: ['blocks', 'types', 'tag_tables'],
           recursive: true,
           overwrite: options.overwrite ?? false,
           export_options: 'with_defaults',
@@ -806,24 +779,25 @@ export class EngineeringAccess extends Service {
         },
         options.signal,
       )
-      if (!restOutcome.ok) {
+      if (!outcome.ok) {
         return {
-          ...toCallResult(restOutcome),
+          ...toCallResult(outcome),
           sourceRoot,
           devices: rebuilt,
           failures,
           missingDevices,
         }
       }
-      applyFamily(typesFamily, restOutcome.data, entry.device, failures, 'types')
-      applyFamily(tagTablesFamily, restOutcome.data, entry.device, failures, 'tagTables')
+      applyFamily(blocksFamily, outcome.data, entry.device, failures, 'blocks')
+      applyFamily(typesFamily, outcome.data, entry.device, failures, 'types')
+      applyFamily(tagTablesFamily, outcome.data, entry.device, failures, 'tagTables')
 
       rebuilt.push({
         device: entry.device,
         software: entry.software,
         directory: deviceDirectory,
         blockCount: entry.blockCount,
-        ...callTotals(blocksOutcome.data, restOutcome.data),
+        ...callTotals(outcome.data),
         blocks: blocksFamily,
         types: typesFamily,
         tagTables: tagTablesFamily,
@@ -904,10 +878,10 @@ function applyFamily(
 }
 
 /**
- * The call-level totals of two export calls, which are the only numbers that
- * cannot be attributed to one family.
+ * The call-level totals of the device's export call, which are the only numbers
+ * that cannot be attributed to one family.
  *
- * @param payloads - the controller payloads to sum over.
+ * @param payloads - the controller payloads to sum over (one per device today).
  */
 function callTotals(...payloads: ReadonlyArray<JsonRecord | null>): {
   skipped: number

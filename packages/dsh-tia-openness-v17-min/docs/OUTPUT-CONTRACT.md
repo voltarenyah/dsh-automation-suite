@@ -79,12 +79,13 @@
 | `export_options` | `with_defaults` | TIA 的 `ExportOptions`：`none` / `with_defaults` / `with_read_only` |
 | `dry_run` | `false` | 只列计划、不写文件 |
 
-### 目录结构（三类分开，互不冲突）
+### 目录结构（三类各自一个目录，互不冲突）
 
 ```
 <output_dir>/
-├── _tia-openness-manifest.json          # 清单（§3）
-├── <用户组路径>/<块名>.xml               # categories 含 blocks（默认）
+├── _tia-openness-manifest.json          # 清单（§3）：一次调用一份，含全部三类
+├── blocks/                             # categories 含 blocks（默认）
+│   └── <用户组路径>/<块名>.xml
 ├── types/                              # categories 含 types
 │   └── <类型组路径>/<类型名>.xml
 └── tag_tables/                          # categories 含 tag_tables
@@ -97,10 +98,15 @@
 * **目录层级 = 该项目里的用户组层级**（块组 / 类型组 / 标签表组三棵独立的树）。
 * 组名与对象名里的非法文件名字符会被替换为 `_`；两个对象规范化后撞到同一路径时，
   第二个写为 `<名>~2.xml` 并发一条 `warning` 诊断（不静默覆盖）。
-* `blocks` 直接放在 `output_dir` 下（历史布局，保持向后兼容）；`types` / `tag_tables`
-  放在各自子目录。
+* **三类各占一个目录**（`blocks/`、`types/`、`tag_tables/`），所以三棵同名的组树不会
+  互相占用目录，也不必拆成多次调用。这条是 **D24** 的改动：此前 `blocks` 直接放在
+  `output_dir` 下（"历史布局"），于是"块组恰好叫 `types`"就会和 PLC 类型挤进同一个目录，
+  而为了把块放进 `blocks/` 又必须多导一次。
 
 ### 真实例子（`PEI_SinoARP_Master_V4.1.3`，1152 块的正式项目）
+
+> ⚠️ 下面这份是 **D24 之前**测出来的：那时 `blocks` 直接落在 `UserFiles/` 根下。
+> 现在同样的导出会落在 `UserFiles/blocks/` 下，其余不变（数字都是实测的，故保留原样）。
 
 ```
 导出 1151 / 1152 个块（1 个 Safety F-OB 被 TIA 拒绝，逐块记录），1152 文件 / 70.6 MB

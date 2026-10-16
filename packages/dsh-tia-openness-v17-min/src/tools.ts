@@ -914,9 +914,9 @@ export function registerTools(ctx: Context, dependencies: ToolDependencies): str
       description:
         'Export PLC program objects of the open project to Simatic ML XML files, one file per object: program blocks ' +
         '(the default, including data blocks), PLC types (UDTs) and tag tables, selected with categories. The ' +
-        'user-group folder layout is preserved; types are written below output_dir/types/ and tag tables below ' +
-        'output_dir/tag_tables/, so the families never collide. ' +
-        'user-group folder layout. Read-only for the project: it never modifies the project, only writes the files. ' +
+        'user-group folder layout is preserved, and each family gets its own folder below output_dir ' +
+        '(blocks/ , types/ , tag_tables/), so the families never collide. ' +
+        'Read-only for the project: it never modifies the project, only writes the files. ' +
         'Every written file is read back, parsed and compared with the expected block name, and a manifest with the ' +
         'SHA-256 of each file is written next to the exports so an import can be audited. ' +
         "Some blocks have no Simatic ML representation at all — TIA's own ProDiag blocks report the programming " +
