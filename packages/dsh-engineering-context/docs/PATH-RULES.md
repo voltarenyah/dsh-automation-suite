@@ -29,37 +29,40 @@
 <workspace>/                                  ← = session cwd，宿主 registry 认领
 │
 ├── tia/                                      ← **TIA 的工程**（二进制，整个目录不进 git）
-│   └── <项目名>/                              ← TIA 另存时决定，名字 = TIA 的项目名
-│       ├── <项目名>.ap17                       ← 工程文件本身
-│       └── …                                  ← TIA 自己写的其余内容
+│   └── …                                      ← TIA 另存时决定其下的形状（通常 <项目名>/ 与 <项目名>.ap17）
 │
 ├── source/                                   ← **重建的源文件树**（文本，进 git）
-│   └── <项目名>/
-│       └── <device>/
-│           ├── blocks/_tia-openness-manifest.json
-│           ├── blocks/<用户组路径>/<块名>.xml
-│           ├── types/<组>/<类型名>.xml
-│           ├── tag_tables/<表名>.xml
-│           └── _tia-openness-manifest.json    ← 第二次导出（types + tag_tables）的清单
+│   ├── _dsh-engineering-context.json         ← 本插件的索引：这棵树属于哪个工程、上次导出产出了什么（§8）
+│   └── <device>/
+│       ├── blocks/_tia-openness-manifest.json
+│       ├── blocks/<用户组路径>/<块名>.xml
+│       ├── types/<组>/<类型名>.xml
+│       ├── tag_tables/<表名>.xml
+│       └── _tia-openness-manifest.json        ← 该 device 的清单：**一次导出覆盖三类**
 │
 ├── .gitignore                                ← 由 create_engineering_project 维护（只追加一行 `tia/`）
 └── .git/                                     ← 建议：workspace 根一个仓库
 ```
 
+**为什么没有 `<项目名>` 这一层**：**一个 workspace 只管一个工程**（使用者口径；A5 的
+session ↔ workspace 绑定）。所以工程名不进任何目录名，它只作为**身份**记在
+`source/_dsh-engineering-context.json` 里，工具在写之前比对 —— 发现是**另一个工程**就拒绝
+（`source_belongs_to_another_project`），而不是让两棵树的 device 目录（`S7-1500`、`PLC_1` 这类
+重名极常见）悄悄互相覆盖。
+
 **为什么是两棵树**：`tia/` 里的东西是 TIA 的 —— 二进制、只能在 TIA 里改，进版本库只能得到
 "变了/没变"（[`docs/vision.md`](../../../docs/vision.md) §3.3）；`source/` 里的是文本产物，
 可 diff、可入库、可被工程知识图谱插件解析。把两者混在一起，就没有任何规则能回答"这个文件该不该提交"。
-
-**`<项目名>` 是 TIA 的名字，不是模型给的名字**：`SaveAs` 只接收目录、`Project.Name` 是只读的
-（接口插件 D20 实测），所以目录名只能来自 TIA 报出来的项目名，经 §5 的安全化后使用。
 
 ---
 
 ## 3. 三条硬规则
 
-1. **一切路径由插件解析，模型连路径都拿不到。**
-   `create_engineering_project` 的参数里**没有任何路径**：目标目录由 workspace 根 + 配置的目录名 +
-   TIA 的项目名推出来（§5）。解析结果必须是 `<workspace>` 的后代（§4）。
+1. **一切写入路径由插件解析，模型不给目标路径。**
+   `create_engineering_project` 的**目标**目录由 workspace 根 + 配置的目录名推出（§5），
+   参数里没有它们。唯一例外是 `source_project`：**要打开哪个工程**天生是一个磁盘路径
+   （接口插件的 `openProject` 只接受绝对路径），而它只在 TIA 没有打开工程时用得上；
+   不知道路径时**向用户要**，不要自己去磁盘上找 —— 这条写在工具描述里。
 
 2. **目标目录在写之前必须过 `realpath` 包含性校验。**
    候选路径不存在时，对**最近的已存在祖先**归一后再接回剩余段 —— 不允许"因为不存在所以跳过校验"。

@@ -23,6 +23,14 @@ export type EngineeringErrorCode =
   | 'tia_controller_not_running'
   /** The controller is running but TIA holds no project. */
   | 'tia_project_not_open'
+  /** The controller is running but TIA holds no project, and no path was given to open one. */
+  | 'source_project_required'
+  /** Another project is already open; this tool will not silently act on it. */
+  | 'project_already_open'
+  /** TIA refused to open the requested project. */
+  | 'open_failed'
+  /** The workspace's source tree already belongs to a different project. */
+  | 'source_belongs_to_another_project'
   /** TIA reported no usable project name, so the workspace folder cannot be named. */
   | 'project_name_unavailable'
   /** The save-as operation was attempted and TIA refused it. */

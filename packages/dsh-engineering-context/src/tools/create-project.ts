@@ -22,22 +22,23 @@
  * @module dsh-engineering-context/tools/create-project
  */
 
-import { readFile, writeFile } from 'node:fs/promises'
-import { basename, join } from 'node:path'
+import { mkdir, readFile, writeFile } from 'node:fs/promises'
+import { basename, dirname, join } from 'node:path'
 
 import type { InferArgs, ToolDefinition } from '@deepseek-ai/dsh-tools'
 
 import {
   engineeringAccess,
+  normalizeOpen,
   normalizeRebuild,
   normalizeSave,
   normalizeSession,
+  type OpenResult,
   type RebuildResult,
-  type TiaSession,
 } from '../access.js'
-import { projectDirectoryPath, sourceDirectoryPath, tiaIgnoreRule } from '../config.js'
+import { projectDirectoryPath, sourceDirectoryPath, sourceIndexPath, tiaIgnoreRule } from '../config.js'
 import { EngineeringContextError } from '../errors.js'
-import { canonicalizeLoose, folderName, isInside, toPortable } from '../paths.js'
+import { canonicalizeLoose, isInside, toPortable } from '../paths.js'
 import { assertInsideWith, describePath, resolveScope, type ResolvedScope } from '../scope.js'
 import type { ToolDependencies } from './deps.js'
 import { cappedList, defineOutcomeTool, failedOutcome, okOutcome, type EngineeringOutcome } from './outcome.js'
@@ -46,11 +47,30 @@ import { cappedList, defineOutcomeTool, failedOutcome, okOutcome, type Engineeri
 export const CREATE_PROJECT_TOOL = 'create_engineering_project'
 
 const CREATE_PARAMETERS = {
+  source_project: {
+    type: 'string',
+    description:
+      'Absolute path of the .ap17 to open, for example C:\\Projects\\Line1\\Line1.ap17. Required only when TIA has no project ' +
+      'open — a project that is already open is used as it is. If you do not know the path, ask the user for it: never search ' +
+      'the disk for project files.',
+  },
+  with_window: {
+    type: 'boolean',
+    description:
+      'Default TRUE when this tool opens a project: attach to a visible TIA Portal instance the operator can watch (and see the ' +
+      'export happen in). Pass false for a headless instance no operator can interact with.',
+  },
+  allow_upgrade: {
+    type: 'boolean',
+    description:
+      'Default false. True lets TIA Portal upgrade and rewrite a project created by an older version — that MODIFIES the project ' +
+      'file irreversibly, so only pass it when the user explicitly asked for it.',
+  },
   dry_run: {
     type: 'boolean',
     description:
-      'Default TRUE — report the plan and write nothing. Pass false to save the project into the workspace and rebuild its source ' +
-      'tree. The save-as is the irreversible half: TIA moves the project it has open to the workspace copy, so read the plan first.',
+      'Default TRUE — report the plan and write nothing (it does not even open the project). Pass false to open/save the project ' +
+      'and rebuild its source tree. The save-as is the irreversible half: TIA moves the project it has open to the workspace copy.',
   },
   overwrite: {
     type: 'boolean',
@@ -76,19 +96,89 @@ interface IgnoreFile {
   raw: string
 }
 
-/** The name the workspace folder is derived from, or an explicit failure. */
-function projectNameOf(session: TiaSession): string {
-  const reported = session.projectName?.trim()
+/**
+ * The project's name, as TIA reports it, or an explicit failure.
+ *
+ * The name no longer decides any directory (one workspace manages one project),
+ * but it is the identity recorded in the index and compared before writing.
+ */
+function projectNameOf(reportedName: string | null, projectPath: string | null): string {
+  const reported = reportedName?.trim()
   if (reported !== undefined && reported.length > 0) return reported
-  if (session.projectPath !== null) {
-    const base = basename(session.projectPath).replace(/\.[^.]+$/u, '').trim()
+  if (projectPath !== null) {
+    const base = basename(projectPath).replace(/\.[^.]+$/u, '').trim()
     if (base.length > 0) return base
   }
   throw new EngineeringContextError(
     'project_name_unavailable',
-    'TIA reports an open project but no usable project name, so the workspace folder cannot be named. Save the project in TIA Portal first.',
-    { projectPath: session.projectPath },
+    'TIA reports a project but no usable project name and no path to fall back on, so this tool cannot tell which project it is about. Save it in TIA Portal first.',
+    { projectPath },
   )
+}
+
+/** Whether two spellings point at the same project file (Windows is case-insensitive). */
+async function samePath(left: string, right: string | null): Promise<boolean> {
+  if (right === null) return false
+  try {
+    const [a, b] = await Promise.all([canonicalizeLoose(left), canonicalizeLoose(right)])
+    return a.toLowerCase() === b.toLowerCase()
+  } catch {
+    return left.trim().toLowerCase() === right.trim().toLowerCase()
+  }
+}
+
+/** What the tool recorded about the source tree of this workspace. */
+interface SourceIndex {
+  /** The project name it belongs to, or null when the file is there but unusable. */
+  project: string | null
+}
+
+/**
+ * Read the index this tool writes into the source directory.
+ *
+ * `null` means "no index at all" — a workspace this tool has never written to —
+ * while `{ project: null }` means the file exists but cannot be used. The two are
+ * different, and only the first may be read as "belongs to nobody yet".
+ */
+async function readSourceIndex(file: string): Promise<SourceIndex | null> {
+  let raw: string
+  try {
+    raw = await readFile(file, 'utf8')
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return null
+    return { project: null }
+  }
+  try {
+    const parsed = JSON.parse(raw) as { project?: { name?: unknown } }
+    const name = parsed.project?.name
+    return { project: typeof name === 'string' && name.length > 0 ? name : null }
+  } catch {
+    return { project: null }
+  }
+}
+
+/** The index document, as it is written to disk. */
+interface SourceIndexDocument {
+  schemaVersion: number
+  project: { name: string; path: string | null; savedAs: string | null; directory: string; sourceRoot: string }
+  exportedAt: string
+  devices: Array<{
+    device: string
+    software: string
+    directory: string
+    manifest: string | null
+    exported: { blocks: number; types: number; tagTables: number }
+    skipped: number
+  }>
+  totals: { planned: number; written: number; skipped: number; refused: number; verificationFailed: number }
+}
+
+/** Write the index, creating the source directory when the export wrote nothing. */
+async function writeSourceIndex(file: string, document: SourceIndexDocument): Promise<'written' | 'created'> {
+  await mkdir(dirname(file), { recursive: true })
+  const existed = (await readSourceIndex(file)) !== null
+  await writeFile(file, `${JSON.stringify(document, undefined, 2)}\n`, 'utf8')
+  return existed ? 'written' : 'created'
 }
 
 /** Whether the open project already lives inside the directory this tool targets. */
@@ -145,6 +235,13 @@ async function applyIgnoreRule(ignore: IgnoreFile): Promise<'created' | 'appende
   return 'appended'
 }
 
+/** A trimmed string, or undefined when nothing usable was given. */
+function trimmed(value: string | undefined): string | undefined {
+  if (value === undefined) return undefined
+  const result = value.trim()
+  return result.length === 0 ? undefined : result
+}
+
 /** One line per device, for the model-facing detail block. */
 function deviceLines(devices: readonly { device: string; software: string }[]): string[] {
   return devices.map((entry) => `${entry.device} / ${entry.software}`)
@@ -178,13 +275,15 @@ export function createProjectTool(dependencies: ToolDependencies): ToolDefinitio
   return defineOutcomeTool({
     name: CREATE_PROJECT_TOOL,
     description:
-      'Bring the engineering project that TIA Portal currently has open into this workspace: save it into the workspace copy and ' +
-      'rebuild its source tree, so the conversation has a project on disk to talk about. Derived from the workspace root (the session ' +
-      'working directory), the TIA project name and the configured directory names — this tool takes no path. Defaults to a plan ' +
-      '(`dry_run: true`): the save-as moves the project TIA has open, so pass `dry_run: false` deliberately. It never starts TIA ' +
-      'Portal, never opens a project, never deletes anything, and never modifies the user\'s original project files; if the project is ' +
-      'already inside the workspace it skips the save-as and only refreshes the source tree. TIA refusals are reported per object, ' +
-      'never dropped.',
+      'Bring an engineering project into this workspace: open it in TIA Portal when it is not open yet, save it into the workspace ' +
+      'copy, and rebuild its source tree, so the conversation has a project on disk to talk about. Name the project with ' +
+      'source_project (the absolute .ap17 path) when TIA has none open — if you do not know the path, ASK THE USER; never search the ' +
+      'disk for project files and never guess which project was meant. The target directories are derived from the workspace root ' +
+      '(the session working directory) and the configured directory names, so this tool takes no target path. Defaults to a plan ' +
+      '(`dry_run: true`), which does not even open the project: the save-as moves the project TIA has open, so pass `dry_run: false` ' +
+      'deliberately. One workspace manages one project: if it already holds another project\'s source tree this refuses instead of ' +
+      'mixing them. It never deletes anything and never modifies the user\'s original project files; if the project is already inside ' +
+      'the workspace it skips the save-as and only refreshes the source tree. TIA refusals are reported per object, never dropped.',
     parameters: CREATE_PARAMETERS,
     async execute(args: CreateArgs, exec): Promise<EngineeringOutcome> {
       let scope: ResolvedScope | null = null
@@ -207,39 +306,99 @@ export function createProjectTool(dependencies: ToolDependencies): ToolDefinitio
         const session = normalizeSession(
           await callService('readTiaSession', () => service.readTiaSession({ signal: exec.signal })),
         )
-        if (!session.running) {
-          throw new EngineeringContextError(
-            'tia_controller_not_running',
-            `No TIA Openness controller is running, so there is no open project to save. ${session.reason ?? ''}Open the project in TIA Portal, ` +
-              'then call this tool again (this plugin never starts the controller or TIA).',
-            { reason: session.reason },
-          )
-        }
+        const requested = trimmed(args.source_project)
+
+        // Which project are we about to act on? Either TIA already has one open, or
+        // the caller named one to open. A different project must never be acted on
+        // silently: the controller refuses to open a second one anyway, so the two
+        // cases cannot be merged.
+        let opened: OpenResult | null = null
         if (!session.projectOpen) {
+          if (requested === undefined) {
+            throw new EngineeringContextError(
+              'source_project_required',
+              (session.running
+                ? 'TIA Portal has no project open. '
+                : `No TIA Openness controller is running, so no project is open. ${session.reason ?? ''}`) +
+                'Pass source_project (the absolute .ap17 path) and this tool will open it — ask the user for the path rather than ' +
+                'searching the disk for project files.',
+              { reason: session.reason },
+            )
+          }
+          opened = normalizeOpen(
+            await callService('openProject', () =>
+              service.openProject(requested, {
+                withWindow: args.with_window !== false,
+                allowUpgrade: args.allow_upgrade === true,
+                signal: exec.signal,
+              }),
+            ),
+            requested,
+          )
+          if (!opened.ok) {
+            throw new EngineeringContextError(
+              'open_failed',
+              `TIA Portal refused to open ${requested}: ${opened.error?.message ?? (opened.summary || 'no reason reported')}. ` +
+                (args.allow_upgrade === true
+                  ? 'Nothing was written by this plugin.'
+                  : 'If the project was created by an older TIA version it needs allow_upgrade — but that REWRITES the project to ' +
+                    'V17 irreversibly, so ask the user before passing it.'),
+              { requestedPath: requested, code: opened.error?.code ?? null },
+            )
+          }
+        } else if (requested !== undefined && !(await samePath(requested, session.projectPath))) {
           throw new EngineeringContextError(
-            'tia_project_not_open',
-            `The controller is running but TIA Portal has no project open, so there is nothing to save. ${session.reason ?? ''}` +
-              'Open the project in TIA Portal first.',
-            { reason: session.reason },
+            'project_already_open',
+            `TIA Portal already has a different project open (${session.projectPath ?? session.projectName ?? 'unknown'}), so ` +
+              `${requested} was not opened. Either omit source_project to work with the open project, or close it first (the ` +
+              "interface plugin's close_project tool) and call again.",
+            { openProject: session.projectPath, requested },
           )
         }
 
-        const name = projectNameOf(session)
-        const folder = folderName(name)
-        const projectDir = await canonicalizeLoose(projectDirectoryPath(config, root, folder))
-        const sourceRoot = await canonicalizeLoose(sourceDirectoryPath(config, root, folder))
+        let projectPath = opened?.projectPath ?? session.projectPath
+        const name = projectNameOf(opened?.projectName ?? session.projectName, projectPath)
+        const software = opened === null ? session.software : opened.software
+
+        const projectDir = await canonicalizeLoose(projectDirectoryPath(config, root))
+        const sourceRoot = await canonicalizeLoose(sourceDirectoryPath(config, root))
         assertInsideWith(config, root, projectDir, 'The project directory')
         assertInsideWith(config, root, sourceRoot, 'The source tree root')
 
-        const skipSave = await alreadyInside(session.projectPath, projectDir)
+        // One workspace manages one project: the index the tool writes beside the
+        // tree is what makes that checkable instead of aspirational.
+        const indexFile = sourceIndexPath(config, root)
+        const recorded = await readSourceIndex(indexFile)
+        if (recorded !== null && recorded.project !== null && recorded.project.toLowerCase() !== name.toLowerCase()) {
+          throw new EngineeringContextError(
+            'source_belongs_to_another_project',
+            `This workspace's ${toPortable(root, sourceRoot)}/ belongs to the project ${recorded.project}, but the project in play ` +
+              `is ${name}. One workspace manages one project — use a different workspace, or remove that directory deliberately and ` +
+              'call again.',
+            { sourceTree: toPortable(root, sourceRoot), recorded: recorded.project, current: name },
+          )
+        }
+
+        const skipSave = await alreadyInside(projectPath, projectDir)
         const ignore = await readIgnoreFile(root, tiaIgnoreRule(config))
         const projectDirStatus = await describePath(root, projectDir)
         const sourceStatus = await describePath(root, sourceRoot)
 
         const warnings = [...scope.view.warnings]
-        if (session.isModified === true) {
+        if (session.isModified === true && opened === null) {
           warnings.push(
             'TIA reports the open project as modified; the save-as writes those unsaved changes into the workspace copy.',
+          )
+        }
+        if (opened !== null && opened.upgraded) {
+          warnings.push(
+            `TIA Portal upgraded ${name} to V17 while opening it — the project file was rewritten and this cannot be undone.`,
+          )
+        }
+        if (recorded !== null && recorded.project === null) {
+          warnings.push(
+            `The index ${toPortable(root, indexFile)} could not be read, so this tool cannot tell which project the existing source ` +
+              'tree came from; existing files are skipped rather than replaced.',
           )
         }
         if (!skipSave && projectDirStatus.kind !== 'missing') {
@@ -263,12 +422,15 @@ export function createProjectTool(dependencies: ToolDependencies): ToolDefinitio
               : `Ignore rule: ${ignore.port} exists; "${ignore.rule}" will be appended to it.`
 
         const plan = [
-          `Project: ${name} → ${projectDirStatus.port}/ (TIA keeps its own project name; save-as only chooses the directory)`,
+          opened === null
+            ? `Project: ${name} (already open in TIA at ${projectPath ?? '?'})`
+            : `Project: ${requested} → opened as ${name} (visible TIA window: ${args.with_window !== false ? 'yes' : 'no'})`,
+          `Project directory: ${projectDirStatus.port}/ (TIA keeps its own project name below it; save-as only chooses the directory)`,
           skipSave
-            ? `Save-as: not needed — TIA already has this project at ${session.projectPath ?? '?'}, inside that directory.`
-            : `Save-as: TIA will save the open project into ${projectDirStatus.port}/ (currently ${session.projectPath ?? 'unknown'}; its files there are not touched).`,
-          `Source tree: ${sourceStatus.port}/ ← ${session.software.length} PLC software (${deviceLines(session.software).join(', ') || 'none'})`,
-          'Layout below the source root is written by the interface plugin: <device>/blocks|types|tag_tables/, one manifest per export call.',
+            ? `Save-as: not needed — TIA already has this project at ${projectPath ?? '?'}, inside that directory.`
+            : `Save-as: TIA will save the open project into ${projectDirStatus.port}/ (currently ${projectPath ?? 'unknown'}; its files there are not touched).`,
+          `Source tree: ${sourceStatus.port}/ ← ${software.length} PLC software (${deviceLines(software).join(', ') || 'none'})`,
+          'Layout below the source root is written by the interface plugin: <device>/blocks|types|tag_tables/, one manifest per device covering all three.',
           ignoreLine,
         ]
 
@@ -276,16 +438,18 @@ export function createProjectTool(dependencies: ToolDependencies): ToolDefinitio
           return okOutcome(
             CREATE_PROJECT_TOOL,
             scope.view,
-            `Dry run: would ${skipSave ? 'refresh the source tree of' : 'save'} ${name} in ${projectDirStatus.port}/ (${session.software.length} device(s)). Pass dry_run=false to do it.`,
+            opened !== null
+              ? `Dry run: would open ${requested} and save ${name} into ${projectDirStatus.port}/ (${software.length} device(s)). Pass dry_run=false to do it.`
+              : `Dry run: would ${skipSave ? 'refresh the source tree of' : 'save'} ${name} in ${projectDirStatus.port}/ (${software.length} device(s)). Pass dry_run=false to do it.`,
             {
               plan: {
                 name,
-                folder,
+                open: opened === null ? null : { requestedPath: opened.requestedPath, withWindow: args.with_window !== false, allowUpgrade: args.allow_upgrade === true },
                 projectDirectory: projectDirStatus,
                 sourceRoot: sourceStatus,
                 skipSave,
-                projectPath: session.projectPath,
-                devices: session.software,
+                projectPath,
+                devices: software,
               },
               ignore: { file: ignore.port, rule: ignore.rule, action: 'none (dry run)' },
               rebuild: null,
@@ -297,7 +461,6 @@ export function createProjectTool(dependencies: ToolDependencies): ToolDefinitio
         // ---- the real run -------------------------------------------------
 
         let savedAs: string | null = null
-        let projectPath = session.projectPath
         if (!skipSave) {
           const save = normalizeSave(
             await callService('saveProjectAs', () => service.saveProjectAs(projectDir, { signal: exec.signal })),
@@ -376,10 +539,10 @@ export function createProjectTool(dependencies: ToolDependencies): ToolDefinitio
               'Pass overwrite=true to replace the existing files.',
           )
           const reached = rebuilt.devices.length
-          if (reached < session.software.length) {
+          if (reached < software.length) {
             warnings.push(
-              `The interface plugin stops at the first device it cannot finish, so ${session.software.length - reached} of ` +
-                `${session.software.length} device(s) were not examined at all — its numbers and device list describe only the ones before that point.`,
+              `The interface plugin stops at the first device it cannot finish, so ${software.length - reached} of ` +
+                `${software.length} device(s) were not examined at all — its numbers and device list describe only the ones before that point.`,
             )
           }
         }
@@ -394,6 +557,38 @@ export function createProjectTool(dependencies: ToolDependencies): ToolDefinitio
         const projectDirNow = await describePath(root, projectDir)
         const sourceNow = await describePath(root, sourceRoot)
 
+        // The index is what makes "one workspace, one project" checkable next time,
+        // and it doubles as the workspace-level summary of what is on disk (the
+        // controller writes one manifest per device; this is the entry point that
+        // says which project they belong to).
+        const indexAction = await writeSourceIndex(indexFile, {
+          schemaVersion: 1,
+          project: {
+            name,
+            path: projectPath,
+            savedAs,
+            directory: toPortable(root, projectDir),
+            sourceRoot: toPortable(root, sourceRoot),
+          },
+          exportedAt: new Date().toISOString(),
+          devices: rebuilt.devices.map((device) => ({
+            device: device.device,
+            software: device.software,
+            directory: device.directory,
+            manifest: device.blocks.manifest,
+            exported: {
+              blocks: device.blocks.exported,
+              types: device.types.exported,
+              tagTables: device.tagTables.exported,
+            },
+            skipped: device.skipped,
+          })),
+          totals,
+        })
+        details.push(
+          `Index: ${indexAction} ${toPortable(root, indexFile)} — which project this tree belongs to, and what the last export produced.`,
+        )
+
         return okOutcome(
           CREATE_PROJECT_TOOL,
           scope.view,
@@ -404,7 +599,6 @@ export function createProjectTool(dependencies: ToolDependencies): ToolDefinitio
           {
             project: {
               name,
-              folder,
               directory: projectDirNow,
               sourceRoot: sourceNow,
               skipSave,
@@ -412,6 +606,7 @@ export function createProjectTool(dependencies: ToolDependencies): ToolDefinitio
               savedAs,
               projectPath,
             },
+            index: { file: toPortable(root, indexFile), action: indexAction },
             ignore: { file: ignore.port, rule: ignore.rule, action: ignoreAction },
             rebuild: {
               sourceRoot: rebuilt.sourceRoot,

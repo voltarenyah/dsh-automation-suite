@@ -593,3 +593,41 @@ P0-4 / P0-5 / P0-6 / P0-10 / P0-11、P1-1…P1-6（版本层与 patch 工件）�
 计划不写任何东西、真实运行先另存再导出、TIA 拒绝时停在哪一步、工程已在 workspace 内时跳过另存、
 被拒对象逐条回报、`.gitignore` 只追加不重写、无服务 / 控制器没跑 / 没开工程 / 没 cwd 各自的错误码。
 `test/03-plugin.test.mjs` 断言只注册这一个工具、描述里写明 dry-run 规则、真实 harness 运行时接受其 schema。
+
+---
+
+## D23. 去掉项目名层；一个 workspace 一个工程；`source_project` 是唯一的路径参数
+
+**背景**（使用者 2026-10 的三条要求）：① `source/` 下不要 `<项目名>` 这一层；② `tia/` 也一样；
+③ 工具要能**打开源项目**（`source_project`；`with_window` 默认 true、`allow_upgrade` 默认 false，
+且描述里必须写明"没有打开的项目时**向用户要路径，不许自己去磁盘上找**"）。
+
+**一条被纠正的判断**：我曾按旧 `PATH-RULES.md` §10 的措辞推断"一个 workspace 可以放多个工程"，
+**那是推断、不是规定**；使用者的口径是**一个 workspace 只管一个工程**（A5 的 session ↔ workspace 绑定）。
+
+**决定**：
+
+1. **`tia/` 与 `source/` 都不含项目名**。工程名只作为**身份**写进
+   `source/_dsh-engineering-context.json` —— 本插件的索引：工程名 / 路径 / 实际另存落点 +
+   每个 device 的目录、manifest 路径与计数 + totals。
+2. **写之前比对身份**：索引里记的是**另一个工程** → `source_belongs_to_another_project` 并拒绝
+   （结果里给出两个工程名，以及替代做法：换个 workspace，或自己确认后删掉那棵树）。
+   索引存在但读不出来 → 只 warning：现有文件本来就是"跳过不覆盖"，所以仍然安全。
+3. **`source_project` 是唯一的路径参数**：TIA 没打开工程时必填，否则 `source_project_required`
+   （消息里明说"向用户要路径，不要扫盘"）；已有工程时若传了**别的**路径 → `project_already_open`
+   （控制器的 `OpenProject` 本来就会拒绝第二个，所以不去试探）。打开失败 → `open_failed` 并带上
+   TIA 的原因；未开 `allow_upgrade` 时额外提示"那会**不可逆**地把工程改写成 V17，先问用户"；
+   真发生了升级 → 在 warning 里点名。
+4. `with_window` 默认 **true**（可见的 TIA 实例；这是有人在看的工作流），`allow_upgrade` 默认
+   **false**（`OpenWithUpgrade` 会不可逆地重写工程文件）。
+5. **dry run 现在能精确报出目标目录**（不再依赖"打开才知道工程名"），而且 dry run **不打开工程** ——
+   打开本身就是真实动作。
+
+**布局变化**：`source/<项目名>/<device>/…` → `source/<device>/…`；`tia/<项目名>/` → `tia/`。
+**服务端同时改了导出布局**（接口插件 **D24**：三类各占一个目录、每 device 一次调用、一份 manifest），
+所以"每 device 多份 manifest、消费方要合并"这件事不再存在 —— 本插件只读它返回的结果。
+
+**验证**：`test/02-create-project.test.mjs`（21 项）+ `test/03-plugin.test.mjs`（6 项）+
+`test/01-paths.test.mjs`（5 项）= **33 项全通过**。新增/改写的用例覆盖：没打开工程时要路径、
+给了路径就打开（`with_window` / `allow_upgrade` 的传参）、别的工程已打开时拒绝且不试探、
+打开被拒时的提示、升级被点名、目标目录与工程名无关、索引写入与身份守卫、索引损坏只 warning。

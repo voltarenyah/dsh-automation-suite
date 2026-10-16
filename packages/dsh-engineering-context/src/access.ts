@@ -134,6 +134,11 @@ export interface RebuildResult {
 /** The members of the service this plugin uses. */
 export interface EngineeringAccessLike {
   readTiaSession(options?: { signal?: AbortSignal }): Promise<unknown>
+  /** Opens a project by absolute path; TIA refuses when one is already open. */
+  openProject(
+    projectPath: string,
+    options?: { withWindow?: boolean; allowUpgrade?: boolean; signal?: AbortSignal },
+  ): Promise<unknown>
   saveProjectAs(directory: string, options?: { signal?: AbortSignal }): Promise<unknown>
   /**
    * There is deliberately no `dryRun` here: this plugin never asks TIA to plan a
@@ -191,10 +196,25 @@ export function engineeringAccess(ctx: Context): EngineeringAccessLike | undefin
   const service = ctx.get(ENGINEERING_ACCESS_SERVICE)
   if (service === null || typeof service !== 'object') return undefined
   const candidate = service as Record<string, unknown>
-  for (const member of ['readTiaSession', 'saveProjectAs', 'rebuildSource']) {
+  for (const member of ['readTiaSession', 'openProject', 'saveProjectAs', 'rebuildSource']) {
     if (typeof candidate[member] !== 'function') return undefined
   }
   return service as EngineeringAccessLike
+}
+
+/** One PLC software, read out of either the session report or an open result. */
+function softwareOf(value: unknown): TiaSoftware[] {
+  const software: TiaSoftware[] = []
+  for (const entry of list(value)) {
+    const item = record(entry)
+    if (item === null) continue
+    software.push({
+      device: text(item['device']) ?? '?',
+      software: text(item['software']) ?? '?',
+      blockCount: numberOf(item['blockCount']),
+    })
+  }
+  return software
 }
 
 /**
@@ -205,16 +225,6 @@ export function engineeringAccess(ctx: Context): EngineeringAccessLike | undefin
  */
 export function normalizeSession(raw: unknown): TiaSession {
   const source = record(raw) ?? {}
-  const software: TiaSoftware[] = []
-  for (const entry of list(source['software'])) {
-    const item = record(entry)
-    if (item === null) continue
-    software.push({
-      device: text(item['device']) ?? '?',
-      software: text(item['software']) ?? '?',
-      blockCount: numberOf(item['blockCount']),
-    })
-  }
   const isModified = source['isModified']
   return {
     running: boolOr(source['running'], false),
@@ -222,8 +232,52 @@ export function normalizeSession(raw: unknown): TiaSession {
     projectName: text(source['projectName']) ?? null,
     projectPath: text(source['projectPath']) ?? null,
     isModified: typeof isModified === 'boolean' ? isModified : null,
-    software,
+    software: softwareOf(source['software']),
     reason: text(source['reason']) ?? null,
+  }
+}
+
+/** The outcome of an `openProject` call. */
+export interface OpenResult {
+  ok: boolean
+  error: AccessError | null
+  summary: string
+  /** The path that was asked for. */
+  requestedPath: string
+  /** The project name TIA reports — the authority for everything downstream. */
+  projectName: string | null
+  projectPath: string | null
+  /** True when TIA rewrote an older project to V17 (irreversible). */
+  upgraded: boolean
+  isModified: boolean | null
+  /** The PLC software the opened project holds. */
+  software: TiaSoftware[]
+}
+
+/**
+ * Normalize an `openProject` return value.
+ *
+ * The controller reports `plcSoftware` (the same `{count, items}` shape the
+ * session report uses), so a caller that just opened a project does not have to
+ * ask for the session a second time to learn what is in it.
+ *
+ * @param raw - the service's return value.
+ * @param requested - the path that was asked for.
+ */
+export function normalizeOpen(raw: unknown, requested: string): OpenResult {
+  const source = record(raw) ?? {}
+  const data = record(source['data']) ?? {}
+  const isModified = data['isModified']
+  return {
+    ok: boolOr(source['ok'], false),
+    error: errorOf(source['error']),
+    summary: text(source['summary']) ?? '',
+    requestedPath: text(data['requestedPath']) ?? requested,
+    projectName: text(data['projectName']) ?? null,
+    projectPath: text(data['projectPath']) ?? null,
+    upgraded: data['upgraded'] === true,
+    isModified: typeof isModified === 'boolean' ? isModified : null,
+    software: softwareOf(record(data['plcSoftware'])?.['items']),
   }
 }
 

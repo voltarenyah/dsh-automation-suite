@@ -4,8 +4,11 @@
  * Two directory names decide **where this plugin writes inside the user's
  * workspace** (docs/PATH-RULES.md §2):
  *
- *   <workspace>/<tia dir>/<project>/       the project TIA saved into the workspace
- *   <workspace>/<source dir>/<project>/    the rebuilt source tree of that project
+ *   <workspace>/<tia dir>/       the project TIA saved into the workspace
+ *   <workspace>/<source dir>/    the rebuilt source tree of that project
+ *
+ * Neither carries a project name: one workspace manages one project
+ * (docs/decisions.md D23).
  *
  * Because they decide every write, `resolveConfig` validates them instead of
  * trusting them: a value containing a separator or `..` would move every write.
@@ -101,24 +104,45 @@ export function resolveConfig(config?: Partial<PluginConfig>): PluginConfig {
 }
 
 /**
- * Absolute directory the project of one workspace belongs in.
+ * Absolute directory the project of this workspace belongs in.
+ *
+ * There is deliberately **no project-name level**: one workspace manages one
+ * engineering project (docs/decisions.md D23), so whatever folder TIA creates
+ * below it is TIA's own business — and the tool refuses to run when what is
+ * already there belongs to a different project.
+ *
  * @param config - the resolved configuration.
  * @param workspaceRoot - the canonical workspace root.
- * @param folder - the folder name derived from the TIA project name.
  */
-export function projectDirectoryPath(config: PluginConfig, workspaceRoot: string, folder: string): string {
-  return join(workspaceRoot, config.tiaDirName, folder)
+export function projectDirectoryPath(config: PluginConfig, workspaceRoot: string): string {
+  return join(workspaceRoot, config.tiaDirName)
 }
 
 /**
- * Absolute directory the rebuilt source tree of one project belongs in.
+ * Absolute directory the rebuilt source tree of the project belongs in.
  * @param config - the resolved configuration.
  * @param workspaceRoot - the canonical workspace root.
- * @param folder - the folder name derived from the TIA project name.
  */
-export function sourceDirectoryPath(config: PluginConfig, workspaceRoot: string, folder: string): string {
-  return join(workspaceRoot, config.sourceDirName, folder)
+export function sourceDirectoryPath(config: PluginConfig, workspaceRoot: string): string {
+  return join(workspaceRoot, config.sourceDirName)
 }
+
+/**
+ * The tool's own index of the source tree: which project it belongs to, and what
+ * the last export produced.
+ *
+ * It is what makes "one workspace, one project" checkable instead of aspirational:
+ * the tool reads it before writing and refuses when it names another project.
+ *
+ * @param config - the resolved configuration.
+ * @param workspaceRoot - the canonical workspace root.
+ */
+export function sourceIndexPath(config: PluginConfig, workspaceRoot: string): string {
+  return join(workspaceRoot, config.sourceDirName, SOURCE_INDEX_FILE)
+}
+
+/** File name of the tool's own index, inside the source directory. */
+export const SOURCE_INDEX_FILE = '_dsh-engineering-context.json'
 
 /**
  * The `.gitignore` line that keeps the saved projects out of version control.

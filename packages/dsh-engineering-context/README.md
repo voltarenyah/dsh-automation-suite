@@ -17,8 +17,8 @@ DeepSeek Harness 插件（**工程上下文插件**）：把一个 **TIA Portal 
 |---|---|
 | **workspace** | 宿主已有的 workspace 注册表（`@deepseek-ai/dsh-workspace`）。本插件**只读**它，不新建、不改动 |
 | **作用域根** | 会话的工作目录 `exec.agent.session.header.cwd` —— 宿主也用它判定会话归属 |
-| **工程本身** | `<workspace>/tia/<项目名>/` —— TIA 另存进来的二进制工程（谁都不进 git） |
-| **源文件树** | `<workspace>/source/<项目名>/<device>/{blocks,types,tag_tables}/` —— 可读、可 diff、进 git |
+| **工程本身** | `<workspace>/tia/` —— TIA 另存进来的二进制工程（谁都不进 git；其下的形状由 TIA 决定） |
+| **源文件树** | `<workspace>/source/<device>/{blocks,types,tag_tables}/` —— 可读、可 diff、进 git；旁边是本插件的索引 `_dsh-engineering-context.json` |
 
 因此"新会话只能访问自己 workspace 下的工程"是**结构性**成立：每次调用都从 cwd 重新解析，
 目标路径由 workspace 根 + 配置目录名 + TIA 的项目名推出来（工具参数里**没有路径**），
@@ -43,8 +43,8 @@ workspace 副本上，是本插件唯一难以撤销的动作。要真做必须�
 
 ```
 <workspace>/
-├── tia/<项目名>/                 # TIA 另存的工程（二进制，整个 tia/ 由本插件写进 .gitignore）
-├── source/<项目名>/<device>/     # 重建的源文件树（进 git）
+├── tia/                          # TIA 另存的工程（二进制，整个 tia/ 由本插件写进 .gitignore）
+├── source/                       # 重建的源文件树（进 git）+ _dsh-engineering-context.json（索引）
 │   ├── blocks/<组>/<块名>.xml
 │   ├── types/<组>/<类型名>.xml
 │   └── tag_tables/<表名>.xml
@@ -70,7 +70,7 @@ workspace 副本上，是本插件唯一难以撤销的动作。要真做必须�
 # 裸 checkout 首次：链接宿主运行时（本包只读缓存，从不抽取）
 node scripts/link-dsh-runtime.mjs
 
-node scripts/run-tests.mjs     # 构建 + 跑 29 项测试
+node scripts/run-tests.mjs     # 构建 + 跑 33 项测试
 node scripts/tsc.mjs -p tsconfig.json          # 只构建
 node scripts/tsc.mjs -p tsconfig.json --noEmit # 只做类型检查
 ```

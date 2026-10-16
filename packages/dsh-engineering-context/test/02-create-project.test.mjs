@@ -95,6 +95,24 @@ function fakeAccess(options = {}) {
       if (options.readThrows !== undefined) throw options.readThrows
       return options.session ?? sessionReport()
     },
+    async openProject(projectPath, request = {}) {
+      calls.push({ operation: 'openProject', projectPath, options: request })
+      if (options.openThrows !== undefined) throw options.openThrows
+      if (options.open !== undefined) return options.open
+      return {
+        ok: true,
+        error: null,
+        summary: 'Opened the project.',
+        data: {
+          projectName: 'PEI_SinoARP',
+          projectPath,
+          requestedPath: projectPath,
+          upgraded: false,
+          isModified: false,
+          plcSoftware: { count: 1, items: [{ device: 'S7-1500', software: 'PLC_1', blockCount: 3 }] },
+        },
+      }
+    },
     async saveProjectAs(directory, request = {}) {
       calls.push({ operation: 'saveProjectAs', directory, options: request })
       if (options.saveThrows !== undefined) throw options.saveThrows
@@ -152,9 +170,28 @@ test('a composition without the TIA service says so instead of half-creating a p
   await assert.rejects(stat(join(root, 'tia')), 'nothing may be created without a way to reach TIA')
 })
 
-test('a stopped controller is a state: nothing is sent to it and nothing is created', async (t) => {
+test('with nothing open it asks for the project path instead of hunting for one', async (t) => {
   const root = await tempWorkspace(t)
-  const { tool, calls } = setup({
+
+  // Controller running, no project open.
+  const nothingOpen = setup({
+    session: sessionReport({
+      projectOpen: false,
+      projectName: null,
+      projectPath: null,
+      software: [],
+      reason: 'the controller is running but no project is open',
+    }),
+  })
+  const asked = await executeTool(nothingOpen.tool, { dry_run: false }, fakeExec(root))
+  assert.equal(asked.ok, false)
+  assert.equal(asked.error.code, 'source_project_required')
+  assert.match(asked.error.message, /ask the user for the path/u)
+  assert.match(asked.error.message, /rather than\s+searching the disk/u)
+  assert.deepEqual(operations(nothingOpen.calls), ['readTiaSession'], 'nothing may be opened or saved without a path')
+
+  // Controller not running either: same actionable answer, because opening starts it.
+  const stopped = setup({
     session: sessionReport({
       running: false,
       projectOpen: false,
@@ -164,18 +201,18 @@ test('a stopped controller is a state: nothing is sent to it and nothing is crea
       reason: 'the controller is not running, so no TIA session is open',
     }),
   })
+  const alsoAsked = await executeTool(stopped.tool, { dry_run: false }, fakeExec(root))
+  assert.equal(alsoAsked.ok, false)
+  assert.equal(alsoAsked.error.code, 'source_project_required')
+  assert.deepEqual(operations(stopped.calls), ['readTiaSession'])
 
-  const outcome = await executeTool(tool, { dry_run: false }, fakeExec(root))
-
-  assert.equal(outcome.ok, false)
-  assert.equal(outcome.error.code, 'tia_controller_not_running')
-  assert.match(outcome.error.message, /never starts the controller/u)
-  assert.deepEqual(operations(calls), ['readTiaSession'], 'a stopped controller must not even be asked to save')
-  await assert.rejects(stat(join(root, 'tia')))
+  await assert.rejects(stat(join(root, 'tia')), 'nothing may be created without a project')
 })
 
-test('a controller with no project open reports the state rather than guessing one', async (t) => {
+test('a named project is opened, then saved and exported', async (t) => {
   const root = await tempWorkspace(t)
+  const source = join(root, 'Line1.ap17')
+  await makeFile(source, 'project bytes')
   const { tool, calls } = setup({
     session: sessionReport({
       projectOpen: false,
@@ -186,11 +223,100 @@ test('a controller with no project open reports the state rather than guessing o
     }),
   })
 
-  const outcome = await executeTool(tool, { dry_run: false }, fakeExec(root))
+  const outcome = assertEnvelope(
+    await executeTool(tool, { source_project: source, dry_run: false }, fakeExec(root)),
+  )
+
+  assert.equal(outcome.ok, true)
+  assert.deepEqual(operations(calls), ['readTiaSession', 'openProject', 'saveProjectAs', 'rebuildSource'])
+  assert.equal(calls[1].projectPath, source)
+  assert.equal(calls[1].options.withWindow, true, 'a visible TIA window is the default')
+  assert.equal(calls[1].options.allowUpgrade, false, 'upgrading rewrites the project, so it is never implied')
+  assert.equal(calls[2].directory, join(root, 'tia'))
+  assert.equal(calls[3].sourceRoot, join(root, 'source'))
+  assert.equal(outcome.data.project.name, 'PEI_SinoARP')
+})
+
+test('a different project is never acted on silently', async (t) => {
+  const root = await tempWorkspace(t)
+  const { tool, calls } = setup() // session: PEI_SinoARP is open elsewhere
+
+  const outcome = await executeTool(
+    tool,
+    { source_project: join(root, 'Other.ap17'), dry_run: false },
+    fakeExec(root),
+  )
 
   assert.equal(outcome.ok, false)
-  assert.equal(outcome.error.code, 'tia_project_not_open')
-  assert.deepEqual(operations(calls), ['readTiaSession'])
+  assert.equal(outcome.error.code, 'project_already_open')
+  assert.deepEqual(operations(calls), ['readTiaSession'], 'TIA refuses a second open anyway; do not try')
+  assert.equal(outcome.error.details.requested, join(root, 'Other.ap17'))
+
+  // The same project passed explicitly is fine: it is what is already open.
+  const same = await executeTool(
+    setup().tool,
+    { source_project: 'C:\\TIA\\SinoARP\\PEI_SinoARP.ap17', dry_run: false },
+    fakeExec(root),
+  )
+  assert.equal(same.ok, true)
+})
+
+test('a refused open reports TIA\'s reason and warns about the upgrade switch', async (t) => {
+  const root = await tempWorkspace(t)
+  const source = join(root, 'Old.ap15')
+  await makeFile(source, 'project bytes')
+  const { tool } = setup({
+    session: sessionReport({ projectOpen: false, projectName: null, projectPath: null, software: [] }),
+    open: {
+      ok: false,
+      error: { code: 'project_open_failed', message: 'this project was created by an older version' },
+      summary: '',
+      data: null,
+    },
+  })
+
+  const outcome = await executeTool(tool, { source_project: source, dry_run: false }, fakeExec(root))
+
+  assert.equal(outcome.ok, false)
+  assert.equal(outcome.error.code, 'open_failed')
+  assert.match(outcome.error.message, /older version/u)
+  assert.match(outcome.error.message, /allow_upgrade/u)
+  assert.match(outcome.error.message, /REWRITES/u)
+  assert.equal(outcome.error.details.code, 'project_open_failed')
+})
+
+test('an upgrade that TIA did perform is reported loudly', async (t) => {
+  const root = await tempWorkspace(t)
+  const source = join(root, 'Old.ap15')
+  await makeFile(source, 'project bytes')
+  const { tool } = setup({
+    session: sessionReport({ projectOpen: false, projectName: null, projectPath: null, software: [] }),
+    open: {
+      ok: true,
+      error: null,
+      summary: 'Opened.',
+      data: {
+        projectName: 'PEI_SinoARP',
+        projectPath: source,
+        requestedPath: source,
+        upgraded: true,
+        isModified: false,
+        plcSoftware: { count: 1, items: [{ device: 'S7-1500', software: 'PLC_1', blockCount: 3 }] },
+      },
+    },
+  })
+
+  const outcome = await executeTool(
+    tool,
+    { source_project: source, allow_upgrade: true, dry_run: false },
+    fakeExec(root),
+  )
+
+  assert.equal(outcome.ok, true)
+  assert.ok(
+    outcome.warnings.some((warning) => /upgraded .* to V17/u.test(warning)),
+    'an irreversible rewrite has to be visible in the result',
+  )
 })
 
 test('the default is a plan: it names the layout and writes nothing at all', async (t) => {
@@ -203,8 +329,8 @@ test('the default is a plan: it names the layout and writes nothing at all', asy
   assert.equal(outcome.dryRun, true)
   assert.deepEqual(operations(calls), ['readTiaSession'], 'a plan asks nothing of TIA beyond the session')
   assert.equal(outcome.data.plan.name, 'PEI_SinoARP')
-  assert.equal(outcome.data.plan.projectDirectory.port, 'tia/PEI_SinoARP')
-  assert.equal(outcome.data.plan.sourceRoot.port, 'source/PEI_SinoARP')
+  assert.equal(outcome.data.plan.projectDirectory.port, 'tia')
+  assert.equal(outcome.data.plan.sourceRoot.port, 'source')
   assert.equal(outcome.data.plan.skipSave, false)
   assert.deepEqual(outcome.data.plan.devices, [{ device: 'S7-1500', software: 'PLC_1', blockCount: 3 }])
 
@@ -223,12 +349,12 @@ test('dry_run=false saves into tia/ and then rebuilds into source/, in that orde
   assert.equal(outcome.ok, true)
   assert.equal(outcome.dryRun, false)
   assert.deepEqual(operations(calls), ['readTiaSession', 'saveProjectAs', 'rebuildSource'])
-  assert.equal(calls[1].directory, join(root, 'tia', 'PEI_SinoARP'))
-  assert.equal(calls[2].sourceRoot, join(root, 'source', 'PEI_SinoARP'))
+  assert.equal(calls[1].directory, join(root, 'tia'))
+  assert.equal(calls[2].sourceRoot, join(root, 'source'))
   assert.equal(calls[2].options.overwrite, false)
 
   // TIA's own path is what the result carries, never the requested directory.
-  assert.equal(outcome.data.project.savedAs, join(root, 'tia', 'PEI_SinoARP', 'PEI_SinoARP.ap17'))
+  assert.equal(outcome.data.project.savedAs, join(root, 'tia', 'PEI_SinoARP.ap17'))
   // The payload describes the disk after the run, not what the plan found before it.
   assert.equal(outcome.data.project.directory.kind, 'directory')
   assert.equal(outcome.data.project.sourceRoot.kind, 'directory')
@@ -238,7 +364,19 @@ test('dry_run=false saves into tia/ and then rebuilds into source/, in that orde
   assert.equal(outcome.data.rebuild.nothingWritten, false)
   assert.equal(outcome.data.ignore.action, 'created')
   assert.match(await readFile(join(root, '.gitignore'), 'utf8'), /^tia\/$/mu)
-  assert.match(outcome.summary, /Saved PEI_SinoARP into tia\/PEI_SinoARP/u)
+  assert.match(outcome.summary, /Saved PEI_SinoARP into tia\//u)
+
+  // The index is the workspace-level entry point: it says which project the tree
+  // belongs to (the controller writes one manifest per device, not per project).
+  assert.equal(outcome.data.index.action, 'created')
+  const index = JSON.parse(await readFile(join(root, 'source', '_dsh-engineering-context.json'), 'utf8'))
+  assert.equal(index.project.name, 'PEI_SinoARP')
+  assert.equal(index.project.directory, 'tia')
+  assert.equal(index.project.sourceRoot, 'source')
+  assert.equal(index.devices.length, 1)
+  assert.equal(index.devices[0].device, 'S7-1500')
+  assert.match(index.devices[0].manifest, /_tia-openness-manifest\.json$/u)
+  assert.deepEqual(index.totals, { planned: 4, written: 4, skipped: 0, refused: 0, verificationFailed: 0 })
 })
 
 test('overwrite is passed through to the export', async (t) => {
@@ -278,7 +416,7 @@ test('a failed rebuild says the project is saved, so a retry only redoes the exp
       ok: false,
       error: { code: 'controller_timeout', message: 'the controller did not answer in time' },
       summary: '',
-      sourceRoot: join(root, 'source', 'PEI_SinoARP'),
+      sourceRoot: join(root, 'source'),
       devices: [],
       failures: [{ device: 'S7-1500', category: 'blocks', name: 'OB1', code: 'export_failed', message: 'boom' }],
       missingDevices: [],
@@ -298,7 +436,7 @@ test('a failed rebuild says the project is saved, so a retry only redoes the exp
 test('objects TIA refuses are reported per object and do not fail the call', async (t) => {
   const root = await tempWorkspace(t)
   const { tool } = setup({
-    rebuild: rebuildReport(join(root, 'source', 'PEI_SinoARP'), {
+    rebuild: rebuildReport(join(root, 'source'), {
       summary: 'Rebuilt 1 device; 1 object refused.',
       failures: [
         { device: 'S7-1500', category: 'blocks', name: 'FOB_SAFETY', code: 'export_failed', message: 'not permitted' },
@@ -323,9 +461,9 @@ test('a run where every file already exists is reported as such, not as a TIA re
   const root = await tempWorkspace(t)
   // The project is already in the workspace, so this is the plain "refresh the
   // tree" path — the run that used to come back as a hard failure.
-  const inside = join(root, 'tia', 'PEI_SinoARP', 'PEI_SinoARP.ap17')
+  const inside = join(root, 'tia', 'PEI_SinoARP.ap17')
   await makeFile(inside, 'project bytes')
-  const sourceRoot = join(root, 'source', 'PEI_SinoARP')
+  const sourceRoot = join(root, 'source')
 
   const { tool } = setup({
     session: sessionReport({ projectPath: inside }),
@@ -374,7 +512,7 @@ test('a run that refused objects stays a failure even when it also skipped some'
       ok: false,
       error: { code: 'export_failed', message: 'One object was refused.' },
       summary: '',
-      sourceRoot: join(root, 'source', 'PEI_SinoARP'),
+      sourceRoot: join(root, 'source'),
       devices: [],
       failures: [],
       missingDevices: [],
@@ -397,7 +535,7 @@ test('a run that refused objects stays a failure even when it also skipped some'
 
 test('a project already inside the workspace skips the save-as and only refreshes the tree', async (t) => {
   const root = await tempWorkspace(t)
-  const inside = join(root, 'tia', 'PEI_SinoARP', 'PEI_SinoARP.ap17')
+  const inside = join(root, 'tia', 'PEI_SinoARP.ap17')
   await makeFile(inside, 'project bytes')
   const { tool, calls } = setup({ session: sessionReport({ projectPath: inside }) })
 
@@ -410,7 +548,7 @@ test('a project already inside the workspace skips the save-as and only refreshe
 
 test('an existing source tree is announced rather than silently skipped', async (t) => {
   const root = await tempWorkspace(t)
-  await mkdir(join(root, 'source', 'PEI_SinoARP'), { recursive: true })
+  await mkdir(join(root, 'source'), { recursive: true })
   const { tool } = setup()
 
   const outcome = await executeTool(tool, {}, fakeExec(root))
@@ -443,13 +581,13 @@ test('the ignore rule is created, appended or left alone — the file is never r
   assert.equal(twice.match(/^tia\/$/gmu).length, 1)
 })
 
-test('the folder comes from TIA and is sanitized, never taken as a path', async (t) => {
+test('the target dirs do not depend on the project name, which is only the recorded identity', async (t) => {
   const root = await tempWorkspace(t)
-  const { tool } = setup({ session: sessionReport({ projectName: 'A/B:C' }) })
 
-  const outcome = await executeTool(tool, {}, fakeExec(root))
-
-  assert.equal(outcome.data.plan.projectDirectory.port, 'tia/A_B_C')
+  // A name with characters a filesystem rejects changes nothing about the targets.
+  const odd = await executeTool(setup({ session: sessionReport({ projectName: 'A/B:C' }) }).tool, {}, fakeExec(root))
+  assert.equal(odd.data.plan.projectDirectory.port, 'tia')
+  assert.equal(odd.data.plan.sourceRoot.port, 'source')
 
   // A name is derived from the project path when TIA reports none, and the tool
   // refuses to invent one when there is nothing to derive from.
@@ -458,7 +596,8 @@ test('the folder comes from TIA and is sanitized, never taken as a path', async 
     {},
     fakeExec(root),
   )
-  assert.equal(fallback.data.plan.projectDirectory.port, 'tia/tia')
+  assert.equal(fallback.ok, true)
+  assert.equal(fallback.data.plan.name, 'tia')
 
   const nothing = await executeTool(
     setup({ session: sessionReport({ projectName: null, projectPath: null }) }).tool,
@@ -467,6 +606,33 @@ test('the folder comes from TIA and is sanitized, never taken as a path', async 
   )
   assert.equal(nothing.ok, false)
   assert.equal(nothing.error.code, 'project_name_unavailable')
+})
+
+test('one workspace manages one project: another project\'s tree is refused', async (t) => {
+  const root = await tempWorkspace(t)
+  // What an earlier run for a different project left behind.
+  await makeFile(
+    join(root, 'source', '_dsh-engineering-context.json'),
+    JSON.stringify({ schemaVersion: 1, project: { name: 'OTHER_PROJECT' } }),
+  )
+  const { tool, calls } = setup()
+
+  const outcome = await executeTool(tool, { dry_run: false }, fakeExec(root))
+
+  assert.equal(outcome.ok, false)
+  assert.equal(outcome.error.code, 'source_belongs_to_another_project')
+  assert.match(outcome.error.message, /OTHER_PROJECT/u)
+  assert.equal(outcome.error.details.current, 'PEI_SinoARP')
+  assert.deepEqual(operations(calls), ['readTiaSession'], 'nothing is written before the check')
+
+  // The same project again is fine, and an unreadable index is only a warning.
+  await makeFile(join(root, 'source', '_dsh-engineering-context.json'), '{ not json')
+  const corrupted = await executeTool(setup().tool, { dry_run: false }, fakeExec(root))
+  assert.equal(corrupted.ok, true)
+  assert.ok(
+    corrupted.warnings.some((warning) => /could not be read/u.test(warning)),
+    'an index that cannot be read is reported, not ignored',
+  )
 })
 
 test('a transport failure is reported as data, and the workspace is left alone', async (t) => {
