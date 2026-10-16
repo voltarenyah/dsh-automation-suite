@@ -106,16 +106,18 @@ export function resolveConfig(config?: Partial<PluginConfig>): PluginConfig {
 /**
  * Absolute directory the project of this workspace belongs in.
  *
- * There is deliberately **no project-name level**: one workspace manages one
- * engineering project (docs/decisions.md D23), so whatever folder TIA creates
- * below it is TIA's own business — and the tool refuses to run when what is
- * already there belongs to a different project.
+ * It carries the **workspace's** name, not the engineering project's: TIA names a
+ * project after the directory it is saved into (measured on a live project), so a
+ * deterministic directory name is what keeps the saved project's name stable and
+ * known before the project is ever opened — and it is why the name can be recorded
+ * before TIA reports anything.
  *
  * @param config - the resolved configuration.
  * @param workspaceRoot - the canonical workspace root.
+ * @param workspaceName - the workspace's display name (its title, or its folder name).
  */
-export function projectDirectoryPath(config: PluginConfig, workspaceRoot: string): string {
-  return join(workspaceRoot, config.tiaDirName)
+export function projectDirectoryPath(config: PluginConfig, workspaceRoot: string, workspaceName: string): string {
+  return join(workspaceRoot, config.tiaDirName, workspaceName)
 }
 
 /**

@@ -10,7 +10,7 @@
 
 import assert from 'node:assert/strict'
 import { mkdir, readFile, stat } from 'node:fs/promises'
-import { join } from 'node:path'
+import { basename, join } from 'node:path'
 import { test } from 'node:test'
 
 import {
@@ -139,6 +139,8 @@ function fakeAccess(options = {}) {
           requestedSaveAsDir: directory,
           savedAs: join(directory, 'PEI_SinoARP.ap17'),
           projectPath: directory,
+          // TIA names the project after the directory it saved into.
+          projectName: basename(directory),
         },
       }
     },
@@ -179,7 +181,7 @@ test('a composition without the TIA service says so instead of half-creating a p
   assert.equal(outcome.ok, false)
   assert.equal(outcome.error.code, 'tia_access_unavailable')
   assert.match(outcome.error.message, /engineeringAccess/u)
-  await assert.rejects(stat(join(root, 'tia')), 'nothing may be created without a way to reach TIA')
+  await assert.rejects(stat(join(root, 'tia', basename(root))), 'nothing may be created without a way to reach TIA')
 })
 
 test('with nothing open it asks for the project path instead of hunting for one', async (t) => {
@@ -218,7 +220,7 @@ test('with nothing open it asks for the project path instead of hunting for one'
   assert.equal(alsoAsked.error.code, 'source_project_required')
   assert.deepEqual(operations(stopped.calls), ['readTiaSession'])
 
-  await assert.rejects(stat(join(root, 'tia')), 'nothing may be created without a project')
+  await assert.rejects(stat(join(root, 'tia', basename(root))), 'nothing may be created without a project')
 })
 
 test('a named project is opened, then saved and exported', async (t) => {
@@ -244,7 +246,7 @@ test('a named project is opened, then saved and exported', async (t) => {
   assert.equal(calls[1].projectPath, source)
   assert.equal(calls[1].options.withWindow, true, 'a visible TIA window is the default')
   assert.equal(calls[1].options.allowUpgrade, false, 'upgrading rewrites the project, so it is never implied')
-  assert.equal(calls[2].directory, join(root, 'tia'))
+  assert.equal(calls[2].directory, join(root, 'tia', basename(root)))
   assert.equal(calls[3].sourceRoot, join(root, 'source'))
   assert.equal(outcome.data.project.name, 'PEI_SinoARP')
 })
@@ -341,12 +343,12 @@ test('the default is a plan: it names the layout and writes nothing at all', asy
   assert.equal(outcome.dryRun, true)
   assert.deepEqual(operations(calls), ['readTiaSession'], 'a plan asks nothing of TIA beyond the session')
   assert.equal(outcome.data.plan.name, 'PEI_SinoARP')
-  assert.equal(outcome.data.plan.projectDirectory.port, 'tia')
+  assert.equal(outcome.data.plan.projectDirectory.port, `tia/${basename(root)}`)
   assert.equal(outcome.data.plan.sourceRoot.port, 'source')
   assert.equal(outcome.data.plan.skipSave, false)
   assert.deepEqual(outcome.data.plan.devices, [{ device: 'S7-1500', software: 'PLC_1', blockCount: 3 }])
 
-  await assert.rejects(stat(join(root, 'tia')), 'a dry run must not create the project directory')
+  await assert.rejects(stat(join(root, 'tia', basename(root))), 'a dry run must not create the project directory')
   await assert.rejects(stat(join(root, 'source')), 'a dry run must not create the source tree')
   await assert.rejects(stat(join(root, '.gitignore')), 'a dry run must not touch the workspace .gitignore')
   assert.match(renderedText(tool, {}, outcome), /Dry run/u)
@@ -361,12 +363,12 @@ test('dry_run=false saves into tia/ and then rebuilds into source/, in that orde
   assert.equal(outcome.ok, true)
   assert.equal(outcome.dryRun, false)
   assert.deepEqual(operations(calls), ['readTiaSession', 'saveProjectAs', 'rebuildSource'])
-  assert.equal(calls[1].directory, join(root, 'tia'))
+  assert.equal(calls[1].directory, join(root, 'tia', basename(root)))
   assert.equal(calls[2].sourceRoot, join(root, 'source'))
   assert.equal(calls[2].options.overwrite, false)
 
   // TIA's own path is what the result carries, never the requested directory.
-  assert.equal(outcome.data.project.savedAs, join(root, 'tia', 'PEI_SinoARP.ap17'))
+  assert.equal(outcome.data.project.savedAs, join(root, 'tia', basename(root), 'PEI_SinoARP.ap17'))
   // The payload describes the disk after the run, not what the plan found before it.
   assert.equal(outcome.data.project.directory.kind, 'directory')
   assert.equal(outcome.data.project.sourceRoot.kind, 'directory')
@@ -374,6 +376,10 @@ test('dry_run=false saves into tia/ and then rebuilds into source/, in that orde
   // that include skipped files: all four planned objects were really written here.
   assert.deepEqual(outcome.data.rebuild.totals, { planned: 4, written: 4, skipped: 0, refused: 0, verificationFailed: 0 })
   assert.equal(outcome.data.rebuild.nothingWritten, false)
+  assert.ok(
+    outcome.warnings.some((warning) => /TIA named the workspace copy/u.test(warning)),
+    'the rename TIA performs is reported',
+  )
   assert.equal(outcome.data.ignore.action, 'created')
   assert.match(await readFile(join(root, '.gitignore'), 'utf8'), /^tia\/$/mu)
   assert.match(outcome.summary, /Saved PEI_SinoARP into tia\//u)
@@ -383,7 +389,7 @@ test('dry_run=false saves into tia/ and then rebuilds into source/, in that orde
   assert.equal(outcome.data.index.action, 'created')
   const index = JSON.parse(await readFile(join(root, 'source', '_dsh-engineering-context.json'), 'utf8'))
   assert.equal(index.project.name, 'PEI_SinoARP')
-  assert.equal(index.project.directory, 'tia')
+  assert.equal(index.project.directory, `tia/${basename(root)}`)
   assert.equal(index.project.sourceRoot, 'source')
   assert.equal(index.devices.length, 1)
   assert.equal(index.devices[0].device, 'S7-1500')
@@ -473,7 +479,7 @@ test('a run where every file already exists is reported as such, not as a TIA re
   const root = await tempWorkspace(t)
   // The project is already in the workspace, so this is the plain "refresh the
   // tree" path — the run that used to come back as a hard failure.
-  const inside = join(root, 'tia', 'PEI_SinoARP.ap17')
+  const inside = join(root, 'tia', basename(root), 'PEI_SinoARP.ap17')
   await makeFile(inside, 'project bytes')
   const sourceRoot = join(root, 'source')
 
@@ -547,7 +553,7 @@ test('a run that refused objects stays a failure even when it also skipped some'
 
 test('a project already inside the workspace skips the save-as and only refreshes the tree', async (t) => {
   const root = await tempWorkspace(t)
-  const inside = join(root, 'tia', 'PEI_SinoARP.ap17')
+  const inside = join(root, 'tia', basename(root), 'PEI_SinoARP.ap17')
   await makeFile(inside, 'project bytes')
   const { tool, calls } = setup({ session: sessionReport({ projectPath: inside }) })
 
@@ -598,7 +604,7 @@ test('the target dirs do not depend on the project name, which is only the recor
 
   // A name with characters a filesystem rejects changes nothing about the targets.
   const odd = await executeTool(setup({ session: sessionReport({ projectName: 'A/B:C' }) }).tool, {}, fakeExec(root))
-  assert.equal(odd.data.plan.projectDirectory.port, 'tia')
+  assert.equal(odd.data.plan.projectDirectory.port, `tia/${basename(root)}`)
   assert.equal(odd.data.plan.sourceRoot.port, 'source')
 
   // A name is derived from the project path when TIA reports none, and the tool
@@ -651,7 +657,7 @@ test('TIA renaming the saved copy does not make the tool reject its own tree', a
   const root = await tempWorkspace(t)
   // What a live session showed: the copy is saved into `tia/`, so TIA names the
   // project `tia` while the index still records the source project's name.
-  const copy = join(root, 'tia', 'tia.ap17')
+  const copy = join(root, 'tia', basename(root), ` ${basename(root)}.ap17`)
   await makeFile(copy, 'project bytes')
   await makeFile(
     join(root, 'source', '_dsh-engineering-context.json'),
@@ -660,17 +666,17 @@ test('TIA renaming the saved copy does not make the tool reject its own tree', a
       project: { name: 'PEI_SinoARP_SWT2', path: 'C:\\src\\PEI_SinoARP_SWT2.ap17', savedAs: copy },
     }),
   )
-  const { tool } = setup({ session: sessionReport({ projectName: 'tia', projectPath: copy }) })
+  const { tool } = setup({ session: sessionReport({ projectName: basename(root), projectPath: copy }) })
 
   const outcome = await executeTool(tool, { dry_run: false }, fakeExec(root))
 
   assert.equal(outcome.ok, true, 'the recorded path identifies the project, not the name TIA rewrote')
   assert.ok(
-    outcome.warnings.some((warning) => /TIA reports tia for the same project file/u.test(warning)),
+    outcome.warnings.some((warning) => warning.includes(`TIA reports ${basename(root)} for the same project file`)),
     'the rename is reported rather than hidden',
   )
   const index = JSON.parse(await readFile(join(root, 'source', '_dsh-engineering-context.json'), 'utf8'))
-  assert.equal(index.project.name, 'tia', 'the index is refreshed with the name TIA now reports')
+  assert.equal(index.project.name, basename(root), 'the index is refreshed with the name TIA now reports')
 })
 
 test('acting on the project TIA happens to have open is flagged, not assumed', async (t) => {

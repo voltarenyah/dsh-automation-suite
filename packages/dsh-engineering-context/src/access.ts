@@ -63,6 +63,8 @@ export interface SaveResult {
   savedAs: string | null
   /** The project path TIA reports after the save. */
   projectPath: string | null
+  /** The project name TIA reports after the save (TIA names it after the directory). */
+  projectName: string | null
 }
 
 /** One family's outcome inside one device's source tree. */
@@ -297,6 +299,7 @@ export function normalizeSave(raw: unknown, requested: string): SaveResult {
     requestedSaveAsDir: text(data['requestedSaveAsDir']) ?? requested,
     savedAs: text(data['savedAs']) ?? null,
     projectPath: text(data['projectPath']) ?? null,
+    projectName: text(data['projectName']) ?? null,
   }
 }
 

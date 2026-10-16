@@ -29,7 +29,8 @@
 <workspace>/                                  ← = session cwd，宿主 registry 认领
 │
 ├── tia/                                      ← **TIA 的工程**（二进制，整个目录不进 git）
-│   └── …                                      ← TIA 另存时决定其下的形状（通常 <项目名>/ 与 <项目名>.ap17）
+│   └── <workspace 名>/                        ← 另存的目标目录；TIA 会**用它**命名工程
+│       └── <workspace 名>.ap17                 ← 工程文件本身
 │
 ├── source/                                   ← **重建的源文件树**（文本，进 git）
 │   ├── _dsh-engineering-context.json         ← 本插件的索引：这棵树属于哪个工程、上次导出产出了什么（§8）
@@ -44,11 +45,16 @@
 └── .git/                                     ← 建议：workspace 根一个仓库
 ```
 
-**为什么没有 `<项目名>` 这一层**：**一个 workspace 只管一个工程**（使用者口径；A5 的
-session ↔ workspace 绑定）。所以工程名不进任何目录名，它只作为**身份**记在
-`source/_dsh-engineering-context.json` 里，工具在写之前比对 —— 发现是**另一个工程**就拒绝
-（`source_belongs_to_another_project`），而不是让两棵树的 device 目录（`S7-1500`、`PLC_1` 这类
-重名极常见）悄悄互相覆盖。
+**为什么目录名是 <workspace 名>，而不是工程名**：**一个 workspace 只管一个工程**（使用者口径；
+A5 的 session ↔ workspace 绑定），而 **TIA 会用目标目录名给工程命名** —— 真机实测：另存进
+`tia/` 之后，工程就叫 `tia`，源工程名丢了。所以目录名取**workspace 的名字**（宿主 registry 的
+title，没有就用目录名）：它确定、在打开任何工程之前就知道，于是磁盘上的工程名也确定
+（`tia/<workspace 名>/<workspace 名>.ap17`），而不是由"我们恰好选了哪个目录"决定。
+
+工程自身的名字仍然作为**身份**记在 `source/_dsh-engineering-context.json` 里，工具在写之前比对 ——
+发现是**另一个工程**就拒绝（`source_belongs_to_another_project`），而不是让两棵树的 device 目录
+（`S7-1500`、`PLC_1` 这类重名极常见）悄悄互相覆盖。身份按**记录的工程文件路径**判定（源工程与
+工作区副本两条都记），不按名字 —— 因为名字会被 TIA 改写（见上）。
 
 **为什么是两棵树**：`tia/` 里的东西是 TIA 的 —— 二进制、只能在 TIA 里改，进版本库只能得到
 "变了/没变"（[`docs/vision.md`](../../../docs/vision.md) §3.3）；`source/` 里的是文本产物，
@@ -167,7 +173,7 @@ tia/
 
 | 路径 | 谁写 | 进 git | 可删？ |
 |---|---|---|---|
-| `tia/<项目名>/**` | **TIA**（经 `engineeringAccess.saveProjectAs`） | ❌ | 可以（TIA 里的那份还在） |
+| `tia/<workspace 名>/**` | **TIA**（经 `engineeringAccess.saveProjectAs`） | ❌ | 可以（TIA 里的那份还在） |
 | `source/<项目名>/<device>/**` | 接口插件（经 `rebuildSource`） | ✅ | 可以（重新导出即可，慢） |
 | `<workspace>/.gitignore` | `create_engineering_project`（只追加） | ✅ | 可以（下次调用会重建该行） |
 | `_dsh-eng/**`（指纹基线、变更集、台账） | **P2/P3，尚未实现**；路径待定 | — | — |

@@ -566,7 +566,7 @@ P1 填值时不必让模型重新学。结果里同时给出 `phases.pending`，
    `src/registry.ts`（注册表）、`src/git.ts`（版本层）、`src/tools/scope.ts`（指针）；
    `gitPath` / `projectsDirName` / `stateDirName` 三个配置项一并删除。
 2. **新增唯一的工具 `create_engineering_project`**：把 TIA 当前打开的工程另存进
-   `<workspace>/tia/<项目名>/`，再把源文件树重建到 `<workspace>/source/<项目名>/`；
+   `<workspace>/tia/<workspace 名>/`，再把源文件树重建到 `<workspace>/source/<项目名>/`；
    默认 `dry_run: true`（另存是本插件唯一难撤销的动作）。
 3. **不再保留注册表**：workspace 里"有哪些工程"由目录布局本身回答。
 
@@ -623,7 +623,7 @@ P0-4 / P0-5 / P0-6 / P0-10 / P0-11、P1-1…P1-6（版本层与 patch 工件）�
 5. **dry run 现在能精确报出目标目录**（不再依赖"打开才知道工程名"），而且 dry run **不打开工程** ——
    打开本身就是真实动作。
 
-**布局变化**：`source/<项目名>/<device>/…` → `source/<device>/…`；`tia/<项目名>/` → `tia/`。
+**布局变化**：`source/<项目名>/<device>/…` → `source/<device>/…`；`tia/<workspace 名>/` → `tia/`。
 **服务端同时改了导出布局**（接口插件 **D24**：三类各占一个目录、每 device 一次调用、一份 manifest），
 所以"每 device 多份 manifest、消费方要合并"这件事不再存在 —— 本插件只读它返回的结果。
 
@@ -640,3 +640,29 @@ P0-4 / P0-5 / P0-6 / P0-10 / P0-11、P1-1…P1-6（版本层与 patch 工件）�
 工具调用核对清单。修法：只有在 `data` 真的是控制器载荷（带 `summary`）时才计入其中的 failures。
 **测试夹具同步补上**：假服务的成功载荷现在也带 `data`（且 `data.failures` 与顶层同一数组），
 所以这条回归不会再溜过去 —— 原来的夹具没有 `data`，正好把这个 bug 放过去了。
+
+---
+
+## D24. 另存目录用 **workspace 名**：`tia/<workspace 名>/<workspace 名>.ap17`
+
+**背景**（使用者 2026-10-16 的决定）：D23 去掉了 `tia/` 下的项目名层，但真机暴露了代价 ——
+**TIA 用目标目录名给工程命名**：另存进 `tia/` 之后工作区副本就叫 `tia`（实测 `…\tia\tia.ap17`），
+源工程名丢了；而且"重跑刷新"两头都不通（打开源工程 → 再另存会撞上已存在的目标；打开副本 →
+又被身份守卫按名字判成"另一个工程"，后半条已由 D23 的路径判定修掉）。
+
+**决定**：另存目标目录改为 `<workspace>/tia/<workspace 名>/`，工程名就是 workspace 名。
+`<workspace 名>` = 宿主 workspace registry 的 title，缺席时取 workspace 目录名，经 `folderName`
+安全化。磁盘上的形状因此是 `tia/<workspace 名>/<workspace 名>.ap17`，**在打开任何工程之前就确定**。
+
+**为什么是 workspace 名而不是工程名**：工程名要打开工程才知道（于是 dry run 报不出目标目录），
+而 TIA 又会用目录名覆盖它 —— 拿工程名当目录名，等于让"目标目录"依赖"TIA 报什么"，而且与
+"一个 workspace 一个工程"重复表达同一件事。workspace 名是确定的、已知的，也正是"这份副本属于哪个
+workspace"。
+
+**索引同时记两个工程文件路径**：`path` = 本次运行**开始时**打开的那个（源工程），
+`savedAs` = 另存产物。身份比对按这两条路径（D23 的规则），任一命中就是同一个工程 —— 于是
+"打开源工程重跑"与"打开副本重跑"都不会被误判。另存后 TIA 若改了名，结果里给 warning；
+为此读出了另存响应里的 `projectName`（另存后的名字）—— 之前只读 `savedAs` / `projectPath`。
+
+**验证**：`test/02-create-project.test.mjs` 的路径断言全部改为 `tia/<workspace 名>`；
+夹具的另存响应补上 `projectName`（= 目录名），据此断言改名 warning 出现。**35/35 全通过**。

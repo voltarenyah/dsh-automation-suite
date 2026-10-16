@@ -17,7 +17,7 @@ DeepSeek Harness 插件（**工程上下文插件**）：把一个 **TIA Portal 
 |---|---|
 | **workspace** | 宿主已有的 workspace 注册表（`@deepseek-ai/dsh-workspace`）。本插件**只读**它，不新建、不改动 |
 | **作用域根** | 会话的工作目录 `exec.agent.session.header.cwd` —— 宿主也用它判定会话归属 |
-| **工程本身** | `<workspace>/tia/` —— TIA 另存进来的二进制工程（谁都不进 git；其下的形状由 TIA 决定） |
+| **工程本身** | `<workspace>/tia/<workspace 名>/` —— TIA 另存进来的二进制工程（谁都不进 git）。目录用 workspace 名，是因为 TIA 会拿目录名给工程命名 |
 | **源文件树** | `<workspace>/source/<device>/{blocks,types,tag_tables}/` —— 可读、可 diff、进 git；旁边是本插件的索引 `_dsh-engineering-context.json` |
 
 因此"新会话只能访问自己 workspace 下的工程"是**结构性**成立：每次调用都从 cwd 重新解析，
@@ -31,7 +31,7 @@ DeepSeek Harness 插件（**工程上下文插件**）：把一个 **TIA Portal 
 
 | 工具 | 干什么 | 写？ |
 |---|---|---|
-| `create_engineering_project` | 把 TIA **当前打开**的工程另存进 `<workspace>/tia/<项目名>/`，再把它的源文件树重建到 `<workspace>/source/<项目名>/`；默认 `dry_run: true`（只给计划）。工程已经在 workspace 里时跳过另存，只刷新源文件树 | 是（TIA 写工程、接口插件写源文件、本插件只追加一行 `.gitignore`） |
+| `create_engineering_project` | 把 TIA **当前打开**的工程另存进 `<workspace>/tia/<workspace 名>/`，再把它的源文件树重建到 `<workspace>/source/<项目名>/`；默认 `dry_run: true`（只给计划）。工程已经在 workspace 里时跳过另存，只刷新源文件树 | 是（TIA 写工程、接口插件写源文件、本插件只追加一行 `.gitignore`） |
 
 **dry-run 规则**：这个工具默认**只给计划**（`dry_run: true`），因为另存会把 TIA 里打开的工程搬到
 workspace 副本上，是本插件唯一难以撤销的动作。要真做必须显式 `dry_run: false`。
@@ -43,7 +43,7 @@ workspace 副本上，是本插件唯一难以撤销的动作。要真做必须�
 
 ```
 <workspace>/
-├── tia/                          # TIA 另存的工程（二进制，整个 tia/ 由本插件写进 .gitignore）
+├── tia/<workspace 名>/           # TIA 另存的工程（二进制，整个 tia/ 由本插件写进 .gitignore）
 ├── source/                       # 重建的源文件树（进 git）+ _dsh-engineering-context.json（索引）
 │   ├── blocks/<组>/<块名>.xml
 │   ├── types/<组>/<类型名>.xml

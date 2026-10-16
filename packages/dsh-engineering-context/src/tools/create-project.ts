@@ -38,7 +38,7 @@ import {
 } from '../access.js'
 import { projectDirectoryPath, sourceDirectoryPath, sourceIndexPath, tiaIgnoreRule } from '../config.js'
 import { EngineeringContextError } from '../errors.js'
-import { canonicalizeLoose, isInside, toPortable } from '../paths.js'
+import { canonicalizeLoose, folderName, isInside, toPortable } from '../paths.js'
 import { assertInsideWith, describePath, resolveScope, type ResolvedScope } from '../scope.js'
 import type { ToolDependencies } from './deps.js'
 import { cappedList, defineOutcomeTool, failedOutcome, okOutcome, type EngineeringOutcome } from './outcome.js'
@@ -386,8 +386,16 @@ export function createProjectTool(dependencies: ToolDependencies): ToolDefinitio
         let projectPath = opened?.projectPath ?? session.projectPath
         const name = projectNameOf(opened?.projectName ?? session.projectName, projectPath)
         const software = opened === null ? session.software : opened.software
+        // The project the run started from, recorded before the save-as moves it.
+        const openedFrom = projectPath
 
-        const projectDir = await canonicalizeLoose(projectDirectoryPath(config, root))
+        // TIA names a project after the directory it is saved into (measured on a
+        // live project), so the target directory carries the WORKSPACE's name: the
+        // saved project's name is then stable, predictable, and known before
+        // anything is opened — `tia/<workspace name>/<workspace name>.ap17`.
+        const workspaceName = folderName((scope.workspace.title ?? '').trim() || basename(root))
+
+        const projectDir = await canonicalizeLoose(projectDirectoryPath(config, root, workspaceName))
         const sourceRoot = await canonicalizeLoose(sourceDirectoryPath(config, root))
         assertInsideWith(config, root, projectDir, 'The project directory')
         assertInsideWith(config, root, sourceRoot, 'The source tree root')
@@ -473,7 +481,7 @@ export function createProjectTool(dependencies: ToolDependencies): ToolDefinitio
               ? `Project: ${name} (already open in TIA at ${projectPath ?? '?'}) — NOBODY named this project in this call; confirm it is the one the user means.`
               : `Project: ${name} (already open in TIA at ${projectPath ?? '?'})`
             : `Project: ${requested} → opened as ${name} (visible TIA window: ${args.with_window !== false ? 'yes' : 'no'})`,
-          `Project directory: ${projectDirStatus.port}/ (TIA keeps its own project name below it; save-as only chooses the directory)`,
+          `Project directory: ${projectDirStatus.port}/ (named after this workspace, so TIA names the saved project ${workspaceName})`,
           skipSave
             ? `Save-as: not needed — TIA already has this project at ${projectPath ?? '?'}, inside that directory.`
             : `Save-as: TIA will save the open project into ${projectDirStatus.port}/ (currently ${projectPath ?? 'unknown'}; its files there are not touched).`,
@@ -524,6 +532,12 @@ export function createProjectTool(dependencies: ToolDependencies): ToolDefinitio
           }
           savedAs = save.savedAs
           projectPath = save.projectPath ?? projectPath
+          if (save.projectName !== null && save.projectName !== name) {
+            warnings.push(
+              `TIA named the workspace copy ${save.projectName} — it names a project after the directory it is saved into, so the copy ` +
+                `is not called ${name}. The source project is untouched.`,
+            )
+          }
         }
 
         // Before the (slow) export: the moment `tia/` holds a project, the ignore
@@ -613,7 +627,7 @@ export function createProjectTool(dependencies: ToolDependencies): ToolDefinitio
           schemaVersion: 1,
           project: {
             name,
-            path: projectPath,
+            path: openedFrom,
             savedAs,
             directory: toPortable(root, projectDir),
             sourceRoot: toPortable(root, sourceRoot),
