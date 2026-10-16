@@ -305,9 +305,12 @@ export function createProjectTool(dependencies: ToolDependencies): ToolDefinitio
       'disk for project files and never guess which project was meant. The target directories are derived from the workspace root ' +
       '(the session working directory) and the configured directory names, so this tool takes no target path. Defaults to a plan ' +
       '(`dry_run: true`), which does not even open the project: the save-as moves the project TIA has open, so pass `dry_run: false` ' +
-      'deliberately. One workspace manages one project: if it already holds another project\'s source tree this refuses instead of ' +
-      'mixing them. It never deletes anything and never modifies the user\'s original project files; if the project is already inside ' +
-      'the workspace it skips the save-as and only refreshes the source tree. TIA refusals are reported per object, never dropped.',
+      'deliberately. **It acts on whatever project TIA has open when the call does not name one** — so if the user asked for a ' +
+      'specific project, either pass its source_project or confirm with them which project is open; do not assume the open one is ' +
+      'the one they meant. One workspace manages one project: if it already holds another project\'s source tree this refuses ' +
+      'instead of mixing them. It never deletes anything and never modifies the user\'s original project files; if the project is ' +
+      'already inside the workspace it skips the save-as and only refreshes the source tree. TIA refusals are reported per object, ' +
+      'never dropped.',
     parameters: CREATE_PARAMETERS,
     async execute(args: CreateArgs, exec): Promise<EngineeringOutcome> {
       let scope: ResolvedScope | null = null
@@ -422,6 +425,16 @@ export function createProjectTool(dependencies: ToolDependencies): ToolDefinitio
             `TIA Portal upgraded ${name} to V17 while opening it — the project file was rewritten and this cannot be undone.`,
           )
         }
+        if (opened === null && requested === undefined) {
+          // A live session's failure mode: the model assumed the project TIA had
+          // open (one it had just created, and the user had already deleted) was
+          // the project meant, and only found out by asking later.
+          warnings.push(
+            `Nobody named a project in this call, so it acts on whatever TIA has open: ${name} (${projectPath ?? 'path unknown'}). ` +
+              'Confirm that this is the project the user means before acting on the result; if not, ask them for its .ap17 path and ' +
+              'pass source_project (or close the open project first).',
+          )
+        }
         if (recorded !== null && recorded.project === null) {
           warnings.push(
             `The index ${toPortable(root, indexFile)} could not be read, so this tool cannot tell which project the existing source ` +
@@ -456,7 +469,9 @@ export function createProjectTool(dependencies: ToolDependencies): ToolDefinitio
 
         const plan = [
           opened === null
-            ? `Project: ${name} (already open in TIA at ${projectPath ?? '?'})`
+            ? requested === undefined
+              ? `Project: ${name} (already open in TIA at ${projectPath ?? '?'}) — NOBODY named this project in this call; confirm it is the one the user means.`
+              : `Project: ${name} (already open in TIA at ${projectPath ?? '?'})`
             : `Project: ${requested} → opened as ${name} (visible TIA window: ${args.with_window !== false ? 'yes' : 'no'})`,
           `Project directory: ${projectDirStatus.port}/ (TIA keeps its own project name below it; save-as only chooses the directory)`,
           skipSave

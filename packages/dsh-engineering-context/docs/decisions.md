@@ -627,8 +627,8 @@ P0-4 / P0-5 / P0-6 / P0-10 / P0-11、P1-1…P1-6（版本层与 patch 工件）�
 **服务端同时改了导出布局**（接口插件 **D24**：三类各占一个目录、每 device 一次调用、一份 manifest），
 所以"每 device 多份 manifest、消费方要合并"这件事不再存在 —— 本插件只读它返回的结果。
 
-**验证**：`test/02-create-project.test.mjs`（23 项）+ `test/03-plugin.test.mjs`（6 项）+
-`test/01-paths.test.mjs`（5 项）= **34 项全通过**。新增/改写的用例覆盖：没打开工程时要路径、
+**验证**：`test/02-create-project.test.mjs`（24 项）+ `test/03-plugin.test.mjs`（6 项）+
+`test/01-paths.test.mjs`（5 项）= **35 项全通过**。新增/改写的用例覆盖：没打开工程时要路径、
 给了路径就打开（`with_window` / `allow_upgrade` 的传参）、别的工程已打开时拒绝且不试探、
 打开被拒时的提示、升级被点名、目标目录与工程名无关、索引写入与身份守卫、索引损坏只 warning。
 

@@ -164,7 +164,7 @@
 
 | # | 工作项 | 产出 | 状态 |
 |---|---|---|---|
-| 1 | **workspace 模型**：**认领**宿主已有的 workspace（`ctx.workspaceRegistry`，不自建）→ 其下起 session → 源项目**另存**进 workspace → 导出源文件到项目路径（D5） | workspace 与路径规则 | ✅ **已实现**（`create_engineering_project` 经缝 A 的 `saveProjectAs` / `rebuildSource`；34 项单测，真机另存待验） |
+| 1 | **workspace 模型**：**认领**宿主已有的 workspace（`ctx.workspaceRegistry`，不自建）→ 其下起 session → 源项目**另存**进 workspace → 导出源文件到项目路径（D5） | workspace 与路径规则 | ✅ **已实现**（`create_engineering_project` 经缝 A 的 `saveProjectAs` / `rebuildSource`；35 项单测，真机另存待验） |
 | 2 | **路径契约**：workspace 里"放什么、怎么放"的字段级定义 | 路径规范 | ✅ P0（`PATH-RULES.md` 定稿 + 越界校验实现） |
 | 3 | **变更识别**：用 TIA 指纹（`FingerprintProvider`）判断块有无变化；分面可区分"改的是哪一部分"（D6） | 变更检测 | ⬜ |
 | 4 | **版本模型**：以 git 管理分支与历史版本，定义"当前版本"如何解析 | 版本解析 | ❌ **已删除**（D22）：交给用户自己的 git，插件不再包一层 |

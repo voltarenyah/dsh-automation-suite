@@ -673,6 +673,30 @@ test('TIA renaming the saved copy does not make the tool reject its own tree', a
   assert.equal(index.project.name, 'tia', 'the index is refreshed with the name TIA now reports')
 })
 
+test('acting on the project TIA happens to have open is flagged, not assumed', async (t) => {
+  const root = await tempWorkspace(t)
+  const { tool } = setup() // a project is open; this call names none
+
+  const outcome = await executeTool(tool, {}, fakeExec(root))
+
+  assert.equal(outcome.ok, true)
+  assert.ok(
+    outcome.warnings.some((warning) => /Nobody named a project in this call/u.test(warning)),
+    'the model has to be told it is acting on a project nobody named (the failure mode of session-2cfc6894)',
+  )
+  assert.match(outcome.details[0], /NOBODY named this project/u)
+  // Naming the project removes the flag: the caller chose it.
+  const named = await executeTool(
+    setup().tool,
+    { source_project: 'C:\\TIA\\SinoARP\\PEI_SinoARP.ap17' },
+    fakeExec(root),
+  )
+  assert.equal(
+    named.warnings.some((warning) => /Nobody named a project/u.test(warning)),
+    false,
+  )
+})
+
 test('a transport failure is reported as data, and the workspace is left alone', async (t) => {
   const root = await tempWorkspace(t)
 
