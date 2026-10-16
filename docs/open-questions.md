@@ -544,6 +544,13 @@ _待填_
 - **待确认三项**（不影响开工）：git 仓库放 workspace 根还是每工程一个、`_dsh-eng` 目录名、
   `source/` 是否保留（PATH-RULES §10）。
 
+> **注（2026-10，D22）**：本条答复里的目录布局已被取代 —— 现在是 `<workspace>/tia/<项目名>/`
+> （TIA 另存的工程本体，整个 `tia/` 不进 git）+ `<workspace>/source/<项目名>/`（重建的源文件树，进 git），
+> 注册表 `_dsh-eng/projects.json` 与 `eng_project register` 一并删除。本条其余结论
+> （"由插件定义默认规范""不擅自采用既有目录""不删文件""一切路径由插件解析"）仍然有效。
+> 现行口径见 [`packages/dsh-engineering-context/docs/PATH-RULES.md`](../packages/dsh-engineering-context/docs/PATH-RULES.md)
+> 与该包 `docs/decisions.md` **D22**。
+
 ### B8 · 「待办清单」式变更上下文的载体形态？
 
 是工具（模型可读写）、session 状态、还是落盘文件？谁维护、生命周期多长、能否跨会话。

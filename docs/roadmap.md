@@ -15,7 +15,7 @@
 | 名称 | 对应层 | 状态 | 落地位置 |
 |---|---|---|---|
 | 工控软件接口插件族（**软件版本 × 能力层级**：V17/V18… × min/std/pro） | ① 接入层 | 🟡 已有 **V17 × min** 成员 | `packages/dsh-tia-openness-v17-min` |
-| 工程上下文插件 | 作用域（横向） | 🟡 **部分实现**（P0 作用域 + 工程注册表；P1 版本层；4 个工具；**已登记进蓝图**） | `packages/dsh-engineering-context` |
+| 工程上下文插件 | 作用域（横向） | 🟡 **部分实现**（`create_engineering_project` 一个工具：把 TIA 打开的工程另存进 workspace + 重建源文件树；**已登记进蓝图**。P0 的注册表与 P1 的版本层已删除，见该包 D22） | `packages/dsh-engineering-context` |
 | 工程知识图谱插件 | ② 语义层 | 🟡 **部分实现**（引擎 + 协议 + 3 个工具；**未登记进蓝图**） | `packages/dsh-engineering-graph` |
 
 > 插件不再编号；**只有接口插件族是"一族多成员"**。编号只保留给层（① 接入层 / ② 语义层 /
@@ -130,26 +130,27 @@
 > [`docs/decisions.md`](../packages/dsh-engineering-context/docs/decisions.md)；
 > 发行版级结论见 [`decisions.md`](decisions.md) **D12**。
 
-### 已实现（P0 + P1，有单测证据）
+### 已实现（有单测证据）
 
 | 能力 | 状态 | 证据 |
 |---|---|---|
-| 作用域解析：会话工作目录 → workspace / 工程 / 分支 / 版本 四元组 | ✅ | `packages/dsh-engineering-context/src/scope.ts`、`src/workspace.ts`；`test/03-tools.test.mjs`（含"未登记 workspace"三档） |
-| 工程注册表：`register` / `list` / `adopt` / `forget`（`_dsh-eng/projects.json`，原子写、防御性读） | ✅ | `src/registry.ts`、`src/tools/project.ts`；`test/02-registry.test.mjs`、`test/03-tools.test.mjs` |
-| 显式作用域切换：`eng_scope` 的 `select` / `clear`（唯一指针，可追溯） | ✅ | `src/tools/scope.ts`、`test/03-tools.test.mjs` |
-| 越界路径一律拒绝（`realpath` 包含性校验，不串味） | ✅ | `src/paths.ts`、`test/01-paths.test.mjs`（含兄弟目录同前缀、`..` 逃逸） |
-| **版本层（P1）**：`eng_version` 的 `current` / `commit` / `log` / `diff`；只版本化导出物 + 工程状态，`.ap17` 由 `.gitignore` 挡在库外（测试里有 decoy 验证）；commit 默认 dry-run；绝不 init/force/push | ✅ | `src/git.ts`、`src/tools/version.ts`；`test/05-version.test.mjs`（7 项，真实 git 临时仓库） |
-| 工具面四个，结果有界（列表封顶 20、细节封顶 40 行；diff 的全量 patch 落盘成工件） | ✅ | `src/tools/outcome.ts`；`test/04-plugin.test.mjs`（真实运行时的 schema 校验） |
+| 把 TIA **当前打开**的工程另存进 workspace（`tia/<项目名>/`），再把源文件树重建到 `source/<项目名>/`；默认只给计划 | ✅ | `packages/dsh-engineering-context/src/tools/create-project.ts`、`src/access.ts`；`test/02-create-project.test.mjs` |
+| 目标路径全部由插件推导（工具参数里**没有路径**）+ `realpath` 包含性校验（不串味） | ✅ | `src/config.ts`、`src/paths.ts`、`src/scope.ts`；`test/01-paths.test.mjs`（含兄弟目录同前缀、`..` 逃逸） |
+| 目录名安全化：TIA 的项目名 → 单段目录名（非法字符、尾点、Windows 保留设备名、超长） | ✅ | `src/paths.ts`（`folderName`）；`test/01-paths.test.mjs` |
+| `.gitignore` 只追加：缺则创建（带注释头）、有则追加一行 `tia/`、已有该行则不动 | ✅ | `src/tools/create-project.ts`；`test/02-create-project.test.mjs` |
+| TIA 侧失败可分辨：`tia_access_unavailable` / `tia_controller_not_running` / `tia_project_not_open` / `save_failed` / `rebuild_failed` / `tia_unreachable`，且说明"哪一半已落盘" | ✅ | `src/errors.ts`、`src/tools/create-project.ts`；`test/02-create-project.test.mjs` |
+| 工具面一个，结果有界（列表封顶 20、细节封顶 40 行；被拒对象逐条给） | ✅ | `src/tools/outcome.ts`；`test/03-plugin.test.mjs`（真实运行时的 schema 校验） |
 
 ### 缺口（P2–P3）
 
 | 缺口 | 影响 | 备注 |
 |---|---|---|
-| ~~**没有版本层**~~ | ✅ **P1 已实现** | 仍未做：`show`（单次提交详情）与 `materialize`（把某版本物化成导出物给工程知识图谱插件） |
-| **没有变更检测** | 期望一（识别工程文件是否被更改）与 D6/D9 的工作循环都未落地 | P2；**两个前置都已就绪**：接口插件族的 `engineeringAccess` 服务已实现（D20 / §2 已实现表），指纹可得性由**用户在另一代码库**验证过（**用户侧证据，不是本仓实测**） |
-| **没有变更台账** | 期望二（「待办清单」式上下文）未落地 | P3 |
+| ~~**没有版本层**~~ → **已删除**（D22） | 版本化交给用户自己的 git（workspace 就是普通仓库） | 原 `eng_version` + `src/git.ts` 一并删除；`.ap17` 仍由 `.gitignore` 的 `tia/` 一行挡在库外，规则由新工具维护 |
+| **没有变更检测** | 期望一（识别工程文件是否被更改）与 D6/D9 的工作循环都未落地 | P2；**前置都已就绪，而且缝 A 现在有真实消费者**：`create_engineering_project` 已在调 `engineeringAccess`；指纹可得性由**用户在另一代码库**验证过（**用户侧证据，不是本仓实测**） |
+| **没有变更台账** | 期望二（「待办清单」式上下文）未落地 | P3；状态目录随注册表删除后**路径待定**（该包 D22） |
 | **没有随包 skill** | D4 三问目前写在工具描述里，没有随包知识库 | P3（与项目级 skill / A12 一起做） |
-| **`adopt` 只做字节复制** | 不是 TIA 侧「另存」，工程正开着时副本可能过期 | P0-7；缝 A 落地后改为经接口插件族触发另存 |
+| ~~**`adopt` 只做字节复制**~~ | ✅ **已解决** | 改为经缝 A 的 `saveProjectAs`（TIA 自己的另存）；旧的字节复制工具已删除（D22） |
+| **另存/导出尚未在真机上跑过** | 单测用的是假 `engineeringAccess` 服务 | 真机验收需要 TIA Portal 在线；见接口插件 `docs/VERIFICATION-PLAN.md` |
 
 ### 三条期望
 
@@ -163,11 +164,11 @@
 
 | # | 工作项 | 产出 | 状态 |
 |---|---|---|---|
-| 1 | **workspace 模型**：**认领**宿主已有的 workspace（`ctx.workspaceRegistry`，不自建）→ 其下起 session → 源项目**另存**进 workspace → 导出源文件到项目路径（D5） | workspace 与路径规则 | ✅ P0（单测） |
+| 1 | **workspace 模型**：**认领**宿主已有的 workspace（`ctx.workspaceRegistry`，不自建）→ 其下起 session → 源项目**另存**进 workspace → 导出源文件到项目路径（D5） | workspace 与路径规则 | ✅ **已实现**（`create_engineering_project` 经缝 A 的 `saveProjectAs` / `rebuildSource`；29 项单测，真机另存待验） |
 | 2 | **路径契约**：workspace 里"放什么、怎么放"的字段级定义 | 路径规范 | ✅ P0（`PATH-RULES.md` 定稿 + 越界校验实现） |
 | 3 | **变更识别**：用 TIA 指纹（`FingerprintProvider`）判断块有无变化；分面可区分"改的是哪一部分"（D6） | 变更检测 | ⬜ |
-| 4 | **版本模型**：以 git 管理分支与历史版本，定义"当前版本"如何解析 | 版本解析 | ⬜ |
-| 5 | **工程作用域**：session ↔ workspace 绑定，显式可查、可切、可追溯（D5） | 作用域标识 | ✅ P0（`eng_status` / `eng_scope`） |
+| 4 | **版本模型**：以 git 管理分支与历史版本，定义"当前版本"如何解析 | 版本解析 | ❌ **已删除**（D22）：交给用户自己的 git，插件不再包一层 |
+| 5 | **工程作用域**：session ↔ workspace 绑定，显式可查、可切、可追溯（D5） | 作用域标识 | 🟡 **部分**：每次调用从 cwd 重新解析 + 包含性校验（已测）；"显式可切/可追溯"随 `eng_scope` 一并删除（D22） |
 | 6 | **变更上下文载体**：Todo 清单式的工具，承接本次会话的工程变更 | 变更清单 | ⬜ |
 | 7 | **工作副本物化**：把某个版本变成可解析的导出物，供工程知识图谱插件使用 | 版本 → 导出物 | ⬜ |
 | 8 | **工作循环**：改 `.ap17` → 指纹比对 → **只导出变化的块** → 更新图（D9） | 增量刷新 | ⬜ |

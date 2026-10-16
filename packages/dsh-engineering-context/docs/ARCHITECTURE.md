@@ -1,6 +1,12 @@
 # 核心架构：工程上下文插件
 
-> **状态：设计定稿；P0 已实现（作用域 + 工程注册表 + 3 个工具）。**
+> **状态：设计定稿；P0/P1 已按 D22 删除，现行实现是 `create_engineering_project` 一个工具。**
+>
+> ⚠️ **2026-10 起本文有相当一部分是"目标态"而不是现状**：原先注册的
+> `eng_status` / `eng_project` / `eng_scope` / `eng_version`，以及它们下面的工程注册表与内部 git
+> 版本层，都已在 [`decisions.md`](decisions.md) **D22** 中删除。现行布局（`tia/` + `source/`）以
+> [`PATH-RULES.md`](PATH-RULES.md) 为准。下文凡标 ❌ 的段落是历史设计，保留是为了 P2/P3 的论证链。
+
 > 本文描述这个插件"要做成什么样"：定位与边界、核心架构、主要功能、实现方式、验收口径与风险。
 > 实现进度见 §10；做到哪了只在 [`docs/roadmap.md`](../../../docs/roadmap.md) §3 与
 > 根 [`README.md`](../../../README.md) §2 两处维护。
@@ -20,29 +26,31 @@
 
 ## 1. 一句话定位
 
-**它是宿主 workspace 之上的一层"工程作用域 + 工程变更"。**
+**它是宿主 workspace 之上的一层"工程作用域"：把 TIA 里正在做的那个工程放进 workspace，
+并把它的源文件读出来。**（"工程变更"（P2）与"变更台账"（P3）仍是目标态，见 §10。）
 
-面对用户的**多个工程 × 多个分支 × 多个历史版本**，它保证会话里的任何结论都能回答
-"这是哪个 workspace 的哪个工程的哪个分支的哪个版本"，并把工程对象的变更以**可读、可跟进**的
-形式交出来。它不产出工程语义、不碰设备。
+面对用户**多个工程共存**的局面，它保证会话里的任何结论都能回答"这是哪个 workspace 的哪个工程"，
+并为将来的变更检测准备好**可读、可版本化**的文本产物。它不产出工程语义、不碰设备。
 
 ### 1.1 边界（硬约束）
 
 | 它做 | 它**不做** | 依据 |
 |---|---|---|
-| 解析作用域（workspace/project/branch/version） | **不解析 XML、不建图** | [`docs/architecture.md`](../../../docs/architecture.md) §4.2 边界；那是工程知识图谱插件 |
-| 管 workspace 内的路径规则与工程注册表 | **不直接驱动 Openness、不起控制器** | §4.2 / §9「写入只有一个通道」；接口插件族是唯一通道 |
-| 消费接口插件族的**指纹**做工程级变更检测 | 不做**文件级、按轮次**的变更记录 | 宿主已有 `dsh-workspace-changes`（见 §2.1） |
-| 用内部 git 管导出物的分支/历史/差异 | **不把原始 git 暴露给模型** | [`docs/open-questions.md`](../../../docs/open-questions.md) A8 的补充分析 |
-| 维护工程变更台账（期望二） | 不做 agent 的会话计划清单 | 那是 `@deepseek-ai/dsh-tool-todo` |
+| 解析作用域（workspace + 目标路径） | **不解析 XML、不建图** | [`docs/architecture.md`](../../../docs/architecture.md) §4.2 边界；那是工程知识图谱插件 |
+| 管 workspace 内的路径规则（`tia/` + `source/`） | **不直接驱动 Openness、不起控制器** | §4.2 / §9「写入只有一个通道」；接口插件族是唯一通道 |
+| 经缝 A 让 TIA 另存工程、重建源文件树 | 不做**文件级、按轮次**的变更记录 | 宿主已有 `dsh-workspace-changes`（见 §2.1） |
+| （P2）消费接口插件族的**指纹**做工程级变更检测 | 不做版本管理 | 交给用户自己的 git（D22） |
+| （P3）维护工程变更台账（期望二） | 不做 agent 的会话计划清单 | 那是 `@deepseek-ai/dsh-tool-todo` |
 | 决定**范围** | 不决定**含义** | §4.2 边界 |
 
-### 1.2 一个刻意的性质：没有 TIA 也能用
+### 1.2 它**依赖**接口插件族（2026-10 起）
 
-作用域、注册表、版本层、变更台账全是"文件 + git"，只有变更引擎依赖接口插件族的指纹。
-因此本插件**可以在没有 TIA Portal 的机器上独立交付价值**（"我现在在哪个工程的哪一版"、
-"导出物的历史与差异"），这也与 [`docs/architecture.md`](../../../docs/architecture.md) §7
-"工程上下文插件已确认可以脱离图谱独立起步"一致。
+唯一的工具 `create_engineering_project` 要做的两件事（另存、重建源文件树）都必须由接口插件族执行，
+所以组合里没有那个插件时它返回 `tia_access_unavailable`，**不降级**成本地版另存 ——
+"没有 TIA 也能用"的那部分（作用域 + 注册表 + 内部 git 版本层）已随 D22 删除。
+
+**保留的独立性**：它不 import 接口插件的包（按服务名取，D10），也不知道控制器与进程的存在；
+除 `@deepseek-ai/*` 外没有任何运行时依赖，接口面变了只影响 `src/access.ts` 一个文件。
 
 ---
 
@@ -114,19 +122,23 @@
                                   │
                                   ▼
                  ┌────────────────────────────────────────────┐
-                 │ ⑥ 工作流工具面（7 个；结果 ≤4KB）            │
+                 │ ⑥ 工作流工具面（4 个：1 已实现 + 3 待做；≤4KB）│
                  │    摘要 + 计数 + 工件路径 + 下钻方式         │
                  └────────────────────────────────────────────┘
 ```
 
+> ⚠️ 上图里 **② Registry 与 ④ Version 已随 D22 删除**；`_dsh-eng/*.json` 与 `.git/` 也不再由本插件
+> 写入（`.git/` 仍可由用户自己建）。现行布局是 `tia/` + `source/`，见
+> [`PATH-RULES.md`](PATH-RULES.md)。
+
 | 层 | 职责 | 不做什么 |
 |---|---|---|
-| ① Scope | 解析四元组、路径规则、越界校验 | 不读写工程内容 |
-| ② Registry | 工程登记（源/工作副本/导出物/工件/VCS 角色） | 不推断"哪些目录像工程" |
+| ① Scope | 解析作用域与 workspace、路径规则、越界校验 | 不读写工程内容 |
+| ❌ ② Registry | ~~工程登记（源/工作副本/导出物/工件/VCS 角色）~~ | 已删除（D22）：布局本身就是记录 |
 | ③ Change | 指纹 ↔ 基线 → 变更集；面 → 编译相关性 | 不算哈希当变更依据（见 §5.1） |
-| ④ Version | 内部 git：commit/log/diff/materialize | 不对模型暴露 git 原语 |
+| ❌ ④ Version | ~~内部 git：commit/log/diff/materialize~~ | 已删除（D22）：交给用户自己的 git |
 | ⑤ ChangeCtx | 工程变更台账（对象级、带版本、跨会话） | 不是 agent 计划清单 |
-| ⑥ Tools | 7 个工作流工具 + 返回契约 | 不按控制器操作 1:1 铺工具 |
+| ⑥ Tools | 4 个工作流工具（1 已实现）+ 返回契约 | 不按控制器操作 1:1 铺工具 |
 
 ---
 
@@ -169,9 +181,11 @@ resolveScope(exec):
 |---|---|
 | 缺 `session.header.cwd` | 拒绝执行，返回 `scope_unavailable`（不猜 cwd） |
 | 目标路径不在 cwd 之下（含 `..`、符号链接逃逸） | 拒绝执行，返回 `path_outside_workspace`（比较用 `realpath`，不是字符串前缀） |
-| 注册表不存在 | 允许 `eng_project register`；**其余工具**返回 `project_not_registered` 并给出下一步命令 |
-| 注册表存在但"当前工程"未定且有多个候选 | 返回 `project_ambiguous` 并列出候选（不默认挑一个） |
-| 注册表损坏 | 返回 `registry_invalid`，**不**重建、**不**覆盖（宁可报错） |
+| 组合里没有接口插件 | 返回 `tia_access_unavailable` 并指出缺哪个服务（本插件从不自己连 TIA） |
+| 控制器没在跑 / TIA 没开工程 | 返回 `tia_controller_not_running` / `tia_project_not_open`，**一个操作都不发** |
+| 服务调用本身失败（控制器缺失、超时、协议不符） | 返回 `tia_unreachable`（操作级失败才是数据） |
+| TIA 拒绝另存 | 返回 `save_failed`，带上 TIA 自己的错误码与消息 |
+| ❌ 注册表不存在 / 损坏 / 当前工程未定 | **已随 D22 删除**：没有注册表，也就没有这四种状态 |
 
 > 设计口径：**宁可拒绝，也不猜。** 与 [`docs/architecture.md`](../../../docs/architecture.md) §9
 > 「默认安全：破坏性操作 fail-closed」「准确优先于覆盖」一致。
@@ -263,7 +277,7 @@ resolveScope() → project + .ap17 + exportDir + baseline
 实际的接口面（接口插件族的 `src/access.ts` 是权威；工程上下文插件 **不 import 它**，只按名取服务并自行声明形状，D10）：
 
 ```ts
-// 由接口插件族提供；工程上下文插件只使用这一面。ctx.get('engineeringAccess') 取不到就降级。
+// 由接口插件族提供；工程上下文插件只使用这一面。ctx.get('engineeringAccess') 取不到就返回 tia_access_unavailable（D22 起不再是"降级"）。
 interface EngineeringAccess {
   readonly name: string                       // 'engineeringAccess'
   status(): {
@@ -294,6 +308,18 @@ interface EngineeringAccess {
     writeManifest?: boolean; dryRun?: boolean
     signal?: AbortSignal
   }): Promise<AccessCallResult>
+  // —— D21 新增的三个方法：**这是本插件目前唯一使用的三个成员** ——
+  saveProjectAs(directory: string, opts?: { dryRun?: boolean; signal?: AbortSignal }): Promise<AccessCallResult>
+    // 另存只认目录、工程名不可改（D20 实测）；回读 savedAs / requestedSaveAsDir / projectPath，
+    // 调用方必须记录 TIA 实际落点，而不是它请求的路径
+  readTiaSession(opts?: { signal?: AbortSignal }): Promise<AccessTiaSession>
+    // 报"控制器在不在 + TIA 开着哪个项目 + 设备清单"；**从不启动控制器**
+    // （停着就回 running:false，一个操作都不发）；没项目时 project_not_open 是状态不是异常
+  rebuildSource(sourceRoot: string, opts?: { overwrite?: boolean; deviceNames?: readonly string[]; signal?: AbortSignal }): Promise<RebuildSourceResult>
+    // 每个 device 两次 ExportBlocks；**sourceRoot 以下的布局由提供方定死**：
+    // <device>/blocks|types|tag_tables/…，每个 device 最多两份 manifest
+    // 注意本插件**不使用** dryRun：它的"只给计划"由 readTiaSession 单独算得出来，
+    // 不依赖控制器的 dry run（那个选项是否保留是接口插件自己的取舍）。
 }
 
 interface AccessCallResult {
@@ -338,30 +364,19 @@ interface AccessListResult extends AccessCallResult {
 `stale: true` + 工件时间 + "指纹未刷新"的原因；**绝不**静默拿旧数据当现状
 （[`docs/architecture.md`](../../../docs/architecture.md) §5.4「失效可感知」）。
 
-### 5.4 版本层（A8）—— ✅ P1 已实现
+### 5.4 版本层（A8）—— ❌ 已删除（D22）
 
-**照抄 `dsh-tool-git` 的 shell-free 风格**（`packages/dsh-tool-git/src/runner.ts`）：
-`execFile` + 显式参数数组、`-c core.quotepath=false`、`--no-optional-locks`、
-`GIT_TERMINAL_PROMPT=0`、`GIT_ASKPASS=true`、`GIT_CONFIG_NOSYSTEM=1`、`windowsHide`。
-实现在 [`src/git.ts`](../src/git.ts)，对外只经 `eng_version`。
+原先的实现（`src/git.ts` + `eng_version`）已随 D22 删除。理由不是它做错了，而是它**没有存在的必要**：
+workspace 就是一个普通 git 仓库，"哪些文件该入库"由 `source/` 与 `tia/` 的布局加一行 `.gitignore`
+回答，用户自己的 git 就能做剩下的一切；插件再包一层只会多一个需要维护的接口。
 
-与本仓已有 git 工具的区别（这是 A8 的答案）：**这一层不注册成工具** ——
-git 的调用全在插件代码里，路径来自插件自己解析的 workspace，**模型不参与**，
-没有"忘带参数、路径给错"的空间。
+**保留下来仍然成立的两条口径**（写进现行设计）：
 
-**一条硬规则：`.ap17` 永不进 git。** 二进制工程文件进 VCS 只能得到"变了/没变"
-（[`docs/vision.md`](../../../docs/vision.md) §3.3）。进 git 的是**导出物 + 工程状态**，
-由 `.gitignore` 强制，并由测试里的 `decoy.ap17` 验证真的被排除。
-
-**已实现的动作**：`current`（HEAD / 分支 / 未提交改动）、`commit`（导出树 + `_dsh-eng/<id>`，
-默认 dry-run）、`log`、`diff`（默认给文件名与状态计数，`full: true` 时把完整 patch 写成工件）。
-
-**尚未实现**：`show`（单次提交的详情）与 `materialize`（把某版本物化成导出物供工程知识图谱插件解析）——
-后者是 P2/P3 与工程知识图谱插件的接口，等图那边要了再做。
-
-**两条实现期定下的契约**（[`decisions.md`](decisions.md) P1-1 / P1-4）：
-`runGit` 的非零退出是**数据**（"这里不是仓库"是状态，不是异常），只有找不到可执行文件才抛；
-以及**绝不** `init` / `force` / 改历史 / `push` —— 仓库不存在时给状态并让用户自己建。
+- **`.ap17` 永不进 git**：二进制工程文件进 VCS 只能得到"变了/没变"
+  （[`docs/vision.md`](../../../docs/vision.md) §3.3）。现在由 `create_engineering_project` 维护的
+  `.gitignore` 里的 `tia/` 一行强制（[`PATH-RULES.md`](PATH-RULES.md) §6）。
+- **本插件完全不碰 git**：不 `init`、不 `commit`、不 `force`、不 `push`。D13 的"从不自动 `init`"
+  由此加强为"连 git 都不调用"。
 
 ### 5.5 工程变更台账（期望二 / B8）
 
@@ -409,7 +424,7 @@ git 的调用全在插件代码里，路径来自插件自己解析的 workspace
 
 ---
 
-## 6. 工具面（7 个）
+## 6. 工具面（1 个已实现 + 3 个待做）
 
 口径全部沿用 [`docs/tool-surface.md`](../../../docs/tool-surface.md) §4.3 的 R1–R8：
 结果 **≤4KB / ~40 行**、批量数据一律落盘成工件、结果里只给"计数 + 前 N + 工件路径 + 下钻方式"、
@@ -421,27 +436,22 @@ git 的调用全在插件代码里，路径来自插件自己解析的 workspace
 > 的 Pruner 配置；Spill 见 `@deepseek-ai/dsh-spill` README）。
 > **与其被框架剪，不如自己给一份有意义的摘要 + 路径。**
 
-| # | 工具 | 回答什么问题 | 写？ | 依赖 |
-|---|---|---|---|---|
-| 1 | `eng_status` | 我在**哪个 workspace / 哪个工程 / 哪个分支 / 哪个版本**？三份东西（源 `.ap17`、导出物、基线）**版本一致吗**？TIA/git/存储能力可用吗？ | 否 | ②④ + 宿主 |
-| 2 | `eng_project` | 把工程**登记进 workspace**（`register`）/ 把源 `.ap17` **另存为工作副本**（`adopt`，默认 dry-run）/ `list` / `forget` | 是（注册表 + 文件） | ② + 缝 A |
-| 3 | `eng_scope` | **显式**选工程 / 切分支 / 钉版本，并**留痕** | 状态 | ①④ |
-| 4 | `eng_changes` | **自上次基线以来，哪些块/UDT 变了、改了哪一面**；可选更新基线 | 否（`update_baseline` 时写基线） | ③ + 缝 A |
-| 5 | `eng_export` | 把**变化的那批对象**导出/刷新进导出物（D9 工作循环闭环），更新 manifest | 只写文件 | ③ + 缝 A |
-| 6 | `eng_version` | 内部 git：`commit` / `log` / `diff`（工程级差异）/ `materialize` | 是（VCS） | ④ |
-| 7 | `eng_context` | 工程变更台账：`record` / `list` / `resolve` / `pending` | 状态 | ⑤ |
+| # | 工具 | 回答什么问题 | 写？ | 依赖 | 状态 |
+|---|---|---|---|---|---|
+| 1 | `create_engineering_project` | 把 TIA **当前打开**的工程另存进 workspace（`tia/<项目名>/`），并把**源文件树**重建到 `source/<项目名>/`；默认只给计划 | 是（TIA 写工程、接口插件写源文件、本插件只追加一行 `.gitignore`） | ① + 缝 A | ✅ **已实现**（29 项测试） |
+| 2 | `eng_changes` | **自上次基线以来，哪些块/UDT 变了、改了哪一面**；可选更新基线 | 否（`update_baseline` 时写基线） | 缝 A + 基线 | ⬜ P2 |
+| 3 | `eng_export` | 把**变化的那批对象**导出/刷新进源文件树（D9 工作循环闭环），更新 manifest | 只写文件 | 缝 A + 基线 | ⬜ P2 |
+| 4 | `eng_context` | 工程变更台账：`record` / `list` / `resolve` / `pending` | 状态 | 台账存储 | ⬜ P3 |
 
-**为什么是 7 个**：26 个工具的名字 + 描述 + 参数 schema 序列化后约 **14k tokens/会话**
-（[`docs/tool-surface.md`](../../../docs/tool-surface.md) §2.7）。7 个约 3.5k。
-`eng_version` 用 `action` 枚举而不是 4 个工具是**刻意的取舍**：代价是"哪些参数必填"在 schema 上
-表达不完整（`action='commit'` 才需要 `message`）。若你更看重 schema 精确性，拆成
-`eng_version_commit` / `eng_version_log` 即可（+2 工具 ≈ +1k 常驻）。
+**为什么只有 4 个**：26 个控制器操作的名字 + 描述 + 参数 schema 序列化后约 **14k tokens/会话**
+（[`docs/tool-surface.md`](../../../docs/tool-surface.md) §2.7）。工作流工具面保持个位数，
+省下来的是每个会话都要付的常驻成本。
 
-> **当前实现（P0 + P1）**：注册 **`eng_status` / `eng_project` / `eng_scope` / `eng_version`** 四个。
-> `eng_scope` 只有 `select` / `clear`（分支与版本由 `eng_version` 报告，切换分支不在本插件职责内）；
-> `eng_version` 实现了 `current` / `commit` / `log` / `diff`（`show` 与 `materialize` 未做）；
-> `eng_changes` / `eng_export` / `eng_context` 尚未实现。实现期的取舍见 [`decisions.md`](decisions.md)
-> 的「P0 实现期的决定」与「P1 实现期的决定」。
+> **2026-10 的变更（D22）**：原先注册的 `eng_status` / `eng_project` / `eng_scope` / `eng_version`
+> 已**删除** —— 它们维护的注册表全仓没有第二个消费者，内部 git 层用户自己的 git 就能替代。
+> 现在唯一实现的是 `create_engineering_project`：它把 D21 交付的三个服务方法
+> （另存 / 读会话 / 重建源）第一次连成一条**可审阅的编排**，也正是 A5 描述的流程。
+> 实现期的取舍见 [`decisions.md`](decisions.md) D22 与接口插件的 D20/D21。
 
 ### 6.1 返回契约示例（`eng_changes`）
 
@@ -478,48 +488,37 @@ git 的调用全在插件代码里，路径来自插件自己解析的 workspace
 
 | 层 | 放什么 | 现状 |
 |---|---|---|
-| **workspace 内 `_dsh-eng/projects.json`（权威、可携带、可进 git）** | 工程注册表 + **唯一**的"当前工程"指针 | ✅ P0 已实现 |
-| **workspace 内 `_dsh-eng/<project-id>/`** | 指纹基线、变更集、变更台账 | 路径已定，P2/P3 写入 |
-| 宿主 `ctx.storageDomain`（可选、机器本地、可再生） | 目前**没有**用到 | ⬜ P0 不需要：唯一的可再生状态就是那个指针，而指针必须与注册表在同一份文件里（P0-5） |
+| **workspace 内 `tia/<项目名>/`** | TIA 的工程本体（二进制、不进 git） | ✅ `create_engineering_project` 经缝 A 的 `saveProjectAs` 写入 |
+| **workspace 内 `source/<项目名>/`** | 重建的源文件树（文本、进 git） | ✅ 经缝 A 的 `rebuildSource` 写入 |
+| **workspace 内 `_dsh-eng/**`** | P2 指纹基线、变更集、P3 台账 | ⬜ **路径待定**：注册表随 D22 删除后，这一层还没有落脚点 |
+| ❌ `_dsh-eng/projects.json` | 工程注册表 + 唯一的"当前工程"指针 | **已删除**（D22）：唯一读者是本插件自己的 4 个工具 |
+| 宿主 `ctx.storageDomain`（可选、机器本地、可再生） | 目前**没有**用到 | ⬜ 作用域每次从 cwd 重新解析，不需要存 |
 
 **为什么基线不落在 `DSH_HOME` 或 spill 里**：变更检测**必须跨会话/跨机器**才有意义
 （[`docs/open-questions.md`](../../../docs/open-questions.md) A14 的倾向同此）。
 `ctx.spillStore` 按会话归属、工件由 backend 决定过期（`@deepseek-ai/dsh-spill` README），
 只适合临时工件。
 
-**服务缺席时的降级**（P0 已实现）：宿主没有 workspace 服务、或本目录未登记时，
+**服务缺席时的降级**（已实现）：宿主没有 workspace 服务、或本目录未登记时，
 作用域仍以会话工作目录为根，但结果里标 `registered: false` 并给出 warning（N2 / P0-9）。
 
 ---
 
 ## 8. 数据模型（记录 schema，设计值）
 
-### 8.1 工程注册表 `_dsh-eng/projects.json`（P0 已实现，字段以此为准）
+### 8.1 工程注册表 `_dsh-eng/projects.json` —— ❌ 已删除（D22）
 
-```jsonc
-{
-  "schemaVersion": 1,
-  "workspacePath": "C:\\work\\pei",                    // 创建时的 canonical workspace 路径
-  "current": "pei-sinoarp",                            // 唯一指针；不设第二个 scope.json（P0-5）
-  "projects": [
-    {
-      "id": "pei-sinoarp",
-      "title": "PEI SinoARP",
-      "source": "D:\\TIA\\SinoARP\\tia.ap17",           // 绝对路径，只作溯源；登记后不再读写
-      "work": "projects/pei-sinoarp/work/tia.ap17",     // 可携带（相对 workspace 根），唯一会被改的 .ap17
-      "export": "projects/pei-sinoarp/export",          // 可携带；导出物（含 _tia-openness-manifest.json）
-      "createdAt": "2026-10-14T08:00:00.000Z",
-      "adoptedAt": null                                 // adopt 成功后写入；未另存为 null
-    }
-  ]
-}
-```
+原先的记录（`id` / `title` / `source` / `work` / `export` / `createdAt` / `adoptedAt` 七个字段
+加一个 `current` 指针）连同 `src/registry.ts` 一并删除：它的唯一读者是本插件自己那 4 个工具，
+而"这些工具没有实际用途"经核对成立（[`decisions.md`](decisions.md) D22 列了四条证据）。
 
-**P0 实际写的字段就是这 8 个**：`artifacts` 与 `vcs` **不再存**（前者由 `stateDirName + id`
-推导，后者是 P1 的产物），因为存下来的派生字段会与规则漂移。
-每工程的插件状态目录 = `_dsh-eng/<project-id>/`（P0-6）。
+现在 workspace 里"有哪些工程"由**目录布局本身**回答：`tia/` 下有什么、`source/` 下有什么。
+若要重新引入登记，必须同时给出**消费者**与**失效时的行为** —— 否则只是又一层没人读的状态。
 
-### 8.2 指纹基线 `_dsh-eng/fingerprints.json`
+### 8.2 指纹基线（P2，**路径待定**）
+
+原先定的路径是 `_dsh-eng/fingerprints.json`；注册表随 D22 删除后，这一层的路径要等 P2 开工时
+连同它的消费者一起重新定（见 §7）。记录内容的设计如下（**字段仍是设计值**，未经实现）：
 
 ```jsonc
 {
@@ -557,19 +556,22 @@ packages/dsh-engineering-context/
 │   ├── index.ts          apply(): 注册工具；无自有资源，故**没有** ctx.effect
 │   ├── config.ts         Schema + defaults + resolveConfig（含目录名安全校验）
 │   ├── errors.ts         稳定错误码 + describeFailure
-│   ├── paths.ts          归一化、包含性校验、slug、portable 路径
+│   ├── paths.ts          归一化、包含性校验、folderName（目录名安全化）
 │   ├── workspace.ts      作用域根解析 + **只读**的 workspaceRegistry 访问（按名取，不 import）
-│   ├── registry.ts       `_dsh-eng/projects.json` 的原子写与防御性读
-│   ├── scope.ts          四元组 + 一致性事实（路径存在性、warning）
+│   ├── access.ts         `engineeringAccess` 服务客户端（按名取 + 防御性归一，D10）
+│   ├── scope.ts          作用域 + 路径存在性 + warning
 │   ├── dsh-runtime.d.ts  手写环境声明（含 exec.agent.session.header.cwd 与 RawJsonSchema）
-│   └── tools/            outcome.ts（共用信封）/ status.ts / project.ts / scope.ts / index.ts
+│   └── tools/            outcome.ts（共用信封）/ create-project.ts / index.ts
 ├── scripts/              link-dsh-runtime.mjs（**从不抽取**缓存）/ tsc.mjs / run-tests.mjs
 ├── docs/                 本文 / PATH-RULES.md / decisions.md
-└── test/                 node:test（37 项）+ helpers/harness.mjs
+└── test/                 node:test（29 项）+ helpers/harness.mjs
 ```
 
-后续期次新增的模块（P1–P3）：`src/version/`（`execFile(git)`）、`src/change/`（指纹客户端、
-基线、diff）、`src/context/`（变更台账）、`skills/engineering-context/SKILL.md`。
+**已删除**（D22）：`src/registry.ts`（工程注册表）、`src/git.ts`（内部 git 版本层）、
+`src/tools/{status,project,scope,version}.ts`（4 个工具）。
+
+后续期次新增的模块（P2–P3）：`src/change/`（指纹客户端、基线、diff）、
+`src/context/`（变更台账）、`skills/engineering-context/SKILL.md`。
 
 **登记点**（实现开始后各改一处；现在**先不动**，理由见 [`decisions.md`](decisions.md) N1）：
 
@@ -602,26 +604,26 @@ packages/dsh-engineering-context/
 
 | 期 | 做什么 | 依赖 | 独立交付的价值 | 状态 |
 |---|---|---|---|---|
-| **P0** | 作用域 + 工程注册表（`eng_status` / `eng_project` / `eng_scope`） | 纯 FS + 宿主 registry | "我现在在哪个工程的哪一版" —— **不需要 TIA** | ✅ **已实现**（37 项测试通过） |
-| **P1** | 版本层（`eng_version`）+ 导出物入库 | git | 导出的文本源终于有分支与历史 | ✅ **已实现**（7 项测试，真实 git 临时仓库） |
-| **P2** | 变更引擎（`eng_changes` / `eng_export`）+ 增量闭环 | 缝 A ✅ 已就绪（接口插件族的 `engineeringAccess`）；指纹可得性已由**用户在另一代码库**验证 | D6/D9 的工作循环 | ⬜ |
-| **P3** | 变更台账（`eng_context`）+ 项目级 skill + 对工程知识图谱插件暴露 `ctx.engineeringScope` | P2 | 期望二 | ⬜ |
+| ❌ **P0 / P1** | ~~作用域 + 工程注册表（`eng_status`/`eng_project`/`eng_scope`）+ 版本层（`eng_version`）~~ | — | — | **已删除**（D22） |
+| **create** | `create_engineering_project`：另存进 `tia/<项目名>/`、重建源文件树到 `source/<项目名>/`，默认只给计划 | 缝 A ✅ 已就绪（接口插件族的 `engineeringAccess`） | **A5 的流程第一次能跑通**：工程进 workspace、源文件读出来 | ✅ **已实现**（29 项测试） |
+| **P2** | 变更引擎（`eng_changes` / `eng_export`）+ 增量闭环 | 缝 A ✅ 已就绪；指纹可得性已由**用户在另一代码库**验证 | D6/D9 的工作循环 | ⬜ |
+| **P3** | 变更台账（`eng_context`）+ 项目级 skill | P2 | 期望二 | ⬜ |
 
-**P0 的实际产出**：`src/` 下 7 个模块 + `src/tools/` 下 5 个文件、`test/` 4 个测试文件
-（37 项，全通过、无跳过）、`scripts/` 3 个脚本。**没有** `ctx.effect` —— 本插件不持有任何
+**当前的实际产出**：`src/` 下 8 个模块 + `src/tools/` 下 4 个文件、`test/` 3 个测试文件
+（29 项，全通过、无跳过）、`scripts/` 3 个脚本。**没有** `ctx.effect` —— 本插件不持有任何
 自有资源（不起子进程、不开句柄），所以 `apply` 注册完工具就返回。
-**没有** `skills/`：文档交付物（D4 三问）在 P3 与项目级 skill 一起做，P0 的三问写在工具描述里。
+**没有** `skills/`：文档交付物（D4 三问）在 P3 与项目级 skill 一起做，现在的三问写在工具描述里。
 
 ### 验收口径（对齐 `docs/roadmap.md` §3）
 
-| 口径 | 怎么验 | 离线可测？ | P0 |
+| 口径 | 怎么验 | 离线可测？ | 状态 |
 |---|---|---|---|
-| 可重复 | 给定「project/branch/version」两次物化，导出物逐字节一致 | ✅ | P1/P2 |
-| **不串味** | 两个 workspace 各放同名块/同名 UDT，交叉查询互不可见；越界路径被拒 | ✅ | ✅ 已测（两个 workspace + 同名 id；`path_outside_workspace`） |
-| 作用域显式 | 每个工具结果都带四元组 | ✅ | ✅ 已测（含三档 workspace 身份） |
+| 可重复 | 给定「project/branch/version」两次物化，导出物逐字节一致 | ✅ | ⬜ P2 |
+| **不串味** | 每次调用都从自己的 session cwd 重新解析 workspace；目标路径越界即拒 | ✅ | ✅ 已测（`path_outside_workspace`、配置兜底、无 cwd 拒绝） |
+| 作用域显式 | 每个工具结果都带 scope（workspace 路径 + 是否登记 + warnings） | ✅ | ✅ 已测 |
 | **变更不漏报不误报** | stub 控制器喂录制的指纹：未改动 → `changed = 0`；只改注释 → 只报 `Comments`；只改代码 → 只报 `Code` | ✅（fixture） | ⬜ P2 |
 | 增量可验证 | 改一个块后，导出集合 **==** 指纹报告的集合（D9 闭环） | ⚠️ 需真机 | ⬜ P2 |
-| 失效可感知 | 人为让基线/导出物/`.ap17` 三者版本错配 → 必须**报不一致**，不得静默 | ✅ | 🟡 部分：注册表损坏/异 workspace 已测；导出物/基线错配待 P2 |
+| 失效可感知 | TIA 拒绝另存 → `save_failed`；重建失败 → `rebuild_failed` 并说明"哪一半已经落盘"；被拒对象逐条回报 | ✅ | ✅ 已测 |
 | 上下文预算 | 每个工具结果 ≤4KB；工具目录开销可复算 | ✅ | ✅ 列表封顶 20 行、细节封顶 40 行 |
 
 测试形态：**`node:test`**（与 `dsh-tia-openness-v17-min` 一致），断言跑在**真实**运行时上 ——

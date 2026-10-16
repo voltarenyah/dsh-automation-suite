@@ -2,20 +2,24 @@
  * dsh-engineering-context — engineering project context for DeepSeek Harness
  * (engineering-context plugin).
  *
- * What this build implements (P0 of `docs/ARCHITECTURE.md` §10):
+ * What this build implements:
  *
- *   scope resolution      the session working directory IS the engineering
- *                         scope; the host's workspace registry is read, never
- *                         modified, for the display identity
- *   project registry      `_dsh-eng/projects.json` inside the workspace:
- *                         register / adopt / forget / list engineering projects
- *   three workflow tools  eng_status, eng_project, eng_scope
+ *   workspace layout      the session working directory IS the engineering scope
+ *                         (`exec.agent.session.header.cwd`); the host's workspace
+ *                         registry is read, never modified, for the display identity
+ *   one workflow tool     `create_engineering_project` — save the project TIA has
+ *                         open into `<workspace>/<tia dir>/<project>/` and rebuild
+ *                         its source tree into `<workspace>/<source dir>/<project>/`
  *
- * What it deliberately does not do yet: version control (P1), fingerprint change
- * detection (P2 — the TIA Openness plugin's seam), and the change ledger (P3). It never touches
- * TIA Portal, never starts a process, and never parses engineering content.
+ * What it deliberately does not do: talk to TIA Portal (the interface plugin's
+ * `engineeringAccess` service owns that, docs/decisions.md D12), version anything
+ * (the workspace is a plain git repository, and `tia/` is ignored by rule), or keep
+ * a registry of projects — the directory layout **is** the record
+ * (docs/decisions.md D22, which supersedes the registry and version layers of
+ * P0/P1). Fingerprint change detection (P2) and the change ledger (P3) are still
+ * unimplemented.
  *
- * The plugin holds no owned resource, so `apply` registers tools and returns:
+ * The plugin holds no owned resource, so `apply` registers the tool and returns:
  * there is nothing for `ctx.effect` to dispose. A session working directory that
  * cannot be resolved is reported per call as `scope_unavailable` rather than
  * preventing the plugin from loading.
@@ -40,10 +44,11 @@ export const inject = ['tools']
 export { Config }
 
 /**
- * Register the engineering-context tools.
+ * Register the engineering-context tool.
  *
- * @param ctx - the plugin context; `ctx.tools` receives the definitions and
- *   `ctx.get('workspaceRegistry')` is the optional host service.
+ * @param ctx - the plugin context; `ctx.tools` receives the definition,
+ *   `ctx.get('workspaceRegistry')` is the optional host service and
+ *   `ctx.get('engineeringAccess')` is the optional TIA seam.
  * @param config - the validated profile config, or undefined when the profile
  *   inserts the bundle without a config block.
  */
@@ -54,8 +59,8 @@ export function apply(ctx: Context, config?: Partial<PluginConfig>): void {
 
   const registered = registerTools(ctx, dependencies)
   log.info(
-    `Registered ${registered.length} engineering-context tools (${registered.join(', ')}); ` +
-      `project registry: <workspace>/${settings.stateDirName}/projects.json`,
+    `Registered ${registered.length} engineering-context tool (${registered.join(', ')}); ` +
+      `projects are saved into <workspace>/${settings.tiaDirName}/ and their source trees into <workspace>/${settings.sourceDirName}/`,
   )
 }
 

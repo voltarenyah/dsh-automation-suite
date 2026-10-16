@@ -1,59 +1,56 @@
 /**
  * Plugin configuration.
  *
- * Every field has a default, so a profile may insert this bundle without any
- * `config` block at all. The schema is the single source of truth for the
- * user-facing names and defaults; {@link resolveConfig} re-applies the same
- * defaults and the same validation, so the plugin behaves identically when it is
- * loaded without the loader's schema resolution (for example by a test harness).
+ * Two directory names decide **where this plugin writes inside the user's
+ * workspace** (docs/PATH-RULES.md §2):
  *
- * The two directory names decide **where this plugin writes inside the user's
- * workspace**, which is why `resolveConfig` validates them instead of trusting
- * them: a value containing a separator or `..` would move every write.
+ *   <workspace>/<tia dir>/<project>/       the project TIA saved into the workspace
+ *   <workspace>/<source dir>/<project>/    the rebuilt source tree of that project
+ *
+ * Because they decide every write, `resolveConfig` validates them instead of
+ * trusting them: a value containing a separator or `..` would move every write.
+ * Every field has a default, so a profile may insert this bundle without any
+ * `config` block at all, and `resolveConfig` re-applies the same defaults and the
+ * same checks the schema does, so the plugin behaves identically when a test
+ * harness constructs it.
  *
  * @module dsh-engineering-context/config
  */
+
+import { join } from 'node:path'
 
 import Schema from '@deepseek-ai/schemastery'
 
 /** The plugin configuration, as the profile sees it. */
 export interface PluginConfig {
-  /** Directory holding engineering project content, relative to the workspace root. */
-  projectsDirName: string
-  /** Directory holding this plugin's own state, relative to the workspace root. */
-  stateDirName: string
+  /** Directory holding the TIA projects saved into this workspace, relative to its root. */
+  tiaDirName: string
+  /** Directory holding the source trees rebuilt from those projects, relative to the workspace root. */
+  sourceDirName: string
   /**
    * When true (the default) any path outside the workspace root is refused.
    * Only a test harness has a reason to set it to false.
    */
   requireWorkspace: boolean
-  /**
-   * The git executable the version layer invokes. A name is resolved on PATH.
-   * The plugin never runs git through a shell, so this can never become a command
-   * line (decisions.md D8).
-   */
-  gitPath: string
 }
 
 /** Default values, applied both by the schema and by {@link resolveConfig}. */
 export const configDefaults: PluginConfig = {
-  projectsDirName: 'projects',
-  stateDirName: '_dsh-eng',
+  tiaDirName: 'tia',
+  sourceDirName: 'source',
   requireWorkspace: true,
-  gitPath: 'git',
 }
 
 /** Schemastery configuration schema for the plugin consumer. */
 export const Config = Schema.object({
-  projectsDirName: Schema.string().default(configDefaults.projectsDirName),
-  stateDirName: Schema.string().default(configDefaults.stateDirName),
+  tiaDirName: Schema.string().default(configDefaults.tiaDirName),
+  sourceDirName: Schema.string().default(configDefaults.sourceDirName),
   requireWorkspace: Schema.boolean().default(configDefaults.requireWorkspace),
-  gitPath: Schema.string().default(configDefaults.gitPath),
 })
 
 /**
  * Device names Windows reserves in every directory, with or without an
- * extension: `nul\projects.json` is not a file one can create.
+ * extension: `nul\.gitignore` is not a file one can create.
  */
 const WINDOWS_RESERVED = /^(con|prn|aux|nul|com[0-9]|lpt[0-9])$/iu
 
@@ -96,57 +93,42 @@ function segment(value: unknown, fallback: string): string {
 export function resolveConfig(config?: Partial<PluginConfig>): PluginConfig {
   const source = config ?? {}
   return {
-    projectsDirName: segment(source.projectsDirName, configDefaults.projectsDirName),
-    stateDirName: segment(source.stateDirName, configDefaults.stateDirName),
+    tiaDirName: segment(source.tiaDirName, configDefaults.tiaDirName),
+    sourceDirName: segment(source.sourceDirName, configDefaults.sourceDirName),
     requireWorkspace:
       typeof source.requireWorkspace === 'boolean' ? source.requireWorkspace : configDefaults.requireWorkspace,
-    // Deliberately not `segment()`: an executable may be given as a path. It is
-    // passed to execFile as a single argument, never to a shell, so a path here
-    // carries no injection risk.
-    gitPath: executable(source.gitPath, configDefaults.gitPath),
   }
 }
 
 /**
- * An executable name or path: any non-empty string, trimmed.
+ * Absolute directory the project of one workspace belongs in.
+ * @param config - the resolved configuration.
+ * @param workspaceRoot - the canonical workspace root.
+ * @param folder - the folder name derived from the TIA project name.
+ */
+export function projectDirectoryPath(config: PluginConfig, workspaceRoot: string, folder: string): string {
+  return join(workspaceRoot, config.tiaDirName, folder)
+}
+
+/**
+ * Absolute directory the rebuilt source tree of one project belongs in.
+ * @param config - the resolved configuration.
+ * @param workspaceRoot - the canonical workspace root.
+ * @param folder - the folder name derived from the TIA project name.
+ */
+export function sourceDirectoryPath(config: PluginConfig, workspaceRoot: string, folder: string): string {
+  return join(workspaceRoot, config.sourceDirName, folder)
+}
+
+/**
+ * The `.gitignore` line that keeps the saved projects out of version control.
  *
- * Unlike a directory name it may contain separators — pointing at a specific `git`
- * binary is legitimate — because the value only ever reaches `execFile` as one
- * argument and never a shell.
+ * A TIA project is binary, so versioning it would only ever report "changed"
+ * (`docs/PATH-RULES.md` §6.1); the rebuilt source tree under
+ * `<source dir>/` is the text artifact that belongs in git.
  *
- * @param value - whatever the caller supplied.
- * @param fallback - the default when the value is unusable.
- */
-function executable(value: unknown, fallback: string): string {
-  if (typeof value !== 'string') return fallback
-  const trimmed = value.trim()
-  return trimmed.length === 0 ? fallback : trimmed
-}
-
-/**
- * Where one project's content lives, relative to the workspace root.
- * @param config - the resolved configuration.
- * @param projectId - the project id.
- */
-export function projectContentDir(config: PluginConfig, projectId: string): string {
-  return `${config.projectsDirName}/${projectId}`
-}
-
-/**
- * Where one project's plugin state lives, relative to the workspace root:
- * fingerprint baseline, change-sets and the change ledger all sit under it
- * (docs/decisions.md N3).
- * @param config - the resolved configuration.
- * @param projectId - the project id.
- */
-export function projectStateDir(config: PluginConfig, projectId: string): string {
-  return `${config.stateDirName}/${projectId}`
-}
-
-/**
- * The engineering registry file, relative to the workspace root.
  * @param config - the resolved configuration.
  */
-export function registryRelativePath(config: PluginConfig): string {
-  return `${config.stateDirName}/projects.json`
+export function tiaIgnoreRule(config: PluginConfig): string {
+  return `${config.tiaDirName}/`
 }

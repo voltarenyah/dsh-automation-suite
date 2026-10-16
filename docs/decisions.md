@@ -220,11 +220,14 @@ V17 子集需实测确认；该包 `docs/EXTENDED-SURFACE.md` 已在接线 `incl
 
 - **D12 第 3 条的"缝 A"已落地**：接口插件族注册了 **`engineeringAccess`** 服务
   （`packages/dsh-tia-openness-v17-min/src/access.ts`，该包 `docs/decisions.md` **D20**），
-  接口面镜像在工程上下文插件的 `docs/ARCHITECTURE.md` §5.3。工程上下文插件的**消费代码属 P2**，尚未接入。
-- **实现进度**：**P0（作用域 + 工程注册表）与 P1（版本层 `eng_version`）都已实现，并已登记进蓝图**；
-  `--dump-config` 实测 1520 行；本包 44 项单测全通过。
-  P1 只版本化"导出物 + 工程状态"，`.ap17` 由 `.gitignore` 挡在库外，提交默认 dry-run，
-  且绝不 `init` / `force` / `push`（该包 `docs/decisions.md` P1-1…P1-6）。
+  接口面镜像在工程上下文插件的 `docs/ARCHITECTURE.md` §5.3。**消费代码已落地**：
+  工程上下文插件的 `create_engineering_project` 就是这条缝的第一个（也是目前唯一）消费者 ——
+  D21 交付的三个方法（另存 / 读会话 / 重建源）由此第一次连成一条可审阅的编排。
+- **实现进度（2026-10 更新）**：工程上下文插件原先的 P0（作用域 + 工程注册表）与
+  P1（内部 git 版本层、4 个工具）**已删除**（该包 **D22**）：注册表全仓没有第二个消费者，
+  版本层用用户自己的 git 就能替代。现在它只有 **1 个工具**（`create_engineering_project`），
+  布局是 `<workspace>/tia/<项目名>/` + `<workspace>/source/<项目名>/`；
+  本包 29 项单测全通过。`.ap17` 仍由 `.gitignore` 的 `tia/` 一行挡在库外，规则由新工具维护。
 - **指纹可得性**：**用户报告已在另一个代码库验证可用**（用户侧证据，**不是本仓实测**）——
   本仓第一次在 V17 真机跑 P2 时仍需留下证据（见待办清单第 1 条）。
 - **一处实测更正**：控制器的 `max_items` 只能截断、**没有 offset**，所以"按片翻页"不可行
@@ -448,9 +451,9 @@ stdio 通道实测：`ready` 帧列出三个操作，`GetSchema` 返回 34 字�
 | 1 | V17 上 `FingerprintProvider` 的可得性与粒度 | D6 —— 🟡 **用户报告已在另一个代码库验证可用**（用户侧证据，不是本仓实测）；本仓首次真机跑 P2 时仍需留证据 |
 | 2 | 导出物里的 id 在改名/编辑/重导/另存后的稳定性 | D7 |
 | 3 | 以 min 为依赖被 std 复用时，插件行与控制器生命周期是否干净（一次会话） | D2 |
-| 4 | ~~workspace 路径规则的字段级定义~~ → **已定稿**：[`packages/dsh-engineering-context/docs/PATH-RULES.md`](../packages/dsh-engineering-context/docs/PATH-RULES.md) §8（其 §10 三项待确认） | D5 → B7 |
-| 5 | ~~接口插件族的服务缝（服务名与接口面）~~ → **✅ 已定并实现**：`engineeringAccess`（接口插件族 `src/access.ts` / 该包 D20）。**剩**：工程上下文插件的消费代码（P2）跑通一次 | D12 |
-| 6 | 图谱 db 的具体路径（倾向 `_dsh-eng/<project-id>/`）+ 回写 `PATH-RULES.md` §2/§8 | D13（A10） |
+| 4 | ~~workspace 路径规则的字段级定义~~ → **已按 D22 重写**：[`packages/dsh-engineering-context/docs/PATH-RULES.md`](../packages/dsh-engineering-context/docs/PATH-RULES.md)（现行布局 `tia/` + `source/`；其 §10 是"已废止"清单） | D5 → B7 |
+| 5 | ~~接口插件族的服务缝（服务名与接口面）~~ → **✅ 已定、已实现、已有消费者**：`engineeringAccess`（接口插件族 `src/access.ts` / 该包 D20），消费方是工程上下文插件的 `create_engineering_project`。**剩**：P2 的指纹消费仍未做 | D12 |
+| 6 | 图谱 db 的具体路径（倾向 `_dsh-eng/<project-id>/`）+ 回写 `PATH-RULES.md` §2/§8 —— ⚠️ **需重新定**：`_dsh-eng/` 注册表层随 D22 删除，P2/P3 的状态路径待定 | D13（A10） |
 | 7 | contentHash 兜底必须归一化（剥 `<DocumentInfo>`/`<Created>`）才可用作变更键 | D13 |
 | 8 | 工程知识图谱插件取指纹的路径：消费工程上下文插件的变更集（默认）还是自己经接口插件族 `engineeringAccess` 服务 | D13（A10） |
 | 9 | DSH 按 agent 隐藏工具的确切机制（子 agent preset 如何排除操作层工具） | D16（B16） |

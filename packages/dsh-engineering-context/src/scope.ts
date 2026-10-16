@@ -1,15 +1,16 @@
 /**
- * Scope resolution: the four-tuple every result carries, plus the consistency
- * facts the model needs to know whether that scope is trustworthy.
+ * Scope resolution: which workspace directory this call is scoped to, and what
+ * exists there.
  *
- *   workspace → project → branch → version
+ * The root is the **session working directory** (`exec.agent.session.header.cwd`)
+ * — that is the one fact that ties a conversation to an engineering project, and
+ * it is what the host's own workspace registry validates session membership
+ * against. The registry is consulted only for the display identity, and only
+ * through non-mutating members: this plugin never creates, reorders, deletes,
+ * attaches or archives anything in it (docs/decisions.md D1/D2).
  *
- * In this phase only the first two are populated: the git layer that fills
- * `branch`/`version` is P1, and the version fields exist now so the shape does
- * not change under the model later. The plugin never guesses a scope it cannot
- * establish — a missing cwd, an unusable registry or an unselected project among
- * several produces an explicit failure instead of a default
- * (`docs/ARCHITECTURE.md` §4.3).
+ * The plugin never guesses a scope it cannot establish: a missing cwd produces an
+ * explicit failure instead of a default.
  *
  * @module dsh-engineering-context/scope
  */
@@ -19,13 +20,12 @@ import { stat } from 'node:fs/promises'
 import type { Context } from '@deepseek-ai/cordis'
 import type { ToolRunContext } from '@deepseek-ai/dsh-tools'
 
-import { projectStateDir, type PluginConfig } from './config.js'
+import type { PluginConfig } from './config.js'
 import { EngineeringContextError } from './errors.js'
-import { fromPortable, toPortable } from './paths.js'
-import { readRegistry, selectProject, type ProjectRecord, type RegistryState } from './registry.js'
+import { isInside, toPortable } from './paths.js'
 import { resolveWorkspaceRoot, type WorkspaceRoot } from './workspace.js'
 
-/** What exists at one recorded path. */
+/** What exists at one path. */
 export interface PathStatus {
   /** Portable spelling (relative to the workspace root, forward slashes). */
   port: string
@@ -35,38 +35,18 @@ export interface PathStatus {
   kind: 'file' | 'directory' | 'missing'
 }
 
-/** How a version is identified. P0 has no version control, so only `none`. */
-export type ScopeVersion = { kind: 'none' } | { kind: 'pin'; id: string; verified: boolean }
-
-/** The scope a result belongs to. */
+/** The scope a result belongs to: where it ran, and what could not be confirmed. */
 export interface ScopeView {
   workspace: { path: string; registered: boolean; title: string | null }
-  project: { id: string; title: string } | null
-  branch: string | null
-  version: ScopeVersion
-  /** How many projects the registry holds. */
-  projectCount: number
-  /** Paths of the selected project, or null when none is selected. */
-  paths: {
-    work: PathStatus
-    export: PathStatus
-    artifacts: PathStatus
-    source: PathStatus | null
-  } | null
-  /** Everything about this scope that the model should not have to guess. */
+  /** Everything about this scope the model should not have to guess. */
   warnings: string[]
 }
 
-/** A fully resolved scope, with the pieces the tools need. */
+/** A fully resolved scope, with the pieces the tool needs. */
 export interface ResolvedScope {
   workspace: WorkspaceRoot
   config: PluginConfig
-  registry: RegistryState
-  /** The selected (or only) project, when one could be determined. */
-  project: ProjectRecord | null
   view: ScopeView
-  /** Absolute path of the registry file, whether or not it exists. */
-  registryFile: string
 }
 
 /**
@@ -95,7 +75,7 @@ export async function describePath(root: string, absolute: string): Promise<Path
  * @param config - the resolved configuration.
  * @returns the resolved scope.
  * @throws {EngineeringContextError} `scope_unavailable` when there is no usable
- *   working directory, `registry_invalid` when the registry does not validate.
+ *   working directory.
  */
 export async function resolveScope(
   ctx: Context,
@@ -103,15 +83,6 @@ export async function resolveScope(
   config: PluginConfig,
 ): Promise<ResolvedScope> {
   const workspace = await resolveWorkspaceRoot(ctx, exec)
-  const registry = await readRegistry(config, workspace.path)
-
-  if (registry.status === 'invalid') {
-    throw new EngineeringContextError(
-      'registry_invalid',
-      `The engineering registry is unusable: ${registry.reason}. It was left untouched — repair or remove it deliberately.`,
-      { file: registry.file },
-    )
-  }
 
   const warnings: string[] = []
   if (!workspace.registered) {
@@ -120,102 +91,34 @@ export async function resolveScope(
     )
   }
 
-  let project: ProjectRecord | null = null
-  let paths: ScopeView['paths'] = null
-
-  if (registry.status === 'ok') {
-    const document = registry.document
-    if (document.workspacePath !== workspace.path) {
-      warnings.push(
-        `The registry was created in ${document.workspacePath} but is being read from ${workspace.path}. ` +
-          'Project paths are stored relative to the workspace root, so they still resolve; the recorded provenance path may not.',
-      )
-    }
-
-    const selected = selectProject(document)
-    if ('record' in selected) project = selected.record
-    else if ('ambiguous' in selected) {
-      warnings.push(
-        `${document.projects.length} projects are registered and none is selected. Use eng_scope to select one, or pass project_id explicitly.`,
-      )
-    }
-
-    if (project !== null) {
-      const work = fromPortable(workspace.path, project.work)
-      const exportDir = fromPortable(workspace.path, project.export)
-      const artifacts = fromPortable(workspace.path, projectStateDir(config, project.id))
-      const workStatus = await describePath(workspace.path, work)
-      const exportStatus = await describePath(workspace.path, exportDir)
-      const artifactsStatus = await describePath(workspace.path, artifacts)
-      paths = {
-        work: workStatus,
-        export: exportStatus,
-        artifacts: artifactsStatus,
-        source: project.source === null ? null : await describePath(workspace.path, project.source),
-      }
-      if (workStatus.kind === 'missing') {
-        warnings.push(
-          `The working copy is missing at ${workStatus.port}. Register a source path and run eng_project adopt to materialize it.`,
-        )
-      }
-      if (paths.source !== null && paths.source.kind === 'missing') {
-        warnings.push(`The recorded source project no longer exists: ${project.source ?? ''}`)
-      }
-      if (exportStatus.kind === 'missing') {
-        warnings.push(
-          `Nothing has been exported yet (${exportStatus.port} does not exist). Exporting is the TIA interface plugin's job and lands in P2.`,
-        )
-      }
-    }
-  } else {
-    warnings.push(`No engineering registry exists yet (${registryRelative(config)}). Register a project first.`)
-  }
-
-  const view: ScopeView = {
-    workspace: { path: workspace.path, registered: workspace.registered, title: workspace.title },
-    project: project === null ? null : { id: project.id, title: project.title },
-    branch: null,
-    version: { kind: 'none' },
-    projectCount: registry.status === 'ok' ? registry.document.projects.length : 0,
-    paths,
-    warnings,
-  }
-
   return {
     workspace,
     config,
-    registry,
-    project,
-    view,
-    registryFile: registry.file,
+    view: {
+      workspace: { path: workspace.path, registered: workspace.registered, title: workspace.title },
+      warnings,
+    },
   }
-}
-
-function registryRelative(config: PluginConfig): string {
-  return `${config.stateDirName}/projects.json`
 }
 
 /**
- * Require a project, failing with the reason it could not be determined.
+ * Fail closed when a write target is not inside the workspace.
  *
- * @param scope - a resolved scope.
- * @returns the selected project.
- * @throws {EngineeringContextError} `project_not_registered` when there is no
- *   registry or no project, `project_ambiguous` when several exist and none is
- *   selected.
+ * `config.requireWorkspace` exists only for a test harness; on every real
+ * configuration this refuses.
+ *
+ * @param config - the resolved configuration.
+ * @param root - the canonical workspace root.
+ * @param target - the canonical target path.
+ * @param what - what the path is, for the message.
+ * @throws {EngineeringContextError} `path_outside_workspace`.
  */
-export function requireProject(scope: ResolvedScope): ProjectRecord {
-  if (scope.project !== null) return scope.project
-  if (scope.registry.status !== 'ok' || scope.registry.document.projects.length === 0) {
-    throw new EngineeringContextError(
-      'project_not_registered',
-      'No engineering project is registered in this workspace yet. Use eng_project with action=register first.',
-      { workspace: scope.workspace.path },
-    )
-  }
+export function assertInsideWith(config: PluginConfig, root: string, target: string, what: string): void {
+  if (!config.requireWorkspace) return
+  if (isInside(root, target)) return
   throw new EngineeringContextError(
-    'project_ambiguous',
-    'Several projects are registered and none is selected, so the target is ambiguous. Use eng_scope with action=select, or pass project_id explicitly.',
-    { available: scope.registry.document.projects.map((project) => project.id) },
+    'path_outside_workspace',
+    `${what} must stay inside the workspace root ${root}, but it resolves to ${target}.`,
+    { workspace: root, target },
   )
 }

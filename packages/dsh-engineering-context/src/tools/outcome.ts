@@ -212,10 +212,7 @@ export function renderOutcome(outcome: EngineeringOutcome): string {
     const workspace = scope.workspace.registered
       ? `${scope.workspace.path} (registered workspace${scope.workspace.title === null ? '' : `: ${scope.workspace.title}`})`
       : `${scope.workspace.path} (NOT a registered workspace)`
-    const project = scope.project === null ? 'none' : `${scope.project.id} (${scope.project.title})`
-    lines.push(
-      `Scope: workspace ${workspace}; project ${project}; branch ${scope.branch ?? '—'}; version ${scope.version.kind === 'none' ? 'none' : scope.version.id}`,
-    )
+    lines.push(`Scope: workspace ${workspace}`)
   }
 
   if (outcome.warnings.length > 0) {
@@ -276,11 +273,4 @@ export function cappedList<T>(items: readonly T[], line: (item: T) => string, ma
   const lines = items.slice(0, max).map((item) => line(item))
   if (items.length > max) lines.push(`… ${items.length - max} more`)
   return lines
-}
-
-/** A short, single-line rendering of a scope for embedding in a summary. */
-export function scopeLabel(scope: ScopeView): string {
-  const project = scope.project === null ? 'no project' : scope.project.id
-  const version = scope.version.kind === 'none' ? 'no version control yet' : `version ${scope.version.id}`
-  return `workspace ${scope.workspace.path} / ${project} / ${version}`
 }

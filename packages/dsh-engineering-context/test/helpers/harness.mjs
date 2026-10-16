@@ -50,11 +50,6 @@ export async function loadPathsModule() {
   return await importBuilt('paths.js')
 }
 
-/** Load the built registry module. */
-export async function loadRegistryModule() {
-  return await importBuilt('registry.js')
-}
-
 function makeLogger(logs, scope) {
   const push = (level) => (message) => logs.push({ scope, level, message })
   return { scope, debug: push('debug'), info: push('info'), warn: push('warn'), error: push('error') }
@@ -65,14 +60,15 @@ function makeLogger(logs, scope) {
  * `tools.register`, `logger` (callable and usable directly, like the real one)
  * and `get(name)` for the optional services.
  *
- * @param {{ workspaceRegistry?: object }} [options]
+ * @param {{ services?: Record<string, unknown> }} [options] - the services
+ *   `ctx.get()` should answer with, by name (`engineeringAccess`,
+ *   `workspaceRegistry`).
  * @returns {{ ctx: object, definitions: object[], logs: object[] }}
  */
 export function createTestContext(options = {}) {
   const definitions = []
   const logs = []
-  const services = new Map()
-  if (options.workspaceRegistry !== undefined) services.set('workspaceRegistry', options.workspaceRegistry)
+  const services = new Map(Object.entries(options.services ?? {}))
 
   const logger = (name) => makeLogger(logs, name)
   Object.assign(logger, makeLogger(logs, 'root'))

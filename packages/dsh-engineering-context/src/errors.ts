@@ -11,40 +11,32 @@
 
 /** Stable failure codes of this plugin. */
 export type EngineeringErrorCode =
-  /** No session working directory was supplied, so no scope can be established. */
+  /** No session working directory was supplied, so no workspace can be established. */
   | 'scope_unavailable'
-  /** A target path is not inside the workspace root (fail-closed). */
+  /** A write target is not inside the workspace root (fail-closed). */
   | 'path_outside_workspace'
-  /** The workspace has no engineering registry yet. */
-  | 'project_not_registered'
-  /** The registry has no project with that id. */
-  | 'project_not_found'
-  /** A project with that id is already registered. */
-  | 'project_already_registered'
-  /** The registry file exists but does not parse or validate. */
-  | 'registry_invalid'
-  /** Several projects exist and none is selected, so the target is ambiguous. */
-  | 'project_ambiguous'
+  /** No `engineeringAccess` service in this composition, so TIA cannot be reached at all. */
+  | 'tia_access_unavailable'
+  /** The service exists but the call itself failed (controller missing, timeout, protocol). */
+  | 'tia_unreachable'
+  /** No TIA Openness controller is running, so there is no open project to save. */
+  | 'tia_controller_not_running'
+  /** The controller is running but TIA holds no project. */
+  | 'tia_project_not_open'
+  /** TIA reported no usable project name, so the workspace folder cannot be named. */
+  | 'project_name_unavailable'
+  /** The save-as operation was attempted and TIA refused it. */
+  | 'save_failed'
+  /** The source rebuild was attempted and failed; anything already written is kept. */
+  | 'rebuild_failed'
   /** An argument is missing or malformed. */
   | 'invalid_argument'
-  /** The recorded source project file does not exist. */
-  | 'source_not_found'
-  /** The write target already exists and overwrite was not requested. */
-  | 'target_exists'
-  /** The requested action is not implemented in this phase. */
-  | 'unsupported'
-  /** The workspace is not inside a git repository (the plugin never creates one). */
-  | 'repository_not_found'
-  /** The configured git executable could not be started. */
-  | 'git_not_found'
-  /** git ran and failed; `details.stderr` carries its message. */
-  | 'git_failed'
 
 /**
  * A failure with a stable code and machine-readable details.
  *
  * @example
- * throw new EngineeringContextError('project_not_found', `no project '${id}'`, { available: ['a', 'b'] })
+ * throw new EngineeringContextError('tia_project_not_open', 'TIA holds no project', { reason })
  */
 export class EngineeringContextError extends Error {
   /** Stable failure code. */
@@ -64,7 +56,7 @@ export class EngineeringContextError extends Error {
  * Normalizes anything thrown into the envelope's `error` shape.
  *
  * An unexpected error is reported as `internal_error` with its message, so a bug
- * in this plugin never looks like a scope or path problem to the model.
+ * in this plugin never looks like a TIA or path problem to the model.
  *
  * @param error - whatever was thrown.
  * @returns the code, message and details to place in the result.

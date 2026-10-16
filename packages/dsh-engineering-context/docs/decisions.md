@@ -6,6 +6,13 @@
 > 路径规则见 [`PATH-RULES.md`](PATH-RULES.md)。
 >
 > 状态图例：✅ 已定 ｜ 🟡 已定但有待验证项 ｜ ⏳ 有条件（条件满足即生效）
+>
+> ⚠️ **2026-10 起：本文的 P0 / P1 条目是历史记录。** D22 删除了 4 个工具
+> （`eng_status` / `eng_project` / `eng_scope` / `eng_version`）与它们下面的两层
+> （`_dsh-eng/projects.json` 注册表、内部 git 版本层），现行布局是 `tia/` + `source/`，
+> 模型面只有 `create_engineering_project`。凡涉及那 4 个工具、注册表、`current` 指针、
+> 内部 git、`projects/<id>/…` 路径的条目**均已失效**；现行口径以
+> [`PATH-RULES.md`](PATH-RULES.md) 与 **D22** 为准。
 
 ---
 
@@ -539,3 +546,50 @@ P1 填值时不必让模型重新学。结果里同时给出 `phases.pending`，
 **理由**：目录级输出会**藏掉**调用方真正想知道的东西（哪些文件出现了）；
 而首次导出一个真实项目是上千个未跟踪文件，全量塞进结果同样不可接受。
 "计数 + 前 N + 明确的总数"是这两者之间唯一诚实的折中（同 R4）。
+
+---
+
+## D22. 删掉 4 个工具与注册表 / 版本层，只留 `create_engineering_project`（`tia/` + `source/` 布局）
+
+**背景**：使用者的判断是"这 4 个工具都没实际用途"。核过之后我同意，而且有据：
+
+- `_dsh-eng/projects.json` 全仓**没有任何别的消费者** —— 只有本插件那 4 个工具和它们的测试读写它；
+- 接口插件在 `76782e6` 交付的 `engineeringAccess`（另存 / 读会话 / 重建源）**零调用者**：
+  D21 说它的调用方是 `create_engineering_project`，而那个工具一直不存在；
+- A6（"靠什么识别工程文件被更改了"）至今没有工具回答，而它才是整件事的目的（D6）；
+- 于是 `eng_status` / `eng_project` / `eng_scope` 的产出只是一个没人读的 JSON，
+  而 `eng_version` 的产出用户用自己的 git 也能得到。
+
+**决定**（三条，来自使用者 2026-10 的选择）：
+
+1. **删除** `eng_status` / `eng_project` / `eng_scope` / `eng_version`，以及只为它们存在的
+   `src/registry.ts`（注册表）、`src/git.ts`（版本层）、`src/tools/scope.ts`（指针）；
+   `gitPath` / `projectsDirName` / `stateDirName` 三个配置项一并删除。
+2. **新增唯一的工具 `create_engineering_project`**：把 TIA 当前打开的工程另存进
+   `<workspace>/tia/<项目名>/`，再把源文件树重建到 `<workspace>/source/<项目名>/`；
+   默认 `dry_run: true`（另存是本插件唯一难撤销的动作）。
+3. **不再保留注册表**：workspace 里"有哪些工程"由目录布局本身回答。
+
+**关键取舍**：
+
+| 取舍 | 现在的选择 | 理由 |
+|---|---|---|
+| 工程本体 vs 源文件树 | **分两棵树**（`tia/` 二进制、`source/` 文本） | `.gitignore` 只忽略 `tia/`：满足"另存物不进 git"，又不丢 PATH-RULES §6.1 的原意 |
+| 目录名 | TIA 的项目名，安全化后**原样**用（不做 slug） | 目录要能对上 TIA 里的名字；`SaveAs` 不能改名（接口插件 D20） |
+| `dry_run` 默认 | **true** | 与 P0-4 同源：另存把工程搬到 workspace 副本上，先给计划 |
+| `.gitignore` | 本插件维护，**只追加** | 这是本插件唯一自己写的文件：缺则创建、有则追加、已有该行则不动 |
+| git | **完全不碰** | 版本化交给用户自己的 git（D13 从"不自动 init"变成"不碰"） |
+| 记账 | 不留注册表 | 宁可少一层账，也不要一层没人读的状态 |
+
+**它替换 / 废止了什么**：D3（`_dsh-eng` 状态层的注册表部分）、D5（`current` 指针）、D13（`init_vcs`）、
+P0-4 / P0-5 / P0-6 / P0-10 / P0-11、P1-1…P1-6（版本层与 patch 工件）。D3 中"状态放 workspace 内、
+可携带"这一条仍然成立，但 P2/P3 的状态路径待定。
+
+**代价（必须承认）**：`eng_changes`（P2）与 `eng_context`（P3）现在**没有落脚点** ——
+它们原先的状态目录 `_dsh-eng/<id>/` 与"登记了哪些工程"都要等它们真的开工时重新定；
+届时本文件与 `PATH-RULES.md` §8 必须同步。
+
+**验证**：`test/02-create-project.test.mjs`（18 项）用一个假 `engineeringAccess` 服务断言：
+计划不写任何东西、真实运行先另存再导出、TIA 拒绝时停在哪一步、工程已在 workspace 内时跳过另存、
+被拒对象逐条回报、`.gitignore` 只追加不重写、无服务 / 控制器没跑 / 没开工程 / 没 cwd 各自的错误码。
+`test/03-plugin.test.mjs` 断言只注册这一个工具、描述里写明 dry-run 规则、真实 harness 运行时接受其 schema。
