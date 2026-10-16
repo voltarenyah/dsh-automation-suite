@@ -74,7 +74,7 @@ function rebuildReport(sourceRoot, overrides = {}) {
       manifest: null,
     },
   })
-  return {
+  const report = {
     ok: true,
     error: null,
     summary: 'Rebuilt the source tree.',
@@ -84,6 +84,18 @@ function rebuildReport(sourceRoot, overrides = {}) {
     missingDevices: [],
     ...overrides,
   }
+  // The service's *own* success payload: `data.failures` is the very same array as
+  // the top-level `failures`. A live session reported one refused object as two
+  // because the normalizer counted both; mirroring that shape here is the guard.
+  if (report.data === undefined) {
+    report.data = {
+      sourceRoot,
+      devices: report.devices,
+      failures: report.failures,
+      missingDevices: report.missingDevices,
+    }
+  }
+  return report
 }
 
 /** A stand-in `engineeringAccess` service that records every call in order. */

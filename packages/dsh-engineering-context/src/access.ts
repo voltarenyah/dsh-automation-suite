@@ -361,13 +361,17 @@ export function normalizeRebuild(raw: unknown, sourceRoot: string): RebuildResul
   const skippedOfDevices = devices.reduce((total, device) => total + device.skipped, 0)
   const verificationOfDevices = devices.reduce((total, device) => total + device.verificationFailed, 0)
 
-  // A failed call carries the controller's partial payload in `data`; a successful
-  // one carries the service's own summary, which has no `summary`/`counts`.
+  // A failed call carries the **controller's** partial payload in `data`; a
+  // successful one carries the **service's own** summary, whose `failures` is the
+  // very same array as `source.failures`. Only the controller payload holds
+  // failures that are not already in the top-level list, so counting them is
+  // gated on `hasSummary` — otherwise every refusal is counted twice (found in a
+  // live session: 1 refused object was reported as 2).
   const partial = record(source['data']) ?? {}
   const partialSummary = record(partial['summary'])
   const partialCounts = record(partial['counts'])
-  const partialFailures = list(partial['failures']).length
   const hasSummary = partialSummary !== null && Object.keys(partialSummary).length > 0
+  const partialFailures = hasSummary ? list(partial['failures']).length : 0
 
   const planned = plannedOfDevices + (partialCounts === null ? 0 : numberOf(partialCounts['blocks']) + numberOf(partialCounts['types']) + numberOf(partialCounts['tagTables']))
   const skipped = skippedOfDevices + (hasSummary ? numberOf(partialSummary['skipped']) : 0)
