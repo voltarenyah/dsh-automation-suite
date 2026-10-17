@@ -15,20 +15,20 @@ namespace EngineeringGraph.Engine;
 
 internal static class SelfTest
 {
-    internal static int Run(string? exportRoot)
+    internal static int Run(string? deviceDir)
     {
         var failures = 0;
 
         failures += CheckSqliteRoundTrip();
 
-        if (string.IsNullOrWhiteSpace(exportRoot))
+        if (string.IsNullOrWhiteSpace(deviceDir))
         {
             Console.WriteLine("[skip] export crawl and operations (no export root given)");
         }
         else
         {
-            failures += CheckExportCrawl(exportRoot);
-            failures += CheckOperations(exportRoot);
+            failures += CheckExportCrawl(deviceDir);
+            failures += CheckOperations(deviceDir);
         }
 
         Console.WriteLine(failures == 0
@@ -82,18 +82,18 @@ internal static class SelfTest
         }
     }
 
-    private static int CheckExportCrawl(string exportRoot)
+    private static int CheckExportCrawl(string deviceDir)
     {
         try
         {
-            if (!Directory.Exists(exportRoot))
+            if (!Directory.Exists(deviceDir))
             {
-                Console.WriteLine($"[FAIL] export crawl: '{exportRoot}' is not a directory");
+                Console.WriteLine($"[FAIL] export crawl: '{deviceDir}' is not a directory");
                 return 1;
             }
 
             var result = ExportFolderCrawler.Import(
-                exportRoot,
+                deviceDir,
                 progress: message => Console.WriteLine($"[crawl] {message}"));
 
             var byKind = string.Join(", ", result.Graph.Nodes
@@ -130,7 +130,7 @@ internal static class SelfTest
     /// Drives the same dispatch the protocol uses, so this covers ingestion,
     /// querying and the read-only guard rather than the operations in isolation.
     /// </summary>
-    private static int CheckOperations(string exportRoot)
+    private static int CheckOperations(string deviceDir)
     {
         var dbPath = TempDbPath();
         try
@@ -138,7 +138,7 @@ internal static class SelfTest
             var ingest = Program.Execute(
                 "self-test",
                 OperationCatalog.Ingest,
-                new JsonObject { ["exportRoot"] = exportRoot, ["dbPath"] = dbPath },
+                new JsonObject { ["deviceDir"] = deviceDir, ["dbPath"] = dbPath },
                 NullProgressSink.Instance);
 
             var ingestError = DescribeError(ingest);

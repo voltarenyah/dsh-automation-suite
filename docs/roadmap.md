@@ -16,7 +16,7 @@
 |---|---|---|---|
 | 工控软件接口插件族（**软件版本 × 能力层级**：V17/V18… × min/std/pro） | ① 接入层 | 🟡 已有 **V17 × min** 成员 | `packages/dsh-tia-openness-v17-min` |
 | 工程上下文插件 | 作用域（横向） | 🟡 **部分实现**（`create_engineering_project` 一个工具：把 TIA 打开的工程另存进 workspace + 重建源文件树；**已登记进蓝图**。P0 的注册表与 P1 的版本层已删除，见该包 D22） | `packages/dsh-engineering-context` |
-| 工程知识图谱插件 | ② 语义层 | 🟡 **部分实现**（引擎 + 协议 + 3 个工具；**未登记进蓝图**） | `packages/dsh-engineering-graph` |
+| 工程知识图谱插件 | ② 语义层 | 🟡 **部分实现**（引擎 + 协议 + 3 个工具；**已登记进蓝图**） | `packages/dsh-engineering-graph` |
 
 > 插件不再编号；**只有接口插件族是"一族多成员"**。编号只保留给层（① 接入层 / ② 语义层 /
 > ③ 管理与协作层，见 [`vision.md`](vision.md) §3）。
@@ -222,9 +222,14 @@
 | 兼容层（跨版本 / 跨来源降级） | ⬜ | 目前只有 manifest 与 crawl 两条入口，没有按版本降级 |
 | LLM 友好的分级表示（项目摘要 + 分页） | ⬜ | 第 8 项。vendored 代码里有 `knowledge_networks` 投影与 FTS 索引，但**还没有工具暴露它们** |
 
-> **未登记进蓝图**：`profile/dsh-automation-suite/package.json` 的 `dsh.profile.bundles` 里没有它，
-> 所以这 3 个工具**不出现在任何会话的工具面中**。登记条件是"有工具真的能用" —— 那个条件现在满足了，
-> 但登记会改变每个会话的常驻提示词成本，因此与 **D16** 的子 agent preset 一起放到下一步做。
+> **已登记进蓝图（2026-10-15）**：`profile/dsh-automation-suite/package.json` 的 `dsh.profile.bundles` 已含它，
+> 所以这 3 个工具出现在每个会话的工具面里（全仓合计 **42** 个）。
+>
+> **数据库位置（D20）**：`<项目根>/knowledge/<device>/<device>_knowledge.db` —— `knowledge/` 与 `source/` 同级，
+> 一台设备一个文件夹放它自己的全部生成物，`*.db` 不进 git。`knowledge_ingest` 的 `device_dir` 指向
+> `<项目根>/source/<device>`，省略 `db_path` 时就用这个约定。
+>
+> 仍待做：**D16** 的子 agent preset、以及把这一步接进族 2 的工作流（族 2 暂不改）。
 
 ### 计划做的事（顺序即依赖顺序）
 

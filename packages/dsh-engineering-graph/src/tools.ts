@@ -340,26 +340,27 @@ export function registerTools(ctx: Context, dependencies: ToolDependencies): str
     defineTool({
       name: 'knowledge_ingest',
       description:
-        'Build (or rebuild) one knowledge database from an export root: crawl the folder for TIA Openness block, ' +
-        'tag-table and UDT XML (SW.Blocks.* and friends), parse the logic into a graph of nodes and edges, and write ' +
-        'it to a SQLite database. It is a full rebuild, so point db_path at a database this tool owns. The export ' +
-        'root is normally the folder dsh-tia-openness-v17-min filled with its export; it does not have to be, any ' +
-        'folder of Simatic ML exports works. Progress is reported while the folder is crawled and the database is ' +
-        'written. Fails with EXPORT_ROOT_REQUIRED, EXPORT_ROOT_NOT_FOUND or NO_SOURCE_FILES (an export root with no ' +
-        'importable XML), and with QUERY_* / internal_error only if the database itself cannot be written.',
+        "Build (or rebuild) ONE device's knowledge database: read the export manifest in the device folder, parse " +
+        'every source file it lists into a graph of nodes and edges, and write it to a SQLite database. It is a full ' +
+        'rebuild, so point db_path at a database this tool owns. Call it once per device -- a project with several ' +
+        'PLCs has one folder per device under source/. Progress is reported while the files are parsed and the ' +
+        'database is written. Fails with DEVICE_DIR_REQUIRED, DEVICE_DIR_NOT_FOUND, NO_SOURCE_FILES or ' +
+        'MANIFEST_INVALID, and with an engine error only if the database itself cannot be written.',
       parameters: {
-        export_root: {
+        device_dir: {
           type: 'string',
           required: true,
           description:
-            'Absolute path of the device export folder to crawl, i.e. the directory the TIA Openness plugin filled with exports. ' +
-            'It must already exist; a missing folder is EXPORT_ROOT_NOT_FOUND and an empty one is NO_SOURCE_FILES.',
+            'Absolute path of the device folder to ingest, i.e. <project>/source/<device>. It holds the export ' +
+            'manifest plus blocks/, types/ and tag_tables/. It must already exist; a missing folder is ' +
+            'DEVICE_DIR_NOT_FOUND and one with nothing importable is NO_SOURCE_FILES.',
         },
         db_path: {
           type: 'string',
           description:
-            'Absolute path of the SQLite database to write. Omit to use plc-knowledge.db inside export_root, which ' +
-            'is where knowledge_query expects to find it.',
+            'Absolute path of the SQLite database to write. Omit for ' +
+            '<project>/knowledge/<device>/<device>_knowledge.db, where <project> holds source/ -- one folder per ' +
+            'device holds everything generated for it.',
         },
       },
       output: {
@@ -373,7 +374,7 @@ export function registerTools(ctx: Context, dependencies: ToolDependencies): str
         rawInput: args,
       }),
       async execute(args, exec) {
-        const params: JsonRecord = { exportRoot: args.export_root }
+        const params: JsonRecord = { deviceDir: args.device_dir }
         if (args.db_path !== undefined) params['dbPath'] = args.db_path
         return asJsonOutcome(
           await runOperation(dependencies, 'Ingest', params, {

@@ -59,6 +59,9 @@ importers:
       '@voltarenyah/dsh-engineering-context':
         specifier: workspace:^
         version: link:../../packages/dsh-engineering-context
+      '@voltarenyah/dsh-engineering-graph':
+        specifier: workspace:^
+        version: link:../../packages/dsh-engineering-graph
       '@voltarenyah/dsh-tia-openness-v17-min':
         specifier: workspace:^
         version: link:../../packages/dsh-tia-openness-v17-min

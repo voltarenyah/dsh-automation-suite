@@ -89,7 +89,7 @@ internal static class Program
         Console.WriteLine("Usage:");
         Console.WriteLine("  EngineeringGraph.Engine                 serve the NDJSON protocol on stdio");
         Console.WriteLine("  EngineeringGraph.Engine --call <Op> [json]");
-        Console.WriteLine("  EngineeringGraph.Engine --self-test [exportRoot]");
+        Console.WriteLine("  EngineeringGraph.Engine --self-test [deviceDir]");
         Console.WriteLine("  EngineeringGraph.Engine --version | --help");
         Console.WriteLine();
         Console.WriteLine("Operations: " + string.Join(", ", OperationCatalog.All));

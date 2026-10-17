@@ -153,7 +153,7 @@ pnpm -r typecheck
 | `dsh-engineering-graph` | `node:test` | `node scripts/run-tests.mjs`（**先构建再跑**，同上） |
 
 ⚠️ `dsh-engineering-graph` 还有一个 **C# 引擎**（`engine/`，net8）。`pnpm -r build` 只构建 TypeScript ——
-引擎要用 `pwsh -NoProfile -File engine/build.ps1` 构建到 `engine/bin/`（**不进 git**，与接口插件族的控制器同理）。
+它的产物 `engine/bin/` **进 git**（与接口插件族的 `controller/bin` 同理），所以 checkout 开箱可用；只有改了 C# 源码才需要 `pwsh -NoProfile -File engine/build.ps1` 重建（输出到 `engine/bin/`，其中 `engine/bin/fixtures/` 与 `engine/obj/` 被 ignore）。
 它有一项测试**驱动该引擎**（跑 `--self-test`：原生 SQLite 加载 + 真实导出物解析 + 只读闸门），
 引擎没构建时那条测试会 **skip 并打印构建命令**，而不是失败 —— 所以"全绿"不等于"引擎也验过了"。
 
@@ -211,8 +211,8 @@ dsh --profile dsh-automation-suite --dump-config
   name: dsh-tool-git
 ```
 
-> 注意：工程知识图谱插件（`@voltarenyah/dsh-engineering-graph`）**刻意还没登记进蓝图**，所以下面的
-> 预期输出里**没有它**，行数也不含它；它一登记，每个本地插件就是 4 × 3 行。
+> 注意：`@voltarenyah/dsh-engineering-graph` **已登记进蓝图**，所以预期输出里也会多它那 3 行
+> （4 个本地插件 = 12 行）。下面的行数是**登记前**实测的 3 插件基线，重新实测后要同步。
 
 装 tarball 的验收链路：
 

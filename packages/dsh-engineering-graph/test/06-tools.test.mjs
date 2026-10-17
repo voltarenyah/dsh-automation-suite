@@ -123,12 +123,12 @@ test('every tool declares the same canonical envelope output schema', async () =
 test('the declared parameters require exactly what the engine requires', async () => {
   const { byName } = await harness(() => resultFrame('GetSchema'))
 
-  assert.deepEqual([...byName['knowledge_ingest'].parameters.required], ['export_root'])
+  assert.deepEqual([...byName['knowledge_ingest'].parameters.required], ['device_dir'])
   assert.deepEqual([...byName['knowledge_query'].parameters.required], ['db_path', 'sql'])
   assert.ok(!('required' in byName['knowledge_schema'].parameters), 'knowledge_schema has no required parameter')
 
   assert.deepEqual(Object.keys(byName['knowledge_schema'].parameters.properties), ['known_version'])
-  assert.deepEqual(Object.keys(byName['knowledge_ingest'].parameters.properties).sort(), ['db_path', 'export_root'])
+  assert.deepEqual(Object.keys(byName['knowledge_ingest'].parameters.properties).sort(), ['db_path', 'device_dir'])
   assert.deepEqual(Object.keys(byName['knowledge_query'].parameters.properties).sort(), ['db_path', 'max_rows', 'sql'])
   assert.equal(byName['knowledge_query'].parameters.properties.max_rows.type, 'integer')
 })
@@ -148,7 +148,7 @@ test('every tool declares a presentCall in the plugin presentation shape', async
   const { byName } = await harness(() => resultFrame('GetSchema'))
 
   const schema = byName['knowledge_schema'].presentCall({})
-  const ingest = byName['knowledge_ingest'].presentCall({ export_root: 'C:\\exp' })
+  const ingest = byName['knowledge_ingest'].presentCall({ device_dir: 'C:\\exp' })
   const query = byName['knowledge_query'].presentCall({ db_path: 'C:\\a.db', sql: 'SELECT 1' })
 
   for (const [presentation, kind] of [
@@ -176,12 +176,12 @@ test('each tool maps its parameters onto the engine\'s own camelCase names', asy
   await executeTool(byName['knowledge_schema'], { known_version: 'abc' }, NO_SIGNAL)
   assert.deepEqual(calls[1].params, { knownVersion: 'abc' })
 
-  await executeTool(byName['knowledge_ingest'], { export_root: 'C:\\exp' }, NO_SIGNAL)
+  await executeTool(byName['knowledge_ingest'], { device_dir: 'C:\\exp' }, NO_SIGNAL)
   assert.deepEqual(calls[2].operation, 'Ingest')
-  assert.deepEqual(calls[2].params, { exportRoot: 'C:\\exp' })
+  assert.deepEqual(calls[2].params, { deviceDir: 'C:\\exp' })
 
-  await executeTool(byName['knowledge_ingest'], { export_root: 'C:\\exp', db_path: 'C:\\a.db' }, NO_SIGNAL)
-  assert.deepEqual(calls[3].params, { exportRoot: 'C:\\exp', dbPath: 'C:\\a.db' })
+  await executeTool(byName['knowledge_ingest'], { device_dir: 'C:\\exp', db_path: 'C:\\a.db' }, NO_SIGNAL)
+  assert.deepEqual(calls[3].params, { deviceDir: 'C:\\exp', dbPath: 'C:\\a.db' })
 
   await executeTool(byName['knowledge_query'], { db_path: 'C:\\a.db', sql: 'SELECT 1' }, NO_SIGNAL)
   assert.deepEqual(calls[4].operation, 'Query')
@@ -272,7 +272,7 @@ test('a transport failure thrown by the client is not swallowed by the tool', as
   })
 
   await assert.rejects(
-    async () => await executeTool(byName['knowledge_ingest'], { export_root: 'C:\\exp' }, NO_SIGNAL),
+    async () => await executeTool(byName['knowledge_ingest'], { device_dir: 'C:\\exp' }, NO_SIGNAL),
     (error) => {
       assert.equal(error, failure, 'the transport failure must reach the framework unchanged')
       assert.match(error.message, /^engine_not_found: /)
@@ -301,7 +301,7 @@ test('knowledge_ingest forwards the engine progress frames to the plugin log', a
     }),
   )
 
-  const outcome = await executeTool(byName['knowledge_ingest'], { export_root: 'C:\\exp', db_path: 'C:\\a.db' }, NO_SIGNAL)
+  const outcome = await executeTool(byName['knowledge_ingest'], { device_dir: 'C:\\exp', db_path: 'C:\\a.db' }, NO_SIGNAL)
 
   // The stub cannot call the callback itself (the real client does, once per
   // frame), so the test feeds the captured callback the frames an ingest emits.
@@ -315,7 +315,7 @@ test('knowledge_ingest forwards the engine progress frames to the plugin log', a
   )
 
   assert.equal(outcome.summary, 'Ingested 2 of 2 file(s) into C:\\a.db: 5 node(s) and 4 edge(s).')
-  const rendered = renderedText(byName['knowledge_ingest'], { export_root: 'C:\\exp' }, outcome)
+  const rendered = renderedText(byName['knowledge_ingest'], { device_dir: 'C:\\exp' }, outcome)
   assert.match(rendered, /Source: crawl \(files found: 2\)/)
   assert.match(rendered, /By node kind: Project=1, FB=4/)
 })

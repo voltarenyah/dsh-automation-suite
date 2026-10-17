@@ -86,24 +86,24 @@ internal static class Operations
     /// <remarks>Ported from KnowledgeTools.Ingest (the single-source path only).</remarks>
     internal static object Ingest(JsonObject? parameters, IProgressSink progress)
     {
-        var exportRoot = JsonParams.String(parameters, "exportRoot")
+        var deviceDir = JsonParams.String(parameters, "deviceDir")
             ?? throw new EngineException(
-                "EXPORT_ROOT_REQUIRED",
-                "exportRoot is required.",
-                "Pass the device export folder, i.e. the directory that mcp-engineering / the TIA Openness plugin filled.");
+                "DEVICE_DIR_REQUIRED",
+                "deviceDir is required.",
+                "Pass the per-device folder, i.e. <project>/source/<device>.");
 
-        if (!Directory.Exists(exportRoot))
+        if (!Directory.Exists(deviceDir))
         {
             throw new EngineException(
-                "EXPORT_ROOT_NOT_FOUND",
-                $"Export root '{exportRoot}' was not found.",
-                "Pass the folder filled by the export step (it contains the block XML, and usually _tia-openness-manifest.json).");
+                "DEVICE_DIR_NOT_FOUND",
+                $"Device source directory '{deviceDir}' was not found.",
+                "Pass the per-device folder written by the export step, i.e. <project>/source/<device>.");
         }
 
-        progress.Report("ingest", $"Crawling {exportRoot}");
+        progress.Report("ingest", $"Crawling {deviceDir}");
 
         var import = ExportFolderCrawler.Import(
-            exportRoot,
+            deviceDir,
             message => progress.Report("ingest", message));
 
         if (import.FilesImported == 0)
@@ -113,12 +113,12 @@ internal static class Operations
                 : string.Join(" ", import.Warnings);
             throw new EngineException(
                 "NO_SOURCE_FILES",
-                $"Nothing importable under '{exportRoot}': {import.FilesFound} .xml file(s) found, 0 imported. {details}",
-                "Point exportRoot at a folder of TIA Openness block exports (SW.Blocks.* content).");
+                $"Nothing importable under '{deviceDir}': {import.FilesFound} .xml file(s) found, 0 imported. {details}",
+                "Point device_dir at a device folder produced by the export step.");
         }
 
-        var dbPath = JsonParams.String(parameters, "dbPath")
-            ?? Path.Combine(exportRoot, "plc-knowledge.db");
+        var device = DeviceNameOf(deviceDir);
+        var dbPath = JsonParams.String(parameters, "dbPath") ?? DefaultDbPath(deviceDir, device);
 
         progress.Report("ingest", $"Writing {dbPath}");
         SqliteSemanticGraphStore.Save(dbPath, import.Graph);
@@ -131,6 +131,7 @@ internal static class Operations
 
         return new
         {
+            device,
             dbPath,
             source = import.Source,
             filesFound = import.FilesFound,
@@ -140,6 +141,33 @@ internal static class Operations
             byKind,
             warnings = import.Warnings,
         };
+    }
+
+    /// <summary>
+    /// The device's name as the source tree spells it: the last segment of
+    /// <c>source/&lt;device&gt;</c>. The manifest's own `device` field is authoritative for the
+    /// graph (it becomes a property of the project node); the directory is what names the
+    /// output folder, so the two are reported separately rather than silently reconciled.
+    /// </summary>
+    private static string DeviceNameOf(string deviceDir) =>
+        Path.GetFileName(Path.GetFullPath(deviceDir).TrimEnd(
+            Path.DirectorySeparatorChar,
+            Path.AltDirectorySeparatorChar));
+
+    /// <summary>
+    /// Default database location, by the agreed convention (docs/decisions.md **D20**):
+    /// <c>&lt;root&gt;/knowledge/&lt;device&gt;/&lt;device&gt;_knowledge.db</c>, where &lt;root&gt; is the
+    /// directory holding <c>source/</c> — two levels up from the device directory. One folder
+    /// per device holds everything generated for that device, and several devices mean several
+    /// databases. An explicit <c>dbPath</c> always wins.
+    /// </summary>
+    private static string DefaultDbPath(string deviceDir, string device)
+    {
+        var full = Path.GetFullPath(deviceDir).TrimEnd(
+            Path.DirectorySeparatorChar,
+            Path.AltDirectorySeparatorChar);
+        var root = Path.GetDirectoryName(Path.GetDirectoryName(full)) ?? full;
+        return Path.Combine(root, "knowledge", device, device + "_knowledge.db");
     }
 
     /// <summary>

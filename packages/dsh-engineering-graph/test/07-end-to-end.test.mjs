@@ -7,7 +7,7 @@
  *
  *   1. spawn `EngineeringGraph.Engine.exe`, read the `ready` frame;
  *   2. `{"type":"operation","operation":"GetSchema","params":{}}` → `result`;
- *   3. `{"operation":"Ingest","params":{"exportRoot":<fixtures>,"dbPath":<tmp>}}`
+ *   3. `{"operation":"Ingest","params":{"deviceDir":<fixtures>,"dbPath":<tmp>}}`
  *      → two `progress` frames plus one `result`;
  *   4. `{"operation":"Query","params":{"dbPath":<tmp>,"sql":"SELECT COUNT(*) …"}}`;
  *   5. `{"operation":"Query","params":{…,"sql":"DROP TABLE graph_nodes"}}` →
@@ -111,7 +111,7 @@ test('ingest engine/fixtures into a temp db, then query the node count', async (
   )
 
   // 2. Ingest the fixtures into a database this test owns.
-  const ingestOutcome = await executeTool(ingestTool, { export_root: FIXTURES, db_path: dbPath }, exec)
+  const ingestOutcome = await executeTool(ingestTool, { device_dir: FIXTURES, db_path: dbPath }, exec)
   assertOutcomeMatchesSchema(ingestTool, ingestOutcome)
   assert.equal(ingestOutcome.ok, true, renderFailure(ingestOutcome))
   assert.equal(ingestOutcome.operation, 'Ingest')
