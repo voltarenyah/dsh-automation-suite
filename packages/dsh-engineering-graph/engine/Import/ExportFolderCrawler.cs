@@ -69,6 +69,15 @@ public static class ExportFolderCrawler
         var fullRoot = Path.GetFullPath(exportRoot);
         RejectReparsePoint(new DirectoryInfo(fullRoot));
 
+        // 0. Family 1's own manifest at the root. This is the D24 layout: one directory
+        //    per device, holding blocks/ + types/ + tag_tables/ + _tia-openness-manifest.json.
+        //    When present it is AUTHORITATIVE -- the export already knows which files belong
+        //    to this device, so re-deriving that from directory names is strictly worse.
+        if (DeviceManifests.Exists(fullRoot))
+        {
+            return DeviceManifestImporter.Import(fullRoot, progress);
+        }
+
         // 1. Per-device subfolders: each subdirectory with its own metadata.json
         var childFolders = new DirectoryInfo(fullRoot).EnumerateDirectories().ToArray();
         foreach (var childFolder in childFolders)
@@ -376,14 +385,36 @@ public static class ExportFolderCrawler
         SemanticPlcGraph graph,
         SemanticGraphNode project)
     {
-        var sourcePath = Path.GetDirectoryName(candidate.RelativeFile) ?? string.Empty;
-        var firstSeparator = sourcePath.IndexOfAny(new[] { '/', '\\' });
-        var deviceName = firstSeparator > 0
-            ? sourcePath[..firstSeparator]
-            : string.Empty;
-        if (string.IsNullOrEmpty(deviceName) && sourcePath.Length > 0)
+        // The manifest-less fallback. `sourcePath` is the user-group path with family 1's
+        // category directory stripped, and the device is NEVER taken from a directory name.
+        //
+        // It used to be: deviceName = the first segment of the file's directory. On family 1's
+        // layout that made a USER GROUP (and, after D24, the blocks/types/tag_tables category
+        // directory) masquerade as a device -- and because the device is a prefix of every id,
+        // a caller in one group computed its callee's id with a different device, so the CALLS
+        // edge landed on a "not exported" placeholder. One database is one device (D13), so the
+        // device is not part of the id at all.
+        var sourcePath = NormalizeGroupPath(Path.GetDirectoryName(candidate.RelativeFile) ?? string.Empty);
+        const string deviceName = "";
+
+        static string NormalizeGroupPath(string directory)
         {
-            deviceName = sourcePath;
+            var normalized = directory.Replace('\\', '/').Trim('/');
+            foreach (var category in new[] { "blocks", "types", "tag_tables" })
+            {
+                if (normalized.Equals(category, StringComparison.OrdinalIgnoreCase))
+                {
+                    return string.Empty;
+                }
+
+                var prefix = category + "/";
+                if (normalized.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+                {
+                    return normalized[prefix.Length..];
+                }
+            }
+
+            return normalized;
         }
 
         var touches = graph.CaptureTouches(() =>
