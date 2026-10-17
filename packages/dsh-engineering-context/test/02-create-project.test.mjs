@@ -703,6 +703,54 @@ test('acting on the project TIA happens to have open is flagged, not assumed', a
   )
 })
 
+test('a plan opens nothing at all, even when given a source project', async (t) => {
+  const root = await tempWorkspace(t)
+  const source = join(root, 'Line1.ap17')
+  await makeFile(source, 'project bytes')
+  const { tool, calls } = setup({
+    session: sessionReport({ projectOpen: false, projectName: null, projectPath: null, software: [] }),
+  })
+
+  const outcome = assertEnvelope(await executeTool(tool, { source_project: source, dry_run: true }, fakeExec(root)))
+
+  assert.equal(outcome.ok, true)
+  assert.equal(outcome.dryRun, true)
+  assert.deepEqual(operations(calls), ['readTiaSession'], 'planning must not open anything (exactly this broke a live session)')
+  assert.match(outcome.summary, /would open/u)
+  assert.match(outcome.details[0], /will open/u)
+  await assert.rejects(stat(join(root, 'tia')), 'a plan creates nothing')
+})
+
+test('a project someone else opened stops the call with one instruction', async (t) => {
+  const root = await tempWorkspace(t)
+  const named = join(root, 'Line1.ap17')
+  await makeFile(named, 'project bytes')
+
+  // (a) the controller can see the other project, so the tool refuses before asking TIA.
+  const seen = setup() // session: PEI_SinoARP is open elsewhere
+  const refused = await executeTool(seen.tool, { source_project: named, dry_run: false }, fakeExec(root))
+  assert.equal(refused.error.code, 'project_already_open')
+  assert.match(refused.error.message, /close that project in TIA Portal/u)
+  assert.match(refused.error.message, /call this tool again once it is closed/u)
+  assert.deepEqual(operations(seen.calls), ['readTiaSession'], 'no open attempt, no investigation')
+
+  // (b) the controller cannot see it and TIA refuses: same code, same instruction.
+  const hidden = setup({
+    session: sessionReport({ projectOpen: false, projectName: null, projectPath: null, software: [] }),
+    open: {
+      ok: false,
+      error: { code: 'project_already_open', message: 'A project is already open (x). Close it first with CloseProject.' },
+      summary: '',
+      data: null,
+    },
+  })
+  const bounced = await executeTool(hidden.tool, { source_project: named, dry_run: false }, fakeExec(root))
+  assert.equal(bounced.error.code, 'project_already_open', 'not a generic open_failed: the answer is "close it"')
+  assert.match(bounced.error.message, /Tell the user to close the project that is open/u)
+  assert.match(bounced.error.message, /Do not investigate process/u)
+  assert.deepEqual(operations(hidden.calls), ['readTiaSession', 'openProject'])
+})
+
 test('a transport failure is reported as data, and the workspace is left alone', async (t) => {
   const root = await tempWorkspace(t)
 

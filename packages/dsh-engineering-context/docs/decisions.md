@@ -620,15 +620,15 @@ P0-4 / P0-5 / P0-6 / P0-10 / P0-11、P1-1…P1-6（版本层与 patch 工件）�
    真发生了升级 → 在 warning 里点名。
 4. `with_window` 默认 **true**（可见的 TIA 实例；这是有人在看的工作流），`allow_upgrade` 默认
    **false**（`OpenWithUpgrade` 会不可逆地重写工程文件）。
-5. **dry run 现在能精确报出目标目录**（不再依赖"打开才知道工程名"），而且 dry run **不打开工程** ——
+5. **dry run 现在能精确报出目标目录**（不再依赖"打开才知道工程名"），而且 dry run **不打开工程** —— 但实现最初把 `openProject` 放在 dry-run 判定**之前**（**2026-10-17 修**：真机上"只给计划"的调用因此真去开了工程，撞出 TIA 的 `project_already_open` 并把这个控制器的实例带坏；现在计划分支在任何打开动作之前返回，也不再需要工程名）。
    打开本身就是真实动作。
 
 **布局变化**：`source/<项目名>/<device>/…` → `source/<device>/…`；`tia/<workspace 名>/` → `tia/`。
 **服务端同时改了导出布局**（接口插件 **D24**：三类各占一个目录、每 device 一次调用、一份 manifest），
 所以"每 device 多份 manifest、消费方要合并"这件事不再存在 —— 本插件只读它返回的结果。
 
-**验证**：`test/02-create-project.test.mjs`（24 项）+ `test/03-plugin.test.mjs`（6 项）+
-`test/01-paths.test.mjs`（5 项）= **35 项全通过**。新增/改写的用例覆盖：没打开工程时要路径、
+**验证**：`test/02-create-project.test.mjs`（26 项）+ `test/03-plugin.test.mjs`（6 项）+
+`test/01-paths.test.mjs`（5 项）= **37 项全通过**。新增/改写的用例覆盖：没打开工程时要路径、
 给了路径就打开（`with_window` / `allow_upgrade` 的传参）、别的工程已打开时拒绝且不试探、
 打开被拒时的提示、升级被点名、目标目录与工程名无关、索引写入与身份守卫、索引损坏只 warning。
 

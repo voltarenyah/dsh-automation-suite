@@ -304,8 +304,8 @@ export function createProjectTool(dependencies: ToolDependencies): ToolDefinitio
       'source_project (the absolute .ap17 path) when TIA has none open — if you do not know the path, ASK THE USER; never search the ' +
       'disk for project files and never guess which project was meant. The target directories are derived from the workspace root ' +
       '(the session working directory) and the configured directory names, so this tool takes no target path. Defaults to a plan ' +
-      '(`dry_run: true`), which does not even open the project: the save-as moves the project TIA has open, so pass `dry_run: false` ' +
-      'deliberately. **It acts on whatever project TIA has open when the call does not name one** — so if the user asked for a ' +
+      '(`dry_run: true`), which opens nothing at all: the save-as moves the project TIA has open, so pass `dry_run: false` ' +
+      'deliberately. **This deployment manages one TIA instance with one project**: if TIA already has a project open that is not the one the call named, the call stops immediately with one instruction — have the user close it (the interface plugin\'s close_project also works) and call again — and it never investigates process lists, lock files or the filesystem, and never works around it. **It acts on whatever project TIA has open when the call does not name one** — so if the user asked for a ' +
       'specific project, either pass its source_project or confirm with them which project is open; do not assume the open one is ' +
       'the one they meant. One workspace manages one project: if it already holds another project\'s source tree this refuses ' +
       'instead of mixing them. It never deletes anything and never modifies the user\'s original project files; if the project is ' +
@@ -337,8 +337,9 @@ export function createProjectTool(dependencies: ToolDependencies): ToolDefinitio
 
         // Which project are we about to act on? Either TIA already has one open, or
         // the caller named one to open. A different project must never be acted on
-        // silently: the controller refuses to open a second one anyway, so the two
-        // cases cannot be merged.
+        // silently, and — because this deployment manages ONE TIA instance with ONE
+        // project — a project someone else opened is a **stop-the-call** condition:
+        // the answer is "have the user close it", not an investigation.
         let opened: OpenResult | null = null
         if (!session.projectOpen) {
           if (requested === undefined) {
@@ -352,17 +353,33 @@ export function createProjectTool(dependencies: ToolDependencies): ToolDefinitio
               { reason: session.reason },
             )
           }
-          opened = normalizeOpen(
-            await callService('openProject', () =>
-              service.openProject(requested, {
-                withWindow: args.with_window !== false,
-                allowUpgrade: args.allow_upgrade === true,
-                signal: exec.signal,
-              }),
-            ),
-            requested,
-          )
-          if (!opened.ok) {
+          // A plan opens nothing: opening is a real action, and it is exactly what
+          // provokes the interface plugin's own refusal below. Nothing in a plan
+          // needs the open — the target directories no longer depend on the
+          // project's name (it carries the workspace's name instead).
+          if (!dryRun) {
+            opened = normalizeOpen(
+              await callService('openProject', () =>
+                service.openProject(requested, {
+                  withWindow: args.with_window !== false,
+                  allowUpgrade: args.allow_upgrade === true,
+                  signal: exec.signal,
+                }),
+              ),
+              requested,
+            )
+          }
+          if (opened !== null && !opened.ok) {
+            if (opened.error?.code === 'project_already_open') {
+              throw new EngineeringContextError(
+                'project_already_open',
+                `TIA Portal already has a project open, so ${requested} cannot be opened. This deployment manages one TIA instance ` +
+                  'with one project at a time. Tell the user to close the project that is open in TIA Portal (the interface plugin\'s ' +
+                  'close_project tool does it too), wait for them to do it, and then call this tool again. Do not investigate process ' +
+                  'lists, lock files or the filesystem, and do not try to work around it.',
+                { requestedPath: requested, code: opened.error.code, openProject: session.projectPath },
+              )
+            }
             throw new EngineeringContextError(
               'open_failed',
               `TIA Portal refused to open ${requested}: ${opened.error?.message ?? (opened.summary || 'no reason reported')}. ` +
@@ -377,14 +394,20 @@ export function createProjectTool(dependencies: ToolDependencies): ToolDefinitio
           throw new EngineeringContextError(
             'project_already_open',
             `TIA Portal already has a different project open (${session.projectPath ?? session.projectName ?? 'unknown'}), so ` +
-              `${requested} was not opened. Either omit source_project to work with the open project, or close it first (the ` +
-              "interface plugin's close_project tool) and call again.",
+              `${requested} was not opened. This deployment manages one TIA instance with one project at a time: tell the user to ` +
+              'close that project in TIA Portal (or use the interface plugin\'s close_project) and call this tool again once it is ' +
+              'closed — or omit source_project if the open project is the one they mean.',
             { openProject: session.projectPath, requested },
           )
         }
 
         let projectPath = opened?.projectPath ?? session.projectPath
-        const name = projectNameOf(opened?.projectName ?? session.projectName, projectPath)
+        // A plan with nothing open cannot know the project's name: TIA reports it
+        // when the project is opened, and a plan never opens anything.
+        const name =
+          dryRun && !session.projectOpen
+            ? null
+            : projectNameOf(opened?.projectName ?? session.projectName, projectPath)
         const software = opened === null ? session.software : opened.software
         // The project the run started from, recorded before the save-as moves it.
         const openedFrom = projectPath
@@ -405,9 +428,9 @@ export function createProjectTool(dependencies: ToolDependencies): ToolDefinitio
         const indexFile = sourceIndexPath(config, root)
         const recorded = await readSourceIndex(indexFile)
         const recordedNameMatches =
-          recorded !== null && recorded.project !== null && recorded.project.toLowerCase() === name.toLowerCase()
+          name !== null && recorded !== null && recorded.project !== null && recorded.project.toLowerCase() === name.toLowerCase()
         const recordedArtifactMatches = recorded === null ? false : await isRecordedProject(recorded, projectPath)
-        if (recorded !== null && recorded.project !== null && !recordedNameMatches && !recordedArtifactMatches) {
+        if (name !== null && recorded !== null && recorded.project !== null && !recordedNameMatches && !recordedArtifactMatches) {
           throw new EngineeringContextError(
             'source_belongs_to_another_project',
             `This workspace's ${toPortable(root, sourceRoot)}/ belongs to the project ${recorded.project}, but the project in play ` +
@@ -448,11 +471,16 @@ export function createProjectTool(dependencies: ToolDependencies): ToolDefinitio
             `The index ${toPortable(root, indexFile)} could not be read, so this tool cannot tell which project the existing source ` +
               'tree came from; existing files are skipped rather than replaced.',
           )
-        } else if (recorded !== null && !recordedNameMatches && recordedArtifactMatches) {
+        } else if (recorded !== null && !recordedNameMatches && recordedArtifactMatches && name !== null) {
           warnings.push(
             `The index records the project ${recorded.project}, but TIA reports ${name} for the same project file — TIA names the ` +
               'project it saves into a directory after that directory, so the name changes when it is saved into the workspace. The ' +
               'identity follows the recorded path, and the index is refreshed with the new name.',
+          )
+        } else if (name === null && recorded !== null && recorded.project !== null) {
+          warnings.push(
+            `The index records the project ${recorded.project}; this plan cannot compare it because nothing is open yet — the check ` +
+              'runs when the plan is executed.',
           )
         }
         if (!skipSave && projectDirStatus.kind !== 'missing') {
@@ -475,17 +503,29 @@ export function createProjectTool(dependencies: ToolDependencies): ToolDefinitio
               ? `Ignore rule: ${ignore.port} does not exist yet; it will be created with "${ignore.rule}" (the saved project is binary and TIA owns it).`
               : `Ignore rule: ${ignore.port} exists; "${ignore.rule}" will be appended to it.`
 
+        const windowFlag = args.with_window !== false ? 'yes' : 'no'
+        const projectLine =
+          opened !== null
+            ? `Project: ${requested} → opened as ${name} (visible TIA window: ${windowFlag})`
+            : !session.projectOpen
+              ? `Project: will open ${requested} (visible TIA window: ${windowFlag}); TIA reports the project name after opening.`
+              : requested === undefined
+                ? `Project: ${name} (already open in TIA at ${projectPath ?? '?'}) — NOBODY named this project in this call; confirm it is the one the user means.`
+                : `Project: ${name} (already open in TIA at ${projectPath ?? '?'})`
+        const deviceLine =
+          software.length > 0
+            ? `${software.length} PLC software (${deviceLines(software).join(', ')})`
+            : !session.projectOpen
+              ? 'the device list comes from TIA after opening'
+              : 'none'
+
         const plan = [
-          opened === null
-            ? requested === undefined
-              ? `Project: ${name} (already open in TIA at ${projectPath ?? '?'}) — NOBODY named this project in this call; confirm it is the one the user means.`
-              : `Project: ${name} (already open in TIA at ${projectPath ?? '?'})`
-            : `Project: ${requested} → opened as ${name} (visible TIA window: ${args.with_window !== false ? 'yes' : 'no'})`,
+          projectLine,
           `Project directory: ${projectDirStatus.port}/ (named after this workspace, so TIA names the saved project ${workspaceName})`,
           skipSave
             ? `Save-as: not needed — TIA already has this project at ${projectPath ?? '?'}, inside that directory.`
             : `Save-as: TIA will save the open project into ${projectDirStatus.port}/ (currently ${projectPath ?? 'unknown'}; its files there are not touched).`,
-          `Source tree: ${sourceStatus.port}/ ← ${software.length} PLC software (${deviceLines(software).join(', ') || 'none'})`,
+          `Source tree: ${sourceStatus.port}/ ← ${deviceLine}`,
           'Layout below the source root is written by the interface plugin: <device>/blocks|types|tag_tables/, one manifest per device covering all three.',
           ignoreLine,
         ]
@@ -494,9 +534,9 @@ export function createProjectTool(dependencies: ToolDependencies): ToolDefinitio
           return okOutcome(
             CREATE_PROJECT_TOOL,
             scope.view,
-            opened !== null
-              ? `Dry run: would open ${requested} and save ${name} into ${projectDirStatus.port}/ (${software.length} device(s)). Pass dry_run=false to do it.`
-              : `Dry run: would ${skipSave ? 'refresh the source tree of' : 'save'} ${name} in ${projectDirStatus.port}/ (${software.length} device(s)). Pass dry_run=false to do it.`,
+            !session.projectOpen
+              ? `Dry run: would open ${requested} and save it into ${projectDirStatus.port}/ (TIA reports the project name after opening). Pass dry_run=false to do it.`
+              : `Dry run: would ${skipSave ? 'refresh the source tree of' : 'save'} ${name ?? 'the open project'} in ${projectDirStatus.port}/ (${software.length} device(s)). Pass dry_run=false to do it.`,
             {
               plan: {
                 name,
@@ -626,7 +666,8 @@ export function createProjectTool(dependencies: ToolDependencies): ToolDefinitio
         const indexAction = await writeSourceIndex(indexFile, {
           schemaVersion: 1,
           project: {
-            name,
+            // The real run always has a name (it opened or adopted a project).
+            name: name ?? 'unknown',
             path: openedFrom,
             savedAs,
             directory: toPortable(root, projectDir),

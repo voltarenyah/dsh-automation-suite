@@ -70,7 +70,7 @@ workspace 副本上，是本插件唯一难以撤销的动作。要真做必须�
 # 裸 checkout 首次：链接宿主运行时（本包只读缓存，从不抽取）
 node scripts/link-dsh-runtime.mjs
 
-node scripts/run-tests.mjs     # 构建 + 跑 35 项测试
+node scripts/run-tests.mjs     # 构建 + 跑 37 项测试
 node scripts/tsc.mjs -p tsconfig.json          # 只构建
 node scripts/tsc.mjs -p tsconfig.json --noEmit # 只做类型检查
 ```
