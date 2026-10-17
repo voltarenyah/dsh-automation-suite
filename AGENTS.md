@@ -315,3 +315,42 @@ Get-NetTCPConnection -State Listen -LocalPort 3092 -ErrorAction SilentlyContinue
 在该实例的窗口里 `Ctrl+C`。窗口已丢时：`Stop-Process -Id <harness pid> -Force`，
 控制器会随后读到 stdin EOF 自行退出；用 `Get-Process TiaOpennessV17Min.Controller`
 确认已无残留。**不要**用会跟进链接的递归删除去清那个 home（见第 3 节）。
+
+---
+
+## 7. TIA 功能测试：统一源项目（只记路径，不复制）
+
+TIA Portal / Openness 的功能测试统一拿下面这个源项目当"源"，**不要**拿正式工程或空工程当试验田：
+
+- **源项目（只读）**：`C:\Users\Ansel\Documents\Automation\V17\PEI_SinoARP_SWT2\PEI_SinoARP_SWT2.ap17`
+- 规格：TIA Portal **V17**（`ProjectCompatibilityVersion 17.0.0.0`，不需要 `allow_upgrade`）、
+  1 个 PLC（设备与软件都叫 `Sino_PEI`，1155 块）、437 MB / 175 文件。
+
+**造测试项目 = 一次工具调用，只给它源路径**（`create_engineering_project` 属于
+`@voltarenyah/dsh-engineering-context`，它再经 `engineeringAccess` 走 TIA 插件）：
+
+```jsonc
+create_engineering_project({
+  "source_project": "C:\\Users\\Ansel\\Documents\\Automation\\V17\\PEI_SinoARP_SWT2\\PEI_SinoARP_SWT2.ap17",
+  "dry_run": false
+})
+```
+
+它做三件事：TIA 打开源项目 → 把它**另存进当前工作区** `tia/<工作区名>/` → 把源树导出到 `source/`。
+之后的功能测试（`open_project` / `export_blocks` / `import_blocks` / `compile_plc` / `project_info` …）
+全部对这个**测试项目**做；源路径只是"从哪一份开始"的常量，记住它就够了。
+
+- **不要复制源项目，也不要在工作区之外建目录**（`C:\` 根下尤其不要：那是用户不知情的垃圾文件）。
+  目标目录由工作区根（会话 cwd）决定，工具不接受目标路径；`tia/` 会被写进工作区的 `.gitignore`。
+  本仓库里它落在 `tia/<工作区名>/`（目录名取工作区标题或文件夹名），源树在 `source/`。
+- 一个工作区管一个工程：`source/_dsh-engineering-context.json` 记着这棵树属于哪个工程，
+  换工程要先有意清掉，否则工具以 `source_belongs_to_another_project` 拒绝。
+- 源项目不会被改：工具不删、不改原工程文件，`SaveAs` 只改"控制器持有的位置"，源目录的文件仍在。
+  **但"打开"本身会让 TIA 往源目录写临时文件**（实测 `IM\SearchIndex\segments_*`、
+  `TMP\StandardMotionControl\cache.tmp`）—— 核对"源未被改动"时把这两类排除掉。
+- `dry_run` 默认 true **且不打开工程**；`with_window` 默认 true（屏幕上看得到导出过程），无人值守传 false。
+- 大工程慢：本项目实测 headless 打开 8.3 s（TIA 冷启动可到 70 s），导出上千块是分钟级
+  （237 块用 87 s，见 §6 的超时提醒），编译"常需 10 分钟以上"。会话的 `requestTimeoutMs`
+  先放大到 600000，超时未回不等于失败。
+- 这两个插件都要在会话里加载才可用；`Get-Process TiaOpennessV17Min.Controller` 有进程即说明接口插件
+  已加载（见 §6「怎么判断启动成功」）。
