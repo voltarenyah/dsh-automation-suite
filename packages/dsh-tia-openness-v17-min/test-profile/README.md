@@ -33,7 +33,7 @@ pwsh -NoProfile -File $repo\test-profile\test-controller.ps1
        Openness: available=True version=17.0.0.0 resolvedFrom=registry resolver=1.1.0.0
        用户组 'Siemens TIA Openness' 成员: True
 2) --version / --help
-  [OK]   白名单 = OpenProject, ExportBlocks, ImportBlocks, CompilePlc, CloseProject
+  [OK]   白名单 25 个操作 = OpenProject, ExportBlocks, ImportBlocks, CompilePlc, CloseProject, CreateProject, …
   [OK]   越权操作 RunScript 被拒绝（unsupported_operation）
 3) NDJSON 会话：ready 帧 + 参数校验 + 白名单
   [OK]   r1 越权帧被拒

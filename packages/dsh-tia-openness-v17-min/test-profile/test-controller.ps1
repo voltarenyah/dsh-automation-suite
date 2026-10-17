@@ -120,7 +120,11 @@ Say ''
 
 Say 'A2) --version / --help / 越权操作'
 $version = (Invoke-Controller @('--version')) | ConvertFrom-Json
-if ($version.operations.Count -eq 5) { Pass "白名单 = $($version.operations -join ', ')" } else { Fail '白名单应为 5 个操作' }
+# 不写死条数：白名单随插件能力增长（v0.2 起 25 个），只断言五个基础操作都在。
+$requiredOperations = @('OpenProject', 'ExportBlocks', 'ImportBlocks', 'CompilePlc', 'CloseProject')
+$missingOperations = @($requiredOperations | Where-Object { $version.operations -notcontains $_ })
+if ($missingOperations.Count -eq 0) { Pass "白名单 $($version.operations.Count) 个操作 = $($version.operations -join ', ')" }
+else { Fail "白名单缺少操作: $($missingOperations -join ', ')" }
 $help = Invoke-Controller @('--help')
 if ($help -match 'OpenProject' -and $help -match 'TIA_OPENNESS_V17_DIR') { Pass '--help 描述白名单与环境变量' } else { Fail '--help 内容不完整' }
 $priv = (Invoke-Controller @('--operation', 'RunScript', '--param', 'code=x()')).Trim() -split "`n" | Select-Object -Last 1 | ConvertFrom-Json
