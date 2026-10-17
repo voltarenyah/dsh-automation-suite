@@ -1,23 +1,30 @@
-# Build output of src/. Deliberately NOT committed at this stage: the plugin is
-# not reachable from any profile yet (its bundle name is not in the blueprint
-# `dsh.profile.bundles`, on purpose — registration happens once a tool actually
-# works), so there is nothing that would load lib/. Flip to the
-# `dsh-tia-openness-v17-min` convention (commit lib/, ignore nothing here) when
-# the blueprint entry lands.
+# Build output of src/. Deliberately NOT committed: the module is loaded through
+# the profile's bundle entry, and `pnpm -r build` regenerates it (the convention
+# `dsh-engineering-context` uses).
 lib/
 
-# .NET build output of the vendored C# engine (`engine/`, see docs/decisions.md
-# D17). The first attempt at this package ignored only lib/, node_modules/ and
-# *.log, so `git add -A` would have committed the engine's binaries and
-# intermediate objects. `engine/` itself is source and stays tracked; only the
-# build output below it is ignored.
-engine/bin/
+# The vendored C# engine's OUTPUT IS COMMITTED, like the interface plugin commits
+# its `controller/bin`: the plugin has to work in a session on a machine that never
+# ran a build. `engine/` is source; `engine/bin/` is the shipped artefact.
+#
+# Two exceptions below: the intermediate objects, and the copy of `engine/fixtures`
+# that the csproj drops into the output — the fixtures themselves stay tracked at
+# `engine/fixtures/`, so shipping a second copy only bloats the repository and
+# risks the two drifting apart.
 engine/obj/
+engine/bin/fixtures/
 
 # Local development links to the DeepSeek Harness runtime packages, created by
 # scripts/link-dsh-runtime.mjs. They are never shipped: an installed plugin
 # resolves @deepseek-ai/* from the profile's runtime resolution.
 node_modules/
+
+# Knowledge databases are generated, never committed. They are written outside this
+# package (see D20: <project root>/knowledge/<device>/<device>_knowledge.db), but a
+# stray one must never be staged from here either.
+*.db
+*.db-wal
+*.db-shm
 
 # Scratch output.
 *.log
