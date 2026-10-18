@@ -108,12 +108,31 @@ if ($plugins.Count -eq 0) {
 $appRoot = $env:DSH_APP_ROOT
 if (-not $appRoot) { $appRoot = Join-Path $env:LOCALAPPDATA 'Programs\DeepSeek Harness' }
 $dsh = Join-Path $appRoot 'resources\runtime\cli\bin\dsh.cmd'
-$pnpmMjs = Join-Path $appRoot 'resources\runtime\pnpm\bin\pnpm.mjs'
-$nodeExe = (Get-Command node -ErrorAction SilentlyContinue)?.Source
+
+# DSH 升级会挪动自带的 pnpm（实测：旧布局 runtime\pnpm\，新布局
+# runtime\primary-runtime\dependencies\pnpm\），所以按候选列表探测，不要写死一个。
+$pnpmCandidates = @(
+  (Join-Path $appRoot 'resources\runtime\primary-runtime\dependencies\pnpm\bin\pnpm.mjs'),
+  (Join-Path $appRoot 'resources\runtime\pnpm\bin\pnpm.mjs')
+)
+$pnpmMjs = $pnpmCandidates | Where-Object { Test-Path $_ } | Select-Object -First 1
+
+# node 优先用 DSH 自带的那份，PATH 上的只是兜底。
+#
+# 新版布局里 runtime\bin\ 下**没有** node.exe：node.cmd 是个转发脚本，真正的可执行文件
+# 由桌面应用经 $env:DSH_DESKTOP_NODE_EXECUTABLE 交给子进程，普通 shell 里通常没有这个变量。
+# 所以按 环境变量 → 旧布局的 node.exe → PATH 的顺序探测（实测 0.2.1-rc.2：前两者都不成立，
+# 走的是 PATH 上的 node）。
+$nodeCandidates = @(
+  $env:DSH_DESKTOP_NODE_EXECUTABLE,
+  (Join-Path $appRoot 'resources\runtime\bin\node.exe')
+)
+$nodeExe = $nodeCandidates | Where-Object { $_ -and (Test-Path $_) } | Select-Object -First 1
+if (-not $nodeExe) { $nodeExe = (Get-Command node -ErrorAction SilentlyContinue)?.Source }
 
 if (-not (Test-Path $dsh)) { Fail "找不到 dsh CLI: $dsh" '设置 $env:DSH_APP_ROOT 指向 DSH 安装目录。' }
-if (-not $nodeExe) { Fail 'PATH 上没有 node' '需要 node 来运行 DSH 自带的 pnpm；装一个 Node.js 或把它的目录加进 PATH。' }
-if (-not (Test-Path $pnpmMjs)) { Fail "找不到 DSH 自带的 pnpm: $pnpmMjs" '设置 $env:DSH_APP_ROOT 指向 DSH 安装目录。' }
+if (-not $nodeExe) { Fail '既没有 DSH 自带的 node，PATH 上也没有 node' '需要 node 来运行 DSH 自带的 pnpm；设置 $env:DSH_APP_ROOT 指向 DSH 安装目录，或装一个 Node.js。' }
+if (-not $pnpmMjs) { Fail "找不到 DSH 自带的 pnpm（试过：$($pnpmCandidates -join '；')）" '设置 $env:DSH_APP_ROOT 指向 DSH 安装目录。' }
 
 function Invoke-Pnpm([string[]]$Arguments, [string]$WorkDir) {
   Push-Location $WorkDir
