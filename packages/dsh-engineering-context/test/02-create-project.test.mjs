@@ -10,7 +10,7 @@
 
 import assert from 'node:assert/strict'
 import { mkdir, readFile, stat } from 'node:fs/promises'
-import { basename, join } from 'node:path'
+import { basename, dirname, join } from 'node:path'
 import { test } from 'node:test'
 
 import {
@@ -156,6 +156,52 @@ function fakeAccess(options = {}) {
   return { service, calls }
 }
 
+/** A stand-in `knowledgeGraph` service that records every call in order. */
+function fakeKnowledgeGraph(options = {}) {
+  const calls = []
+  const service = {
+    status() {
+      calls.push({ operation: 'status' })
+      if (options.statusThrows !== undefined) throw options.statusThrows
+      return (
+        options.status ?? {
+          available: true,
+          reason: null,
+          enginePath: 'C:\\engine\\EngineeringGraph.Engine.exe',
+          engineExists: true,
+          source: 'package',
+          databaseConvention: '<project root>/knowledge/<device>/<device>_knowledge.db',
+        }
+      )
+    },
+    async ingestDevice(deviceDir, request = {}) {
+      calls.push({ operation: 'ingestDevice', deviceDir, options: request })
+      if (options.ingestThrows !== undefined) throw options.ingestThrows
+      const reply = options.ingest?.(deviceDir, request)
+      if (reply !== undefined) return reply
+      const device = basename(deviceDir)
+      const dbPath = join(sourceRootOf(deviceDir), 'knowledge', device, `${device}_knowledge.db`)
+      return {
+        ok: true,
+        operation: 'Ingest',
+        dryRun: false,
+        summary: `Ingested 2 of 2 file(s) into ${dbPath}.`,
+        data: { device, dbPath, source: 'manifest', filesFound: 2, filesImported: 2, nodes: 72, edges: 153, byKind: { block: 3 }, warnings: [] },
+        changes: [],
+        diagnostics: [],
+        error: null,
+        durationMs: 1200,
+      }
+    },
+  }
+  return { service, calls }
+}
+
+/** `<root>/source/<device>` → `<root>`, matching the graph plugin's own convention. */
+function sourceRootOf(deviceDir) {
+  return dirname(dirname(deviceDir))
+}
+
 function toolWith(config = {}, services = {}) {
   const { ctx } = createTestContext({ services })
   const definitions = toolDefinitions({ ctx, config: resolveConfig(config), log: ctx.logger })
@@ -165,7 +211,9 @@ function toolWith(config = {}, services = {}) {
 /** The tool in front of a fake service, plus its call log. */
 function setup(options = {}, config = {}) {
   const { service, calls } = fakeAccess(options)
-  return { tool: toolWith(config, { engineeringAccess: service }), calls }
+  const services = { engineeringAccess: service }
+  if (options.knowledgeGraph !== undefined) services.knowledgeGraph = options.knowledgeGraph.service
+  return { tool: toolWith(config, services), calls, graph: options.knowledgeGraph ?? null }
 }
 
 const operations = (calls) => calls.map((call) => call.operation)
@@ -577,26 +625,62 @@ test('an existing source tree is announced rather than silently skipped', async 
   )
 })
 
-test('the ignore rule is created, appended or left alone — the file is never rewritten', async (t) => {
-  // Missing file: created with the rule.
+test('the ignore rules are created, appended or left alone — the file is never rewritten', async (t) => {
+  // Missing file: created with both rules (the project TIA owns and the databases
+  // the graph plugin derives from the source tree).
   const fresh = await tempWorkspace(t)
-  await executeTool(setup().tool, { dry_run: false }, fakeExec(fresh))
+  const freshOutcome = assertEnvelope(await executeTool(setup().tool, { dry_run: false }, fakeExec(fresh)))
   const created = await readFile(join(fresh, '.gitignore'), 'utf8')
   assert.match(created, /^tia\/$/mu)
+  assert.match(created, /^knowledge\/\*\*\/\*\.db\*$/mu)
+  assert.equal(freshOutcome.data.ignore.action, 'created')
+  assert.deepEqual(freshOutcome.data.ignore.added, ['tia/', 'knowledge/**/*.db*'])
+  assert.deepEqual(freshOutcome.data.ignore.rules, [
+    { rule: 'tia/', present: false },
+    { rule: 'knowledge/**/*.db*', present: false },
+  ])
 
-  // Existing file without the rule: the user's lines survive, the rule is appended.
+  // Existing file without the rules: the user's lines survive, both rules are appended.
   const existing = await tempWorkspace(t)
   await makeFile(join(existing, '.gitignore'), 'node_modules/\n*.log\n')
-  await executeTool(setup().tool, { dry_run: false }, fakeExec(existing))
+  const appendedOutcome = assertEnvelope(await executeTool(setup().tool, { dry_run: false }, fakeExec(existing)))
   const appended = await readFile(join(existing, '.gitignore'), 'utf8')
   assert.match(appended, /^node_modules\/$/mu)
   assert.match(appended, /^\*\.log$/mu)
   assert.match(appended, /^tia\/$/mu)
+  assert.match(appended, /^knowledge\/\*\*\/\*\.db\*$/mu)
+  assert.equal(appendedOutcome.data.ignore.action, 'appended')
 
-  // Running twice must not append the rule twice.
-  await executeTool(setup().tool, { dry_run: false }, fakeExec(existing))
+  // Running twice must not append either rule twice, and the second run reports
+  // them as present rather than as a change.
+  const twiceOutcome = assertEnvelope(await executeTool(setup().tool, { dry_run: false }, fakeExec(existing)))
   const twice = await readFile(join(existing, '.gitignore'), 'utf8')
   assert.equal(twice.match(/^tia\/$/gmu).length, 1)
+  assert.equal(twice.match(/^knowledge\/\*\*\/\*\.db\*$/gmu).length, 1)
+  assert.equal(twiceOutcome.data.ignore.action, 'unchanged')
+  assert.deepEqual(twiceOutcome.data.ignore.added, [])
+
+  // The alternate spellings a user may have written count as present: only the
+  // missing rule is added, and the file is otherwise left alone. (A user who
+  // ignored the database without its SQLite side files is *not* "present": the
+  // rule this plugin needs is the one that covers both.)
+  const half = await tempWorkspace(t)
+  await makeFile(join(half, '.gitignore'), '# mine\n/tia/\n')
+  const halfOutcome = assertEnvelope(await executeTool(setup().tool, { dry_run: false }, fakeExec(half)))
+  const repaired = await readFile(join(half, '.gitignore'), 'utf8')
+  assert.match(repaired, /^# mine$/mu)
+  assert.equal(repaired.match(/tia\//gmu).length, 1, 'the existing spelling is not duplicated')
+  assert.match(repaired, /^knowledge\/\*\*\/\*\.db\*$/mu)
+  assert.deepEqual(halfOutcome.data.ignore.added, ['knowledge/**/*.db*'])
+
+  // A workspace that already ignores the database but not its SQLite side files
+  // gets the wider rule appended; the narrower line is left where the user put it.
+  const narrower = await tempWorkspace(t)
+  await makeFile(join(narrower, '.gitignore'), 'tia/\nknowledge/**/*.db\n')
+  const narrowerOutcome = assertEnvelope(await executeTool(setup().tool, { dry_run: false }, fakeExec(narrower)))
+  const upgraded = await readFile(join(narrower, '.gitignore'), 'utf8')
+  assert.match(upgraded, /^knowledge\/\*\*\/\*\.db\*$/mu)
+  assert.deepEqual(narrowerOutcome.data.ignore.added, ['knowledge/**/*.db*'])
 })
 
 test('the target dirs do not depend on the project name, which is only the recorded identity', async (t) => {
@@ -776,4 +860,149 @@ test('a session without a working directory fails closed', async () => {
     assert.equal(outcome.error.code, 'scope_unavailable')
     assert.equal(outcome.scope, null)
   }
+})
+
+test('the knowledge graph is rebuilt once per device, after the export', async (t) => {
+  const root = await tempWorkspace(t)
+  const graph = fakeKnowledgeGraph()
+  const { tool, calls } = setup({ knowledgeGraph: graph })
+
+  const outcome = assertEnvelope(await executeTool(tool, { dry_run: false }, fakeExec(root)))
+
+  assert.equal(outcome.ok, true)
+  // The TIA half is unchanged and still ordered save → export.
+  assert.deepEqual(operations(calls), ['readTiaSession', 'saveProjectAs', 'rebuildSource'])
+  // The graph half runs per device, against the directory the export reported.
+  assert.deepEqual(
+    graph.calls.map((call) => (call.operation === 'status' ? 'status' : call.deviceDir)),
+    ['status', join(root, 'source', 'S7-1500')],
+  )
+  assert.equal(graph.calls[1].options.dbPath, undefined, 'the graph plugin owns the database convention')
+
+  assert.equal(outcome.data.knowledge.state, 'ingested')
+  assert.equal(outcome.data.knowledge.available, true)
+  assert.deepEqual(outcome.data.knowledge.totals, { devices: 1, ok: 1, filesFound: 2, filesImported: 2, nodes: 72, edges: 153 })
+  assert.equal(outcome.data.knowledge.devices[0].dbPath, join(root, 'knowledge', 'S7-1500', 'S7-1500_knowledge.db'))
+  assert.match(outcome.summary, /Rebuilt the knowledge graph for 1 device/u)
+  assert.match(renderedText(tool, {}, outcome), /Knowledge graph: S7-1500 → knowledge\/S7-1500\/S7-1500_knowledge\.db/u)
+})
+
+test('a composition without the graph plugin still creates the project', async (t) => {
+  const root = await tempWorkspace(t)
+  const { tool } = setup()
+
+  const outcome = assertEnvelope(await executeTool(tool, { dry_run: false }, fakeExec(root)))
+
+  assert.equal(outcome.ok, true, 'a missing optional plugin is not a workflow failure')
+  assert.equal(outcome.data.knowledge.state, 'absent')
+  assert.equal(outcome.data.knowledge.available, false)
+  assert.match(outcome.summary, /knowledge graph was not built/u)
+  assert.ok(outcome.warnings.some((warning) => /knowledgeGraph service/u.test(warning)))
+  assert.match(await readFile(join(root, 'source', '_dsh-engineering-context.json'), 'utf8'), /S7-1500/u)
+})
+
+test('an engine that is not built is reported without asking it to ingest', async (t) => {
+  const root = await tempWorkspace(t)
+  const graph = fakeKnowledgeGraph({
+    status: { available: false, reason: 'the knowledge engine was not found at X', enginePath: 'X', engineExists: false, source: 'package', databaseConvention: null },
+  })
+  const { tool } = setup({ knowledgeGraph: graph })
+
+  const outcome = assertEnvelope(await executeTool(tool, { dry_run: false }, fakeExec(root)))
+
+  assert.equal(outcome.ok, true)
+  assert.equal(outcome.data.knowledge.state, 'unavailable')
+  assert.deepEqual(graph.calls.map((call) => call.operation), ['status'])
+  assert.deepEqual(outcome.data.knowledge.notAttempted, ['S7-1500'])
+  assert.match(outcome.summary, /knowledge graph was not built/u)
+  assert.ok(outcome.warnings.some((warning) => /not built: the knowledge engine was not found at X/u.test(warning)))
+})
+
+test('a graph refusal is data: the code and the remediation reach the result', async (t) => {
+  const root = await tempWorkspace(t)
+  const graph = fakeKnowledgeGraph({
+    ingest: () => ({
+      ok: false,
+      operation: 'Ingest',
+      dryRun: false,
+      summary: 'Ingest was refused.',
+      data: null,
+      changes: [],
+      diagnostics: [],
+      error: { code: 'NO_SOURCE_FILES', message: 'nothing importable was found', details: { remediation: 'run the export again' } },
+      durationMs: 4,
+    }),
+  })
+  const { tool } = setup({ knowledgeGraph: graph })
+
+  const outcome = assertEnvelope(await executeTool(tool, { dry_run: false }, fakeExec(root)))
+
+  assert.equal(outcome.ok, true, 'the source tree was exported; the graph refusal does not undo it')
+  assert.equal(outcome.data.knowledge.state, 'failed')
+  assert.equal(outcome.data.knowledge.devices[0].error.code, 'NO_SOURCE_FILES')
+  assert.equal(outcome.data.knowledge.devices[0].error.remediation, 'run the export again')
+  assert.ok(
+    outcome.warnings.some((warning) => /NO_SOURCE_FILES/u.test(warning) && /run the export again/u.test(warning)),
+    'the next step the engine named has to be visible',
+  )
+})
+
+test('a knowledge engine that cannot be reached degrades instead of failing the workflow', async (t) => {
+  const root = await tempWorkspace(t)
+  const graph = fakeKnowledgeGraph({ ingestThrows: new Error('engine_timeout: no answer') })
+  const { tool } = setup({ knowledgeGraph: graph })
+
+  const outcome = assertEnvelope(await executeTool(tool, { dry_run: false }, fakeExec(root)))
+
+  assert.equal(outcome.ok, true)
+  assert.equal(outcome.data.knowledge.state, 'unavailable')
+  assert.equal(outcome.data.knowledge.available, false)
+  assert.match(outcome.data.knowledge.reason, /engine_timeout/u)
+  assert.ok(outcome.warnings.some((warning) => /engine failed/u.test(warning)))
+  assert.ok(outcome.warnings.some((warning) => /source tree is unaffected|exported source tree is unaffected/u.test(warning)))
+})
+
+test('the graph is refreshed even when every source file was already present', async (t) => {
+  const root = await tempWorkspace(t)
+  // The "nothing was written" path: the ordinary re-run that has to refresh the
+  // graph, because a full rebuild is the only refresh this graph has.
+  const inside = join(root, 'tia', basename(root), 'PEI_SinoARP.ap17')
+  await makeFile(inside, 'project bytes')
+  const sourceRoot = join(root, 'source')
+  const graph = fakeKnowledgeGraph()
+  const { tool } = setup({
+    session: sessionReport({ projectPath: inside }),
+    knowledgeGraph: graph,
+    rebuild: {
+      ok: false,
+      error: { code: 'export_failed', message: 'No object could be exported: Openness refused all 4 object(s).' },
+      summary: '',
+      sourceRoot,
+      devices: [],
+      failures: [],
+      missingDevices: [],
+      data: { counts: { blocks: 0, types: 3, tagTables: 1 }, summary: { exported: 0, skipped: 4, failed: 0, verificationFailed: 0 } },
+    },
+  })
+
+  const outcome = assertEnvelope(await executeTool(tool, { dry_run: false }, fakeExec(root)))
+
+  assert.equal(outcome.data.rebuild.nothingWritten, true)
+  // No device directory was reported, so there is nothing to ingest — but the
+  // step still ran and said so.
+  assert.equal(outcome.data.knowledge.state, 'empty')
+  assert.deepEqual(graph.calls.map((call) => call.operation), ['status'])
+})
+
+test('a plan names the graph step and asks the graph service for nothing', async (t) => {
+  const root = await tempWorkspace(t)
+  const graph = fakeKnowledgeGraph()
+  const { tool } = setup({ knowledgeGraph: graph })
+
+  const outcome = assertEnvelope(await executeTool(tool, {}, fakeExec(root)))
+
+  assert.equal(outcome.dryRun, true)
+  assert.equal(outcome.data.knowledge, null)
+  assert.deepEqual(graph.calls, [], 'planning must not touch the graph service')
+  assert.match(outcome.details.join('\n'), /Knowledge graph: after the export/u)
 })

@@ -15,8 +15,8 @@
 | 名称 | 对应层 | 状态 | 落地位置 |
 |---|---|---|---|
 | 工控软件接口插件族（**软件版本 × 能力层级**：V17/V18… × min/std/pro） | ① 接入层 | 🟡 已有 **V17 × min** 成员 | `packages/dsh-tia-openness-v17-min` |
-| 工程上下文插件 | 作用域（横向） | 🟡 **部分实现**（`create_engineering_project` 一个工具：把 TIA 打开的工程另存进 workspace + 重建源文件树；**已登记进蓝图**。P0 的注册表与 P1 的版本层已删除，见该包 D22） | `packages/dsh-engineering-context` |
-| 工程知识图谱插件 | ② 语义层 | 🟡 **部分实现**（引擎 + 协议 + 3 个工具；**已登记进蓝图**） | `packages/dsh-engineering-graph` |
+| 工程上下文插件 | 作用域（横向） | 🟡 **部分实现**（`create_engineering_project` 一个工具：把 TIA 打开的工程另存进 workspace + 重建源文件树 + 经【缝 B】逐设备触发图谱建库；**已登记进蓝图**。P0 的注册表与 P1 的版本层已删除，见该包 D22、图谱这一步见 D25） | `packages/dsh-engineering-context` |
+| 工程知识图谱插件 | ② 语义层 | 🟡 **部分实现**（引擎 + 协议 + 3 个工具 + `knowledgeGraph` 服务；**已登记进蓝图**，并被族 2 的工作流调用） | `packages/dsh-engineering-graph` |
 
 > 插件不再编号；**只有接口插件族是"一族多成员"**。编号只保留给层（① 接入层 / ② 语义层 /
 > ③ 管理与协作层，见 [`vision.md`](vision.md) §3）。
@@ -120,7 +120,7 @@
 **职责**：面对用户的**多个 TIA 项目 × 多个分支 × 多个历史版本**，管理工程上下文，
 使得会话中就某个工程问题对话时，工具能暴露出**恰当的工程上下文**。
 
-> **状态：设计 ✅ 已定稿；P0（作用域 + 工程注册表）🟡 已实现（37 项单测通过）；P1–P3 ⬜ 未开始。**
+> **状态：设计 ✅ 已定稿；唯一工具 `create_engineering_project` ✅ 已实现（56 项单测通过，含经缝 B 的图谱建库）；P2（变更检测）/ P3（台账）⬜ 未开始。**
 > 落地位置 `packages/dsh-engineering-context`，**已登记进 profile 蓝图**
 > （`profile/dsh-automation-suite/package.json` 的 `dependencies` + `dsh.profile.bundles`）。
 > 验收：`pwsh -NoProfile -File scripts\start-env.ps1` 之后 `dsh --profile dsh-automation-suite
@@ -135,9 +135,11 @@
 | 能力 | 状态 | 证据 |
 |---|---|---|
 | 把 TIA **当前打开**的工程另存进 workspace（`tia/`），再把源文件树重建到 `source/<device>/`；默认只给计划 | ✅ | `packages/dsh-engineering-context/src/tools/create-project.ts`、`src/access.ts`；`test/02-create-project.test.mjs` |
+| 导出完成后经【缝 B】逐设备把块逻辑转译进 `knowledge/<device>/<device>_knowledge.db`（图谱插件的 `knowledgeGraph` 服务，按名取） | ✅ | `src/knowledge-graph.ts`；`test/02-create-project.test.mjs`（工具级）、`test/04-knowledge-graph.test.mjs`（缝级） |
+| 图谱这一步是**软的**：服务缺席 / 引擎未构建 / 引擎不可达 → 只报"图谱未建成"，工作流仍成功；引擎拒绝 → 逐设备 code + remediation | ✅ | `src/knowledge-graph.ts`；`test/04-knowledge-graph.test.mjs`（12 项缝级用例，含四种降级与归一化） |
 | 目标路径全部由插件推导（工具参数里**没有路径**）+ `realpath` 包含性校验（不串味） | ✅ | `src/config.ts`、`src/paths.ts`、`src/scope.ts`；`test/01-paths.test.mjs`（含兄弟目录同前缀、`..` 逃逸） |
 | 目录名安全化：TIA 的项目名 → 单段目录名（非法字符、尾点、Windows 保留设备名、超长） | ✅ | `src/paths.ts`（`folderName`）；`test/01-paths.test.mjs` |
-| `.gitignore` 只追加：缺则创建（带注释头）、有则追加一行 `tia/`、已有该行则不动 | ✅ | `src/tools/create-project.ts`；`test/02-create-project.test.mjs` |
+| `.gitignore` 只追加：缺则创建（带注释头）、有则补上缺的那行（`tia/`、`knowledge/**/*.db*`）、两行都在则不动 | ✅ | `src/tools/create-project.ts`；`test/02-create-project.test.mjs` |
 | TIA 侧失败可分辨：`tia_access_unavailable` / `tia_controller_not_running` / `tia_project_not_open` / `save_failed` / `rebuild_failed` / `tia_unreachable`，且说明"哪一半已落盘" | ✅ | `src/errors.ts`、`src/tools/create-project.ts`；`test/02-create-project.test.mjs` |
 | 工具面一个，结果有界（列表封顶 20、细节封顶 40 行；被拒对象逐条给） | ✅ | `src/tools/outcome.ts`；`test/03-plugin.test.mjs`（真实运行时的 schema 校验） |
 
@@ -145,7 +147,7 @@
 
 | 缺口 | 影响 | 备注 |
 |---|---|---|
-| ~~**没有版本层**~~ → **已删除**（D22） | 版本化交给用户自己的 git（workspace 就是普通仓库） | 原 `eng_version` + `src/git.ts` 一并删除；`.ap17` 仍由 `.gitignore` 的 `tia/` 一行挡在库外，规则由新工具维护 |
+| ~~**没有版本层**~~ → **已删除**（D22） | 版本化交给用户自己的 git（workspace 就是普通仓库） | 原 `eng_version` + `src/git.ts` 一并删除；`.ap17` 仍由 `.gitignore` 的 `tia/` 挡在库外，图谱库由 `knowledge/**/*.db*`（含 SQLite 旁挂文件）挡住，规则由新工具维护 |
 | **没有变更检测** | 期望一（识别工程文件是否被更改）与 D6/D9 的工作循环都未落地 | P2；**前置都已就绪，而且缝 A 现在有真实消费者**：`create_engineering_project` 已在调 `engineeringAccess`；指纹可得性由**用户在另一代码库**验证过（**用户侧证据，不是本仓实测**） |
 | **没有变更台账** | 期望二（「待办清单」式上下文）未落地 | P3；状态目录随注册表删除后**路径待定**（该包 D22） |
 | **没有随包 skill** | D4 三问目前写在工具描述里，没有随包知识库 | P3（与项目级 skill / A12 一起做） |
@@ -164,7 +166,7 @@
 
 | # | 工作项 | 产出 | 状态 |
 |---|---|---|---|
-| 1 | **workspace 模型**：**认领**宿主已有的 workspace（`ctx.workspaceRegistry`，不自建）→ 其下起 session → 源项目**另存**进 workspace → 导出源文件到项目路径（D5） | workspace 与路径规则 | ✅ **已实现**（`create_engineering_project` 经缝 A 的 `saveProjectAs` / `rebuildSource`；37 项单测，真机另存待验） |
+| 1 | **workspace 模型**：**认领**宿主已有的 workspace（`ctx.workspaceRegistry`，不自建）→ 其下起 session → 源项目**另存**进 workspace → 导出源文件到项目路径（D5） | workspace 与路径规则 | ✅ **已实现**（`create_engineering_project` 经缝 A 的 `saveProjectAs` / `rebuildSource`、经缝 B 触发图谱建库；56 项单测，真机另存待验） |
 | 2 | **路径契约**：workspace 里"放什么、怎么放"的字段级定义 | 路径规范 | ✅ P0（`PATH-RULES.md` 定稿 + 越界校验实现） |
 | 3 | **变更识别**：用 TIA 指纹（`FingerprintProvider`）判断块有无变化；分面可区分"改的是哪一部分"（D6） | 变更检测 | ⬜ |
 | 4 | **版本模型**：以 git 管理分支与历史版本，定义"当前版本"如何解析 | 版本解析 | ❌ **已删除**（D22）：交给用户自己的 git，插件不再包一层 |
@@ -229,7 +231,14 @@
 > 一台设备一个文件夹放它自己的全部生成物，`*.db` 不进 git。`knowledge_ingest` 的 `device_dir` 指向
 > `<项目根>/source/<device>`，省略 `db_path` 时就用这个约定。
 >
-> 仍待做：**D16** 的子 agent preset、以及把这一步接进族 2 的工作流（族 2 暂不改）。
+> **已接进族 2 的工作流（2026-10-17，族 2 D25）**：除 3 个工具外，本包还注册 cordis 服务
+> **`knowledgeGraph`**（`src/service.ts`；按名取、不 import）。工程上下文插件的
+> `create_engineering_project` 在导出完成后逐设备调用它的 `ingestDevice`，把块逻辑转译进
+> `knowledge/<device>/`。这一步是**软的**：服务缺席 / 引擎没构建 / 引擎不可达时只报"图谱未建成"，
+> 工作流照常成功（工程与源文件树仍是它的交付物），工具级与缝级的 19 项新测试覆盖这些降级路径。
+>
+> 仍待做：**D16** 的子 agent preset、以及**新鲜度/增量**（没有它，唯一刷新方式就是"每次导出后整库重建"；
+> 实测 1376 个源文件约 30 s、库约 450 MB，图谱插件的 `requestTimeoutMs` 默认 300 s 要留够）。
 
 ### 计划做的事（顺序即依赖顺序）
 

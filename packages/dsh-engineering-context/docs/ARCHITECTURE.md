@@ -36,9 +36,9 @@
 
 | 它做 | 它**不做** | 依据 |
 |---|---|---|
-| 解析作用域（workspace + 目标路径） | **不解析 XML、不建图** | [`docs/architecture.md`](../../../docs/architecture.md) §4.2 边界；那是工程知识图谱插件 |
-| 管 workspace 内的路径规则（`tia/` + `source/`） | **不直接驱动 Openness、不起控制器** | §4.2 / §9「写入只有一个通道」；接口插件族是唯一通道 |
-| 经缝 A 让 TIA 另存工程、重建源文件树 | 不做**文件级、按轮次**的变更记录 | 宿主已有 `dsh-workspace-changes`（见 §2.1） |
+| 解析作用域（workspace + 目标路径） | **不解析 XML、不建图**（只经缝 B 触发图谱插件的建库服务） | [`docs/architecture.md`](../../../docs/architecture.md) §4.2 边界；那是工程知识图谱插件 |
+| 管 workspace 内的路径规则（`tia/` + `source/` + `knowledge/` 的 git 边界） | **不直接驱动 Openness、不起控制器** | §4.2 / §9「写入只有一个通道」；接口插件族是唯一通道 |
+| 经缝 A 让 TIA 另存工程、重建源文件树；经缝 B 触发图谱建库 | 不做**文件级、按轮次**的变更记录 | 宿主已有 `dsh-workspace-changes`（见 §2.1） |
 | （P2）消费接口插件族的**指纹**做工程级变更检测 | 不做版本管理 | 交给用户自己的 git（D22） |
 | （P3）维护工程变更台账（期望二） | 不做 agent 的会话计划清单 | 那是 `@deepseek-ai/dsh-tool-todo` |
 | 决定**范围** | 不决定**含义** | §4.2 边界 |
@@ -364,6 +364,64 @@ interface AccessListResult extends AccessCallResult {
 `stale: true` + 工件时间 + "指纹未刷新"的原因；**绝不**静默拿旧数据当现状
 （[`docs/architecture.md`](../../../docs/architecture.md) §5.4「失效可感知」）。
 
+### 5.3.1 【缝 B】与工程知识图谱插件的服务契约（✅ 已实现）
+
+图谱的输入就是缝 A 的产出（`source/<device>/`），所以这一步**没有新增文件契约**：工程上下文插件
+在导出完成后，逐设备调用图谱插件注册的对应服务。**决定：与缝 A 同形** —— 图谱插件注册一个可选的
+cordis 服务，工程上下文插件按名取用、不 import（D10）。
+
+> **状态：✅ 已实现（消费者侧 + 提供者侧）。** 服务名 **`knowledgeGraph`**，由
+> `packages/dsh-engineering-graph/src/service.ts` 提供，在 `apply()` 里构造，随该插件的卸载一起消失。
+> 提供方那一侧的权威描述是**发行版** [`docs/decisions.md`](../../../docs/decisions.md) **D20**（数据库
+> 位置与命名）与 **D21**（服务本身）外加该服务的模块注释；图谱包自己没有 `docs/` 目录。
+> **本节的接口面是消费方的镜像**，两边改一处必须改另一处。
+> 契约形状见 `src/knowledge-graph.ts`（消费方的声明，D25 记录了取舍）。
+
+```ts
+// 由图谱插件提供；工程上下文插件只使用这两个成员，取不到就当"图谱未建成"。
+interface KnowledgeGraph {
+  readonly name: string                     // 'knowledgeGraph'
+  status(): {
+    available: boolean                      // 引擎 exe 在不在（从不启动它）
+    reason: string | null                   // 不可用时的一句话原因
+    enginePath: string
+    engineExists: boolean
+    source: 'config' | 'package'            // enginePath 从哪来
+    databaseConvention: string              // '<project root>/knowledge/<device>/<device>_knowledge.db'
+  }
+  // deviceDir = 缝 A 的 devices[].directory（含 manifest + blocks/ + types/ + tag_tables/）。
+  // 省略 dbPath 时按上面那个约定落库；它是**全量重建**，没有增量。
+  ingestDevice(deviceDir: string, opts?: {
+    dbPath?: string
+    signal?: AbortSignal
+    onProgress?: (message: string) => void
+  }): Promise<{                             // 与图谱插件三个工具同一个规范信封
+    ok: boolean; operation: string; dryRun: false; summary: string
+    data: {
+      device: string; dbPath: string; source: 'manifest' | 'crawl'
+      filesFound: number; filesImported: number; nodes: number; edges: number
+      byKind: Record<string, number>
+      warnings: string[]                    // 含清单的 failures[]（TIA 拒绝导出的对象）
+    } | null
+    error: { code: string; message: string; details?: { remediation?: string } } | null
+    durationMs: number
+  }>
+}
+```
+
+**四条消费方纪律**（D25，全部由 `test/02` 与 `test/04` 覆盖）：
+
+| 纪律 | 为什么 |
+|---|---|
+| **`deviceDir` 只用缝 A 返回的 `devices[].directory`**，不自己拼 | 目录布局是提供方定死的；自己拼会在布局一变时静默指向错的地方 |
+| **不传 `dbPath`** | 库的位置是图谱插件的约定（D20）；传一个本插件算出来的路径等于把同一件事维护两遍 |
+| **`available:false` / 服务缺席 / 传输错误 → 只报"图谱未建成"** | 图谱是加分项：工程与源文件树才是这个流程承诺的东西，缺它不该让流程失败 |
+| **`ok:false` 是数据**：`error.code` + `error.details.remediation` 进结果与 warning | 引擎明确拒绝时，"下一步做什么"就在信封里，丢掉它等于让模型自己猜 |
+
+**代价（必须承认）**：没有新鲜度/增量，所以每次真实运行都**整库重建**（实测 1376 个源文件约 30 s、
+库约 450 MB）。这就是为什么"每次导出后调一次"是唯一的刷新方式，也是为什么这一步放在导出之后、
+**且不能拖垮工作流** —— 图谱插件那侧的 `requestTimeoutMs`（默认 300 s）必须覆盖单台设备的建库时间。
+
 ### 5.4 版本层（A8）—— ❌ 已删除（D22）
 
 原先的实现（`src/git.ts` + `eng_version`）已随 D22 删除。理由不是它做错了，而是它**没有存在的必要**：
@@ -374,7 +432,8 @@ workspace 就是一个普通 git 仓库，"哪些文件该入库"由 `source/` �
 
 - **`.ap17` 永不进 git**：二进制工程文件进 VCS 只能得到"变了/没变"
   （[`docs/vision.md`](../../../docs/vision.md) §3.3）。现在由 `create_engineering_project` 维护的
-  `.gitignore` 里的 `tia/` 一行强制（[`PATH-RULES.md`](PATH-RULES.md) §6）。
+  `.gitignore` 里的 `tia/` 强制（[`PATH-RULES.md`](PATH-RULES.md) §6）；同一份规则表里还有
+  `knowledge/**/*.db*`（§5.3.1 的图谱库及其 SQLite 旁挂文件，同样是二进制、且更大）。
 - **本插件完全不碰 git**：不 `init`、不 `commit`、不 `force`、不 `push`。D13 的"从不自动 `init`"
   由此加强为"连 git 都不调用"。
 
@@ -438,7 +497,7 @@ workspace 就是一个普通 git 仓库，"哪些文件该入库"由 `source/` �
 
 | # | 工具 | 回答什么问题 | 写？ | 依赖 | 状态 |
 |---|---|---|---|---|---|
-| 1 | `create_engineering_project` | 把工程接进 workspace：没打开就**打开**（`source_project`），另存进 `tia/`，并把**源文件树**重建到 `source/<device>/`；默认只给计划 | 是（TIA 写工程、接口插件写源文件、本插件只追加一行 `.gitignore`） | ① + 缝 A | ✅ **已实现**（37 项测试） |
+| 1 | `create_engineering_project` | 把工程接进 workspace：没打开就**打开**（`source_project`），另存进 `tia/`，把**源文件树**重建到 `source/<device>/`，再逐设备把图谱库重建到 `knowledge/<device>/`；默认只给计划 | 是（TIA 写工程、接口插件写源文件、图谱插件写 `.db`、本插件只维护 `.gitignore` 的两行） | ① + 缝 A + 缝 B | ✅ **已实现**（56 项测试） |
 | 2 | `eng_changes` | **自上次基线以来，哪些块/UDT 变了、改了哪一面**；可选更新基线 | 否（`update_baseline` 时写基线） | 缝 A + 基线 | ⬜ P2 |
 | 3 | `eng_export` | 把**变化的那批对象**导出/刷新进源文件树（D9 工作循环闭环），更新 manifest | 只写文件 | 缝 A + 基线 | ⬜ P2 |
 | 4 | `eng_context` | 工程变更台账：`record` / `list` / `resolve` / `pending` | 状态 | 台账存储 | ⬜ P3 |
@@ -452,6 +511,11 @@ workspace 就是一个普通 git 仓库，"哪些文件该入库"由 `source/` �
 > 现在唯一实现的是 `create_engineering_project`：它把 D21 交付的三个服务方法
 > （另存 / 读会话 / 重建源）第一次连成一条**可审阅的编排**，也正是 A5 描述的流程。
 > 实现期的取舍见 [`decisions.md`](decisions.md) D22 与接口插件的 D20/D21。
+>
+> **2026-10 的追加（D25）**：这条编排不再止于源文件树 —— 导出完成后它会经**缝 B** 逐设备重建
+> 图谱库（`knowledge/<device>/<device>_knowledge.db`），并且**这一步是软的**：图谱插件缺席、引擎没
+> 构建或引擎不可达时只报"图谱未建成"，工作流照常成功。取舍与理由见 [`decisions.md`](decisions.md) D25、
+> 契约见 §5.3.1。
 
 ### 6.1 返回契约示例（`eng_changes`）
 
@@ -490,6 +554,7 @@ workspace 就是一个普通 git 仓库，"哪些文件该入库"由 `source/` �
 |---|---|---|
 | **workspace 内 `tia/`** | TIA 的工程本体（二进制、不进 git） | ✅ `create_engineering_project` 经缝 A 的 `saveProjectAs` 写入 |
 | **workspace 内 `source/`（含 `_dsh-engineering-context.json` 索引）** | 重建的源文件树（文本、进 git） | ✅ 经缝 A 的 `rebuildSource` 写入 |
+| **workspace 内 `knowledge/<device>/*.db`** | 图谱库（二进制、`*.db` 不进 git；图谱插件的地盘） | ✅ `create_engineering_project` 经缝 B 的 `ingestDevice` 触发重建（D25） |
 | **workspace 内 `_dsh-eng/**`** | P2 指纹基线、变更集、P3 台账 | ⬜ **路径待定**：注册表随 D22 删除后，这一层还没有落脚点 |
 | ❌ `_dsh-eng/projects.json` | 工程注册表 + 唯一的"当前工程"指针 | **已删除**（D22）：唯一读者是本插件自己的 4 个工具 |
 | 宿主 `ctx.storageDomain`（可选、机器本地、可再生） | 目前**没有**用到 | ⬜ 作用域每次从 cwd 重新解析，不需要存 |
@@ -559,12 +624,13 @@ packages/dsh-engineering-context/
 │   ├── paths.ts          归一化、包含性校验、folderName（目录名安全化）
 │   ├── workspace.ts      作用域根解析 + **只读**的 workspaceRegistry 访问（按名取，不 import）
 │   ├── access.ts         `engineeringAccess` 服务客户端（按名取 + 防御性归一，D10）
+│   ├── knowledge-graph.ts `knowledgeGraph` 服务客户端（缝 B：按名取 + 归一 + 降级，D25）
 │   ├── scope.ts          作用域 + 路径存在性 + warning
 │   ├── dsh-runtime.d.ts  手写环境声明（含 exec.agent.session.header.cwd 与 RawJsonSchema）
 │   └── tools/            outcome.ts（共用信封）/ create-project.ts / index.ts
 ├── scripts/              link-dsh-runtime.mjs（**从不抽取**缓存）/ tsc.mjs / run-tests.mjs
 ├── docs/                 本文 / PATH-RULES.md / decisions.md
-└── test/                 node:test（37 项）+ helpers/harness.mjs
+└── test/                 node:test（56 项）+ helpers/harness.mjs
 ```
 
 **已删除**（D22）：`src/registry.ts`（工程注册表）、`src/git.ts`（内部 git 版本层）、
@@ -605,13 +671,13 @@ packages/dsh-engineering-context/
 | 期 | 做什么 | 依赖 | 独立交付的价值 | 状态 |
 |---|---|---|---|---|
 | ❌ **P0 / P1** | ~~作用域 + 工程注册表（`eng_status`/`eng_project`/`eng_scope`）+ 版本层（`eng_version`）~~ | — | — | **已删除**（D22） |
-| **create** | `create_engineering_project`：打开/另存进 `tia/`、重建源文件树到 `source/<device>/`，默认只给计划 | 缝 A ✅ 已就绪（接口插件族的 `engineeringAccess`） | **A5 的流程第一次能跑通**：工程进 workspace、源文件读出来 | ✅ **已实现**（37 项测试） |
+| **create** | `create_engineering_project`：打开/另存进 `tia/`、重建源文件树到 `source/<device>/`、逐设备重建图谱库到 `knowledge/<device>/`，默认只给计划 | 缝 A ✅ 已就绪（接口插件族的 `engineeringAccess`）；缝 B ✅ 已就绪（图谱插件的 `knowledgeGraph`，缺席即降级） | **A5 的流程第一次能跑通**：工程进 workspace、源文件读出来、块逻辑进图谱库 | ✅ **已实现**（56 项测试） |
 | **P2** | 变更引擎（`eng_changes` / `eng_export`）+ 增量闭环 | 缝 A ✅ 已就绪；指纹可得性已由**用户在另一代码库**验证 | D6/D9 的工作循环 | ⬜ |
 | **P3** | 变更台账（`eng_context`）+ 项目级 skill | P2 | 期望二 | ⬜ |
 
-**当前的实际产出**：`src/` 下 8 个模块 + `src/tools/` 下 4 个文件、`test/` 3 个测试文件
-（37 项，全通过、无跳过）、`scripts/` 3 个脚本。**没有** `ctx.effect` —— 本插件不持有任何
-自有资源（不起子进程、不开句柄），所以 `apply` 注册完工具就返回。
+**当前的实际产出**：`src/` 下 9 个模块 + `src/tools/` 下 4 个文件、`test/` 4 个测试文件
+（56 项，全通过、无跳过）、`scripts/` 3 个脚本。**没有** `ctx.effect` —— 本插件不持有任何
+自有资源（不起子进程、不开句柄），所以 `apply` 注册完工具就返回（图谱引擎的子进程归图谱插件持有）。
 **没有** `skills/`：文档交付物（D4 三问）在 P3 与项目级 skill 一起做，现在的三问写在工具描述里。
 
 ### 验收口径（对齐 `docs/roadmap.md` §3）
@@ -624,6 +690,7 @@ packages/dsh-engineering-context/
 | **变更不漏报不误报** | stub 控制器喂录制的指纹：未改动 → `changed = 0`；只改注释 → 只报 `Comments`；只改代码 → 只报 `Code` | ✅（fixture） | ⬜ P2 |
 | 增量可验证 | 改一个块后，导出集合 **==** 指纹报告的集合（D9 闭环） | ⚠️ 需真机 | ⬜ P2 |
 | 失效可感知 | TIA 拒绝另存 → `save_failed`；重建失败 → `rebuild_failed` 并说明"哪一半已经落盘"；被拒对象逐条回报 | ✅ | ✅ 已测 |
+| **图谱可缺席** | 无 `knowledgeGraph` 服务 / 引擎未构建 / 引擎超时 → 工作流仍 `ok:true`，只报"图谱未建成"并给出原因；引擎拒绝 → 逐设备 `error.code` + remediation | ✅ | ✅ 已测（`test/02` 工具级 + `test/04` 缝 B 级） |
 | 上下文预算 | 每个工具结果 ≤4KB；工具目录开销可复算 | ✅ | ✅ 列表封顶 20 行、细节封顶 40 行 |
 
 测试形态：**`node:test`**（与 `dsh-tia-openness-v17-min` 一致），断言跑在**真实**运行时上 ——
@@ -645,7 +712,8 @@ packages/dsh-engineering-context/
 
 ## 12. 非目标
 
-- ❌ 不解析 XML、不建图（工程知识图谱插件）。
+- ❌ 不解析 XML、不建图（工程知识图谱插件）。本插件只在导出完成后**触发**它的建库服务
+  （缝 B，§5.3.1），不读它的库、不解析它的输出。
 - ❌ 不自己起控制器、不直接调 Openness（接口插件族；且一宿主只允许一个控制器，D2）。
 - ❌ 不重做宿主的 workspace/session 分组，也不改宿主的 workspace 记录。
 - ❌ 不复用 `todo_write` 承载工程变更台账，也不复用 `ctx.workspaceChanges` 当工程级变更检测。

@@ -158,3 +158,29 @@ export const SOURCE_INDEX_FILE = '_dsh-engineering-context.json'
 export function tiaIgnoreRule(config: PluginConfig): string {
   return `${config.tiaDirName}/`
 }
+
+/**
+ * The directory the engineering-graph plugin writes one database per device into,
+ * beside the source tree (`<project root>/knowledge/<device>/<device>_knowledge.db`,
+ * distribution D20, `docs/decisions.md`).
+ *
+ * It is **not** configurable here: the layout belongs to the plugin that writes
+ * it (and the `knowledgeGraph` service derives it from the device directory this
+ * plugin passes). This plugin only needs the name to keep the databases out of
+ * version control.
+ */
+export const KNOWLEDGE_DIR_NAME = 'knowledge'
+
+/**
+ * The `.gitignore` line that keeps generated knowledge databases out of git.
+ *
+ * The trailing `*` is deliberate: it covers SQLite's own side files
+ * (`<db>-wal`, `<db>-shm`, `<db>-journal`), which a killed or timed-out ingest
+ * can leave behind next to the database. Only database files are ignored, not
+ * `knowledge/` itself: the directory is where the graph plugin puts everything it
+ * generates per device, and a future text artifact there has as much right to be
+ * versioned as the source tree beside it.
+ */
+export function knowledgeIgnoreRule(): string {
+  return `${KNOWLEDGE_DIR_NAME}/**/*.db*`
+}

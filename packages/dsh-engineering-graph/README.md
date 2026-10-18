@@ -3,15 +3,16 @@
 DeepSeek Harness 插件（**工程知识图谱插件**）：在工程产物（块逻辑、交叉引用等）之上
 建立可查询的知识图谱。
 
-> **实现状态：TypeScript 半边已接通引擎。**
+> **实现状态：TypeScript 半边已接通引擎，并已登记进蓝图。**
 > 本包导出 `name` / `inject` / `Config` / `apply` / `resolveConfig` / `resolveEnginePath` /
-> `EngineClient` / `registerTools`，注册**三个工具**（`knowledge_schema`、
-> `knowledge_ingest`、`knowledge_query`），并由 `ctx.effect` 持有引擎子进程（**首次请求时**
-> 才启动，卸载时 `stop()`）。
+> `EngineClient` / `registerTools` / `KnowledgeGraph`，注册**三个工具**（`knowledge_schema`、
+> `knowledge_ingest`、`knowledge_query`）与**一个 cordis 服务** `knowledgeGraph`，并由 `ctx.effect`
+> 持有引擎子进程（**首次请求时**才启动，卸载时 `stop()`）。
 > C# 引擎（`engine/`，`EngineeringGraph.Engine`）由另一条工作线 vendoring 进来；
 > 引擎缺席时插件照常加载并注册工具，只打一条警告，每次调用以 `engine_not_found` 失败（见 §2）。
-> 本包**尚未**登记进 `profile/dsh-automation-suite/` 的 `dsh.profile.bundles` ——
-> 按约定，等验收通过后再登记。
+> 已登记进 `profile/dsh-automation-suite/` 的 `dsh.profile.bundles`，并已被族 2 的工作流消费：
+> 工程上下文插件的 `create_engineering_project` 在导出完成后逐设备调用 `knowledgeGraph.ingestDevice`
+> （族 2 的 D25；那一步是软的 —— 本包缺席或引擎不可达只报"图谱未建成"，不让它的流程失败）。
 
 ---
 
@@ -22,12 +23,14 @@ DeepSeek Harness 插件（**工程知识图谱插件**）：在工程产物（�
 | **引擎** | 本包内 vendored 的 C# 可执行文件 `engine/bin/EngineeringGraph.Engine.exe`（默认位置见 §3） |
 | **插件** | 本目录的 TypeScript 外壳：解析配置、定位引擎、持有引擎子进程的生命周期（`EngineClient` + `ctx.effect`） |
 | **工具面** | 三个工具：`knowledge_schema` / `knowledge_ingest` / `knowledge_query`（见 §4） |
+| **服务面** | 一个 cordis 服务 `knowledgeGraph`（`src/service.ts`）：`status()` + `ingestDevice(deviceDir, opts?)`。它是给**另一个插件**用的缝（族 2 的 `create_engineering_project` 在导出后逐设备调用它），工具与它共用同一套请求与信封转换，所以两边永远不会对默认值或错误形状各说各话 |
 
 工具名刻意保留来源库（`Tools/KnowledgeTools.cs`）的 `knowledge_*` 命名，而不是本仓
 verb_noun 风格：改名会静默打断按旧名字写的提示词与调用方。
 
 与接口插件族/工程上下文插件的分工：接口插件族（`dsh-tia-openness-v17-min`）是唯一允许打开 TIA Portal 的插件；
-工程上下文插件（`dsh-engineering-context`）管"现在谈的是哪个工程、哪一版"；本包只消费导出的工程产物，
+工程上下文插件（`dsh-engineering-context`）管"现在谈的是哪个工程、哪一版"，并在导出完成后
+经 `knowledgeGraph` 服务触发本包建库；本包只消费导出的工程产物，
 不直接调用 Openness、不启动 TIA Portal。
 
 ## 2. 引擎缺席时的行为（硬约束）
@@ -52,6 +55,25 @@ spawn（`apply` 不预热，所以缺引擎时加载没有任何副作用），�
 | `knowledge_schema` | `GetSchema` | 图谱 schema：DDL、节点种类、边类型、示例查询 | 否 |
 | `knowledge_ingest` | `Ingest` | 爬取导出目录 → 解析成图 → 写入 SQLite（**整库重建**） | 写 `.db` |
 | `knowledge_query` | `Query` | 单条只读 `SELECT`/`WITH`/`EXPLAIN` | 否 |
+
+**服务面 `knowledgeGraph`**（`src/service.ts`，供族 2 的 `create_engineering_project` 调用）走的是同一套
+`runOperation` + `outcomeOf`，只是没有工具 schema：
+
+- `status()` → `{ available, reason, enginePath, engineExists, source, databaseConvention }`。
+  `available:false` 表示引擎可执行文件不在（`status()` **从不启动它**），调用方应只报"图谱未建成"；
+- `ingestDevice(deviceDir, { dbPath?, signal?, onProgress? })` → 上面那个规范信封，
+  `data` 含 `device` / `dbPath` / `source` / `filesFound` / `filesImported` / `nodes` / `edges` /
+  `byKind` / `warnings[]`（`warnings` 里含清单的 `failures[]`，即 TIA 拒绝导出的对象）。
+  省略 `dbPath` 时库写到 `<项目根>/knowledge/<设备名>/<设备名>_knowledge.db`（由设备目录往上两级推出）。
+  它是**全量重建**、没有新鲜度/增量，所以"每次导出后调一次"是唯一的刷新方式；
+  实测 1376 个源文件约 30 s、库约 450 MB。库不进 git：本包自身的 `.gitignore` 挡包内残留，
+  **工作区**那一侧由族 2 维护 `knowledge/**/*.db*`（含 SQLite 的 `-wal` / `-shm` / `-journal`，
+  见族 2 D25）。
+
+操作失败是**数据**：`ok:false` + `error.code`（`DEVICE_DIR_REQUIRED` / `DEVICE_DIR_NOT_FOUND` /
+`NO_SOURCE_FILES` / `MANIFEST_INVALID`），`error.details.remediation` 写着下一步；
+只有传输层失败（引擎 exe 不在、握手/请求超时、进程中途退出、协议不匹配）才抛错 —— 消费方据此
+把"引擎不可达"与"引擎拒绝了这次建库"分开处理。
 
 每个工具返回同一个 canonical 信封：
 

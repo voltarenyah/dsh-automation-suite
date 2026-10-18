@@ -53,6 +53,11 @@ test('the tool answers the three questions a model needs', () => {
   for (const definition of definitions) {
     assert.ok(definition.description.length > 200, `${definition.name} needs a substantive description`)
     assert.match(definition.description, /dry_run: true/u, 'the plan-by-default rule belongs in the description')
+    assert.match(
+      definition.description,
+      /knowledge database/u,
+      'the knowledge-graph step (and that it never fails the call) belongs in the description',
+    )
     assert.equal(typeof definition.output.render, 'function')
 
     const rendered = renderedText(definition, {}, {

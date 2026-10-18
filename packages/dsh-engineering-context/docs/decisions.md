@@ -9,10 +9,10 @@
 >
 > ⚠️ **2026-10 起：本文的 P0 / P1 条目是历史记录。** D22 删除了 4 个工具
 > （`eng_status` / `eng_project` / `eng_scope` / `eng_version`）与它们下面的两层
-> （`_dsh-eng/projects.json` 注册表、内部 git 版本层），现行布局是 `tia/` + `source/`，
-> 模型面只有 `create_engineering_project`。凡涉及那 4 个工具、注册表、`current` 指针、
+> （`_dsh-eng/projects.json` 注册表、内部 git 版本层），现行布局是 `tia/` + `source/` +
+> `knowledge/`，模型面只有 `create_engineering_project`。凡涉及那 4 个工具、注册表、`current` 指针、
 > 内部 git、`projects/<id>/…` 路径的条目**均已失效**；现行口径以
-> [`PATH-RULES.md`](PATH-RULES.md) 与 **D22** 为准。
+> [`PATH-RULES.md`](PATH-RULES.md) 与 **D22 / D23 / D24 / D25** 为准。
 
 ---
 
@@ -666,3 +666,63 @@ workspace"。
 
 **验证**：`test/02-create-project.test.mjs` 的路径断言全部改为 `tia/<workspace 名>`；
 夹具的另存响应补上 `projectName`（= 目录名），据此断言改名 warning 出现。**35/35 全通过**。
+
+---
+
+## D25. 导出之后接上【缝 B】：逐设备重建图谱库，且这一步**必须是软的**
+
+**背景**（使用者 2026-10 的剩余工作清单）：`dsh-engineering-graph` 已登记进蓝图，除了 3 个工具还注册了
+cordis 服务 `knowledgeGraph`；`create_engineering_project` 写完源文件树后应逐设备调用它，把程序块逻辑
+转译进 `knowledge.db`。给出的事实：服务要**按名取、不 import**；`rebuildSource` 返回的
+`devices[].directory` 就是要传的 `device_dir`；省略 `dbPath` 时库落在
+`<项目根>/knowledge/<设备名>/<设备名>_knowledge.db`；`ok:false` 是数据、传输失败才抛；
+它是**全量重建**、没有新鲜度/增量，所以"每次导出后调一次"是唯一的刷新方式；
+实测 1376 个源文件约 30 s、库约 450 MB；工作区 `.gitignore` 要加 `knowledge/**/*.db`（后来定为
+`knowledge/**/*.db*`，见决定 8）。
+
+**决定**：
+
+1. **缝 B 与缝 A 同形**（D10 的规则复用）：`ctx.get('knowledgeGraph')` 按名取服务，
+   契约形状在 `src/knowledge-graph.ts` 里自行声明并**归一**，**不 import** 图谱插件；
+   服务缺席、形状漂移（缺 `status`/`ingestDevice`）都当作"没有图谱"。
+2. **一次调用一个设备**，`deviceDir` 直接用缝 A 返回的 `devices[].directory`，**不传 `dbPath`** ——
+   目录与库位都是提供方定死的约定，本插件不自己拼；结果里如实带回 `data.dbPath`。
+3. **这一步不参与成败**。三种情形都只报"图谱未建成"：① 组合里没有该服务；②
+   `status().available === false`（引擎没构建）；③ `status()` 抛错或 `ingestDevice` 抛传输错误
+   （exe 不见了、超时、进程中途退出）。工作流仍然 `ok:true` —— 它承诺的是工程与源文件树，
+   图谱是加分项。**唯一的例外是调用被取消**：那时异常向上抛，取消过的调用绝不能被报成完成。
+4. **`ok:false` 是数据，逐设备如实报**：`error.code` + `error.message` + `error.details.remediation`
+   进结果与 warning（"下一步做什么"就在信封里，丢掉等于让模型自己猜）。
+   `data.warnings[]`（含清单里的 `failures[]`，即 TIA 拒绝导出的对象）转成工作流诊断，
+   封顶 10 条并给出余量计数，**全量**留在 `data.knowledge.devices[].warnings`。
+5. **`ok:true` 但 `data` 不是对象 → 判为失败**（合成的 `knowledge_envelope_invalid`）。
+   给一个"0 节点、没有库路径"的成功报告，是对一个可能真的存在的图谱说假话 ——
+   这正是缝 A 已经写明的"宁可降级，也不要看起来合理的错答案"。
+6. **每次真实运行都调**，包括"所有文件都已存在"的刷新路径：没有增量，重跑是唯一的刷新方式。
+   没有设备目录时状态是 `empty`，不是失败。
+7. **超时算在提供方那一侧**：本插件不新增自己的超时配置，也不给工具加 `timeoutMs`；
+   单台设备的建库时间由**图谱插件的 `requestTimeoutMs`**（默认 300 s）兜底。实测 30 s 有 10 倍余量，
+   但这个数字**不能**被当成上限写死 —— 工具描述里已写明这一步"adds real time on a large project"。
+8. **`.gitignore` 从一条规则变成一张表**：`tia/` 与 `knowledge/**/*.db*`。尾随的 `*` 是刻意的 ——
+   它连 SQLite 自己的旁挂文件（`-wal` / `-shm` / `-journal`）一起挡住：建库被超时杀掉时它们会留在
+   `.db` 旁边，而它们和 `.db` 一样是本地派生品。**只忽略数据库文件，不忽略整个 `knowledge/`**：
+   那是图谱插件的地盘，将来它在那里写出的文本产物与 `source/` 同样该入库。
+   写入语义不变（缺则创建、有则只追加缺的那行、绝不重写用户内容；`tia/`、`/tia/`、`tia` 三种写法都算已有；
+   已经写了窄规则 `knowledge/**/*.db` 的工作区会被补上带 `*` 的那一行，旧的窄行留在原处）。
+   仓库自身的根 `.gitignore` 也加了这两行，所以在这个仓库里**直调 `knowledge_ingest`**（不经工作流）同样安全。
+
+**为什么不让图谱失败拖垮工作流**：导出与建图是**两件不同价值**的事，而且失败原因常常在环境
+（引擎没 `dotnet build`、exe 被删、超时）。让一个已经成功落盘的源文件树因为图形化的派生品失败而报
+`ok:false`，会让模型去重试整个保存/导出流程 —— 那是真实世界里最贵的操作。图谱状态在 summary、
+`data.knowledge`、warning 三处**都**可见，不存在"悄悄没建"。
+
+**代价（必须承认）**：① 这一步让一次真实运行变长（大工程分钟级），所以调用方的整体时间预算要留够；
+② 没有新鲜度检测，图谱与源文件树可能不一致（改了 `source/` 却没重跑）；
+③ 图谱的 manifest 拒绝对象与缝 A 的 `failures` 会**重复出现**在 warning 里 —— 两份都来自同一份清单，
+两个插件各自如实报；宁可重复，也不做跨插件的去重（那需要一个两边都维护的匹配规则）。
+
+**验证**：`test/02-create-project.test.mjs` 新增 7 项（逐设备调用顺序与 `deviceDir`、省略 `dbPath`、
+服务缺席、引擎未构建、`ok:false` 的 code/remediation、传输失败降级、nothingWritten 仍调用、
+计划不碰服务），`test/04-knowledge-graph.test.mjs` 新增 12 项（按名取与形状漂移、四种降级、
+规范化、上限、取消重抛）。本包 **37 → 56 项全通过、无跳过**。
+（D22/D23 里"37 项"是各自当时的数字，保留不改。）

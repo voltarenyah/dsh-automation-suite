@@ -453,16 +453,18 @@ stdio 通道实测：`ready` 帧列出三个操作，`GetSchema` 返回 34 字�
 - `knowledge/` 与 `source/` **同级**；一台设备一个文件夹，装它自己的**全部**生成物；
 - `knowledge_ingest` 的 `device_dir` 指向 `<项目根>/source/<设备>`，路径由设备目录**往上两级**推出，
   所以与工作区叫什么无关；显式传 `db_path` 时以传入为准；
-- **`*.db` 不进 git**（包内 `.gitignore` 已含 `*.db` / `*.db-wal` / `*.db-shm`）。
-  ⚠️ 工作区自己的 `.gitignore`（写 `tia/` 的那一处）**还需要加 `knowledge/**/*.db`** ——
-  那属于族 2 的写入范围，本轮按"族 2 先不改"未动。
+- **`*.db` 不进 git**（包内 `.gitignore` 已含 `*.db` / `*.db-wal` / `*.db-shm` / `*.db-journal`）。
+  ✅ 工作区自己的 `.gitignore`（写 `tia/` 的那一处）**已加上 `knowledge/**/*.db*`** ——
+  它是族 2 的写入范围，随族 2 **D25** 的接入一起做。尾随的 `*` 是刻意的：它把 SQLite 自己的
+  旁挂文件（`-wal` / `-shm` / `-journal`，建库被超时杀掉时会留下）一起挡住 —— 只忽略数据库文件，
+  不忽略整个 `knowledge/`，因为目录里将来的文本产物与 `source/` 有同样的入库理由。
 
 **验证**：临时树实测 `…/source/Sino_PEI` → `…/knowledge/Sino_PEI/Sino_PEI_knowledge.db`，返回 `device=Sino_PEI`；
 真实工程 `source/Sino_PEI` **1376 个源文件全部入库**（29.5 s），**117,922 节点 / 287,620 边**，库 **450 MB**。
 
 ---
 
-## D21 · 族 3 暴露 `knowledgeGraph` 服务（族 2 的接缝）🟡
+## D21 · 族 3 暴露 `knowledgeGraph` 服务（族 2 的接缝）✅
 
 **背景**：目标是让 ingest 嵌进 `create_engineering_project` 工作流。只提供工具的话，就得指望模型
 "记得"导出后再调一次 —— 不确定、可能漏。
@@ -477,15 +479,23 @@ stdio 通道实测：`ready` 帧列出三个操作，`GetSchema` 返回 34 字�
 - **与工具走同一条转换**（`outcomeOf`），所以服务与 `knowledge_ingest` 不可能在默认值或错误形状上分歧。
 - **操作失败是数据，传输失败才抛**：缺目录 / 清单读不了 → `ok:false` + `error.code`；找不到引擎、超时 → 抛。
 
-**族 2 侧（本轮未改，按"先暴露、后核对"）**：`ctx.get('knowledgeGraph')`，缺席即降级并报"图谱未建成"；
-`create_engineering_project` 写完源树后按族 1 `rebuildSource` 返回的 `devices[].directory`
-**逐设备**调用即可 —— 那个目录正是 `device_dir`，不需要自己拼路径。
+**族 2 侧（✅ 已接入，见族 2 的 [`docs/decisions.md` D25](../packages/dsh-engineering-context/docs/decisions.md)）**：
+`ctx.get('knowledgeGraph')`，缺席即降级并报"图谱未建成"；`create_engineering_project` 写完源树后按族 1
+`rebuildSource` 返回的 `devices[].directory` **逐设备**调用，那个目录就是 `device_dir`
+（不自己拼路径，也**不传 `dbPath`**，因为库的位置是本服务自己的约定）。这一步是**软的**：
+服务缺席 / 引擎未构建 / 引擎不可达都只报"图谱未建成"，工作流照常成功；`ok:false` 逐设备带上
+`error.code` 与 `error.details.remediation`，`data.warnings[]`（含清单 `failures[]`）转成工作流诊断。
+它是**全量重建**、没有新鲜度/增量，所以"每次导出后调一次"是唯一的刷新方式
+（实测 1376 个源文件约 30 s、库约 450 MB —— 那一次的服务调用就把库建好了）。
 
 **验证**：`test/09-service-and-manifest.test.mjs` 断言服务在预期名字下注册、缺目录是**编码失败而非抛异常**、
 以及 **D24 清单树经服务入库**（`source=manifest`、id 无类别前缀、`folderPath` 是干净组路径、
 跨组 `CALLS` 指向真身、清单 `failures[]` 进 warnings、db 落在 D20 约定的位置）。
 该文件同时是**清单模式的第一个自动化回归测试** —— 在此之前所有测试都只走 crawl 兜底（扁平 fixtures），
 清单路径只有手工证据，这正是上一轮"跨组调用落到占位符"能藏住的原因。
+**族 2 侧的接入**由 `packages/dsh-engineering-context/test/02-create-project.test.mjs`（工具级）与
+`test/04-knowledge-graph.test.mjs`（缝 B 级）的 19 项新用例覆盖（顺序、`device_dir`、省略 `dbPath`、
+四种降级、`ok:false` 的 code/remediation、清单 warning 上限、取消重抛）。
 
 ---
 

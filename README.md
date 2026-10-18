@@ -90,8 +90,8 @@
 | 名称 | 对应层 | 负责什么 | 现状 |
 |---|---|---|---|
 | **工控软件接口插件族**<br>（以 TIA 为例即 `tia-openness`；按**软件版本 × 能力层级**切分：V17/V18… × **min/std/pro**） | ① 接入层 | 与工控软件对接、**读写工程对象**；为后续分析提供**素材**与**验证工具**；并**附带文档**说清每个能力"何时调用 / 怎么调用 / 调用后的数据怎么用" | 🟡 已有 **V17 × min**（定位是验证基础功能） |
-| **工程上下文插件** | 作用域（横向） | 管住用户的**多个 TIA 项目 × 多个分支 × 多个历史版本**；对工程对象做优化适配（路径内容、变更识别与跟进）；用**「待办清单」式工具承载工程变更上下文**，在合适的时候交给 LLM 辅助判断用户意图；版本间变更明确易读、工程对象可交叉关联 | 🟡 部分实现（P0：作用域 + 工程注册表，3 个工具；**已登记进蓝图**，见 [`packages/dsh-engineering-context/docs/`](packages/dsh-engineering-context/docs/)） |
-| **工程知识图谱插件** | ② 语义层 | **准确翻译 XML 中的 PLC 语法**（兼容性强）：解析工程源文件 → **建立图数据库** → 暴露接口给出工程细节 | 🟡 部分实现（引擎 + 协议 + 3 个工具；**已登记进蓝图**） |
+| **工程上下文插件** | 作用域（横向） | 管住用户的**多个 TIA 项目 × 多个分支 × 多个历史版本**；对工程对象做优化适配（路径内容、变更识别与跟进）；用**「待办清单」式工具承载工程变更上下文**，在合适的时候交给 LLM 辅助判断用户意图；版本间变更明确易读、工程对象可交叉关联 | 🟡 部分实现（唯一工具 `create_engineering_project`：另存 + 重建源文件树 + 经【缝 B】逐设备触发图谱建库，56 项单测；指纹变更检测/变更台账未做；**已登记进蓝图**，见 [`packages/dsh-engineering-context/docs/`](packages/dsh-engineering-context/docs/)） |
+| **工程知识图谱插件** | ② 语义层 | **准确翻译 XML 中的 PLC 语法**（兼容性强）：解析工程源文件 → **建立图数据库** → 暴露接口给出工程细节 | 🟡 部分实现（引擎 + 协议 + 3 个工具 + `knowledgeGraph` 服务，49 项单测；**已登记进蓝图**，并被族 2 的工作流调用） |
 
 插件不再编号：**只有接口插件族是"一族多成员"**（成员 = 软件版本 × 能力层级），工程上下文插件与
 工程知识图谱插件都是**单一插件**。编号只保留给 [`docs/vision.md`](docs/vision.md) §3 的**层**
@@ -168,8 +168,8 @@ PLC 对象增删改、监视表与软件单元、F 相关服务、编译与关�
 | 插件 | 目标 | 状态 |
 |---|---|---|
 | **工控软件接口插件族** | 把工控软件暴露的能力整体变成 LLM 的能力范围（含配套文档） | 🟡 **V17 × min**（块·UDT·标签表）；std/pro 能力层级与 V18+ 待补 |
-| **工程上下文插件** | 管住"现在谈的是哪个工程、它在 workspace 的哪里" | 🟡 **部分实现**：`create_engineering_project` 一个工具（37 项单测）—— 把 TIA 打开的工程另存进 workspace、把源文件树读出来；指纹变更检测/变更台账未做。P0 的工程注册表与 P1 的内部 git 版本层**已删除**（该包 D22）。**已登记进蓝图**（`--dump-config` 实测 1520 行） |
-| **工程知识图谱插件** | 准确翻译 XML 中的 PLC 语法，XML → 图数据库 → 按需给出工程细节 | 🟡 **部分实现**：Simatic ML → 图 → SQLite 已通（7 个真实 fixture 出 72 节点 / 153 边，覆盖 15 种节点种类），引擎协议 + 3 个工具（49 项单测，含经真实引擎的端到端）；**新鲜度/增量、按需下钻工具、兼容层未做**。**已登记进蓝图** |
+| **工程上下文插件** | 管住"现在谈的是哪个工程、它在 workspace 的哪里、里面是什么" | 🟡 **部分实现**：`create_engineering_project` 一个工具（56 项单测）—— 把 TIA 打开的工程另存进 workspace、把源文件树读出来、再经【缝 B】逐设备触发知识图谱建库（`knowledge/<device>/*.db`）；图谱缺席/引擎未构建只报"图谱未建成"，不让流程失败。指纹变更检测/变更台账未做。P0 的工程注册表与 P1 的内部 git 版本层**已删除**（该包 D22）。**已登记进蓝图**（`--dump-config` 实测 1520 行） |
+| **工程知识图谱插件** | 准确翻译 XML 中的 PLC 语法，XML → 图数据库 → 按需给出工程细节 | 🟡 **部分实现**：Simatic ML → 图 → SQLite 已通（7 个真实 fixture 出 72 节点 / 153 边，覆盖 15 种节点种类），引擎协议 + 3 个工具 + `knowledgeGraph` 服务（49 项单测，含经真实引擎的端到端）；**被族 2 的 `create_engineering_project` 调用**（该包 D25）。**新鲜度/增量、按需下钻工具、兼容层未做**。**已登记进蓝图** |
 
 逐项进度、缺口与验收口径见 [`docs/roadmap.md`](docs/roadmap.md)；
 已定的取舍见 [`docs/decisions.md`](docs/decisions.md)，**34 条待决策问题在
@@ -184,8 +184,8 @@ PLC 对象增删改、监视表与软件单元、F 相关服务、编译与关�
 |---|---|---|---|
 | `@voltarenyah/dsh-tia-openness-v17-min` | 插件 bundle | 0.1.0 | **26 个工具**：工程生命周期与工程数据 8（`create_project` / `save_project` / `archive_project` / `project_info` / `project_languages` / `project_texts` / `update_project` / `portal_settings`）、PLC 设备数据 9（`list_plc_objects` / `create_plc_objects` / `delete_plc_objects` / `write_tags` / `set_block_attributes` / `protect_blocks` / `generate_source` / `watch_and_force_tables` / `software_units`）、F 相关 3（`safety_status` / `set_safety_settings` / `safety_signatures`）、块读写主线 5 + `controller_status`；外加 1 个随包出货的知识库 skill。v0.2 的 20 个新操作**尚未在真实项目上验证**（见该包 `docs/VERIFICATION-PLAN.md`） |
 | `dsh-tool-git` | 插件 bundle（vendor） | 0.1.3 | **12 个工具**：`git_status` / `git_diff` / `git_log` / `git_branch` / `git_stage` / `git_commit` / `git_stash` / `git_show` / `git_fetch` / `git_pull` / `git_remote` / `git_checkout`；外加破坏性命令闸门 |
-| `@voltarenyah/dsh-engineering-context` | 插件 bundle | 0.1.0 | **1 个工具**：`create_engineering_project` —— 把 TIA 当前打开的工程另存进 `<workspace>/tia/<项目名>/`、把源文件树重建到 `<workspace>/source/<项目名>/`，默认只给计划（`dry_run: true`）；工具参数里没有路径，全部由 workspace 根 + 配置目录名 + TIA 的项目名推出。**未实现**：指纹变更检测、变更台账。**已删除**：P0 的工程注册表（`_dsh-eng/projects.json`）与 P1 的内部 git 版本层，以及 `eng_status` / `eng_project` / `eng_scope` / `eng_version` 四个工具（该包 D22） |
-| `@voltarenyah/dsh-engineering-graph` | 插件 bundle | 0.1.0 | **3 个工具**（`knowledge_schema` / `knowledge_ingest` / `knowledge_query`）—— Simatic ML XML → 属性图 → SQLite，引擎以 net8 子进程运行（`engine/`）。**未实现**：新鲜度/增量更新、按需下钻工具（某个块、某变量用法）、兼容层。**已登记进蓝图**，所以这 3 个工具在本会话里可用；数据库位置与目录约定见 [`docs/roadmap.md`](docs/roadmap.md) §4 |
+| `@voltarenyah/dsh-engineering-context` | 插件 bundle | 0.1.0 | **1 个工具**：`create_engineering_project` —— 把 TIA 当前打开的工程另存进 `<workspace>/tia/<workspace 名>/`、把源文件树重建到 `<workspace>/source/<device>/`，再经【缝 B】逐设备调用图谱插件的 `knowledgeGraph.ingestDevice`（库落在 `<workspace>/knowledge/<device>/<device>_knowledge.db`），默认只给计划（`dry_run: true`）；工具参数里没有路径，全部由 workspace 根 + 配置目录名 + TIA 的报告推出。图谱这一步**不参与成败**：服务缺席/引擎未构建/引擎不可达只报"图谱未建成"。`.gitignore` 只追加 `tia/` 与 `knowledge/**/*.db*` 两行（尾随的 `*` 连 SQLite 的 `-wal` / `-shm` / `-journal` 旁挂文件一起挡）。**未实现**：指纹变更检测、变更台账。**已删除**：P0 的工程注册表（`_dsh-eng/projects.json`）与 P1 的内部 git 版本层，以及 `eng_status` / `eng_project` / `eng_scope` / `eng_version` 四个工具（该包 D22、图谱这一步见 D25） |
+| `@voltarenyah/dsh-engineering-graph` | 插件 bundle | 0.1.0 | **3 个工具**（`knowledge_schema` / `knowledge_ingest` / `knowledge_query`）+ 1 个 cordis 服务（`knowledgeGraph`，供族 2 的 `create_engineering_project` 逐设备调用）—— Simatic ML XML → 属性图 → SQLite，引擎以 net8 子进程运行（`engine/`）。**未实现**：新鲜度/增量更新、按需下钻工具（某个块、某变量用法）、兼容层。**已登记进蓝图**，所以这 3 个工具在本会话里可用；数据库位置与目录约定见 [`docs/roadmap.md`](docs/roadmap.md) §4 |
 | `profile/dsh-automation-suite` | profile 蓝图 | 0.1.0 | 把官方 Web 组合（`dsh-base` + `dsh-web-app`）与上面的本地插件叠成一个可直接启动的 profile |
 | `scripts/start-env.ps1` | 启动器 | — | 一条命令完成"物化 profile + 装插件 + 起服务 + 带 token 开浏览器" |
 | `scripts/clean-build.mjs` | 工具 | — | 只清理 `lib/`、`dist/`，遇链接只 unlink、不递归下降 |
@@ -585,13 +585,13 @@ packages/
     src/safety.ts                  tools/pre-execute 破坏性命令闸门
     tests/                         vitest 套件（33 项）
     README.md / README.zh.md       上游 README（英/中）
-  dsh-engineering-context/         工程上下文插件：**已登记进蓝图；1 个工具（D22）**
-    src/                           作用域解析、工程注册表、版本层（内部 git）、4 个工作流工具（tsc → lib/）
-    test/                          node:test 套件（37 项，假 TIA 服务 + 真实运行时 schema 校验）
+  dsh-engineering-context/         工程上下文插件：**已登记进蓝图；1 个工具（D22）+ 缝 B 的图谱建库（D25）**
+    src/                           作用域解析、缝 A（engineeringAccess）、缝 B（knowledgeGraph）、1 个工作流工具（tsc → lib/）
+    test/                          node:test 套件（56 项，假 TIA/图谱服务 + 真实运行时 schema 校验）
     scripts/                       link-dsh-runtime.mjs / tsc.mjs / run-tests.mjs
     docs/                          ARCHITECTURE.md / PATH-RULES.md / decisions.md
-  dsh-engineering-graph/           工程知识图谱插件：**引擎 + 协议 + 3 个工具已实现并登记进蓝图**
-    src/                           NDJSON 协议客户端、3 个知识工具（tsc → lib/）
+  dsh-engineering-graph/           工程知识图谱插件：**引擎 + 协议 + 3 个工具 + knowledgeGraph 服务，已登记进蓝图**
+    src/                           NDJSON 协议客户端、3 个知识工具、knowledgeGraph 服务（tsc → lib/）
     test/                          node:test 套件（49 项，含经真实引擎的端到端与传输层故障注入）
     engine/                        C# 引擎（net8 + Microsoft.Data.Sqlite）：Simatic ML → 图 → SQLite
                                    Graph/ Parsing/ Import/ 为 vendored（命名空间拍平，见 D17）；
@@ -629,13 +629,14 @@ pnpm test                 # 全仓测试
 pnpm run clean:build      # 清构建产物（只碰 lib/ dist/）
 ```
 
-两个插件用**不同的测试运行器**，`pnpm -r test` 会把三者都跑到：
+四个插件用**两种测试运行器**，`pnpm -r test` 会把四者都跑到：
 
 | 包 | 运行器 | 测试规模 |
 |---|---|---|
 | `dsh-tia-openness-v17-min` | `node:test`（`node --test test/*.test.mjs`） | 62 项：61 通过 / 1 跳过（跳过项是"控制器未构建"的降级路径） |
-| `dsh-tool-git` | `vitest`（`vitest run`） | 37 项全通过 |
-| `@voltarenyah/dsh-engineering-context` | `node:test`（`node scripts/run-tests.mjs`，先构建再跑） | 37 项全通过 |
+| `dsh-tool-git` | `vitest`（`vitest run`） | 33 项全通过 |
+| `@voltarenyah/dsh-engineering-context` | `node:test`（`node scripts/run-tests.mjs`，先构建再跑） | 56 项全通过（含经假 `engineeringAccess` / 假 `knowledgeGraph` 服务的契约用例） |
+| `@voltarenyah/dsh-engineering-graph` | `node:test`（`node scripts/run-tests.mjs`，先构建再跑） | 49 项全通过（含经真实引擎的端到端；引擎没构建时该项 skip 并打印构建命令） |
 
 单测都需要**真实的** `@deepseek-ai/*` 运行时（不是 stub）。裸 checkout 首次运行时，
 两个包的测试自举会各自自动触发抽取；也可以手动：

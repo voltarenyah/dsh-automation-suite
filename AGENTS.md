@@ -138,7 +138,7 @@ pnpm run clean:build      # 清构建产物（只碰 lib/ dist/）
 ## 4. 测试与验收
 
 ```powershell
-pnpm test          # 全仓：TIA 77 项（76 通过 / 1 跳过）+ dsh-tool-git 33 项 + engineering-context 37 项 + engineering-graph 49 项
+pnpm test          # 全仓：TIA 77 项（76 通过 / 1 跳过）+ dsh-tool-git 33 项 + engineering-context 56 项 + engineering-graph 49 项
 pnpm -r build
 pnpm -r typecheck
 ```
@@ -277,6 +277,9 @@ pwsh -NoProfile -File scripts\start-env.ps1
   "Add an API key to get started"）。凭据落在该 home 的 `.credentials.yaml`，与日常 home 无关。
 - 验收 TIA 工具前先把 `requestTimeoutMs` 调大：默认 300000（5 分钟），而实测导出 237 块要 87 s、
   编译大项目文档记的是"常需 10 分钟以上"。在 profile 的 `cordis.patch.yml` 里覆盖即可。
+  工程知识图谱插件**也有同名配置**（默认也是 300000），它管的是**单台设备建库**的截止时间：
+  实测 1376 个源文件约 30 s、库约 450 MB —— 所以大项目要么留够 300 s，要么把这一项一起调大；
+  这一步现在由 `create_engineering_project` 自动触发（见 §7）。
 - ⚠️ 用 `-Reset` 或手删该 home 时，**必须**用 `cmd /c rmdir /s /q`：里面 `link:` 与 pnpm 的
   junction 指向仓库和 pnpm store，跟进式递归删除会毁掉目标（见第 3 节）。
 
@@ -336,13 +339,17 @@ create_engineering_project({
 })
 ```
 
-它做三件事：TIA 打开源项目 → 把它**另存进当前工作区** `tia/<工作区名>/` → 把源树导出到 `source/`。
+它做四件事：TIA 打开源项目 → 把它**另存进当前工作区** `tia/<工作区名>/` → 把源树导出到 `source/`
+→ 逐设备把块逻辑转译进 `knowledge/<设备名>/<设备名>_knowledge.db`（经工程知识图谱插件的
+`knowledgeGraph` 服务；图谱插件不在、或它的引擎没构建时，这一步只报"图谱未建成"，流程照常成功）。
 之后的功能测试（`open_project` / `export_blocks` / `import_blocks` / `compile_plc` / `project_info` …）
 全部对这个**测试项目**做；源路径只是"从哪一份开始"的常量，记住它就够了。
 
 - **不要复制源项目，也不要在工作区之外建目录**（`C:\` 根下尤其不要：那是用户不知情的垃圾文件）。
-  目标目录由工作区根（会话 cwd）决定，工具不接受目标路径；`tia/` 会被写进工作区的 `.gitignore`。
-  本仓库里它落在 `tia/<工作区名>/`（目录名取工作区标题或文件夹名），源树在 `source/`。
+  目标目录由工作区根（会话 cwd）决定，工具不接受目标路径；`tia/` 与 `knowledge/**/*.db*`
+  （尾随 `*` 覆盖 SQLite 的 `-wal` / `-shm` / `-journal` 旁挂文件）会被写进工作区的 `.gitignore`。
+  本仓库里它落在 `tia/<工作区名>/`（目录名取工作区标题或文件夹名），
+  源树在 `source/`，图谱库在 `knowledge/<设备名>/`。
 - 一个工作区管一个工程：`source/_dsh-engineering-context.json` 记着这棵树属于哪个工程，
   换工程要先有意清掉，否则工具以 `source_belongs_to_another_project` 拒绝。
 - 源项目不会被改：工具不删、不改原工程文件，`SaveAs` 只改"控制器持有的位置"，源目录的文件仍在。
@@ -352,5 +359,7 @@ create_engineering_project({
 - 大工程慢：本项目实测 headless 打开 8.3 s（TIA 冷启动可到 70 s），导出上千块是分钟级
   （237 块用 87 s，见 §6 的超时提醒），编译"常需 10 分钟以上"。会话的 `requestTimeoutMs`
   先放大到 600000，超时未回不等于失败。
-- 这两个插件都要在会话里加载才可用；`Get-Process TiaOpennessV17Min.Controller` 有进程即说明接口插件
-  已加载（见 §6「怎么判断启动成功」）。
+- 这三个插件都要在会话里加载才可用（TIA 接口、工程上下文、工程知识图谱）；建库还要求图谱插件的引擎
+  `packages/dsh-engineering-graph/engine/bin/EngineeringGraph.Engine.exe` 存在 —— 它缺席时
+  `create_engineering_project` 只报"图谱未建成"，其余照常。`Get-Process TiaOpennessV17Min.Controller`
+  有进程即说明接口插件已加载（见 §6「怎么判断启动成功」）。

@@ -50,6 +50,11 @@ export async function loadPathsModule() {
   return await importBuilt('paths.js')
 }
 
+/** Load the built knowledge-graph seam (`lib/knowledge-graph.js`). */
+export async function loadKnowledgeGraphModule() {
+  return await importBuilt('knowledge-graph.js')
+}
+
 function makeLogger(logs, scope) {
   const push = (level) => (message) => logs.push({ scope, level, message })
   return { scope, debug: push('debug'), info: push('info'), warn: push('warn'), error: push('error') }

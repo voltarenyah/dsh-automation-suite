@@ -36,8 +36,17 @@ import {
   type OpenResult,
   type RebuildResult,
 } from '../access.js'
-import { projectDirectoryPath, sourceDirectoryPath, sourceIndexPath, tiaIgnoreRule } from '../config.js'
+import {
+  knowledgeIgnoreRule,
+  KNOWLEDGE_DIR_NAME,
+  projectDirectoryPath,
+  sourceDirectoryPath,
+  sourceIndexPath,
+  tiaIgnoreRule,
+  type PluginConfig,
+} from '../config.js'
 import { EngineeringContextError } from '../errors.js'
+import { ingestKnowledgeGraph, type KnowledgeIngestReport } from '../knowledge-graph.js'
 import { canonicalizeLoose, folderName, isInside, toPortable } from '../paths.js'
 import { assertInsideWith, describePath, resolveScope, type ResolvedScope } from '../scope.js'
 import type { ToolDependencies } from './deps.js'
@@ -82,18 +91,37 @@ const CREATE_PARAMETERS = {
 
 type CreateArgs = InferArgs<typeof CREATE_PARAMETERS>
 
-/** What the `.gitignore` of the workspace currently says about saved projects. */
+/** One `.gitignore` rule this plugin needs, plus why it needs it. */
+interface IgnoreRuleSpec {
+  rule: string
+  /** The comment line written above the rule when this plugin has to add it. */
+  purpose: string
+}
+
+/** One rule, as the workspace `.gitignore` currently answers for it. */
+interface IgnoreRuleState extends IgnoreRuleSpec {
+  state: 'present' | 'absent'
+}
+
+/** What the `.gitignore` of the workspace currently says about the rules this plugin needs. */
 interface IgnoreFile {
   /** Absolute path of the workspace `.gitignore`. */
   file: string
   /** Portable spelling, for the result. */
   port: string
-  /** The rule this plugin needs in it. */
-  rule: string
-  /** `missing` (no file), `absent` (file without the rule) or `present`. */
-  state: 'missing' | 'absent' | 'present'
+  /** False when the file does not exist yet. */
+  exists: boolean
+  /** The rules this plugin needs, with their current state. */
+  rules: IgnoreRuleState[]
   /** The file's current text, or empty when it does not exist. */
   raw: string
+}
+
+/** What applying the rules did. */
+interface IgnoreAction {
+  action: 'created' | 'appended' | 'unchanged'
+  /** The rules this run added. */
+  added: string[]
 }
 
 /**
@@ -216,47 +244,93 @@ async function alreadyInside(projectPath: string | null, targetDirectory: string
 }
 
 /**
+ * The rules this plugin keeps in the workspace `.gitignore`.
+ *
+ * Both are about **binary rebuildables** the workflow puts beside the source
+ * tree: the TIA project TIA itself owns, and the per-device knowledge databases
+ * the engineering-graph plugin derives from that tree. The text artifact that
+ * belongs in version control is `source/` alone.
+ */
+function ignoreRules(config: PluginConfig): IgnoreRuleSpec[] {
+  return [
+    {
+      rule: tiaIgnoreRule(config),
+      purpose: 'Saved TIA projects: binary, edited in TIA, not versioned here.',
+    },
+    {
+      rule: knowledgeIgnoreRule(),
+      purpose: 'Generated knowledge databases: rebuilt from source/, binary, not versioned here.',
+    },
+  ]
+}
+
+/** One rule spelled as a quoted token, for a model-facing line. */
+function quoted(rules: readonly string[]): string {
+  return rules.map((rule) => `"${rule}"`).join(' and ')
+}
+
+/**
  * Read the workspace `.gitignore` and decide what it needs.
  *
- * A missing file and a file without the rule are different actions (create vs
+ * A missing file and a file without a rule are different actions (create vs
  * append), and an existing rule is left exactly as the user wrote it — this
- * plugin appends one line and never rewrites a file it did not author.
+ * plugin appends rules and never rewrites a file it did not author. A rule counts
+ * as present in any of the spellings a user may have written it in (`tia/`,
+ * `/tia/`, `tia`).
  */
-async function readIgnoreFile(root: string, rule: string): Promise<IgnoreFile> {
+async function readIgnoreFile(root: string, rules: readonly IgnoreRuleSpec[]): Promise<IgnoreFile> {
   const file = join(root, '.gitignore')
   const port = toPortable(root, file)
   let raw: string
+  let exists = true
   try {
     raw = await readFile(file, 'utf8')
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
-      return { file, port, rule, state: 'missing', raw: '' }
-    }
-    throw error
+    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
+    raw = ''
+    exists = false
   }
-  const wanted = new Set([rule, `/${rule}`, rule.replace(/\/$/u, '')])
-  const present = raw.split(/\r?\n/u).some((line) => wanted.has(line.trim()))
-  return { file, port, rule, state: present ? 'present' : 'absent', raw }
+  const lines = new Set(raw.split(/\r?\n/u).map((line) => line.trim()))
+  return {
+    file,
+    port,
+    exists,
+    raw,
+    rules: rules.map((spec) => ({
+      ...spec,
+      state: [spec.rule, `/${spec.rule}`, spec.rule.replace(/\/$/u, '')].some((spelling) => lines.has(spelling))
+        ? 'present'
+        : 'absent',
+    })),
+  }
 }
 
-/** Write the rule, preserving everything the user already had. */
-async function applyIgnoreRule(ignore: IgnoreFile): Promise<'created' | 'appended' | 'unchanged'> {
-  if (ignore.state === 'present') return 'unchanged'
-  if (ignore.state === 'missing') {
+/** Write the missing rules, preserving everything the user already had. */
+async function applyIgnoreRules(ignore: IgnoreFile): Promise<IgnoreAction> {
+  const missing = ignore.rules.filter((rule) => rule.state === 'absent')
+  if (missing.length === 0) return { action: 'unchanged', added: [] }
+  const added = missing.map((rule) => rule.rule)
+
+  if (!ignore.exists) {
     const header = [
       '# Written by @voltarenyah/dsh-engineering-context (create_engineering_project).',
-      `# ${ignore.rule} holds the TIA projects this workspace saved into it: binary, and edited`,
-      '# in TIA Portal rather than here, so it is not versioned. The rebuilt source tree',
+      '# The TIA project directory holds the projects this workspace saved into it: binary, and',
+      '# edited in TIA Portal rather than here, so it is not versioned. The rebuilt source tree',
       '# beside it is the text artifact that belongs in version control.',
-      `${ignore.rule}`,
+      '# knowledge/**/*.db* holds the knowledge databases the engineering-graph plugin',
+      '# rebuilds from that source tree: binary, large and derived, so not versioned either',
+      '# (the trailing * also covers SQLite -wal / -shm / -journal side files).',
+      ...added,
       '',
     ].join('\n')
     await writeFile(ignore.file, header, 'utf8')
-    return 'created'
+    return { action: 'created', added }
   }
+
+  const block = missing.map((rule) => `# ${rule.purpose}\n${rule.rule}`).join('\n')
   const prefix = ignore.raw.length === 0 || ignore.raw.endsWith('\n') ? ignore.raw : `${ignore.raw}\n`
-  await writeFile(ignore.file, `${prefix}\n# Saved TIA projects: binary, edited in TIA, not versioned here.\n${ignore.rule}\n`, 'utf8')
-  return 'appended'
+  await writeFile(ignore.file, `${prefix}${prefix.length === 0 ? '' : '\n'}${block}\n`, 'utf8')
+  return { action: 'appended', added }
 }
 
 /** A trimmed string, or undefined when nothing usable was given. */
@@ -269,6 +343,68 @@ function trimmed(value: string | undefined): string | undefined {
 /** One line per device, for the model-facing detail block. */
 function deviceLines(devices: readonly { device: string; software: string }[]): string[] {
   return devices.map((entry) => `${entry.device} / ${entry.software}`)
+}
+
+/** What the plan says about the `.gitignore`, before anything is written. */
+function describeIgnorePlan(ignore: IgnoreFile): string {
+  const all = ignore.rules.map((rule) => rule.rule)
+  if (!ignore.exists) {
+    return (
+      `Ignore rules: ${ignore.port} does not exist yet; it will be created with ${quoted(all)} ` +
+      '(generated binaries: the saved projects and the knowledge databases).'
+    )
+  }
+  const missing = ignore.rules.filter((rule) => rule.state === 'absent').map((rule) => rule.rule)
+  if (missing.length === 0) {
+    return `Ignore rules: ${quoted(all)} already in ${ignore.port} — left untouched.`
+  }
+  return (
+    `Ignore rules: ${ignore.port} exists; ${quoted(missing)} will be appended to it` +
+    `${missing.length === all.length ? '' : ` (${quoted(all.filter((rule) => !missing.includes(rule)))} already there)`}.`
+  )
+}
+
+/** The structured `ignore` payload: what is in the file, and what this run changed. */
+function ignorePayload(ignore: IgnoreFile, action: string, added: readonly string[]): {
+  file: string
+  action: string
+  added: string[]
+  rules: Array<{ rule: string; present: boolean }>
+} {
+  return {
+    file: ignore.port,
+    action,
+    added: [...added],
+    rules: ignore.rules.map((rule) => ({ rule: rule.rule, present: rule.state === 'present' })),
+  }
+}
+
+/** What happened to the `.gitignore`, in one line for the result. */
+function describeIgnoreAction(ignore: IgnoreFile, applied: IgnoreAction): string {
+  if (applied.action === 'unchanged') {
+    return `Ignore rules: ${quoted(ignore.rules.map((rule) => rule.rule))} already in ${ignore.port} — left untouched.`
+  }
+  return `Ignore rules: ${applied.action} ${ignore.port} (added ${quoted(applied.added)}).`
+}
+
+/** The knowledge-graph step in one clause, appended to the run's summary. */
+function describeKnowledgeSummary(report: KnowledgeIngestReport): string {
+  switch (report.state) {
+    case 'ingested':
+      return (
+        ` Rebuilt the knowledge graph for ${report.totals.devices} device(s): ` +
+        `${report.totals.nodes} node(s), ${report.totals.edges} edge(s).`
+      )
+    case 'partial':
+      return ` The knowledge graph was rebuilt for ${report.totals.ok} of ${report.totals.devices} device(s).`
+    case 'failed':
+      return ` The knowledge graph was not built for any of ${report.totals.devices} device(s).`
+    case 'empty':
+      return ' There was no device directory to build a knowledge graph from.'
+    case 'absent':
+    case 'unavailable':
+      return ' The knowledge graph was not built.'
+  }
 }
 
 /**
@@ -309,7 +445,11 @@ export function createProjectTool(dependencies: ToolDependencies): ToolDefinitio
       'specific project, either pass its source_project or confirm with them which project is open; do not assume the open one is ' +
       'the one they meant. One workspace manages one project: if it already holds another project\'s source tree this refuses ' +
       'instead of mixing them. It never deletes anything and never modifies the user\'s original project files; if the project is ' +
-      'already inside the workspace it skips the save-as and only refreshes the source tree. TIA refusals are reported per object, ' +
+      'already inside the workspace it skips the save-as and only refreshes the source tree. After the tree is written it also ' +
+      'rebuilds every device\'s knowledge database through the engineering-graph plugin (one FULL rebuild per device, into ' +
+      'knowledge/<device>/<device>_knowledge.db) — that is the only way the graph is ever refreshed, it adds real time on a large ' +
+      'project, and it never fails this call: when that plugin or its engine is absent (or the engine cannot be reached) the result ' +
+      'says the knowledge graph was not built and the source tree is unaffected. TIA refusals are reported per object, ' +
       'never dropped.',
     parameters: CREATE_PARAMETERS,
     async execute(args: CreateArgs, exec): Promise<EngineeringOutcome> {
@@ -441,7 +581,7 @@ export function createProjectTool(dependencies: ToolDependencies): ToolDefinitio
         }
 
         const skipSave = await alreadyInside(projectPath, projectDir)
-        const ignore = await readIgnoreFile(root, tiaIgnoreRule(config))
+        const ignore = await readIgnoreFile(root, ignoreRules(config))
         const projectDirStatus = await describePath(root, projectDir)
         const sourceStatus = await describePath(root, sourceRoot)
 
@@ -496,12 +636,7 @@ export function createProjectTool(dependencies: ToolDependencies): ToolDefinitio
           )
         }
 
-        const ignoreLine =
-          ignore.state === 'present'
-            ? `Ignore rule: ${ignore.rule} is already in ${ignore.port} — left untouched.`
-            : ignore.state === 'missing'
-              ? `Ignore rule: ${ignore.port} does not exist yet; it will be created with "${ignore.rule}" (the saved project is binary and TIA owns it).`
-              : `Ignore rule: ${ignore.port} exists; "${ignore.rule}" will be appended to it.`
+        const ignoreLine = describeIgnorePlan(ignore)
 
         const windowFlag = args.with_window !== false ? 'yes' : 'no'
         const projectLine =
@@ -527,6 +662,8 @@ export function createProjectTool(dependencies: ToolDependencies): ToolDefinitio
             : `Save-as: TIA will save the open project into ${projectDirStatus.port}/ (currently ${projectPath ?? 'unknown'}; its files there are not touched).`,
           `Source tree: ${sourceStatus.port}/ ← ${deviceLine}`,
           'Layout below the source root is written by the interface plugin: <device>/blocks|types|tag_tables/, one manifest per device covering all three.',
+          `Knowledge graph: after the export, one full rebuild per device through the engineering-graph plugin ` +
+            `(${KNOWLEDGE_DIR_NAME}/<device>/<device>_knowledge.db); skipped, and reported as not built, when that plugin or its engine is absent.`,
           ignoreLine,
         ]
 
@@ -547,8 +684,9 @@ export function createProjectTool(dependencies: ToolDependencies): ToolDefinitio
                 projectPath,
                 devices: software,
               },
-              ignore: { file: ignore.port, rule: ignore.rule, action: 'none (dry run)' },
+              ignore: ignorePayload(ignore, 'none (dry run)', []),
               rebuild: null,
+              knowledge: null,
             },
             { details: plan, warnings, dryRun: true },
           )
@@ -581,8 +719,9 @@ export function createProjectTool(dependencies: ToolDependencies): ToolDefinitio
         }
 
         // Before the (slow) export: the moment `tia/` holds a project, the ignore
-        // rule has to be there, or the next `git add -A` stages a binary project.
-        const ignoreAction = await applyIgnoreRule(ignore)
+        // rules have to be there, or the next `git add -A` stages a binary project
+        // (and, one step later, a multi-hundred-megabyte knowledge database).
+        const ignoreAction = await applyIgnoreRules(ignore)
 
         const rebuilt: RebuildResult = normalizeRebuild(
           await callService('rebuildSource', () =>
@@ -615,13 +754,28 @@ export function createProjectTool(dependencies: ToolDependencies): ToolDefinitio
           )
         }
 
+        // The knowledge graph step, deliberately last and deliberately soft: it is
+        // a full rebuild of one database per device, it is minutes of work on a
+        // real project, and nothing about the source tree depends on it. An absent
+        // plugin, a missing engine or an engine that refuses/dead-times all come
+        // back as data with the graph reported as not built — the workflow itself
+        // stays a success, because the saved project and the exported tree are what
+        // it promised.
+        const knowledge = await ingestKnowledgeGraph({
+          ctx: dependencies.ctx,
+          log: dependencies.log,
+          root,
+          devices: rebuilt.devices,
+          signal: exec.signal,
+        })
+
         const totals = rebuilt.totals
         const details = [
           ...plan,
           skipSave
             ? `Save-as: skipped — the project was already inside ${projectDirStatus.port}/.`
             : `Saved by TIA as: ${savedAs ?? projectPath ?? 'unknown'} (requested directory: ${projectDirStatus.port}/)`,
-          `Ignore rule: ${ignoreAction} in ${ignore.port}.`,
+          describeIgnoreAction(ignore, ignoreAction),
           `Source rebuild: ${totals.planned} object(s) planned — ${totals.written} written, ${totals.skipped} already present, ` +
             `${totals.refused} refused by TIA${totals.verificationFailed === 0 ? '' : `, ${totals.verificationFailed} written but unreadable`}.`,
           ...deviceLines(rebuilt.devices).map(
@@ -653,6 +807,11 @@ export function createProjectTool(dependencies: ToolDependencies): ToolDefinitio
             `${totals.refused} object(s) were refused by TIA; they are listed in the result and in each export call's manifest. The export did not abort because of them.`,
           )
         }
+        // The graph step's own lines and warnings. `details` is appended whole;
+        // `warnings` only ever gains the ones that are the caller's business (the
+        // manifest refusals the engine re-reported land here too, prefixed).
+        details.push(...knowledge.details)
+        warnings.push(...knowledge.warnings)
 
         // Re-describe the two directories: the payload has to say what is on disk
         // *after* the run, while the plan lines above state what was there before.
@@ -695,10 +854,11 @@ export function createProjectTool(dependencies: ToolDependencies): ToolDefinitio
         return okOutcome(
           CREATE_PROJECT_TOOL,
           scope.view,
-          nothingWritten
+          (nothingWritten
             ? `Nothing was written: all ${totals.skipped} file(s) the export reached were already present. ${name} is in ${toPortable(root, projectDir)}/; pass overwrite=true to refresh the source tree.`
             : `Saved ${name} into ${toPortable(root, projectDir)}/ and wrote ${totals.written} object(s) into ${toPortable(root, sourceRoot)}/` +
-              `${totals.skipped === 0 ? '' : `, ${totals.skipped} already present`}${totals.refused === 0 ? '' : `, ${totals.refused} refused by TIA`}.`,
+              `${totals.skipped === 0 ? '' : `, ${totals.skipped} already present`}${totals.refused === 0 ? '' : `, ${totals.refused} refused by TIA`}.`) +
+            describeKnowledgeSummary(knowledge),
           {
             project: {
               name,
@@ -710,7 +870,7 @@ export function createProjectTool(dependencies: ToolDependencies): ToolDefinitio
               projectPath,
             },
             index: { file: toPortable(root, indexFile), action: indexAction },
-            ignore: { file: ignore.port, rule: ignore.rule, action: ignoreAction },
+            ignore: ignorePayload(ignore, ignoreAction.action, ignoreAction.added),
             rebuild: {
               sourceRoot: rebuilt.sourceRoot,
               devices: rebuilt.devices,
@@ -718,6 +878,16 @@ export function createProjectTool(dependencies: ToolDependencies): ToolDefinitio
               missingDevices: rebuilt.missingDevices,
               totals,
               nothingWritten,
+            },
+            knowledge: {
+              state: knowledge.state,
+              available: knowledge.available,
+              reason: knowledge.reason,
+              enginePath: knowledge.enginePath,
+              databaseConvention: knowledge.databaseConvention,
+              devices: knowledge.devices,
+              notAttempted: knowledge.notAttempted,
+              totals: knowledge.totals,
             },
           },
           { details, warnings, dryRun: false },

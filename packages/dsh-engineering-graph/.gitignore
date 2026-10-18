@@ -21,8 +21,11 @@ node_modules/
 
 # Knowledge databases are generated, never committed. They are written outside this
 # package (see D20: <project root>/knowledge/<device>/<device>_knowledge.db), but a
-# stray one must never be staged from here either.
+# stray one must never be staged from here either. The side files are SQLite's own
+# (`-journal` is what a killed write leaves behind; `-wal` / `-shm` appear if the
+# journal mode ever changes).
 *.db
+*.db-journal
 *.db-wal
 *.db-shm
 
