@@ -444,6 +444,51 @@ stdio 通道实测：`ready` 帧列出三个操作，`GetSchema` 返回 34 字�
 
 ---
 
+## D20 · 图谱数据库的位置与命名 ✅
+
+**背景**：族 3 的库落在哪里、叫什么，工作流与 `knowledge_ingest` 必须一致 —— 否则建出来的库没人知道在哪。
+
+**决定**：**`<项目根>/knowledge/<设备名>/<设备名>_knowledge.db`**。
+
+- `knowledge/` 与 `source/` **同级**；一台设备一个文件夹，装它自己的**全部**生成物；
+- `knowledge_ingest` 的 `device_dir` 指向 `<项目根>/source/<设备>`，路径由设备目录**往上两级**推出，
+  所以与工作区叫什么无关；显式传 `db_path` 时以传入为准；
+- **`*.db` 不进 git**（包内 `.gitignore` 已含 `*.db` / `*.db-wal` / `*.db-shm`）。
+  ⚠️ 工作区自己的 `.gitignore`（写 `tia/` 的那一处）**还需要加 `knowledge/**/*.db`** ——
+  那属于族 2 的写入范围，本轮按"族 2 先不改"未动。
+
+**验证**：临时树实测 `…/source/Sino_PEI` → `…/knowledge/Sino_PEI/Sino_PEI_knowledge.db`，返回 `device=Sino_PEI`；
+真实工程 `source/Sino_PEI` **1376 个源文件全部入库**（29.5 s），**117,922 节点 / 287,620 边**，库 **450 MB**。
+
+---
+
+## D21 · 族 3 暴露 `knowledgeGraph` 服务（族 2 的接缝）🟡
+
+**背景**：目标是让 ingest 嵌进 `create_engineering_project` 工作流。只提供工具的话，就得指望模型
+"记得"导出后再调一次 —— 不确定、可能漏。
+
+**决定**：族 3 注册一个 cordis `Service`，**名字是字符串 `knowledgeGraph`**，消费方用 `ctx.get` 查找、
+**不 import**（D10：插件各自独立，靠字符串 + 契约对接）。形状与族 1 的 `engineeringAccess` 完全同构。
+
+- **构造即注册**：`new KnowledgeGraph(ctx, …)` 内部走 `ctx.reflect.provide`，注册归该插件的 fiber，
+  卸载即消失（在 `apply` 里构造）。
+- **接口**：`status()`（引擎可用性 + 那个路径约定）与
+  `ingestDevice(deviceDir, { dbPath?, signal?, onProgress? })`。
+- **与工具走同一条转换**（`outcomeOf`），所以服务与 `knowledge_ingest` 不可能在默认值或错误形状上分歧。
+- **操作失败是数据，传输失败才抛**：缺目录 / 清单读不了 → `ok:false` + `error.code`；找不到引擎、超时 → 抛。
+
+**族 2 侧（本轮未改，按"先暴露、后核对"）**：`ctx.get('knowledgeGraph')`，缺席即降级并报"图谱未建成"；
+`create_engineering_project` 写完源树后按族 1 `rebuildSource` 返回的 `devices[].directory`
+**逐设备**调用即可 —— 那个目录正是 `device_dir`，不需要自己拼路径。
+
+**验证**：`test/09-service-and-manifest.test.mjs` 断言服务在预期名字下注册、缺目录是**编码失败而非抛异常**、
+以及 **D24 清单树经服务入库**（`source=manifest`、id 无类别前缀、`folderPath` 是干净组路径、
+跨组 `CALLS` 指向真身、清单 `failures[]` 进 warnings、db 落在 D20 约定的位置）。
+该文件同时是**清单模式的第一个自动化回归测试** —— 在此之前所有测试都只走 crawl 兜底（扁平 fixtures），
+清单路径只有手工证据，这正是上一轮"跨组调用落到占位符"能藏住的原因。
+
+---
+
 ## 待办验证清单（由以上决策派生）
 
 | # | 待验证 | 来源 |

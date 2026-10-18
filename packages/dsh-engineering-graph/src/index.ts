@@ -37,6 +37,7 @@ import { Config, resolveConfig, type PluginConfig } from './config.js'
 import { ENGINE_RELATIVE_PATH, bundledEnginePath, resolveEnginePath } from './engine-path.js'
 import { EngineClient, type LogSink } from './engine-client.js'
 import { registerTools, type ToolDependencies } from './tools.js'
+import { KnowledgeGraph } from './service.js'
 
 /** Plugin identity; the loader uses it as the entry id in the profile tree. */
 export const name = 'engineering-graph'
@@ -82,6 +83,11 @@ export function apply(ctx: Context, config?: Partial<PluginConfig>): void {
 
   const registered = registerTools(ctx, dependencies)
 
+  // Constructing the service is what registers it, and the registration belongs to
+  // this plugin's fiber, so it disappears when the plugin unloads (docs/decisions.md
+  // D21). Nothing else needs the instance, which is why it is not stored.
+  new KnowledgeGraph(ctx, dependencies, settings.enginePath)
+
   if (existsSync(enginePath)) {
     log.info(
       `Registered ${registered.length} engineering-graph tools (${registered.join(', ')}); engine: ${enginePath} (resolved from ${source}).`,
@@ -120,8 +126,10 @@ export function apply(ctx: Context, config?: Partial<PluginConfig>): void {
 /** Exposed for the tests. */
 export { EngineClient, resolveConfig, resolveEnginePath, bundledEnginePath, ENGINE_RELATIVE_PATH, registerTools }
 export { OPERATIONS, PROTOCOL_VERSION } from './protocol.js'
+export { KnowledgeGraph, KNOWLEDGE_GRAPH_SERVICE } from './service.js'
 export type { PluginConfig } from './config.js'
 export type { EnginePathSource } from './engine-path.js'
 export type { EngineClientStatus, EngineState, LogSink, RequestOptions } from './engine-client.js'
 export type { ToolDependencies } from './tools.js'
 export type { EngineError, ProgressFrame, ReadyFrame, ResultFrame, ToolOutcome } from './protocol.js'
+export type { IngestDeviceOptions, KnowledgeGraphStatus } from './service.js'

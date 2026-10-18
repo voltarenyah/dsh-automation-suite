@@ -169,7 +169,7 @@ PLC 对象增删改、监视表与软件单元、F 相关服务、编译与关�
 |---|---|---|
 | **工控软件接口插件族** | 把工控软件暴露的能力整体变成 LLM 的能力范围（含配套文档） | 🟡 **V17 × min**（块·UDT·标签表）；std/pro 能力层级与 V18+ 待补 |
 | **工程上下文插件** | 管住"现在谈的是哪个工程、它在 workspace 的哪里" | 🟡 **部分实现**：`create_engineering_project` 一个工具（37 项单测）—— 把 TIA 打开的工程另存进 workspace、把源文件树读出来；指纹变更检测/变更台账未做。P0 的工程注册表与 P1 的内部 git 版本层**已删除**（该包 D22）。**已登记进蓝图**（`--dump-config` 实测 1520 行） |
-| **工程知识图谱插件** | 准确翻译 XML 中的 PLC 语法，XML → 图数据库 → 按需给出工程细节 | 🟡 **部分实现**：Simatic ML → 图 → SQLite 已通（7 个真实 fixture 出 72 节点 / 153 边，覆盖 15 种节点种类），引擎协议 + 3 个工具（46 项单测，含经真实引擎的端到端）；**新鲜度/增量、按需下钻工具、兼容层未做**。**已登记进蓝图** |
+| **工程知识图谱插件** | 准确翻译 XML 中的 PLC 语法，XML → 图数据库 → 按需给出工程细节 | 🟡 **部分实现**：Simatic ML → 图 → SQLite 已通（7 个真实 fixture 出 72 节点 / 153 边，覆盖 15 种节点种类），引擎协议 + 3 个工具（49 项单测，含经真实引擎的端到端）；**新鲜度/增量、按需下钻工具、兼容层未做**。**已登记进蓝图** |
 
 逐项进度、缺口与验收口径见 [`docs/roadmap.md`](docs/roadmap.md)；
 已定的取舍见 [`docs/decisions.md`](docs/decisions.md)，**34 条待决策问题在
@@ -592,7 +592,7 @@ packages/
     docs/                          ARCHITECTURE.md / PATH-RULES.md / decisions.md
   dsh-engineering-graph/           工程知识图谱插件：**引擎 + 协议 + 3 个工具已实现并登记进蓝图**
     src/                           NDJSON 协议客户端、3 个知识工具（tsc → lib/）
-    test/                          node:test 套件（46 项，含经真实引擎的端到端与传输层故障注入）
+    test/                          node:test 套件（49 项，含经真实引擎的端到端与传输层故障注入）
     engine/                        C# 引擎（net8 + Microsoft.Data.Sqlite）：Simatic ML → 图 → SQLite
                                    Graph/ Parsing/ Import/ 为 vendored（命名空间拍平，见 D17）；
                                    build.ps1 构建到 engine/bin（**不进 git**），fixtures/ 是 7 个真实 V17 导出物

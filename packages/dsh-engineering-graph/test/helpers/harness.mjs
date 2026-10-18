@@ -193,6 +193,19 @@ export function createTestContext() {
       },
     },
     logger,
+    /**
+     * The service-registration mechanism a cordis `Service` subclass uses in its
+     * constructor (`ctx.reflect.provide(name, this, check)`). Stubbed because a bare
+     * cordis application cannot provide the real generic store without the rest of
+     * the harness; recording into `services` is what makes `ctx.get(name)` return the
+     * service, exactly as the live runtime would.
+     */
+    reflect: {
+      provide(name, value) {
+        services.set(name, value)
+        return () => services.delete(name)
+      },
+    },
     get(name) {
       return services.get(name)
     },

@@ -96,6 +96,28 @@ declare module '@deepseek-ai/cordis' {
     effect(execute: () => Effect, label?: string): Disposable<Promise<void>>
   }
 
+  /**
+   * Base class of a service other plugins consume.
+   *
+   * Constructing one registers it on the given context under `name`, and the
+   * registration is owned by that context's fiber: it is unregistered when the
+   * owning plugin unloads. The runtime implements that in this very constructor
+   * through `ctx.reflect.provide(name, this, check)`, so a plugin only has to
+   * instantiate the subclass inside its `apply`.
+   */
+  export class Service {
+    /** The context the service was registered in. */
+    readonly ctx: Context
+    /** The name the service is registered under. */
+    readonly name: string
+    /**
+     * @param ctx - the context to register in.
+     * @param name - the service name; the caller must pass it, because the static
+     *   `provide` fallback is an upstream feature this plugin does not use.
+     */
+    constructor(ctx: Context, name?: string)
+  }
+
   /** The root context constructor. */
   export const Context: {
     new (): Context
