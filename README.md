@@ -822,6 +822,7 @@ TIA 排障第一步永远是让模型调：
 | [`docs/open-questions.md`](docs/open-questions.md) | **开放问题（34 条）**：A 部分 17 条会阻塞动手（含 A14–A17 工具面问题），B 部分 17 条影响细节与验收口径；已答 16 条 |
 | [`docs/roadmap.md`](docs/roadmap.md) | **路线图与现状**：按插件逐项记录进度、缺口、验收口径 |
 | [`docs/tool-surface.md`](docs/tool-surface.md) | **工具面重设计（调研 + 提案）**：现状体检（26 工具 1:1、20 行渲染上限、~14k tokens 常驻目录）、用户工作流清单、目标工具面与返回契约、从哪一步开始 |
+| [`docs/ui-plugins.md`](docs/ui-plugins.md) | **Web GUI UI 插件**：客户端插件加载机制（含端到端实测）、基座模块表、座位目录、`source/` 数据面、以「工程块树」为例的落地设计与客户端打包配方 |
 | [`packages/dsh-engineering-context/README.md`](packages/dsh-engineering-context/README.md) | 工程上下文插件的用法、配置与开发命令（**P0 已实现**：作用域 + 工程注册表） |
 | [`packages/dsh-engineering-context/docs/`](packages/dsh-engineering-context/docs/) | 该插件的设计与取舍：`ARCHITECTURE.md`（核心架构、作用域模型、变更引擎、工具面）、`PATH-RULES.md`（workspace 内路径规则）、`decisions.md`（编号决策 D1–D14、夜间自主决定 N1–N7、**P0 实现期的决定 P0-1–P0-13**） |
 | [`profile/dsh-automation-suite/README.md`](profile/dsh-automation-suite/README.md) | 蓝图的组成、三种部署方式、验收方式 |
