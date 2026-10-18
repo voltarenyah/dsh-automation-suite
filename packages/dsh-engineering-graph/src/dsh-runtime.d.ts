@@ -10,7 +10,8 @@
  * this the same way, each with its own hand-written declaration.
  *
  * The declarations mirror the runtime the local harness actually ships
- * (`@deepseek-ai/cordis` 4.0.4, harness 0.2.0-rc.2) and were read off the real
+ * (`@deepseek-ai/cordis` 4.0.4, harness 0.2.0-rc.2; re-verified unchanged against
+ * cordis 4.0.5 / harness 0.2.1-rc.2 on 2026-10-19) and were read off the real
  * implementation rather than guessed:
  *
  * - `Context.effect` comes from the fiber mixin (`cordis/src/fiber.ts:415-418`,

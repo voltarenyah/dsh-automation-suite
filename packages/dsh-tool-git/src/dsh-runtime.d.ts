@@ -10,7 +10,8 @@
  * hand-written ambient file; see this package's `AGENTS.md`.
  *
  * The declarations mirror the runtime the local harness actually ships
- * (0.2.0-rc.2). They were written against the real implementation rather than
+ * (0.2.0-rc.2 when they were written; re-verified unchanged against 0.2.1-rc.2 on
+ * 2026-10-19). They were written against the real implementation rather than
  * guessed: the shapes of `ToolExecutionResult`, the `tools/pre-execute` gate's
  * `exec`, and the return of `next()` were read off the live runtime, and
  * `@deepseek-ai/cordis` / `@deepseek-ai/schemastery` ship their original

@@ -10,7 +10,8 @@
  * package's `docs/decisions.md`.
  *
  * The declarations mirror the runtime the local harness actually ships
- * (0.2.0-rc.2) and were read off the real implementation rather than guessed:
+ * (0.2.0-rc.2 when they were written; re-verified unchanged against
+ * 0.2.1-rc.2 on 2026-10-19) and were read off the real implementation rather than guessed:
  *
  * - `exec.agent.session.header.cwd` is how a tool learns its session's working
  *   directory — the runtime itself reads it that way

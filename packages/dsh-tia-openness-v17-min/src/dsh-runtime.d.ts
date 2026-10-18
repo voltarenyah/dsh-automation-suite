@@ -2,12 +2,14 @@
  * Ambient declarations for the DeepSeek Harness runtime modules this plugin uses.
  *
  * DSH publishes `@deepseek-ai/dsh-tools` and `@deepseek-ai/cordis` as ESM with
- * their own `.d.ts`; those are resolved at run time from the profile's runtime
- * resolution (`$DSH_HOME/profiles/node_modules`). Reproducing the small surface
+ * their own `.d.ts`; the harness resolves them at run time for the plugin (the
+ * shared projection under `$DSH_HOME/profiles/node_modules` is stale and partly
+ * dangling, so it is not to be trusted — see D19). Reproducing the small surface
  * used here keeps `npm run build` self-contained: it needs no network access and
  * no copy of the harness inside this repository.
  *
- * The declarations mirror the published shapes:
+ * The declarations mirror the published shapes (read off 0.2.0-rc.2, re-verified
+ * unchanged against 0.2.1-rc.2 on 2026-10-19):
  *   - `@deepseek-ai/cordis`          Context.effect / Context.tools / Context.inject
  *   - `@deepseek-ai/dsh-tools`       the unified schema DSL and `defineTool`
  *   - `@deepseek-ai/schemastery`     the Config schema builder
