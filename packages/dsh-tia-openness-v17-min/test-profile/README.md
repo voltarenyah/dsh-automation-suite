@@ -173,7 +173,7 @@ Select-String -Path "$env:USERPROFILE\.dsh\profiles\desktop\cordis.patch.yml" -P
 | `test-dsh-load.ps1 -PlanOnly` 前置检查 | ✅ 本机实跑通过（正确报出缺 profile / 缺 link） |
 | `--patch` 叠加层被接受、顺序正确（插在最后）、不写 profile | ✅ 用 `--dump-config` 验证：exit 0，组合树末尾出现 `id: tia-openness-v17-min` |
 | `dsh web --help` 不监听端口、`--port` / `--no-open` 可用 | ✅ 实测（无新增监听端口） |
-| `dsh plugin --profile X add ...` 是 pnpm 直通 | ✅ 实测（打印 pnpm 11.7.0 帮助） |
+| `dsh plugin --profile X add ...` 是 pnpm 直通 | ✅ 实测（打印 pnpm 帮助；0.2.0-rc.2 上是 11.7.0，0.2.1-rc.2 上是 11.28.5） |
 | **`--from-default-profile` + `--dump-config` 是否"创建后立即退出"** | ⚠️ **未验证**（我没有创建你的 profile）。若它直接启动了服务，`Ctrl+C` 即可，profile 已建好；再用 `-PlanOnly` 复核 |
 | **第二个 DSH 实例与桌面端共用 `~/.dsh` 是否完全无冲突** | ⚠️ 未验证（不同端口、不写 profile；理论上安全）。若日志出现存储/会话告警，关掉它，改走"先装 desktop 再验收"的路线 |
 | **HMR disposer 路径** | ⚠️ 需要你在 UI 里禁用/启用插件（§1.4） |

@@ -124,7 +124,8 @@
 > 落地位置 `packages/dsh-engineering-context`，**已登记进 profile 蓝图**
 > （`profile/dsh-automation-suite/package.json` 的 `dependencies` + `dsh.profile.bundles`）。
 > 验收：`pwsh -NoProfile -File scripts\start-env.ps1` 之后 `dsh --profile dsh-automation-suite
-> --dump-config` 出现本插件行（实测 **1520 行**）；本包自身的 `check` 可独立跑。
+> --dump-config` 出现本插件行（DSH 0.2.1-rc.2 实测 **1477 行**，见根 `AGENTS.md` §4）；本包自身的
+> `check` 可独立跑。
 > 设计见该包 [`docs/ARCHITECTURE.md`](../packages/dsh-engineering-context/docs/ARCHITECTURE.md)、
 > [`docs/PATH-RULES.md`](../packages/dsh-engineering-context/docs/PATH-RULES.md)、
 > [`docs/decisions.md`](../packages/dsh-engineering-context/docs/decisions.md)；

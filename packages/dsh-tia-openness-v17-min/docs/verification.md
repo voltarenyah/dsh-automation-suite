@@ -213,13 +213,21 @@ information keep a dry run" 双向断言：14 个工具的 params 里**没有** 
    **期望**：无输出 —— 子进程随插件卸载被终止（`ctx.effect` 的 disposer）。
 4. 记录：把结果填到下面 §C 的两行"待人工验证"里。
 
-### B.2 真实运行时包版本（`@deepseek-ai/dsh-tools` 0.2.0-rc.2）
+### B.2 真实运行时包版本（`@deepseek-ai/dsh-tools` 0.2.1-rc.2，已实测）
 
-本仓库测试链接的是 `~/.dsh/profiles/node_modules` 里的副本（`dsh-tools 0.1.5-rc.2`），
-而桌面宿主实际加载 `0.2.0-rc.2`（profile 列表可见 `@deepseek-ai/dsh-base 0.2.0-rc.2`）。
-用了稳定 API（`defineTool` / `ctx.tools.register` / `ctx.effect` / Schemastery `Config`），
-但**"在 0.2.0-rc.2 下也照常工作"这一点未在本机实测**。B.1 的第 2 步同时验证这一条
-（工具能注册成功即说明 API 兼容）。
+本仓库测试链接的是 `<DSH_HOME>/plugin-runtime` —— 由 `scripts/dsh-runtime-cache.mjs` 从**已安装 app
+自己的 `resources/app.asar`** 抽取（`runtime.json` 记录宿主版本，升级后自动重抽），**不再**指回
+`~/.dsh/profiles/node_modules` 那份 `0.1.5-rc.2` 的旧投影（见 D19）。
+
+**2026-10-19 在宿主 `0.2.1-rc.2` 上实测**：抽取到 34 个运行时包（`@deepseek-ai/dsh-tools` 0.2.1-rc.2、
+`cordis` 4.0.5、`schemastery` 3.18.5），本包 `node --test test/*.test.mjs` 为
+**77 项：76 通过 / 1 跳过（跳过的是"控制器未构建"分支，因为本机控制器是构建好的）**。
+其中"工具注册到真实 `ToolRuntime`"、"每个参数的 JSON Schema 在真实实现里编译通过"、
+"真实 skill registry 接受 provider 返回的 candidate"这些用例都是对着**真运行时**跑的 ——
+所以"在真实宿主版本下也照常工作"这一条**已由测试覆盖**，不再是待验证项。
+
+宿主版本可以从 `dsh --profile dsh-automation-suite --dump-config` 的输出里读
+（`@deepseek-ai/dsh-base` 的版本即宿主版本）。B.1 的第 2 步仍值得人工过一遍 —— 它同时验 TIA 侧。
 
 ### B.3 真实 V17 项目的功能链路
 

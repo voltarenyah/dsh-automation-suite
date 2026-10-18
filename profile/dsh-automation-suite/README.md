@@ -87,7 +87,8 @@ dsh --profile web --patch .\profile\dsh-automation-suite\cordis.patch.yml --dump
 dsh --profile dsh-automation-suite --dump-config
 ```
 
-输出会比政策层之前多 **252 行**（政策层在官方 web 组合上是 1268 → 1520 行），并且以三个插件行结尾。
+输出以**四个插件行**结尾，总行数 **1477**（DSH **0.2.1-rc.2** 实测，2026-10-19；官方 web 组合
+1235 行，本政策层净增 236 行）。行数会随上游 preset 改动而变，权威基线表在根 `AGENTS.md` §4。
 
 > ⚠️ `start-env.ps1` 只在 profile 目录**尚不存在**时从蓝图拷贝 `cordis.patch.yml`
 > （`if (-not (Test-Path $manifest))`）。所以改完蓝图后要让它生效，得 `-Reset` 重建，
@@ -150,7 +151,8 @@ dsh plugin --profile dsh-automation-suite install
 dsh --profile dsh-automation-suite --dump-config
 ```
 
-这条流程已实测通过：输出 **1268 行 = 官方 web 组合的 1259 行 + 每个插件行 3 行 × 3**，exit 0。
+这条流程已实测通过：`dsh plugin --profile dsh-automation-suite install` 由自带 pnpm（0.2.1-rc.2 上是
+v11.28.5）装完，`--dump-config` exit 0 且以四个插件行结尾（行数基线见根 `AGENTS.md` §4）。
 
 > ⚠️ 第 2 步的 tarball 文件名不要硬编码 `@scope-` 前缀：`pnpm pack` 对 `@scope/name` 产出的是
 > `scope-name-<version>.tgz`（剥掉 `@`、`/`→`-`），对不带 scope 的包就是 `dsh-tool-git-0.1.3.tgz`。
@@ -177,14 +179,18 @@ dsh --profile dsh-automation-suite --dump-config
 # == @voltarenyah/dsh-engineering-context
 - id: engineering-context
   name: '@voltarenyah/dsh-engineering-context'
+# == @voltarenyah/dsh-engineering-graph
+- id: engineering-graph
+  name: '@voltarenyah/dsh-engineering-graph'
 # == dsh-tool-git
 - id: tool-git
   name: dsh-tool-git
 ```
 
-行数：**政策层之前 1268 行**（= 官方 web 组合 1259 + 每个本地插件 3 行 × 3）；
-**带上政策层之后 +252 行 = 1520 行**（多出全局 `system-prompt` 覆盖行、`agent-preset-registry` 覆盖行，
-以及 `preset-suite` 那一整块 ≈ 200 行的工具清单）。
+行数（**DSH 0.2.1-rc.2 实测，2026-10-19**）：官方 web 组合 **1235 行**；叠加本蓝图政策层后
+**1471 行**（净增 236 —— 多出全局 `system-prompt` 覆盖行、`agent-preset-registry` 覆盖行，
+以及 `preset-suite` 那一整块工具清单）；按蓝图物化出四个本地插件的 profile 是 **1477 行**。
+这三个数会随宿主升级与上游 preset 改动而变（0.2.0-rc.2 时是 1259 / 1268 / 1520），换版本后要重测。
 
 > 注意这两条命令都是对**已物化的 profile**生效的：`--profile` 读的是
 > `$DSH_HOME/profiles/dsh-automation-suite/`，不是本蓝图目录。想在不改动任何环境的前提下

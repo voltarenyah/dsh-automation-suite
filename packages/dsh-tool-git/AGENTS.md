@@ -40,7 +40,7 @@
 
 上游把 `@deepseek-ai/*` 声明为 devDependencies，从 npm 公开 registry 解析。**本仓不许这样**：
 
-- 公开 registry 上这条线止于 `0.1.0-rc.6`，而本仓库对标的宿主是 **0.2.0-rc.2**；
+- 公开 registry 上这条线止于 `0.1.0-rc.6`，而本仓库对标的宿主是 **0.2.1-rc.2**（2026-10-19 起）；
 - 拿旧副本做类型检查/跑测试 = 对着错误的 API 面验收，正是根 `AGENTS.md` D19 禁止的形态。
 
 改为复用本仓既有机制（与 `packages/dsh-tia-openness-v17-min` 同一套）：
@@ -83,7 +83,9 @@ junction 进本包的 `node_modules/@deepseek-ai/`。抽取缓存由 `scripts/ds
 ## 4. 常规命令
 
 ```powershell
-$pnpm = "C:\Users\Ansel\AppData\Local\Programs\DeepSeek Harness\resources\runtime\pnpm\bin\pnpm.mjs"
+# 自带 pnpm 的位置随宿主升级会变（0.2.1-rc.2：resources\runtime\primary-runtime\dependencies\pnpm\bin\；
+# 0.2.0-rc.2：resources\runtime\pnpm\bin\）—— 脚本里按候选列表探测，别写死。
+$pnpm = "$env:LOCALAPPDATA\Programs\DeepSeek Harness\resources\runtime\primary-runtime\dependencies\pnpm\bin\pnpm.mjs"
 
 node $pnpm --filter dsh-tool-git run link:runtime   # 裸 checkout 首次
 node $pnpm --filter dsh-tool-git run build          # tsc 声明 + tsdown → lib/
@@ -91,8 +93,8 @@ node $pnpm --filter dsh-tool-git run typecheck      # tsc -p tsconfig.json && ts
 node $pnpm --filter dsh-tool-git run test           # vitest（对真实运行时 + 真实 git 临时仓库）
 ```
 
-本机 `pnpm` 不在 PATH 上，且根 `package.json` 的 `packageManager` 会让随 DSH 分发的 pnpm 11.7.0
-自动切到 **9.12.0**。别据此推断成 11.x 的配置语义。
+本机 `pnpm` 不在 PATH 上，且根 `package.json` 的 `packageManager` 会让随 DSH 分发的 pnpm（0.2.1-rc.2 上是
+11.28.5）自动切到 **9.12.0**。别据此推断成 11.x 的配置语义。
 
 `prepare`（`tsdown --config tsdown.prepare.config.ts`）是为 GitHub 安装准备的消费侧构建，
 在 workspace 内 `pnpm install` 时**也会触发**，这是上游行为，保留。它把 `@deepseek-ai/*`

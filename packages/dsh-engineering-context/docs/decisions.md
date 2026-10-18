@@ -320,7 +320,9 @@ TIA 包那套（`tsc` 出 `lib/`，`node:test` 跑真实运行时）已经够用
 **回退 / 补救**：等你确认没有别的会话在跑时，在仓库根执行：
 
 ```powershell
-node "$env:LOCALAPPDATA\Programs\DeepSeek Harness\resources\runtime\pnpm\bin\pnpm.mjs" install
+# 自带 pnpm 的位置随宿主升级会变（0.2.1-rc.2 在 primary-runtime\dependencies\pnpm\bin\）；
+# 按候选列表探测，别写死一个。
+node "$env:LOCALAPPDATA\Programs\DeepSeek Harness\resources\runtime\primary-runtime\dependencies\pnpm\bin\pnpm.mjs" install
 # 然后按需恢复两个兄弟包的链接（若被 prune）：
 node <pnpm> --filter @voltarenyah/dsh-tia-openness-v17-min run link:runtime
 node <pnpm> --filter dsh-tool-git run link:runtime

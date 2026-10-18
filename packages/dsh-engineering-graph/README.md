@@ -136,7 +136,9 @@ packages/dsh-engineering-graph/
 ## 5. 开发
 
 ```powershell
-$pnpm = "C:\Users\Ansel\AppData\Local\Programs\DeepSeek Harness\resources\runtime\pnpm\bin\pnpm.mjs"
+# 自带 pnpm 的位置随宿主升级会变（0.2.1-rc.2 在 primary-runtime\dependencies\pnpm\bin\，
+# 0.2.0-rc.2 在 runtime\pnpm\bin\）；脚本里按候选列表探测，别写死一个。
+$pnpm = "$env:LOCALAPPDATA\Programs\DeepSeek Harness\resources\runtime\primary-runtime\dependencies\pnpm\bin\pnpm.mjs"
 
 node $pnpm --filter @voltarenyah/dsh-engineering-graph run link:runtime   # 裸 checkout 首次
 node $pnpm --filter @voltarenyah/dsh-engineering-graph run build

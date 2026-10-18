@@ -1,8 +1,13 @@
 # Web GUI UI 插件：可行性、机制与落地方案
 
-> **本文的定位**：发行版层面的说明 —— 在本发行版（`dsh-automation-suite`，宿主 DSH **0.2.0-rc.2**）
+> **本文的定位**：发行版层面的说明 —— 在本发行版（`dsh-automation-suite`，宿主 DSH
+> **0.2.1-rc.2**；机制结论最初实测于 0.2.0-rc.2）
 > 里给 **dsh web 页面**增加 UI 组件，有哪些路可走、各自的代价、以及一个具体案例
 > （**工程块树**：把 workspace 里 `source/` 下的程序块渲染成可折叠树）的落地设计。
+>
+> **版本口径**：2026-10-19 在 0.2.1-rc.2 上**复核过**的是 —— 基座模块表（§2.3，已按新宿主重写）、
+> 页面 boot 与 `PLATFORM_MODULES` 的读取方式。**其余机制条目仍以 0.2.0-rc.2 的实测为准**，
+> 升级到 0.2.1 后没有逐条复核；引用前先按本节的方法在你实际要跑的宿主上重读一遍。
 >
 > **证据口径**：本文的机制部分**都在本机实测过**（运行中的 GUI、app.asar 里的官方产物、真实的
 > `source/` 导出物），实测结论标 ✅；来自上游公开源码/文档、但未在本机逐条验证的标 📖；
@@ -143,7 +148,7 @@ window.__ModuleLoader__.load({
   基座模块（§2.3）**不要**在这里重复声明。若请求了非基座的模块又忘了声明，**这是运行期错误**
   （`require("…") missed the module table`）——第三方没有上游那道构建期 purity 闸门。
 
-### 2.3 基座模块表（`PLATFORM_MODULES`，✅ 0.2.0-rc.2 实测全表）
+### 2.3 基座模块表（`PLATFORM_MODULES`，✅ 0.2.1-rc.2 实测全表）
 
 外壳启动时冻结一张静态模块表；浏览器半侧可以用裸 `require(...)` **直接拿到、无需声明**的
 就是这张表（从运行中的 shell bundle `assets/index-*.js` 里直接读出来的，**这就是本机宿主版本的权威列表**）：
@@ -151,6 +156,8 @@ window.__ModuleLoader__.load({
 ```js
 { "react": …, "react/jsx-runtime": …, "react-dom": …, "react-dom/client": …,
   "@deepseek-ai/cordis": …,
+  "zod": …,
+  "@tanstack/react-virtual": …,
   "@deepseek-ai/dsh-client-store": …,
   "@deepseek-ai/dsh-client-ui-slots": …,
   "@deepseek-ai/dsh-client-ui-primitives": …,
@@ -161,9 +168,11 @@ window.__ModuleLoader__.load({
 （= 静态基座库；`ui-dockkit` 甚至没有独立包，它折进 shell），而 `ui-renderer`、`client-locale`、
 `ui-sidebar-right`、`api-workspace-files`、`ui-sidebar-files`、`ui-conversation` 等**有行**（= 动态插件）。
 
-⚠️ **别照抄上游 `master` 的那张表**：master 已经多了 `zod` 与 `@tanstack/react-virtual`，
-而本机宿主（0.2.0-rc.2 的 `dsh-client-web`）没有它们。表以**你实际要跑的宿主版本**为准，
-来源就是页面上的 `assets/index-*.js`（或该版本源码的 `packages/client/web/src/platform.ts`）。
+⚠️ **这张表随宿主版本变，不能跨版本照抄**：0.2.0-rc.2 的宿主**没有** `zod` 与
+`@tanstack/react-virtual`（当时只在未发布的分支上），**0.2.1-rc.2 已经把两者加了进来** ——
+上面的表就是按 0.2.1-rc.2 重读的。复核办法：从 `app.asar` 取出
+`@deepseek-ai/dsh-web-frontend/dist/assets/index-*.js`，搜 `react/jsx-runtime`，
+那个对象字面量就是权威列表（源码侧对应 `packages/client/web/src/platform.ts`）。
 
 推论（也是官方红线 📖）：
 
@@ -634,7 +643,8 @@ dsh --profile ui-verify --dump-config                       # 末尾出现你的
 
 1. **客户端 API 是内部约定**：所有 slot 名、`ctx.sidebarRightTabs`、`ctx.layout`、
    `workspaceFiles` 的调用面都**不是公开 API**（上游没有第三方扩展的 semver 承诺；最接近的"契约"
-   是生成的 client inspect 目录），宿主升级（0.2.0-rc.2 还是 rc）随时可能变。
+   是生成的 client inspect 目录），宿主升级随时可能变 —— **0.2.0-rc.2 → 0.2.1-rc.2 就是这样一次：
+   基座模块表直接多出 `zod` 与 `@tanstack/react-virtual`（§2.3）**。
    缓解：把所有跨包 API 面收敛到一两个文件；注册失败要**降级成一条诊断**，
    绝不允许渲染期抛错把面板或整页打空。
 2. **注册期的抛错可能被吞掉**：有第三方插件的实测记录说，某个注册字段变成必填后抛错被 cordis 吞了，
@@ -665,9 +675,10 @@ dsh --profile ui-verify --dump-config                       # 末尾出现你的
 
 ## 8. 参考与已确认/未确认
 
-**上游（公开）** —— 本文全部机制结论都对齐 **tag `dsh-v0.2.0-rc.2`**
-（commit `639ed015…`），**不要读 master**：master 已有漂移（如基座表多了 `zod`、
-`@tanstack/react-virtual`；`clientBundle()` 的签名也变了）。
+**上游（公开）** —— 本文机制结论对齐 **tag `dsh-v0.2.0-rc.2`**（commit `639ed015…`），
+**不要读 master**。注意本机宿主已升到 **0.2.1-rc.2**，master 曾经"超前"的两项（基座表里的 `zod`、
+`@tanstack/react-virtual`）**在本机宿主上已经生效**（见 §2.3），所以"master 有、本机没有"这条
+判断要按版本重做，别沿用旧结论。
 
 - `packages/client/AGENTS.md`：客户端插件的硬规则（声明形式、五类 props、inject 纪律、包清单、
   `dsh.client` 语义、共享模块图、红线）——
@@ -678,13 +689,16 @@ dsh --profile ui-verify --dump-config                       # 末尾出现你的
   `packages/client/ui-sidebar-right`（tab 注册表 + Tab 域）、`packages/client/ui-jobs`（最小骨架）、
   `packages/client/ui-plugin-manager`（主栏全页面板的样板）。
 
-**本机实测（0.2.0-rc.2）**
+**本机实测（0.2.0-rc.2；2026-10-19 在 0.2.1-rc.2 上复核了标 ★ 的条目）**
 
 - ✅ 本文 §2.1 的端到端探针（临时包 → 临时 profile → 独立实例 → 浏览器里读到
   `dataset.uiProbe = "loaded:react=true"`）；
 - asar 内 `@deepseek-ai/dsh-client-modules`、`dsh-client-ui-slots`、`dsh-client-ui-sidebar-right`、
   `dsh-client-ui-sidebar-files`、`dsh-client-ui-primitives`、`dsh-client-store` 的 README/产物；
-- 运行中的 GUI（`http://127.0.0.1:19387/`）的启动图、三个第三方 bundle、从 shell bundle 里读出的基座表；
+- ★ 从 shell bundle（0.2.1-rc.2 的 `dsh-web-frontend/dist/assets/index-CN7NIWNw.js`）里读出的
+  基座表 —— 现在含 `zod` 与 `@tanstack/react-virtual`，见 §2.3；
+- ← 以下仍是 0.2.0-rc.2 的实测记录：运行中的 GUI（`http://127.0.0.1:19387/`）的启动图、
+  三个第三方 bundle；
 - `C:\Users\Ansel\Documents\deepseek-harness\tia-project-first\source\**` 的真实导出物（1155 块 / 773 KB 清单）；
 - 已安装的第三方 UI 插件 `C:\Users\Ansel\.dsh\profiles\desktop\node_modules\dsh-better-sidebar\src\**`。
 

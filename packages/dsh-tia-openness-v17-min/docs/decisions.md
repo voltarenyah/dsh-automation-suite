@@ -51,6 +51,10 @@ runtime resolution 解析；构建期不应依赖网络，也不应把 harness �
 （`defineTool` / `ctx.tools.register` / `ctx.effect` / Schemastery `Config`），
 真实 `0.2.0-rc.2` 下的行为待人工验证（见 `docs/verification.md` §B.2）。
 
+> **本条已被下方 D19 取代**（来源改为从 `app.asar` 抽取的 `<DSH_HOME>/plugin-runtime`）。
+> 而且"真实宿主版本下也照常工作"这一条**已由测试覆盖**：0.2.1-rc.2 上 77 项测试
+> （76 通过 / 1 跳过）都是对着真运行时跑的，见 `docs/verification.md` §B.2。
+
 ---
 
 ## D3. 类型来源：本地 ambient 声明（`src/dsh-runtime.d.ts`）
@@ -394,7 +398,8 @@ The block name 'FB_Array_Handling' is invalid. An object with this name or this 
 目标是 junction/symlink 时只 `unlink`，绝不递归下降。
 
 **结果**：`pnpm test` 从"5 个文件全部无法启动"变为 **45 测试 / 44 通过 / 0 失败 / 1 跳过**，
-且验的是宿主真实版本 `0.2.0-rc.2`。
+且验的是宿主真实版本（当时 `0.2.0-rc.2`；宿主升级后同一个机制自动重抽，2026-10-19 实测宿主
+`0.2.1-rc.2` 下为 77 项 / 76 通过 / 1 跳过）。
 
 **与 `ECOSYSTEM-COMPAT` §5.2 建议 A+C 的关系**：实现的就是那条路线；唯一差别是没按
 "整段 `@deepseek-ai` 作用域一起解包"，而是精确抽取闭包（32 包 vs 289 包），实测足够。

@@ -4,6 +4,11 @@
 环境：Windows、TIA Portal V17 Update 7、DSH `0.2.0-rc.2`（桌面端 0.2.0-rc.2）。
 原则：**不修改默认 profile 的语义、可回滚**；隔离部分用独立 `DSH_HOME`。
 
+> **2026-10-19 复核（宿主已升到 `0.2.1-rc.2`）**：本文记录**没有逐条重跑**，但插件本体已在新宿主上
+> 重新验收 —— 全仓 214 项测试通过（对着真实运行时 0.2.1-rc.2 跑的，含 C# 引擎 self-test）、
+> `--dump-config-schema` 能读到本插件的 `opennessDir`/`requestTimeoutMs`、运行中的套件实例里
+> `TiaOpennessV17Min.Controller` 子进程在跑。细节见 `docs/verification.md` §B.2。
+
 > 文末 §5 记录了本轮**我造成的两处破坏及其修复**，以及当前仍需用户处理的一项环境问题。请一并阅读。
 
 ---
@@ -65,7 +70,7 @@
 * **A（忠实版本）** 从 `app.asar` 解包运行时包到稳定暂存目录，再 junction 到仓库：
   用 Electron 以 Node 方式跑一段拷贝脚本（`ELECTRON_RUN_AS_NODE=1 "<安装目录>\DeepSeek Harness.exe" -e "…fs.cpSync(asar路径, 目标, {recursive:true})"`），
   建议整段 `@deepseek-ai` 作用域一起解包，保证被解包包的自身依赖也能解析。
-* **B（最省事）** 安装注册表上的发布版：`npm install -D @deepseek-ai/dsh-tools@0.0.1-rc.1 @deepseek-ai/cordis@4.0.4`（注意与运行时 `0.2.0-rc.2` 存在版本偏移，可能出现假失败）。
+* **B（最省事）** 安装注册表上的发布版：`npm install -D @deepseek-ai/dsh-tools@0.0.1-rc.1 @deepseek-ai/cordis@4.0.5`（注意与运行时 `0.2.1-rc.2` 存在版本偏移，可能出现假失败）。
 * **C** 让 `link:runtime` 支持一个显式来源（环境变量或 `--from <目录>`），并把 A 的结果作为长期来源；这样 `npm install` 之后也能一键复原。
 
 ### 5.3 `--self-test` 当前失败（环境问题，非代码）

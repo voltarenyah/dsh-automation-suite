@@ -184,7 +184,7 @@ pnpm --filter @voltarenyah/dsh-engineering-graph run link:runtime
 改一个包时别照抄另一个包。
 
 **版本必须对齐运行中的宿主**：手动把来源指回 `~/.dsh/profiles/*/node_modules` 会验到旧版本
-（那里是 0.1.5-rc.2，宿主是 0.2.0-rc.2），等于用错版本验收。见 `docs/decisions.md` D19。
+（那里是 0.1.5-rc.2，而宿主已是 0.2.1-rc.2），等于用错版本验收。见 `docs/decisions.md` D19。
 这条不是理论风险：那份投影安装里的 `@deepseek-ai/dsh-tools` 实际是一个指向 `npm-cache/_npx`
 的**悬空 junction**，读不到任何东西。
 
@@ -194,10 +194,7 @@ profile 组合的端到端验收：
 dsh --profile dsh-automation-suite --dump-config
 ```
 
-预期结尾出现（每个本地插件 3 行；基线 **1268 行** = 官方 web 组合 1259 + 3 × 3，
-**加上 §1「系统提示词注入在 profile 蓝图里」那条政策层后 +252 行** —— 本机实测
-`dsh --profile web --patch profile/dsh-automation-suite/cordis.patch.yml --dump-config`
-是 1268 → 1520）：
+预期结尾出现 **4 个本地插件、每个 3 行（共 12 行）**，顺序与蓝图的 `dsh.profile.bundles` 一致：
 
 ```yaml
 # == @voltarenyah/dsh-tia-openness-v17-min
@@ -206,13 +203,24 @@ dsh --profile dsh-automation-suite --dump-config
 # == @voltarenyah/dsh-engineering-context
 - id: engineering-context
   name: '@voltarenyah/dsh-engineering-context'
+# == @voltarenyah/dsh-engineering-graph
+- id: engineering-graph
+  name: '@voltarenyah/dsh-engineering-graph'
 # == dsh-tool-git
 - id: tool-git
   name: dsh-tool-git
 ```
 
-> 注意：`@voltarenyah/dsh-engineering-graph` **已登记进蓝图**，所以预期输出里也会多它那 3 行
-> （4 个本地插件 = 12 行）。下面的行数是**登记前**实测的 3 插件基线，重新实测后要同步。
+行数基线（**DSH 0.2.1-rc.2 实测，2026-10-19**；换宿主版本、改蓝图或增减插件后必须重测）：
+
+| 命令 | 行数 |
+|---|---|
+| `dsh --profile web --dump-config`（官方组合） | **1235** |
+| `dsh --profile web --patch profile/dsh-automation-suite/cordis.patch.yml --dump-config` | **1471**（政策层净增 236） |
+| 按蓝图物化的 profile：`dsh --profile dsh-automation-suite --dump-config` | **1477** |
+
+行数只用来发现「整行消失」这类事故，别把它当精确断言 —— 上游每次改动 preset 都会让这三个数一起变
+（0.2.0-rc.2 时是 1259 / 1268 / 1520）。**要证明插件真的被 import 过，用下面的 `--dump-config-schema`。**
 
 装 tarball 的验收链路：
 
@@ -225,8 +233,9 @@ dsh --profile <临时 profile> --dump-config     # 含你的插件行 = 通过�
 强于 `--dump-config` 的一条：`dsh --profile <p> --dump-config-schema`，若输出里出现该插件的
 Config 字段（如 `opennessDir`，或 git 插件的 `destructivePolicy`），说明模块被**真实 import
 并读取了 schema**。注意该命令本身在未装任何插件的 `web` profile 上也返回 exit 1 —— 那 4 条
-`unrecognized Loader tree carrier` 错误落在官方 `dsh-agent-preset` 的 4 个行上（`/179`–`/182`），
-与插件无关，**不要**把它当成插件问题去查。
+`unrecognized Loader tree carrier` 错误落在官方 `dsh-agent-preset` 的 4 个行上（0.2.1-rc.2 实测
+是 `/186`–`/189`），与插件无关，**不要**把它当成插件问题去查。套件 profile 上是 5 条：多出的
+一条就是本蓝图插入的 `preset-suite`（它同样是 `dsh-agent-preset` 行）。
 
 ---
 
@@ -235,13 +244,21 @@ Config 字段（如 `opennessDir`，或 git 插件的 `destructivePolicy`），�
 - `pnpm pack` 对 `@scope/name` 产出的文件名是 `scope-name-<version>.tgz`（剥掉 `@`、`/`→`-`），
   **不要**在脚本里硬编码 `@scope-` 前缀。不带 scope 的包就是 `<name>-<version>.tgz`。
 - **本机同时存在两个 pnpm 身份，别把它们搞混**：
-  - 随 DSH 分发的 `resources/runtime/pnpm/bin/pnpm.mjs` 本身是 **11.7.0**，但根 `package.json`
-    声明了 `packageManager: pnpm@9.12.0`，所以**在仓库根跑它时会自动切到 9.12.0** ——
-    锁文件是 `lockfileVersion: '9.0'`，`node_modules/.modules.yaml` 里写着 `packageManager: pnpm@9.12.0`。
-    因此 pnpm 10/11 专有的配置键（`allowBuilds`、`minimumReleaseAge`、`onlyBuiltDependencies` 的
-    新位置）在本仓**不生效**，不要照搬 pnpm 11 的写法。
+  - 随 DSH 分发的那份在 `resources/runtime/primary-runtime/dependencies/pnpm/`（0.2.0-rc.2 时是
+    `resources/runtime/pnpm/` —— 升级会挪位置，脚本里要按候选列表探测）。它本身是 **11.28.5**，
+    但根 `package.json` 声明了 `packageManager: pnpm@9.12.0`，所以**在仓库根跑它时会自动切到
+    9.12.0** —— 锁文件是 `lockfileVersion: '9.0'`，`node_modules/.modules.yaml` 里写着
+    `packageManager: pnpm@9.12.0`。因此 pnpm 10/11 专有的配置键（`allowBuilds`、
+    `minimumReleaseAge`、`onlyBuiltDependencies` 的新位置）在本仓**不生效**，不要照搬 pnpm 11 的写法。
   - 物化出来的 profile 目录里**没有** `packageManager` 字段，所以 `dsh plugin --profile <p> install`
-    跑的是那个 **11.7.0**（实测输出 `Done in … using pnpm v11.7.0`）。
+    跑的是自带的那份全集（0.2.1-rc.2 实测输出 `Done in … using pnpm v11.28.5`）。
+  - **本机 `pnpm` 不在 PATH 上**，所以根脚本 `pnpm test`（= `pnpm -r test`）会以
+    `'pnpm' is not recognized` 失败。要么把自带 pnpm 的目录加进 PATH，要么做一个指向
+    `…/pnpm/bin/pnpm.mjs` 的 `pnpm.cmd` shim；也可以按包单独跑各自的 `test`。
+- **DSH 自带的那份 node 不是一个 `node.exe`**：0.2.1-rc.2 的 `resources/runtime/bin/` 下只有
+  `node`（sh 脚本）与 `node.cmd`，后者转发到 `%DSH_DESKTOP_NODE_EXECUTABLE%` —— 该变量由桌面应用
+  传给子进程，普通 shell 里通常没有。所以脚本里的 node 探测顺序应是
+  `$env:DSH_DESKTOP_NODE_EXECUTABLE` → 旧布局的 `runtime\bin\node.exe` → PATH。
 - **在 JS 块注释里写 glob 会截断注释**：`profiles/*/node_modules` 里的 `*/` 会提前结束
   `/** … */`，剩下半句被当成代码，报出与真实位置无关的语法错误。写路径用
   `profiles/<profile>/node_modules`，或转义成 `*\/`。
