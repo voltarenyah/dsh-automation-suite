@@ -209,30 +209,6 @@ export function Panel(props) {
       <span className="plps-count">
         {status.phase === 'ready' ? `${visible.length} / ${rows.length}` : SOURCE_DIRECTORY + '/'}
       </span>
-      <select
-        className="plps-select"
-        value={device}
-        onChange={(event) => setDevice(event.target.value)}
-        aria-label="按 device 筛选"
-        disabled={deviceChoices.length === 0}
-      >
-        <option value={ALL}>全部 device（{rows.length}）</option>
-        {deviceChoices.map((choice) => (
-          <option key={choice.value} value={choice.value}>{`${choice.value}（${choice.count}）`}</option>
-        ))}
-      </select>
-      <select
-        className="plps-select"
-        value={type}
-        onChange={(event) => setType(event.target.value)}
-        aria-label="按类型筛选"
-        disabled={typeChoices.length === 0}
-      >
-        <option value={ALL}>全部类型（{rows.length}）</option>
-        {typeChoices.map((choice) => (
-          <option key={choice.value} value={choice.value}>{`${choice.value}（${choice.count}）`}</option>
-        ))}
-      </select>
       <button
         type="button"
         className="plps-btn"
@@ -242,6 +218,32 @@ export function Panel(props) {
       >
         {status.phase === 'loading' ? '读取中…' : '刷新'}
       </button>
+      <div className="plps-filters">
+        <select
+          className="plps-select"
+          value={device}
+          onChange={(event) => setDevice(event.target.value)}
+          aria-label="按 device 筛选"
+          disabled={deviceChoices.length === 0}
+        >
+          <option value={ALL}>全部 device（{rows.length}）</option>
+          {deviceChoices.map((choice) => (
+            <option key={choice.value} value={choice.value}>{`${choice.value}（${choice.count}）`}</option>
+          ))}
+        </select>
+        <select
+          className="plps-select"
+          value={type}
+          onChange={(event) => setType(event.target.value)}
+          aria-label="按类型筛选"
+          disabled={typeChoices.length === 0}
+        >
+          <option value={ALL}>全部类型（{rows.length}）</option>
+          {typeChoices.map((choice) => (
+            <option key={choice.value} value={choice.value}>{`${choice.value}（${choice.count}）`}</option>
+          ))}
+        </select>
+      </div>
     </div>
   )
 

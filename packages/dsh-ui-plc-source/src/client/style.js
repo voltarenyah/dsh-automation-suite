@@ -35,16 +35,38 @@ export const CSS = `
 }
 .plps-title { flex: none; font-weight: 600; }
 .plps-count { flex: none; color: var(--dsw-alias-label-tertiary, #6b7280); font-size: 11px; }
+.plps-filters {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+}
+/*
+ * The native option popup is painted by Chromium on its own surface, so a
+ * translucent fill token turns into a light card even in the dark theme while
+ * the text keeps inheriting the theme's light colour -- light on light. The
+ * popup therefore needs opaque colours of its own: the system colours follow
+ * color-scheme, and the dark theme is pinned explicitly so the control and its
+ * popup agree with the app's palette.
+ */
 .plps-select {
-  flex: 0 1 auto;
-  max-width: 46%;
+  flex: 1 1 0;
   min-width: 0;
   font: inherit;
-  color: inherit;
+  color: var(--dsw-alias-label-primary, CanvasText);
   background: var(--dsw-alias-fill-l1, rgba(128, 128, 128, 0.12));
   border: 1px solid var(--dsw-alias-border-l1, rgba(128, 128, 128, 0.24));
   border-radius: var(--dsw-radius-sm, 4px);
   padding: 1px 4px;
+}
+.plps-select option,
+.plps-select optgroup {
+  color: CanvasText;
+  background-color: Canvas;
+}
+body[data-ds-dark-theme] .plps-select {
+  color-scheme: dark;
 }
 .plps-btn {
   margin-left: auto;
