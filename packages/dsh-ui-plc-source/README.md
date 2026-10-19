@@ -32,6 +32,25 @@ DSH 插件（**浏览器半侧**）：在 dsh-web 的**右侧栏**增加一个 *
 所以这个 tab **必须**读清单；清单缺失/不可读时该 device 退回递归列目录（只有名字与大小，
 类型显示为「未知」），其余 device 照常。
 
+## 文案与语言
+
+界面文字**跟随 DSH 自己的语言设置**（设置 → 通用 → 语言），中文显示中文、English 显示英文，
+切换时**不用刷新页面**，已经打开的 tab 也一样。
+
+- 字典在 `src/client/locales.js`：`NS = 'plcSource'`，`zh` / `en` 两份（约 50 个键）。
+  `apply` 里 `ctx.locale.register(NS, { zh, en })` 注册，`ctx.locale.bind(NS)` 拿到 `t`；
+- 两个 `slots.register` 都带 `locale: NS`，框架据此把 `t` 交给组件；
+- tab 类型与引导项里的标题是 **thunk**（`() => t('tab.title')`），注册表存函数，所以文字跟着语言走；
+- 侧栏 chip 另占一个座位（`src/client/Title.jsx` 注册到 `sidebar.right.pane.tab.title`）：
+  tab 记录会在**打开那一刻**冻住标题文本，只有这个座位能让**已打开**的 chip 跟着语言变；
+- 错误提示也不写死句子：`model.ts` 的 `errorCopy(code)` 只把宿主返回的错误码映射成**字典键**，
+  句子由字典给。
+
+`test/locales.test.mjs` 会检查两份字典的键集合一致、没有空串、`model.ts` 的每个错误码都有对应键、
+占位符集合一致——加文案时忘了补英文会**测试失败**，不会静默显示中文。
+
+面板里"语言"那一列是 **PLC 编程语言**（STL / LAD / FBD），不是界面语言，不进字典。
+
 ## 装到本发行版
 
 三处（少一处就静默不生效）：
@@ -49,7 +68,7 @@ pwsh -NoProfile -File scripts\start-env.ps1 -DshHome <那个 home> -Restart
 
 ```powershell
 node scripts/build.mjs      # tsc → lib/index.js + lib/model.js；esbuild → lib/client.js
-node scripts/run-tests.mjs  # 先构建，再 node --test（纯模型：清单解析/筛选/排序/地址/文案）
+node scripts/run-tests.mjs  # 先构建，再 node --test（纯模型 25 项 + 文案 5 项）
 node scripts/tsc.mjs -p tsconfig.json --noEmit
 ```
 

@@ -348,3 +348,18 @@ actions.openResource(resourceAddress(sessionId, relativeUnder(cwd, row.file)))
 > 另有两点计划里的说法要按现状理解：列表是**平铺**的，没有可折叠层级，所以"保折叠状态"落在
 > 滚动位置与筛选上；`rowKey`（device+type+name+number+是否拒导）既是 React key，也是选中值。
 
+### 10.4 第四轮：UI 文案跟随 DSH 的语言设置
+
+| 项 | 实现 | 验收 |
+|---|---|---|
+| **字典与绑定** | 新增 `src/client/locales.js`：`NS = 'plcSource'`，`zh` / `en` 两份字典（约 50 个键：tab 标题、引导、动作、筛选、搜索、提示、备注、徽章、行、菜单、`error.*`）；`apply` 里 `ctx.effect(() => ctx.locale.register(NS, { zh, en }))`，再用 `ctx.locale.bind(NS)` 得到 `t` | 切换语言后 `刷新` ↔ `Refresh`、`搜索名称或编号` ↔ `Search name or number`、`全部 device（0）` ↔ `All devices (0)` |
+| **座位声明 locale** | 两个 `slots.register` 都带 `locale: NS`，框架据此把 `t` 塞进组件（`Panel` 另外还从 `inject` 拿到同一个绑定）；错误文案由 `model.ts` 的 `errorCopy(code)` 只返回**字典键**，不再返回成品句子 | 断网/坏清单时提示随语言变化 |
+| **tab 类型标题与引导项是 thunk** | `sidebarRightTabs.register({ title: () => t('tab.title'), guide: [{ title: () => t(...), description: () => t(...) }] })`——注册表存的是函数，所以引导页那一项（右侧栏启动页里的 **PLC 块 / PLC Blocks**）随语言即时变 | 同一页面在 Settings 里切语言后，引导项文字立即变化（无需刷新） |
+| **chip 单独占一个座位** | tab 记录在**打开那一刻**就把标题文本冻住了，所以 `title` thunk 只影响新建的 tab。新增 `src/client/Title.jsx`，注册到 `sidebar.right.pane.tab.title`（`key: ID`、`locale: NS`），由它渲染 chip 文字 | 已打开的 tab：中文 `PLC 块` → Settings 切 English → **同一个 tab 的 chip 变成 `PLC Blocks`**（不刷新、不重开），面板标题/按钮/占位符同时变英文；反切回中文同样即时 |
+
+测试从 25 项加到 **30 项**：新增 `test/locales.test.mjs` 五项——`zh`/`en` 键集合完全一致、
+没有空串、`model.ts` 的每个错误码都有对应键、两边的 `{占位符}` 集合一致、命名空间是 `plcSource`。
+
+边界：只提供 `zh` / `en`（DSH 的设置里就是这两种）；面板里"语言"那一列是 **PLC 编程语言**
+（STL / LAD / FBD），不是界面语言，不进字典。
+

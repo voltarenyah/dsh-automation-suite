@@ -19,8 +19,10 @@
  */
 
 import { Panel } from './Panel.jsx'
+import { Title } from './Title.jsx'
 import { createPlcStore } from './store.js'
 import { ensureStyle } from './style.js'
+import { NS, en, zh } from './locales.js'
 
 /** Package name. Also the tab-type id and the body seat's key — they must agree. */
 export const ID = 'dsh-ui-plc-source'
@@ -28,11 +30,8 @@ export const ID = 'dsh-ui-plc-source'
 /** A fresh kind, so the type cannot collide with the shipped files/browser/terminal types. */
 const KIND = 'plc-source'
 
-/** Chip text and guide-entry label. */
-const TITLE = 'PLC Blocks'
-
 /** Cordis services this plugin waits for before its body runs. */
-export const inject = ['slots', 'sessions', 'remote', 'remote.workspaceFiles']
+export const inject = ['slots', 'sessions', 'locale', 'remote', 'remote.workspaceFiles']
 
 /**
  * Normalize one `workspaceFiles.list` answer for the panel.
@@ -96,6 +95,11 @@ export function apply(ctx) {
     ctx.logger?.warn?.(`${ID}: stylesheet injection failed: ${String(error)}`)
   }
 
+  // Dictionaries first: registration is what lets the labels below translate at
+  // all, and a dictionary registered after the UI mounts still takes effect.
+  ctx.effect(() => ctx.locale.register(NS, { zh, en }), `${ID}: dictionaries`)
+  const t = ctx.locale.bind(NS)
+
   ctx.effect(
     () =>
       ctx.inject(['sidebarRightTabs'], (injected) => {
@@ -108,14 +112,16 @@ export function apply(ctx) {
           return tabs.register({
             id: ID,
             kind: KIND,
-            title: () => TITLE,
+            // A thunk, not a string: the registry holds the function, so the chip
+            // and the guide capsule follow the active locale without a reload.
+            title: () => t('tab.title'),
             // `order` only sorts the guide-page entries; 100 keeps this one last.
             guide: [
               {
                 id: KIND,
                 order: 100,
-                title: () => TITLE,
-                description: () => 'source/ 下的 PLC 源文件，可按 device 与类型筛选',
+                title: () => t('guide.title'),
+                description: () => t('guide.description'),
               },
             ],
           })
@@ -131,6 +137,8 @@ export function apply(ctx) {
   // instance per session scope, which is what survives a tab switch.
   const store = createPlcStore()
 
+  // The body goes first: it is what the tab is for, so nothing decorative may
+  // be able to take it down with it.
   ctx.effect(
     () =>
       ctx.slots.inject('sidebar.right.pane.tab', () =>
@@ -139,7 +147,12 @@ export function apply(ctx) {
             name: 'sidebar.right.pane.tab',
             key: ID,
             store,
+            // Declares which namespace the framework's `t` seat translates for
+            // this body; the bound function travels through inject as well, since
+            // its identity is stable per namespace.
+            locale: NS,
             inject: (sessionId) => ({
+              t,
               listDirectory: (path, signal) => listDirectory(ctx, sessionId, path, signal),
               readTextFile: (path, signal) => readTextFile(ctx, sessionId, path, signal),
             }),
@@ -148,5 +161,23 @@ export function apply(ctx) {
         ),
       ),
     `${ID}: tab body`,
+  )
+
+  // The chip is rendered by a seat of its own, because a tab record freezes the
+  // title text it was opened with; the seat is what keeps it following the locale.
+  ctx.effect(
+    () =>
+      ctx.slots.inject('sidebar.right.pane.tab.title', () =>
+        ctx.slots.register(
+          {
+            name: 'sidebar.right.pane.tab.title',
+            key: ID,
+            locale: NS,
+            inject: () => ({ t }),
+          },
+          Title,
+        ),
+      ),
+    `${ID}: tab title`,
   )
 }

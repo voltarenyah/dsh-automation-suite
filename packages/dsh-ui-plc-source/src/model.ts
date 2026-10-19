@@ -424,38 +424,41 @@ export function resourceAddress(sessionId: string, relativePath: string): string
 }
 
 /**
- * One actionable line for a failure. A missing `source/` is the normal state of a
- * workspace that has not run `create_engineering_project` yet, not an error.
+ * The locale key that explains a failure, plus the code it interpolates.
+ *
+ * The copy itself lives in the locale dictionaries rather than here: text held
+ * by a pure module would be frozen at whatever language was active when it was
+ * written, while a key resolved during render follows the app's language
+ * setting. A missing `source/` is the normal state of a workspace that has not
+ * run `create_engineering_project` yet, not an error.
  *
  * @param code - `RemoteError` code, or a transport code.
- * @returns the copy to render.
+ * @returns the dictionary key to translate, and the code to pass for `{code}`.
  */
-export function errorText(code: string): string {
+export function errorCopy(code: string): { readonly key: string; readonly code: string } {
   switch (code) {
     case 'workspace-file/not-found':
-      return 'source/ 不存在：这个工作区还没有工程源树，先运行 create_engineering_project。'
+      return { key: 'error.notFound', code }
     case 'workspace-file/outside-workspace':
-      return '这个目录在工作区之外，宿主拒绝列举。'
+      return { key: 'error.outsideWorkspace', code }
     case 'workspace-file/not-directory':
-      return '这不是一个目录。'
+      return { key: 'error.notDirectory', code }
     case 'workspace-file/not-regular-file':
-      return '这不是一个普通文件。'
+      return { key: 'error.notRegularFile', code }
     case 'workspace-file/too-large':
-      return '这个文件超过了宿主的读取上限。'
+      return { key: 'error.tooLarge', code }
     case 'workspace-file/not-text':
-      return '这不是文本文件。'
+      return { key: 'error.notText', code }
     case 'workspace-file/watch-unsupported':
-      return '这个宿主不支持目录监听，请手动刷新。'
+      return { key: 'error.watchUnsupported', code }
     case 'manifest/invalid':
-      return '这个设备的清单无法解析（形状或 JSON 不对），改用目录列举。'
+      return { key: 'error.manifestInvalid', code }
     case 'gateway/cancelled':
-      return '读取被取消了。'
+      return { key: 'error.cancelled', code }
     case 'gateway/lookup-not-found':
-      return '宿主管不到这个会话，无法读取工作区。'
+      return { key: 'error.lookupNotFound', code }
     default:
-      return code.startsWith('gateway/')
-        ? `与宿主的连接出了问题（${code}），稍后重试。`
-        : `读取失败（${code}）。`
+      return { key: code.startsWith('gateway/') ? 'error.gateway' : 'error.other', code }
   }
 }
 

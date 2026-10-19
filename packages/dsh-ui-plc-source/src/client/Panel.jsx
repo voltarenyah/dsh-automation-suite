@@ -16,8 +16,10 @@
  *
  * All view state (filters, query, selection, scroll offset, and the loaded rows
  * as a view cache) lives in the slot store, so switching to another sidebar tab
- * and back neither loses the setup nor re-reads a manifest. Every write goes
- * through the registration's store actions; nothing here calls a service.
+ * and back neither loses the setup nor re-reads a manifest.
+ *
+ * Copy goes through the framework's `t` seat, which means every string is
+ * resolved during render and therefore follows the app's language setting.
  *
  * @module dsh-ui-plc-source/Panel
  */
@@ -30,7 +32,7 @@ import {
   SOURCE_DIRECTORY,
   UNKNOWN_TYPE,
   deviceOptions,
-  errorText,
+  errorCopy,
   filterRows,
   joinPath,
   parseManifest,
@@ -50,11 +52,14 @@ const RENDER_LIMIT = 2000
 const WALK_MAX_DEPTH = 8
 const WALK_MAX_ROWS = 5000
 
-/** Badge text per object family when the manifest gives no type. */
-const KIND_BADGE = { block: '块', type: 'UDT', tagTable: '表', file: '文件' }
+/** Badge key per object family when the manifest gives no type. */
+const KIND_BADGE = { block: 'badge.block', type: 'badge.type', tagTable: 'badge.tagTable', file: 'badge.file' }
 
 /** Bucket used when the framework hands over no tab record (never in practice). */
 const FALLBACK_TAB_ID = 'plc-blocks'
+
+/** Identity fallback for the translate seat; keys pass through unchanged. */
+const identity = (key) => key
 
 /**
  * Flatten one device directory by listing it level by level. Used only when the
@@ -108,10 +113,10 @@ async function walkDevice({ listDirectory, signal, deviceDirectory, device }) {
 
 /**
  * Tab body. Data arrives as derived props: `useTabInfo`/`useSessions` are
- * framework hooks, the store and the two I/O callbacks come from the
- * registration.
+ * framework hooks, the store, the translate seat and the two I/O callbacks come
+ * from the registration.
  *
- * @param {object} props - framework props (tab, sessions, store, injected face).
+ * @param {object} props - framework props (tab, sessions, store, t, injected face).
  */
 export function Panel(props) {
   const readTab = typeof props.useTabInfo === 'function' ? props.useTabInfo : () => undefined
@@ -119,6 +124,10 @@ export function Panel(props) {
   // A stable fallback keeps the hook call unconditional; the real store is
   // always present because the registration declares one.
   const useView = typeof props.useStore === 'function' ? props.useStore : () => EMPTY_VIEW
+  // The framework's translate seat is preferred; the bound function handed over
+  // by the inject face has a stable identity per namespace, so either works and
+  // neither captures a language.
+  const t = typeof props.t === 'function' ? props.t : typeof props.translate === 'function' ? props.translate : identity
   const info = readTab()
   const tab = info?.tab
   const signal = tab?.signal
@@ -181,11 +190,9 @@ export function Panel(props) {
         const walked = await walkDevice({ listDirectory: io.current.listDirectory, signal, deviceDirectory, device: name })
         if (cancelled || signal?.aborted === true) return
         collected.push(...walked.rows)
-        collectedNotes.push(
-          `${name}：清单不可用（${errorText(parsed.code)}）` +
-            `${walked.rows.length === 0 ? '，目录也没有可列的文件' : `，已改用目录列举（${walked.rows.length} 个文件）`}` +
-            `${walked.truncated ? '，结果被截断' : ''}。`,
-        )
+        // Notes carry facts, not copy: the sentence is built during render so a
+        // language switch re-renders it too.
+        collectedNotes.push({ device: name, code: parsed.code, files: walked.rows.length, truncated: walked.truncated })
       }
       if (cancelled || signal?.aborted === true) return
       set(tabId, { status: 'ready', rows: collected, refused: refusedCount, notes: collectedNotes })
@@ -253,15 +260,15 @@ export function Panel(props) {
   const select = (row) => set(tabId, { selected: rowKey(row) })
 
   const open = (row) => {
-    const open_ = tab?.actions?.openResource
-    if (typeof open_ !== 'function') return
+    const openResource = tab?.actions?.openResource
+    if (typeof openResource !== 'function') return
     if (typeof cwd !== 'string' || cwd.length === 0) return
     const relative = relativeUnder(cwd, row.file)
     if (relative === null || relative.length === 0) return
     try {
       // A viewer claims the address; when none does the sidebar throws, and an
       // unopenable file must not take the list down with it.
-      open_(resourceAddress(sessionId, relative))
+      openResource(resourceAddress(sessionId, relative))
     } catch {
       /* no viewer for this address: keep the list as it is */
     }
@@ -284,7 +291,7 @@ export function Panel(props) {
 
   const head = (
     <div className="plps-head">
-      <span className="plps-title">PLC Blocks</span>
+      <span className="plps-title">{t('tab.title')}</span>
       <span className="plps-count">
         {status === 'ready' ? `${visible.length} / ${rows.length}` : SOURCE_DIRECTORY + '/'}
       </span>
@@ -293,19 +300,19 @@ export function Panel(props) {
         className="plps-btn"
         onClick={() => setReloads((value) => value + 1)}
         disabled={status === 'loading'}
-        title="重新读取 source/"
+        title={t('action.refresh')}
       >
-        {status === 'loading' ? '读取中…' : '刷新'}
+        {status === 'loading' ? t('action.refreshing') : t('action.refresh')}
       </button>
       <div className="plps-filters">
         <select
           className="plps-select"
           value={device}
           onChange={(event) => set(tabId, { device: event.target.value })}
-          aria-label="按 device 筛选"
+          aria-label={t('filter.device.label')}
           disabled={deviceChoices.length === 0}
         >
-          <option value={ALL}>全部 device（{rows.length}）</option>
+          <option value={ALL}>{t('filter.device.all', { count: rows.length })}</option>
           {deviceChoices.map((choice) => (
             <option key={choice.value} value={choice.value}>{`${choice.value}（${choice.count}）`}</option>
           ))}
@@ -314,10 +321,10 @@ export function Panel(props) {
           className="plps-select"
           value={type}
           onChange={(event) => set(tabId, { type: event.target.value })}
-          aria-label="按类型筛选"
+          aria-label={t('filter.type.label')}
           disabled={typeChoices.length === 0}
         >
-          <option value={ALL}>全部类型（{rows.length}）</option>
+          <option value={ALL}>{t('filter.type.all', { count: rows.length })}</option>
           {typeChoices.map((choice) => (
             <option key={choice.value} value={choice.value}>{`${choice.value}（${choice.count}）`}</option>
           ))}
@@ -329,17 +336,17 @@ export function Panel(props) {
           type="search"
           value={query}
           onChange={(event) => set(tabId, { query: event.target.value })}
-          placeholder="搜索名称或编号"
-          aria-label="按名称或编号搜索"
+          placeholder={t('search.placeholder')}
+          aria-label={t('search.label')}
         />
         {query.length === 0 ? null : (
           <button
             type="button"
             className="plps-btn plps-clear"
             onClick={() => set(tabId, { query: '' })}
-            title="清除搜索"
+            title={t('action.clear')}
           >
-            清除
+            {t('action.clear')}
           </button>
         )}
       </div>
@@ -357,16 +364,18 @@ export function Panel(props) {
           if (menu !== null) setMenu(null)
         }}
       >
-        {status === 'no-workspace' ? (
-          <div className="plps-hint">这个会话没有工作区目录，无法定位 source/。</div>
+        {status === 'no-workspace' ? <div className="plps-hint">{t('hint.noWorkspace')}</div> : null}
+        {status === 'loading' ? <div className="plps-hint">{t('hint.reading')}</div> : null}
+        {status === 'failed' ? (
+          <div className="plps-error">
+            {t(errorCopy(view.errorCode || 'gateway/internal').key, {
+              code: view.errorCode || 'gateway/internal',
+            })}
+          </div>
         ) : null}
-        {status === 'loading' ? <div className="plps-hint">正在读取 source/…</div> : null}
-        {status === 'failed' ? <div className="plps-error">{errorText(view.errorCode || 'gateway/internal')}</div> : null}
-        {status === 'ready' && rows.length === 0 ? (
-          <div className="plps-hint">source/ 里没有找到任何 device 目录。</div>
-        ) : null}
+        {status === 'ready' && rows.length === 0 ? <div className="plps-hint">{t('hint.noDevices')}</div> : null}
         {status === 'ready' && rows.length > 0 && visible.length === 0 ? (
-          <div className="plps-hint">当前筛选没有匹配的对象。</div>
+          <div className="plps-hint">{t('hint.noMatch')}</div>
         ) : null}
         {shown.map((row) => {
           const key = rowKey(row)
@@ -391,20 +400,24 @@ export function Panel(props) {
                 setMenu({ row, x: rect.left + 12, y: rect.top + 12 })
               }}
               aria-pressed={selected === key}
-              title={row.refused === true ? `TIA 拒绝导出：${row.reason ?? '未给出原因'}` : row.file}
+              title={
+                row.refused === true
+                  ? t('row.refusedTitle', { reason: row.reason ?? t('row.refusedNoReason') })
+                  : row.file
+              }
             >
               <span className="plps-badge">
                 {row.refused === true
-                  ? '拒绝'
+                  ? t('badge.refused')
                   : row.simaticType === UNKNOWN_TYPE
-                    ? KIND_BADGE[row.kind]
+                    ? t(KIND_BADGE[row.kind] ?? 'badge.file')
                     : row.simaticType}
               </span>
               <span className="plps-name">{row.name}</span>
               {row.number === undefined ? null : <span className="plps-meta">#{row.number}</span>}
               {row.language === undefined ? null : <span className="plps-meta">{row.language}</span>}
               {row.refused === true || row.verified ? null : (
-                <span className="plps-warn" title="写后读回校验未通过">⚠</span>
+                <span className="plps-warn" title={t('row.verifyFailed')}>⚠</span>
               )}
               <span className="plps-meta">{sizeLabel(row.bytes)}</span>
               {device === ALL && deviceChoices.length > 1 ? <span className="plps-device">{row.device}</span> : null}
@@ -412,15 +425,21 @@ export function Panel(props) {
           )
         })}
         {visible.length > shown.length ? (
-          <div className="plps-hint">只显示了前 {shown.length} 条，请用上面的筛选或搜索收窄范围。</div>
+          <div className="plps-hint">{t('hint.truncated', { shown: shown.length })}</div>
         ) : null}
-        {refused > 0 ? (
-          <div className="plps-note">
-            {refused} 个对象被 TIA 拒绝导出，已按名字列在末尾（标「拒绝」，悬停看原因）；它们没有文件，右键菜单里的「打开源文件」对它们不可用。
-          </div>
-        ) : null}
+        {refused > 0 ? <div className="plps-note">{t('note.refused', { count: refused })}</div> : null}
         {notes.map((note) => (
-          <div className="plps-note" key={note}>{note}</div>
+          <div className="plps-note" key={note.device}>
+            {t('note.walked', {
+              device: note.device,
+              reason: t(errorCopy(note.code).key, { code: note.code }),
+              detail:
+                note.files === 0
+                  ? t('note.walked.none')
+                  : t('note.walked.files', { count: note.files }) +
+                    (note.truncated ? t('note.walked.truncated') : ''),
+            })}
+          </div>
         ))}
       </div>
       {menuRow === null ? null : (
@@ -436,17 +455,17 @@ export function Panel(props) {
             role="menuitem"
             className="plps-menu-item"
             disabled={!menuCanOpen}
-            title={menuCanOpen ? menuRow.file : '这个对象没有导出文件'}
+            title={menuCanOpen ? menuRow.file : t('menu.openTitle')}
             onClick={() => {
               setMenu(null)
               open(menuRow)
             }}
           >
-            打开源文件
+            {t('menu.openFile')}
           </button>
           {menuCanOpen ? null : (
             <div className="plps-menu-note">
-              {menuRow.refused === true ? 'TIA 拒绝导出，没有文件' : '没有文件路径'}
+              {menuRow.refused === true ? t('menu.noFileRefused') : t('menu.noFile')}
             </div>
           )}
         </div>

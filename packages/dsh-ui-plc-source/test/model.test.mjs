@@ -19,7 +19,7 @@ import {
   UNKNOWN_TYPE,
   compareNatural,
   deviceOptions,
-  errorText,
+  errorCopy,
   fileName,
   filterRows,
   joinPath,
@@ -345,15 +345,27 @@ describe('paths', () => {
 })
 
 describe('copy', () => {
-  it('explains the codes the host actually returns, and never throws on unknown ones', () => {
-    assert.match(errorText('workspace-file/not-found'), /create_engineering_project/)
-    assert.match(errorText('workspace-file/outside-workspace'), /工作区之外/)
-    assert.match(errorText('workspace-file/too-large'), /上限/)
-    assert.match(errorText('manifest/invalid'), /无法解析/)
-    assert.match(errorText('gateway/cancelled'), /取消/)
-    assert.match(errorText('gateway/lookup-not-found'), /宿主管不到/)
-    assert.match(errorText('gateway/broken'), /gateway\/broken/)
-    assert.match(errorText('some/other'), /some\/other/)
+  it('maps the codes the host actually returns to their dictionary keys', () => {
+    // The copy itself lives in the locale dictionaries, so a language switch
+    // re-renders it; the model only decides which key explains a code.
+    assert.deepEqual(errorCopy('workspace-file/not-found'), {
+      key: 'error.notFound',
+      code: 'workspace-file/not-found',
+    })
+    assert.equal(errorCopy('workspace-file/outside-workspace').key, 'error.outsideWorkspace')
+    assert.equal(errorCopy('workspace-file/not-directory').key, 'error.notDirectory')
+    assert.equal(errorCopy('workspace-file/not-regular-file').key, 'error.notRegularFile')
+    assert.equal(errorCopy('workspace-file/too-large').key, 'error.tooLarge')
+    assert.equal(errorCopy('workspace-file/not-text').key, 'error.notText')
+    assert.equal(errorCopy('workspace-file/watch-unsupported').key, 'error.watchUnsupported')
+    assert.equal(errorCopy('manifest/invalid').key, 'error.manifestInvalid')
+    assert.equal(errorCopy('gateway/cancelled').key, 'error.cancelled')
+    assert.equal(errorCopy('gateway/lookup-not-found').key, 'error.lookupNotFound')
+    // Any other transport failure, and anything unrecognized, still resolves.
+    assert.equal(errorCopy('gateway/broken').key, 'error.gateway')
+    assert.equal(errorCopy('gateway/broken').code, 'gateway/broken')
+    assert.equal(errorCopy('some/other').key, 'error.other')
+    assert.equal(errorCopy('').key, 'error.other')
   })
 
   it('formats sizes and tolerates a missing one', () => {
