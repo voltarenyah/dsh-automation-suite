@@ -316,3 +316,23 @@ actions.openResource(resourceAddress(sessionId, relativeUnder(cwd, row.file)))
 - 清单 `failures[]` 在本工作区只有 1 条（先前另一份导出是 2 条），说明这个数字随导出而变，
   适合表尾计数，不适合当断言。
 
+### 10.1 补做（同日，第二轮）
+
+评审时按"是否影响功能完整"筛出两项，都已完成并验收：
+
+| 项 | 实现 | 验收 |
+|---|---|---|
+| **拒导对象显示成行** | `parseManifest` 把 `failures[]` 也变成行（`refused: true` + `reason`），平铺进同一张表；徽章「拒绝」、灰显、`disabled`（没有文件可开），tooltip 是 TIA 的完整原因；表尾备注改为指向这些行 | 页面行数 **1377**（1376 导出 + 1 拒导），`FOB_SAFETY` 一行显示「拒绝」并可悬停看到 `The export of block 'FOB_SAFETY' is not permitted.` |
+| **按名称/编号搜索** | `matchesQuery` + `filterRows(..., query)`；UI 加一个 `type="search"` 输入框与「清除」按钮，不分大小写 | `scp` → 5 行（`SCP_IN` / `SCP_OUT` / 两个实例 DB / `HMI_SCP_IN`）；`1001` → 2 行（按编号命中）；`safety` → 21 行；与另两个筛选可叠加 |
+
+测试从 20 项加到 **24 项**（新增：拒导行字段、缺 message 时回退 code、坏 failure 条目不拖垮整份清单、
+名称/编号查询与大小写）。仍未做：虚拟化（1376 行实测流畅）、折叠/筛选状态保持（使用者已取消）。
+
+### 10.2 第二轮修复
+
+- **深色主题下下拉弹层浅底浅字**：`--dsw-specific-menu` 是半透明叠层色，原生 `<option>` 弹层把它画在
+  自己的白底上、文字却继承深色主题的浅色。改为弹层用不透明配色（`Canvas`/`CanvasText`）并在
+  `body[data-ds-dark-theme]` 下把 `color-scheme` 钉成 dark；实测浅色 `rgb(255,255,255)`+黑字、
+  深色 `rgb(18,18,18)`+白字。
+- 表头拆成两行（标题+计数+刷新 / 两个下拉），搜索框独占一行，窄面板不再把控件叠成三行。
+

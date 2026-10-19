@@ -62,6 +62,10 @@ export interface SourceRow {
   readonly verified: boolean
   /** Absolute path of the exported file. */
   readonly file: string
+  /** True for an object TIA refused to export: it has no file, only a reason. */
+  readonly refused?: boolean
+  /** Why TIA refused it (the manifest's failure `code`), for refused rows. */
+  readonly reason?: string
 }
 
 /** One `blocks[]` entry as the manifest writes it (all fields optional: it is foreign JSON). */
@@ -75,6 +79,16 @@ export interface ManifestEntry {
   readonly bytes?: unknown
   readonly verified?: unknown
   readonly file?: unknown
+}
+
+/** One `failures[]` entry: an object Openness refused to export. */
+export interface ManifestFailure {
+  readonly name?: unknown
+  readonly group?: unknown
+  readonly category?: unknown
+  readonly file?: unknown
+  readonly code?: unknown
+  readonly message?: unknown
 }
 
 /** The parts of the manifest document this plugin reads. */
@@ -112,6 +126,11 @@ export function kindOf(category: unknown): ObjectKind {
 
 /**
  * Parse one device's manifest text into flat rows.
+ *
+ * Objects TIA refused become rows too: they are absent from `blocks[]`, so
+ * without them the list silently shows fewer objects than the export planned and
+ * the user has no way to learn which ones are missing. They carry `refused` and a
+ * reason instead of a usable file.
  *
  * @param text - the manifest file, decoded as UTF-8.
  * @param device - device name, stamped onto every row.
@@ -153,6 +172,26 @@ export function parseManifest(text: string, device: string): ParsedManifest {
       verified: entry.verified !== false,
       file,
     })
+  }
+  if (Array.isArray(manifest.failures)) {
+    for (const item of manifest.failures) {
+      if (typeof item !== 'object' || item === null) continue
+      const failure = item as ManifestFailure
+      const file = textOf(failure.file) ?? ''
+      const name = textOf(failure.name) ?? (file.length > 0 ? fileName(file) : '')
+      if (name.length === 0) continue
+      const reason = textOf(failure.message) ?? textOf(failure.code)
+      rows.push({
+        device,
+        kind: kindOf(failure.category),
+        simaticType: UNKNOWN_TYPE,
+        name,
+        refused: true,
+        ...(reason === undefined ? {} : { reason }),
+        verified: false,
+        file,
+      })
+    }
   }
   const failures = Array.isArray(manifest.failures)
     ? manifest.failures.length
@@ -259,17 +298,43 @@ export function typeOptions(rows: readonly SourceRow[]): FilterOption[] {
 }
 
 /**
- * Rows matching both filters. `ALL` means "no constraint"; the two filters are
- * independent, so their options never shrink each other.
+ * Whether a row matches the free-text query. The query is case-insensitive and
+ * matches anywhere in the object name or its number, so `scp` finds `SCP_IN`
+ * and `1001` finds the block whose number is 1001.
+ *
+ * @param row - one row.
+ * @param query - raw query text (empty matches everything).
+ * @returns whether the row stays visible.
+ */
+export function matchesQuery(row: SourceRow, query: string): boolean {
+  const needle = query.trim().toLowerCase()
+  if (needle.length === 0) return true
+  if (row.name.toLowerCase().includes(needle)) return true
+  return row.number !== undefined && row.number.toLowerCase().includes(needle)
+}
+
+/**
+ * Rows matching the type/device filters and the free-text query. `ALL` means "no
+ * constraint"; the filter options are derived from all rows, so they never
+ * shrink each other and the query does not remove choices either.
  *
  * @param rows - flattened rows.
  * @param device - device name or `ALL`.
  * @param type - `simaticType` or `ALL`.
+ * @param query - free text matched against name and number (default: no query).
  * @returns the matching rows, in the given order.
  */
-export function filterRows(rows: readonly SourceRow[], device: string, type: string): SourceRow[] {
+export function filterRows(
+  rows: readonly SourceRow[],
+  device: string,
+  type: string,
+  query = '',
+): SourceRow[] {
   return rows.filter(
-    (row) => (device === ALL || row.device === device) && (type === ALL || row.simaticType === type),
+    (row) =>
+      (device === ALL || row.device === device) &&
+      (type === ALL || row.simaticType === type) &&
+      matchesQuery(row, query),
   )
 }
 

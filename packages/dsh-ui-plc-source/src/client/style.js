@@ -68,6 +68,22 @@ export const CSS = `
 body[data-ds-dark-theme] .plps-select {
   color-scheme: dark;
 }
+.plps-search {
+  flex: 1 1 auto;
+  min-width: 0;
+  font: inherit;
+  color: var(--dsw-alias-label-primary, CanvasText);
+  background: var(--dsw-alias-fill-l1, rgba(128, 128, 128, 0.12));
+  border: 1px solid var(--dsw-alias-border-l1, rgba(128, 128, 128, 0.24));
+  border-radius: var(--dsw-radius-sm, 4px);
+  padding: 1px 6px;
+}
+.plps-search::placeholder {
+  color: var(--dsw-alias-label-tertiary, #6b7280);
+}
+.plps-clear {
+  margin-left: 0;
+}
 .plps-btn {
   margin-left: auto;
   flex: none;
@@ -100,6 +116,19 @@ body[data-ds-dark-theme] .plps-select {
   white-space: nowrap;
 }
 .plps-row:hover { background: var(--dsw-alias-fill-l1, rgba(128, 128, 128, 0.12)); }
+/*
+ * A refused object has no file to open: the row stays as evidence (which objects
+ * are missing and why) but is not a control. The cursor is restated as default,
+ * because the shared row style says pointer.
+ */
+.plps-row:disabled {
+  cursor: default;
+  opacity: 1;
+  color: var(--dsw-alias-label-tertiary, #6b7280);
+}
+.plps-refused .plps-badge {
+  color: var(--dsw-alias-label-warning, #b7791f);
+}
 .plps-badge {
   flex: none;
   min-width: 34px;

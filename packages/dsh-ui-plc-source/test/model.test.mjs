@@ -24,6 +24,7 @@ import {
   filterRows,
   joinPath,
   kindOf,
+  matchesQuery,
   parseManifest,
   relativeUnder,
   resourceAddress,
@@ -73,7 +74,16 @@ const MANIFEST = {
       simaticType: 'PlcTagTable',
     },
   ],
-  failures: [{ category: 'blocks', name: 'FOB_SAFETY' }],
+  failures: [
+    {
+      category: 'blocks',
+      name: 'FOB_SAFETY',
+      group: '000_SAFETY_TASK/',
+      file: 'C:\\ws\\source\\Sino_PEI\\blocks\\000_SAFETY_TASK\\FOB_SAFETY.xml',
+      code: 'export_failed',
+      message: "The export of block 'FOB_SAFETY' is not permitted.",
+    },
+  ],
 }
 
 /** @returns {string} the fixture serialized the way the controller writes it. */
@@ -83,10 +93,10 @@ describe('parseManifest', () => {
   it('flattens every category and keeps the fields the list renders', () => {
     const parsed = parseManifest(manifestText(), 'Sino_PEI')
     assert.equal(parsed.ok, true)
-    assert.equal(parsed.rows.length, 4)
+    assert.equal(parsed.rows.length, 5)
     assert.equal(parsed.failures, 1)
 
-    const [fb, ob, udt, table] = parsed.rows
+    const [fb, ob, udt, table, refused] = parsed.rows
     assert.equal(fb.name, 'SCP_IN')
     assert.equal(fb.device, 'Sino_PEI')
     assert.equal(fb.kind, 'block')
@@ -107,6 +117,40 @@ describe('parseManifest', () => {
     assert.equal(udt.simaticType, 'PlcStruct')
     assert.equal(table.kind, 'tagTable')
     assert.equal(table.bytes, undefined)
+
+    // A refused object is a row too: it has no usable file, but it does carry the
+    // reason, so the list can show which objects the export skipped.
+    assert.equal(refused.name, 'FOB_SAFETY')
+    assert.equal(refused.refused, true)
+    assert.equal(refused.kind, 'block')
+    assert.equal(refused.simaticType, UNKNOWN_TYPE)
+    assert.equal(refused.verified, false)
+    assert.equal(refused.bytes, undefined)
+    assert.equal(refused.reason, "The export of block 'FOB_SAFETY' is not permitted.")
+    assert.match(refused.file, /FOB_SAFETY\.xml$/)
+  })
+
+  it('falls back to the failure code when no message is recorded', () => {
+    const parsed = parseManifest(
+      JSON.stringify({ blocks: [], failures: [{ category: 'blocks', name: 'X', code: 'export_failed' }] }),
+      'D',
+    )
+    assert.equal(parsed.ok, true)
+    assert.equal(parsed.rows.length, 1)
+    assert.equal(parsed.rows[0].reason, 'export_failed')
+  })
+
+  it('ignores unusable failure entries instead of dropping the whole manifest', () => {
+    const parsed = parseManifest(
+      JSON.stringify({ blocks: [], failures: [{ code: 'x' }, 'nope', null, { name: 'Named' }] }),
+      'D',
+    )
+    assert.equal(parsed.ok, true)
+    assert.deepEqual(
+      parsed.rows.map((row) => row.name),
+      ['Named'],
+    )
+    assert.equal(parsed.failures, 4)
   })
 
   it('does not carry the folder hierarchy into the rows', () => {
@@ -178,7 +222,7 @@ describe('compareNatural / sortRows', () => {
     const rows = sortRows(parsed.rows)
     assert.deepEqual(
       rows.map((row) => row.simaticType),
-      ['OB', 'FB', 'PlcStruct', 'PlcTagTable'],
+      ['OB', 'FB', 'PlcStruct', 'PlcTagTable', UNKNOWN_TYPE],
     )
   })
 
@@ -197,18 +241,19 @@ describe('options and filtering', () => {
   const rows = parseManifest(manifestText(), 'Sino_PEI').rows
 
   it('counts devices and types', () => {
-    assert.deepEqual(deviceOptions(rows), [{ value: 'Sino_PEI', count: 4 }])
+    assert.deepEqual(deviceOptions(rows), [{ value: 'Sino_PEI', count: 5 }])
     assert.deepEqual(typeOptions(rows), [
       { value: 'OB', count: 1 },
       { value: 'FB', count: 1 },
       { value: 'PlcStruct', count: 1 },
       { value: 'PlcTagTable', count: 1 },
+      { value: UNKNOWN_TYPE, count: 1 },
     ])
   })
 
   it('filters by device, by type, and by both', () => {
-    assert.equal(filterRows(rows, ALL, ALL).length, 4)
-    assert.equal(filterRows(rows, 'Sino_PEI', ALL).length, 4)
+    assert.equal(filterRows(rows, ALL, ALL).length, 5)
+    assert.equal(filterRows(rows, 'Sino_PEI', ALL).length, 5)
     assert.equal(filterRows(rows, 'Other', ALL).length, 0)
     assert.equal(filterRows(rows, ALL, 'FB').length, 1)
     assert.equal(filterRows(rows, ALL, 'FB')[0].name, 'SCP_IN')
@@ -216,10 +261,38 @@ describe('options and filtering', () => {
     assert.equal(filterRows(rows, 'Other', 'FB').length, 0)
   })
 
+  it('filters by name and by number, case-insensitively', () => {
+    assert.equal(filterRows(rows, ALL, ALL, '').length, 5)
+    assert.equal(filterRows(rows, ALL, ALL, '   ').length, 5)
+    assert.deepEqual(
+      filterRows(rows, ALL, ALL, 'scp').map((row) => row.name),
+      ['SCP_IN'],
+    )
+    assert.deepEqual(
+      filterRows(rows, ALL, ALL, '1001').map((row) => row.name),
+      ['SCP_IN'],
+    )
+    assert.deepEqual(
+      filterRows(rows, ALL, ALL, 'FOB').map((row) => row.name),
+      ['FOB_SAFETY'],
+    )
+    assert.equal(filterRows(rows, ALL, ALL, 'nothing-matches').length, 0)
+    // The query composes with the other two filters instead of replacing them.
+    assert.equal(filterRows(rows, 'Sino_PEI', 'FB', 'scp').length, 1)
+    assert.equal(filterRows(rows, 'Sino_PEI', 'OB', 'scp').length, 0)
+  })
+
+  it('matches name and number independently of the rest of the row', () => {
+    assert.equal(matchesQuery({ name: 'SCP_IN', number: '1001' }, 'p_i'), true)
+    assert.equal(matchesQuery({ name: 'SCP_IN', number: '1001' }, '100'), true)
+    assert.equal(matchesQuery({ name: 'SCP_IN' }, '1001'), false)
+    assert.equal(matchesQuery({ name: 'SCP_IN', number: '1001' }, ''), true)
+  })
+
   it('keeps the filter options independent of the current selection', () => {
     // The panel derives both option lists from ALL rows, so narrowing one
     // filter never removes the other filter's choices.
-    assert.equal(typeOptions(rows).length, 4)
+    assert.equal(typeOptions(rows).length, 5)
     assert.equal(deviceOptions(rows).length, 1)
   })
 })

@@ -120,6 +120,7 @@ export function Panel(props) {
   const [notes, setNotes] = useState([])
   const [device, setDevice] = useState(ALL)
   const [type, setType] = useState(ALL)
+  const [query, setQuery] = useState('')
   const [reloads, setReloads] = useState(0)
 
   const rootPath = typeof cwd === 'string' && cwd.length > 0 ? joinPath(cwd, SOURCE_DIRECTORY) : null
@@ -136,6 +137,7 @@ export function Panel(props) {
     setNotes([])
     setDevice(ALL)
     setType(ALL)
+    setQuery('')
 
     const run = async () => {
       const listed = await io.current.listDirectory(rootPath, signal)
@@ -185,7 +187,10 @@ export function Panel(props) {
 
   const deviceChoices = useMemo(() => deviceOptions(rows), [rows])
   const typeChoices = useMemo(() => typeOptions(rows), [rows])
-  const visible = useMemo(() => sortRows(filterRows(rows, device, type)), [rows, device, type])
+  const visible = useMemo(
+    () => sortRows(filterRows(rows, device, type, query)),
+    [rows, device, type, query],
+  )
   const shown = visible.length > RENDER_LIMIT ? visible.slice(0, RENDER_LIMIT) : visible
 
   const open = (file) => {
@@ -244,6 +249,21 @@ export function Panel(props) {
           ))}
         </select>
       </div>
+      <div className="plps-filters">
+        <input
+          className="plps-search"
+          type="search"
+          value={query}
+          onChange={(event) => setQuery(event.target.value)}
+          placeholder="搜索名称或编号"
+          aria-label="按名称或编号搜索"
+        />
+        {query.length === 0 ? null : (
+          <button type="button" className="plps-btn plps-clear" onClick={() => setQuery('')} title="清除搜索">
+            清除
+          </button>
+        )}
+      </div>
     </div>
   )
 
@@ -265,16 +285,29 @@ export function Panel(props) {
         {shown.map((row, index) => (
           <button
             type="button"
-            className="plps-row"
+            className={row.refused === true ? 'plps-row plps-refused' : 'plps-row'}
             key={`${row.device}\u0000${row.simaticType}\u0000${row.name}\u0000${index}`}
-            onClick={() => open(row.file)}
-            title={row.file}
+            onClick={row.refused === true ? undefined : () => open(row.file)}
+            disabled={row.refused === true}
+            title={
+              row.refused === true
+                ? `TIA 拒绝导出：${row.reason ?? '未给出原因'}\n${row.file}`
+                : row.file
+            }
           >
-            <span className="plps-badge">{row.simaticType === UNKNOWN_TYPE ? KIND_BADGE[row.kind] : row.simaticType}</span>
+            <span className="plps-badge">
+              {row.refused === true
+                ? '拒绝'
+                : row.simaticType === UNKNOWN_TYPE
+                  ? KIND_BADGE[row.kind]
+                  : row.simaticType}
+            </span>
             <span className="plps-name">{row.name}</span>
             {row.number === undefined ? null : <span className="plps-meta">#{row.number}</span>}
             {row.language === undefined ? null : <span className="plps-meta">{row.language}</span>}
-            {row.verified ? null : <span className="plps-warn" title="写后读回校验未通过">⚠</span>}
+            {row.refused === true || row.verified ? null : (
+              <span className="plps-warn" title="写后读回校验未通过">⚠</span>
+            )}
             <span className="plps-meta">{sizeLabel(row.bytes)}</span>
             {device === ALL && deviceChoices.length > 1 ? <span className="plps-device">{row.device}</span> : null}
           </button>
@@ -282,7 +315,11 @@ export function Panel(props) {
         {visible.length > shown.length ? (
           <div className="plps-hint">只显示了前 {shown.length} 条，请用上面的筛选取窄范围。</div>
         ) : null}
-        {refused > 0 ? <div className="plps-note">{refused} 个对象被 TIA 拒绝导出（见各设备清单的 failures）。</div> : null}
+        {refused > 0 ? (
+          <div className="plps-note">
+            {refused} 个对象被 TIA 拒绝导出，已按名字列在末尾（标「拒绝」，悬停看原因）；它们没有文件，点不开。
+          </div>
+        ) : null}
         {notes.map((note) => (
           <div className="plps-note" key={note}>{note}</div>
         ))}
