@@ -16,7 +16,7 @@
 |---|---|---|---|
 | 工控软件接口插件族（**软件版本 × 能力层级**：V17/V18… × min/std/pro） | ① 接入层 | 🟡 已有 **V17 × min** 成员 | `packages/dsh-tia-openness-v17-min` |
 | 工程上下文插件 | 作用域（横向） | 🟡 **部分实现**（`create_engineering_project` 一个工具：把 TIA 打开的工程另存进 workspace + 重建源文件树 + 经【缝 B】逐设备触发图谱建库；**已登记进蓝图**。P0 的注册表与 P1 的版本层已删除，见该包 D22、图谱这一步见 D25） | `packages/dsh-engineering-context` |
-| 工程知识图谱插件 | ② 语义层 | 🟡 **部分实现**（引擎 + 协议 + 3 个工具 + `knowledgeGraph` 服务；**已登记进蓝图**，并被族 2 的工作流调用） | `packages/dsh-engineering-graph` |
+| 工程知识图谱插件 | ② 语义层 | 🟡 **部分实现**（引擎 + 协议 + 4 个工具 + `knowledgeGraph` 服务；**已登记进蓝图**，并被族 2 的工作流调用） | `packages/dsh-engineering-graph` |
 
 > 插件不再编号；**只有接口插件族是"一族多成员"**。编号只保留给层（① 接入层 / ② 语义层 /
 > ③ 管理与协作层，见 [`vision.md`](vision.md) §3）。
@@ -219,28 +219,34 @@
 | 图落库到 SQLite（含原生 provider） | ✅ | `--self-test` 的 SQLite 往返（写图 → 读回）；**原生 `e_sqlite3` 运行期加载已验证** —— 这一条编译证明不了 |
 | 引擎协议（NDJSON 帧 + 操作白名单） | ✅ | **D19**；`dotnet build` **0 warning / 0 error**；stdio 实测 ready / result / progress 三类帧与四条错误路径 |
 | PLC 语法翻译（SCL 与 LAD/FBD 语句级，深度随结果标注） | 🟡 | 来源库的 FlgNet → 类 SCL 翻译器原样移植；**STL / GRAPH 明确不支持**（**D14**） |
-| 查询接口 | 🟡 | 只读 SQL（`knowledge_query`）+ schema（`knowledge_schema`）；**按需下钻的工具（某个块、某变量用法、网段逻辑分块）尚未移植** |
-| 测试与 CI 覆盖 | ✅ | 该包 **66 项** `node:test`，含**经真实引擎**的端到端（ingest → query → 计数、只读闸门拒绝 `DROP`）与传输层故障注入；引擎自检也被 `pnpm test` 覆盖 |
+| 查询接口 | 🟡 | 只读 SQL（`knowledge_query`）+ schema（`knowledge_schema`）+ 发现（`knowledge_workspace`，2026-10-19 **D24**，`db_path` 因此可省略）；**按需下钻的工具（某个块、某变量用法、网段逻辑分块）尚未移植** |
+| 测试与 CI 覆盖 | ✅ | 该包 **84 项** `node:test`，含**经真实引擎**的端到端（ingest → query → 计数、只读闸门拒绝 `DROP`）与传输层故障注入；引擎自检也被 `pnpm test` 覆盖 |
 | 新鲜度 / 增量更新 | ⬜ | 属 **D13** 第 4 步。来源库**没有** `status` 操作（新鲜度住在消费端），需新写；contentHash 兜底还须先归一化 |
 | 兼容层（跨版本 / 跨来源降级） | ⬜ | 目前只有 manifest 与 crawl 两条入口，没有按版本降级 |
 | LLM 友好的分级表示（项目摘要 + 分页） | ⬜ | 第 8 项。vendored 代码里有 `knowledge_networks` 投影与 FTS 索引，但**还没有工具暴露它们** |
 
-> **已登记进蓝图（2026-10-15）**：`profile/dsh-automation-suite/package.json` 的 `dsh.profile.bundles` 已含它，
-> 所以这 3 个工具出现在每个会话的工具面里（全仓合计 **42** 个）。
+> **已登记进蓝图（2026-10-15）**：`profile/dsh-automation-suite/package.json` 的 `dsh.profile.bundles` 已含它。
+> 注意 D23 之后工具面**按 preset 分发**：`leader` 是 4 个、`expert` 是 3 个（不含 `knowledge_ingest`），
+> 不再是"每个会话都有"。
 >
 > **数据库位置（D20）**：`<项目根>/knowledge/<device>/<device>_knowledge.db` —— `knowledge/` 与 `source/` 同级，
 > 一台设备一个文件夹放它自己的全部生成物，`*.db` 不进 git。`knowledge_ingest` 的 `device_dir` 指向
 > `<项目根>/source/<device>`，省略 `db_path` 时就用这个约定。
 >
-> **已接进族 2 的工作流（2026-10-17，族 2 D25）**：除 3 个工具外，本包还注册 cordis 服务
+> **已接进族 2 的工作流（2026-10-17，族 2 D25）**：除工具外，本包还注册 cordis 服务
 > **`knowledgeGraph`**（`src/service.ts`；按名取、不 import）。工程上下文插件的
 > `create_engineering_project` 在导出完成后逐设备调用它的 `ingestDevice`，把块逻辑转译进
 > `knowledge/<device>/`。这一步是**软的**：服务缺席 / 引擎没构建 / 引擎不可达时只报"图谱未建成"，
 > 工作流照常成功（工程与源文件树仍是它的交付物），工具级与缝级的 19 项新测试覆盖这些降级路径。
 >
 > **两个 Loader 行（2026-10-19，发行版 D23）**：宿主行 = C# 引擎子进程 + `knowledgeGraph` 服务；
-> `/tools` 行 = 3 个模型面工具，带 `includeIngest` 开关。子 agent preset `expert` 用
-> `includeIngest: false` 只拿到 `knowledge_schema` / `knowledge_query`。
+> `/tools` 行 = 模型面工具，带 `includeIngest` 开关。子 agent preset `expert` 用
+> `includeIngest: false` 只拿到 `knowledge_workspace` / `knowledge_schema` / `knowledge_query`。
+>
+> **发现与查询可用性（2026-10-19，发行版 D24）**：`knowledge_workspace` 让模型自己读到工程身份、
+> 每台设备的库路径/大小/mtime 与 `device_dir`；`knowledge_query` 的 `db_path` 可省略
+> （单库自动、零库/多库拒绝并列出候选）。新鲜度仍 ⬜ —— 库是派生快照，persona 明确禁止只凭库断言
+> 代码"改了/没改"。
 >
 > 仍待做：**新鲜度/增量**（没有它，唯一刷新方式就是"每次导出后整库重建"；
 > 实测 1376 个源文件约 30 s、库约 450 MB，图谱插件的 `requestTimeoutMs` 默认 300 s 要留够）。

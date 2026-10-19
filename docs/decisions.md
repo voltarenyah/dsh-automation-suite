@@ -600,8 +600,58 @@ stdio 通道实测：`ready` 帧列出三个操作，`GetSchema` 返回 34 字�
      目前对 git 不成立**。要么把 `dsh-tool-git` 也拆成 `/tools` 行（第 5 处 vendor 偏离），
      要么接受"expert 能改 git"。
 
+> **数字变更（D24，2026-10-19）**：图谱工具面新增 `knowledge_workspace`（本地工具，引擎无关），
+> 两个 preset **都**声明了这一行，所以按 D23 的同一口径各 **+1**：`leader` **44**、`expert` **22**。
+> 这是按 D23 的账目推出的（全局 13 + 该 preset 声明的工程行），**没有**重跑作用域链测量；
+> 上面的 43 / 21 是 D23 落地当次的实测记录，保留原样以便对照，不互相解释。
+
 ---
 
+## D24 · 让"已有工程的 workspace 会话"查得到知识库：发现工具 + 可选 `db_path`，工具按 preset 最小化分发 ✅
+
+**背景**：D20 定了库的位置、D19 定了 3 个工具，但**没有一条路能让模型知道该查哪个库**：
+`knowledge_query` 的 `db_path` 是必填的绝对路径，而库路径只存在于会话记忆里 ——
+`source/_dsh-engineering-context.json` 记工程身份与 `devices[]`，**不记 `dbPath`**
+（族 2 `src/tools/create-project.ts` 的 `SourceIndexDocument`）。D22 删掉注册表之后，
+"哪个工程"靠目录布局，库路径**没有任何工具能回答**。参照实现（`Mcp.Knowledge`）能 work 的原因是
+**宿主把 `dbPath` 注入系统提示词**（它的 `SystemPrompt` 逐轮带 "Knowledge db: …"），而不是工具自己发现；
+本仓没有那个宿主层，所以必须把这件事做成工具。
+
+**决定**（用户 2026-10-19 拍板）：
+
+1. **只在 suite profile 做与验收**，不装进日常 `desktop` profile。
+2. **新增 `knowledge_workspace`**（本地工具，不经引擎）：读会话工作目录，回答"工程是谁、每台设备的库
+   在哪、多大、什么时候写的、缺库时用哪个 `device_dir` 建"。**它声明自己的信封**，不复用引擎信封
+   （引擎信封有 `operation`/`durationMs`，这里两者都不存在）。
+3. **`knowledge_query.db_path` 改为可选**：恰好一个库 → 用它；零个 → `DB_NOT_FOUND`；
+   多个 → `DB_AMBIGUOUS` 并列出候选。**零/多都是拒绝，绝不猜设备**；拒绝路径上引擎一次都不调用。
+   相对路径按会话工作目录解析。
+4. **工具按 preset 最小化分发**（延续 D23）：`expert` 拿全部下钻工具；`leader` 只留它真正需要的
+   —— `knowledge_workspace` + `knowledge_schema` + `knowledge_ingest` + `knowledge_query`，
+   深读一律派给 `expert`。
+5. **实现位置的取舍**：下钻工具走 `/tools` 行；搜索类**先在 TypeScript 侧拼固定 SQL** 走现有 `Query`
+   操作（零引擎改动），只有真正需要跨表复合的才加 C# 操作。理由：改 C# 要同时动协议白名单、引擎与 TS
+   三处并重新提交 `engine/bin`，而 `knowledge_networks` / `knowledge_network_accesses` /
+   `knowledge_search`(FTS5) 三张派生表**引擎早就建好了**（roadmap 第 226 行自己写着"还没有工具暴露它们"）。
+6. **两阶段交付**：阶段 1+2（发现 + 提示）一次提交；阶段 3（预算改造 + 下钻工具）再一次提交。
+   **新鲜度不在本轮**：它是 D13 第 4 步，仍未做；本轮只让报告如实给出 `modifiedAt` 与 `exportedAt`，
+   并由 persona **禁止**"只凭库断言代码改了/没改"。
+
+**后果**
+
+- `knowledge_workspace` 是**第一个不依赖引擎**的工具：引擎没构建时它照常回答，其余三个仍以
+  `engine_not_found` 失败 —— 这正好让"模型能自查为什么查不了库"。
+- 提示词改动只落在 `preset-leader` 与 `preset-expert` 的 persona（全局那一行只对非 preset agent 有效，
+  D23 已实测）；**不引入任何 `{{…}}` 变量**（AGENTS.md §1 第 5 条的事故）。
+- 工具面数字**必须重测并回写**：D23 记的 leader 43 / expert 21 各自 +1（`knowledge_workspace`）。
+- 库里没有 `knowledge` 目录是**正常状态**（还没建工程），工具报空报告而不是错误；
+  索引损坏/陈旧只降级成 warning，仍然把磁盘上真实存在的库报出来。
+
+**验证**：`packages/dsh-engineering-graph/test/11-workspace.test.mjs`（18 项）覆盖空 workspace、
+单库、缺库、SQLite 旁挂文件、索引外的库、损坏索引、约定外的顶层 `.db`、解析的三种分支、
+路径可携带化与大小渲染，以及两个工具体（含"拒绝时引擎零调用"）。工具面数字见 D23 的补充说明。
+
+---
 
 ## 待办验证清单（由以上决策派生）
 

@@ -13,10 +13,11 @@ DeepSeek Harness 插件（**工程知识图谱插件**）：在工程产物（�
 >
 > 宿主行**不注册任何工具**：它持有引擎子进程（**首次请求时**才启动，卸载时 `stop()`）并发布两个
 > cordis 服务 —— 给别的插件用的 `knowledgeGraph`，以及给本包自己的工具行用的内部缝
-> `knowledgeEngine`。三个工具（`knowledge_schema`、`knowledge_ingest`、`knowledge_query`）由工具行
+> `knowledgeEngine`。四个工具（`knowledge_workspace`、`knowledge_schema`、`knowledge_ingest`、`knowledge_query`）由工具行
 > 注册，所以**哪个 agent 看得见它们由 preset 决定**（见 §2.2）。
 > C# 引擎（`engine/`，`EngineeringGraph.Engine`）由另一条工作线 vendoring 进来；
-> 引擎缺席时两行都照常加载，宿主行只打一条警告，每次调用以 `engine_not_found` 失败（见 §2）。
+> 引擎缺席时两行都照常加载，宿主行只打一条警告，三个引擎后端工具每次调用以 `engine_not_found` 失败
+> —— 而 `knowledge_workspace` 不碰引擎，照常可用（见 §2）。
 > 已登记进 `profile/dsh-automation-suite/` 的 `dsh.profile.bundles`，并已被族 2 的工作流消费：
 > 工程上下文插件的 `create_engineering_project` 在导出完成后逐设备调用 `knowledgeGraph.ingestDevice`
 > （族 2 的 D25；那一步是软的 —— 本包缺席或引擎不可达只报"图谱未建成"，不让它的流程失败）。
@@ -29,7 +30,7 @@ DeepSeek Harness 插件（**工程知识图谱插件**）：在工程产物（�
 |---|---|
 | **引擎** | 本包内 vendored 的 C# 可执行文件 `engine/bin/EngineeringGraph.Engine.exe`（默认位置见 §3） |
 | **宿主行** | 本目录的 TypeScript 外壳：解析配置、定位引擎、持有引擎子进程的生命周期（`EngineClient` + `ctx.effect`），发布两个服务 |
-| **工具行** | 三个工具：`knowledge_schema` / `knowledge_ingest` / `knowledge_query`（见 §2.1），由 preset 按需声明 |
+| **工具行** | 四个工具：`knowledge_workspace` / `knowledge_schema` / `knowledge_ingest` / `knowledge_query`（见 §2.1），由 preset 按需声明 |
 | **服务面（公开）** | 一个 cordis 服务 `knowledgeGraph`（`src/service.ts`）：`status()` + `ingestDevice(deviceDir, opts?)`。它是给**另一个插件**用的缝（族 2 的 `create_engineering_project` 在导出后逐设备调用它），工具与它共用同一套请求与信封转换，所以两边永远不会对默认值或错误形状各说各话 |
 | **服务面（内部）** | 一个 cordis 服务 `knowledgeEngine`（`src/runtime-service.ts`）：`request(operation, params, options?)`。它是**本包自己的工具行**读回宿主行引擎的缝，**不是**给别的插件用的接口；外部插件该用的仍然是 `knowledgeGraph` |
 
@@ -49,7 +50,7 @@ verb_noun 风格：改名会静默打断按旧名字写的提示词与调用方�
   **来源**（`config` 还是 `package`）以及**如何构建**（
   `dotnet build engine/EngineeringGraph.Engine.csproj -c Release`），然后继续；
 - 插件加载本身不受影响 —— 缺引擎**不会**变成插件加载失败；
-- 工具行**照样注册**三个工具：每次调用以传输错误 `engine_not_found` 失败（消息以错误码开头），
+- 工具行**照样注册**四个工具：引擎后端三个每次调用以传输错误 `engine_not_found` 失败（消息以错误码开头），`knowledge_workspace` 不碰引擎，照常可用，
   这样模型能区分"引擎拒绝了这条语句"与"根本没有引擎"。
 
 宿主行的 `apply` 注册**一个** `ctx.effect` 清理器持有 `EngineClient`：引擎在**第一次请求**时才被
@@ -62,12 +63,24 @@ spawn（`apply` 不预热，所以缺引擎时加载没有任何副作用），�
 
 | 工具 | 引擎操作 | 作用 | 写入 |
 |---|---|---|---|
+| `knowledge_workspace` | —（本地文件，不经引擎） | 这个 workspace 是哪个工程、每个设备的库在哪、多大、什么时候写的；缺库时给出 `device_dir` | 否 |
 | `knowledge_schema` | `GetSchema` | 图谱 schema：DDL、节点种类、边类型、示例查询 | 否 |
 | `knowledge_ingest` | `Ingest` | 爬取导出目录 → 解析成图 → 写入 SQLite（**整库重建**） | 写 `.db` |
 | `knowledge_query` | `Query` | 单条只读 `SELECT`/`WITH`/`EXPLAIN` | 否 |
 
-三者的名字、顺序、参数、描述与渲染都是**冻结的**契约。唯一可变的只有"`knowledge_ingest` 在不在"
-（工具行的 `includeIngest`，见 §2.2）：另外两个工具在任何配置下都完全一致。
+四者的名字、顺序、参数、描述与渲染都是**冻结的**契约。`knowledge_workspace` 是唯一的本地工具，它声明**自己的信封**（`ok`/`tool`/`summary`/`details`/`data`/`warnings`/`error`）而不是引擎信封 —— 报一个引擎从没跑过的 `operation` 就是撒谎（`src/workspace-tool.ts` 的模块注释）。唯一可变的只有"`knowledge_ingest` 在不在"
+（工具行的 `includeIngest`，见 §2.2）：另外三个工具在任何配置下都完全一致。
+
+**`knowledge_query` 的 `db_path` 可以省略**（2026-10-19，发行版 **D24**）。省略时它读会话工作目录：
+
+1. `knowledge/` 下**恰好一个**设备有库 → 就用它（`data.dbPath` 会回显解析结果）；
+2. **零个** → `ok:false` + `DB_NOT_FOUND`，remediation 写明该跑哪个 `knowledge_ingest`（带 `device_dir`）
+   或先建工程；
+3. **两个及以上** → `ok:false` + `DB_AMBIGUOUS`，remediation 列出全部候选并要求显式传 `db_path`。
+
+三个分支都**不会**先问引擎：拒绝路径上引擎一次调用都没有（详见 `test/11-workspace.test.mjs`）。
+相对路径按会话工作目录解析（引擎是把它按自己的进程目录解析的，那不是调用方想要的）。
+"库是不是最新"**不在**这个解析里 —— 新鲜度属于 D13 的第 4 步，仍是 ⬜（见 §6）。
 
 **服务面 `knowledgeGraph`**（`src/service.ts`，供族 2 的 `create_engineering_project` 调用）走的是同一套
 `runOperation` + `outcomeOf`，只是没有工具 schema：
@@ -116,8 +129,8 @@ DSH 按**声明作用域**解析工具可见性：一行插件注册的工具会
 
 | preset | 声明哪几行 | 工具面 |
 |---|---|---|
-| `leader`（主 agent） | 宿主行 `@voltarenyah/dsh-engineering-graph` + 工具行 `@voltarenyah/dsh-engineering-graph/tools`（默认配置） | `knowledge_schema` / `knowledge_ingest` / `knowledge_query` |
-| `expert`（子 agent） | 工具行 `@voltarenyah/dsh-engineering-graph/tools` + `includeIngest: false` | `knowledge_schema` / `knowledge_query` |
+| `leader`（主 agent） | 宿主行 `@voltarenyah/dsh-engineering-graph` + 工具行 `@voltarenyah/dsh-engineering-graph/tools`（默认配置） | `knowledge_workspace` / `knowledge_schema` / `knowledge_ingest` / `knowledge_query` |
+| `expert`（子 agent） | 工具行 `@voltarenyah/dsh-engineering-graph/tools` + `includeIngest: false` | `knowledge_workspace` / `knowledge_schema` / `knowledge_query` |
 
 两行都必须声明宿主行（`leader` 在 bundle 层，`expert` 由 composition 的宿主行提供）——工具行的
 `inject: ['tools', 'knowledgeEngine']` 让 loader 等宿主行发布 `knowledgeEngine` 之后才调 `apply`，
@@ -128,7 +141,7 @@ DSH 按**声明作用域**解析工具可见性：一行插件注册的工具会
 
 | 字段 | 默认 | 说明 |
 |---|---|---|
-| `includeIngest` | `true` | `false` 时**不注册** `knowledge_ingest`；另外两个工具的名字、顺序、参数、描述与渲染完全不变 |
+| `includeIngest` | `true` | `false` 时**不注册** `knowledge_ingest`；另外三个工具的名字、顺序、参数、描述与渲染完全不变 |
 
 ```yaml
 # expert preset 里的那一行
@@ -141,7 +154,7 @@ DSH 按**声明作用域**解析工具可见性：一行插件注册的工具会
 **子 agent 故意关掉 ingest**：`knowledge_ingest` 是重度写操作 —— 整库重建，一台设备一个 `.db`，
 实测 1376 个源文件约 30 s、库约 450 MB。它属于**主 agent 的建工程流程**
 （族 2 的 `create_engineering_project` 在导出后逐设备经 `knowledgeGraph` 触发），不属于一次只读调查。
-`expert` 的职责是"回答一个被委派的问题"，它只需要 `knowledge_schema` 看表结构、`knowledge_query`
+`expert` 的职责是"回答一个被委派的问题"，它只需要 `knowledge_workspace` 拿到库路径、`knowledge_schema` 看表结构、`knowledge_query`
 读数据；给它 ingest 等于给它一条静默重写整个图谱库的路径。
 
 只有**真正的布尔 `false`** 会关掉 ingest：省略、`undefined`、字符串 `"false"`、`0` 等都回落到默认
@@ -184,10 +197,12 @@ engine/bin/EngineeringGraph.Engine.exe
 packages/dsh-engineering-graph/
 ├── src/
 │   ├── index.ts            # 宿主行（包 "."）：引擎生命周期 + 两个服务，不注册工具
-│   ├── tools-entry.ts      # 工具行（包 "./tools"）：Config(includeIngest) + 注册三个工具
+│   ├── tools-entry.ts      # 工具行（包 "./tools"）：Config(includeIngest) + 注册四个工具
+│   ├── workspace.ts        # 发现逻辑：工程身份 / 设备 / 库路径与 mtime / 单库解析与多库拒绝
+│   ├── workspace-tool.ts   # knowledge_workspace 的定义、本地信封与渲染（不经引擎）
 │   ├── runtime-service.ts  # 内部缝 knowledgeEngine：宿主行交给自己的工具行
 │   ├── service.ts          # 公开缝 knowledgeGraph：给工程上下文插件用
-│   ├── tools.ts            # 三个 defineTool 定义（模型可见描述）与渲染；两行共用的唯一实现
+│   ├── tools.ts            # 工具注册面：discovery 工具 + 三个引擎工具的 defineTool 定义与渲染
 │   ├── config.ts           # 宿主行配置（enginePath / 超时 / logEngineOutput）
 │   ├── engine-client.ts    # 引擎子进程：懒启动、串行化、超时、终止
 │   ├── engine-path.ts / protocol.ts / errors.ts

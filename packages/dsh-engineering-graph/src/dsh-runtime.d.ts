@@ -271,9 +271,22 @@ declare module '@deepseek-ai/dsh-tools' {
    * `signal` is required: the live pipeline always supplies it, and the tools
    * forward it so a cancelled call terminates the engine instead of waiting for
    * the request timeout.
+   *
+   * `agent` is optional because a rendered/test harness may omit it, but on the
+   * live path it is always present and carries the session whose working
+   * directory is this plugin's scope (`header.cwd`). `knowledge_workspace` reads
+   * it to find the project's databases. Only the members this plugin reads are
+   * declared (the sibling engineering-context plugin declares the same shape).
    */
   export interface ToolRunContext {
     readonly signal: AbortSignal
+    readonly agent?: {
+      readonly session: {
+        readonly header: {
+          readonly cwd?: string
+        }
+      }
+    }
   }
 
   /**

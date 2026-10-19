@@ -106,7 +106,7 @@
 - insert:
     # ══ leader：主 agent 的 preset ════════════════════════════════════════════
     # 工具面 = 内置 standard 的全部 + 本发行版的四个工程工具面（TIA 26 / 工程上下文 1 /
-    # 图谱 3，git 12 由宿主面全局行提供）。相对上游 standard 只多这三行 + persona 政策文本。
+    # 图谱 4，git 12 由宿主面全局行提供）。相对上游 standard 只多这三行 + persona 政策文本。
     - id: preset-leader
       name: '@deepseek-ai/dsh-agent-preset'
       config:
@@ -138,6 +138,23 @@
                   credential files, tokens, or private keys.
                 - Use only the tools this deployment provides. When a capability is missing, say so instead
                   of emulating it.
+
+                Knowledge graph. The program's semantic graph is a derived snapshot of the exported source, one
+                SQLite database per device at `knowledge/<device>/<device>_knowledge.db`. It answers what the code
+                *is*, not what it was — never conclude from the database alone that a change landed or did not.
+
+                - Call `knowledge_workspace` first to learn which devices and databases this workspace holds; pass
+                  the `db_path` it reports, or omit `db_path` when exactly one device has a database.
+                - Call `knowledge_schema` once before the first `knowledge_query` of a session and trust its DDL and
+                  example queries; never infer table or column names from memory.
+                - `knowledge_query` runs one read-only SELECT/WITH/EXPLAIN and caps what it returns. Ask narrow
+                  questions (one block, one variable, one network), not table dumps, and page with LIMIT and OFFSET
+                  when a result says it was truncated.
+                - Rebuild a device's database with `knowledge_ingest` only after that device's sources were exported
+                  again: it is a full rebuild (minutes on a large project) and nothing else refreshes the graph.
+                - Deep reading of program logic — call chains, variable reads and writes, what a block or network
+                  actually does — belongs to the `expert` subagent. Delegate it instead of issuing a dozen queries
+                  yourself; keep your own graph use to orientation and quick lookups.
 
                 Delegation policy. You own the project-level work and you keep doing it yourself:
 
@@ -257,7 +274,7 @@
               - id: tool-workflow
                 name: '@deepseek-ai/dsh-tool-workflow'
           # ── 本发行版的工程工具面（方案 A：宿主行留服务，工具行由 preset 声明）──
-          # leader 拿全部：TIA 26 + 工程上下文 1 + 图谱 3。
+          # leader 拿全部：TIA 26 + 工程上下文 1 + 图谱 4。
           # 注意这三行的 name 必须与各包 package.json 的 exports 逐字对应。
           - id: leader-engineering-context
             name: '@voltarenyah/dsh-engineering-context'
@@ -287,14 +304,14 @@
 
     # ══ expert：子 agent 的 preset ════════════════════════════════════════════
     # 刻意的**极小**工具面。它是只读的知识专家，不是第二个主 agent：
-    #   • 图谱：只有 knowledge_schema / knowledge_query（includeIngest: false）。
+    #   • 图谱：knowledge_workspace / knowledge_schema / knowledge_query（includeIngest: false）。
     #     knowledge_ingest 是重度写操作（整库重建），属于主 agent 的建工程流程。
     #   • 文件：只有读。write/edit 关掉，glob/grep/read 保留 —— 用来读导出物里的 XML/源码。
     #   • 通信：send_message（回父）/ interrupt_agent，以及它自己的子会话目录。
     #   • 不给：任何 TIA 操作工具、工程上下文工作流、pwsh/bash、jobs、schedule、
     #     goal、plan、web、todo、ask_user（它没有面向用户的通道，问父 agent 就好）、
     #     skill（v1 有意省略，见 docs/decisions.md D23）。
-    #   ⇒ 它自己的 preset 只声明 8 个工具（图谱 2 + read/read_image + glob/grep +
+    #   ⇒ 它自己的 preset 只声明 9 个工具（图谱 3 + read/read_image + glob/grep +
     #     send_message/interrupt_agent）。**仍会继承宿主面的 13 个全局工具**：
     #     dsh-tool-git 的 12 个（本轮不拆，D23）+ dsh-tool-working-directory 的
     #     `working_directory`（上游本来就把这一行留在宿主面）。这是已知欠账，不是遗漏。
@@ -323,12 +340,23 @@
                 `source/<device>/`; its knowledge graph databases live under
                 `knowledge/<device>/<device>_knowledge.db`.
 
-                What you have: the engineering knowledge graph (`knowledge_schema`, `knowledge_query`)
-                and read-only file access (`glob`, `grep`, `read`). What you do not have: any TIA Portal
-                operation, any git tool, and any way to write. Do not claim otherwise and do not try to
-                work around it — state the limitation in your reply instead.
+                What you have: the engineering knowledge graph (`knowledge_workspace`, `knowledge_schema`,
+                `knowledge_query`) and read-only file access (`glob`, `grep`, `read`). What you do not have: any TIA
+                Portal operation, any git tool, and any way to write. Do not claim otherwise and do not try to work
+                around it — state the limitation in your reply instead.
 
                 Rules:
+                - Start every investigation with `knowledge_workspace`: it names the project, every device, the exact
+                  `db_path` and the `device_dir` each database is built from, and whether a database exists. Pass that
+                  `db_path`, or omit it when exactly one device has one. If it reports no database, ask the delegating
+                  agent to build one — you have no ingest tool.
+                - Call `knowledge_schema` once before your first `knowledge_query` and trust its DDL and example
+                  queries over your memory of the tables.
+                - `knowledge_query` runs one read-only SELECT/WITH/EXPLAIN and caps what it returns. Prefer narrow
+                  statements over one block, one variable or one network, and page with LIMIT/OFFSET when a result
+                  says it was truncated.
+                - The database is a derived snapshot: say what the graph shows, and when it was built, rather than
+                  asserting that the program "changed" or "did not change".
 
                 - Answer the delegated question, not the surrounding project. Stay inside it.
                 - Ground every conclusion in a query result or an exported source file, and name the

@@ -1,10 +1,15 @@
 /**
  * The model-facing tools of the engineering-graph plugin.
  *
- * Three tools over the engine's three operations, each returning the same
- * canonical envelope, so a model always sees `ok`, a one-line `summary`, the
- * engine's structured `data`, the (empty) `changes` / `diagnostics` lists and a
- * structured `error` carrying the engine's code, message and remediation.
+ * Four tools: `knowledge_workspace` reports the project and its databases
+ * (local, no engine), and `knowledge_schema` / `knowledge_ingest` /
+ * `knowledge_query` drive the engine's three operations. The engine-backed three
+ * return one canonical envelope, so a model always sees `ok`, a one-line
+ * `summary`, the engine's structured `data`, the (empty) `changes` /
+ * `diagnostics` lists and a structured `error` carrying the engine's code,
+ * message and remediation. The discovery tool declares its own envelope instead,
+ * because reporting an `operation` the engine never ran would be a lie
+ * (`workspace-tool.ts`).
  *
  * **The tool names are deliberate**: `knowledge_schema`, `knowledge_ingest`,
  * `knowledge_query`. They keep the names the origin library
@@ -12,7 +17,7 @@
  * prompts, notes and muscle memory written against that surface keep working after
  * the move into DSH. The DSH house style would be an unprefixed verb_noun
  * (`ingest_exports`), which is exactly the kind of renaming that silently breaks
- * callers, so it was not done.
+ * callers, so it was not done. `knowledge_workspace` follows the same prefix.
  *
  * Transport failures (missing executable, timeout, the process dying mid-request,
  * a protocol mismatch) are **thrown** by the client and are not caught here: the
@@ -24,11 +29,15 @@
  * @module dsh-engineering-graph/tools
  */
 
+import { isAbsolute, join } from 'node:path'
+
 import type { Context } from '@deepseek-ai/cordis'
 import { defineTool, type InferValue, type JsonValue, type ToolDefinition } from '@deepseek-ai/dsh-tools'
 
 import type { LogSink } from './engine-client.js'
 import type { JsonRecord, Operation, ProgressFrame, ResultFrame, ToolError, ToolOutcome } from './protocol.js'
+import { workspaceToolDefinition } from './workspace-tool.js'
+import { discoverWorkspace, resolveDatabasePath } from './workspace.js'
 
 /** Dependencies every tool body needs. */
 export interface ToolDependencies {
@@ -287,17 +296,100 @@ async function runOperation(
   return outcomeOf(operation, frame)
 }
 
+/**
+ * A refusal this plugin produced itself, in the same envelope an engine refusal
+ * arrives in.
+ *
+ * It exists so `knowledge_query`'s `db_path` resolution can fail without the
+ * model seeing a second result shape: the code, the reason and the next step are
+ * exactly where `renderOutcome` prints an engine's own error. `durationMs` is 0
+ * because no engine time elapsed — reporting the tool's own think time as engine
+ * time would be the kind of small fiction this package's documents forbid.
+ *
+ * @param operation - the operation the tool would have run.
+ * @param code - a stable code; the query resolver's own codes are `DB_NOT_FOUND`
+ *   and `DB_AMBIGUOUS`, which mean what the engine's `DB_NOT_FOUND` means.
+ * @param message - what is wrong, in one sentence.
+ * @param remediation - what the model should do next.
+ */
+function localFailure(operation: Operation, code: string, message: string, remediation: string): ToolOutcome {
+  return {
+    ok: false,
+    operation,
+    dryRun: false,
+    summary: `${operation} was refused: ${message}`,
+    data: null,
+    changes: [],
+    diagnostics: [],
+    error: { code, message, details: { remediation } },
+    durationMs: 0,
+  }
+}
+
+/** The outcome of resolving which database a call runs against. */
+type DatabaseChoice = { ok: true; path: string } | { ok: false; outcome: ToolOutcome }
+
+/**
+ * Decide the database a query runs against.
+ *
+ * An explicit `db_path` wins, as it always has: an absolute path is taken
+ * verbatim, a relative one is resolved against the session working directory
+ * (the engine resolves relative paths against its **own** process directory,
+ * which is never what a caller means). Without one, the workspace is inspected
+ * and the single existing device database is used; none or several is a refusal
+ * naming the alternatives, because answering a question about the wrong PLC with
+ * full confidence is worse than asking for a path (docs/decisions.md D24).
+ *
+ * @param explicitPath - the tool argument, if the model supplied one.
+ * @param cwd - the session working directory, if the harness supplied one.
+ * @returns the absolute path, or the refusal to hand back.
+ */
+async function resolveQueryDatabase(explicitPath: string | undefined, cwd: string | undefined): Promise<DatabaseChoice> {
+  const spelled = explicitPath?.trim() ?? ''
+  if (spelled.length > 0) {
+    if (isAbsolute(spelled)) return { ok: true, path: spelled }
+    if (cwd === undefined) {
+      return {
+        ok: false,
+        outcome: localFailure(
+          'Query',
+          'workspace_unavailable',
+          `The relative db_path '${spelled}' cannot be resolved: the harness supplied no session working directory.`,
+          'Pass an absolute db_path.',
+        ),
+      }
+    }
+    return { ok: true, path: join(cwd, spelled) }
+  }
+
+  if (cwd === undefined) {
+    return {
+      ok: false,
+      outcome: localFailure(
+        'Query',
+        'workspace_unavailable',
+        'db_path was omitted and the harness supplied no session working directory, so there is no workspace to resolve it in.',
+        'Pass an absolute db_path, or run this tool from a session that has a working directory.',
+      ),
+    }
+  }
+
+  const resolution = resolveDatabasePath(await discoverWorkspace(cwd))
+  if (resolution.ok) return { ok: true, path: resolution.path }
+  return { ok: false, outcome: localFailure('Query', resolution.code, resolution.message, resolution.remediation) }
+}
+
 /** Options that select which tools become visible, without changing any of them. */
 export interface RegisterToolsOptions {
   /**
    * Whether `knowledge_ingest` is registered. Defaults to `true`, so a caller
-   * that says nothing keeps the full three-tool surface.
+   * that says nothing keeps the full surface.
    *
    * A full graph rebuild is a heavy write (one database per device, minutes on a
    * large project), so it belongs to the main agent's project workflow; a
-   * read-only subagent preset turns it off and keeps `knowledge_schema` and
-   * `knowledge_query`. The two remaining tools are unaffected, and their order
-   * and definitions are identical either way.
+   * read-only subagent preset turns it off and keeps the discovery, schema and
+   * query tools. Those are unaffected, and their order and definitions are
+   * identical either way.
    */
   includeIngest?: boolean
 }
@@ -306,9 +398,14 @@ export interface RegisterToolsOptions {
  * Registers every tool of this plugin on `ctx.tools`. The framework owns the
  * registrations, so their disposers are not managed here.
  *
+ * Registration order is the order the model reads them in, so it follows the
+ * work: find the project and its databases (`knowledge_workspace`), learn the
+ * schema (`knowledge_schema`), build a database (`knowledge_ingest`, optional),
+ * then ask a question (`knowledge_query`).
+ *
  * @param ctx - the context whose `ctx.tools` receives the definitions.
- * @param dependencies - the engine seam every tool body runs against.
- * @param options - which tools to register; omitted means all three.
+ * @param dependencies - the engine seam every engine-backed tool body runs against.
+ * @param options - which tools to register; omitted means all of them.
  * @returns the registered tool names, in registration order.
  */
 export function registerTools(ctx: Context, dependencies: ToolDependencies, options: RegisterToolsOptions = {}): string[] {
@@ -322,6 +419,11 @@ export function registerTools(ctx: Context, dependencies: ToolDependencies, opti
     ctx.tools.register(definition)
     registered.push(definition.name)
   }
+
+  // The only tool here that needs no engine, and the only one that answers
+  // "which database?" — so it is registered first, and it is available to every
+  // preset including the ones that cannot ingest.
+  register(workspaceToolDefinition)
 
   register(
     defineTool({
@@ -431,8 +533,11 @@ export function registerTools(ctx: Context, dependencies: ToolDependencies, opti
       parameters: {
         db_path: {
           type: 'string',
-          required: true,
-          description: 'Absolute path of the SQLite database to query, i.e. the dbPath knowledge_ingest returned.',
+          description:
+            'The SQLite database to query. Omit it and the workspace is resolved for you: when exactly one device in ' +
+            'this workspace has a knowledge database, that database is used; with none or several the call is refused ' +
+            'with DB_NOT_FOUND or DB_AMBIGUOUS, whose remediation names the candidates (knowledge_workspace lists ' +
+            'them all). A relative path is resolved against the session working directory.',
         },
         sql: {
           type: 'string',
@@ -457,7 +562,10 @@ export function registerTools(ctx: Context, dependencies: ToolDependencies, opti
         rawInput: args,
       }),
       async execute(args, exec) {
-        const params: JsonRecord = { dbPath: args.db_path, sql: args.sql }
+        const database = await resolveQueryDatabase(args.db_path, exec.agent?.session?.header?.cwd)
+        if (!database.ok) return asJsonOutcome(database.outcome)
+
+        const params: JsonRecord = { dbPath: database.path, sql: args.sql }
         if (args.max_rows !== undefined) params['maxRows'] = args.max_rows
         return asJsonOutcome(await runOperation(dependencies, 'Query', params, { signal: exec.signal }))
       },

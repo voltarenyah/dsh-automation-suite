@@ -24,10 +24,10 @@ const entry = await loadToolsEntry()
 const plugin = await loadPlugin()
 
 /** The full surface, in registration order (deliberate; see `src/tools.ts`). */
-const ALL_TOOLS = ['knowledge_schema', 'knowledge_ingest', 'knowledge_query']
+const ALL_TOOLS = ['knowledge_workspace', 'knowledge_schema', 'knowledge_ingest', 'knowledge_query']
 
-/** What the read-only preset keeps: the same two tools, in the same order. */
-const READ_ONLY_TOOLS = ['knowledge_schema', 'knowledge_query']
+/** What the read-only preset keeps: discovery, schema and query — the same order, minus the write. */
+const READ_ONLY_TOOLS = ['knowledge_workspace', 'knowledge_schema', 'knowledge_query']
 
 /** Apply both rows on one context, the way a preset declares them. */
 function applyBoth(toolsConfig) {
@@ -75,22 +75,22 @@ test('the real schemastery schema applies the same default and rejects non-boole
   assert.throws(() => entry.Config({ includeIngest: 'yes' }), 'a non-boolean must not validate')
 })
 
-test('by default the row registers exactly schema, ingest, query — in that order', () => {
+test('by default the row registers exactly workspace, schema, ingest and query — in that order', () => {
   const { registered } = applyBoth({})
   assert.deepEqual(registered(), ALL_TOOLS)
 })
 
-test('the row registers all three when applied with no config block at all', () => {
+test('the row registers all four when applied with no config block at all', () => {
   const { registered } = applyBoth(undefined)
   assert.deepEqual(registered(), ALL_TOOLS)
 })
 
-test('includeIngest:false registers exactly schema and query, in that order', () => {
+test('includeIngest:false registers exactly workspace, schema and query, in that order', () => {
   const { registered } = applyBoth({ includeIngest: false })
   assert.deepEqual(registered(), READ_ONLY_TOOLS)
 })
 
-test('the two surviving tools are byte-for-byte the ones the default row registers', () => {
+test('the surviving tools are byte-for-byte the ones the default row registers', () => {
   const full = applyBoth({})
   const readOnly = applyBoth({ includeIngest: false })
 
@@ -102,6 +102,7 @@ test('the two surviving tools are byte-for-byte the ones the default row registe
   // member `deepEqual` cannot compare directly (it is a function), so it is
   // compared by its output for the arguments the tests already use elsewhere.
   const presentationArgs = {
+    knowledge_workspace: {},
     knowledge_schema: {},
     knowledge_query: { db_path: 'C:\\a.db', sql: 'SELECT 1' },
   }

@@ -26,7 +26,10 @@ import {
 } from './helpers/harness.mjs'
 
 /** The tool names this plugin registers, in registration order (deliberate; see `src/tools.ts`). */
-const TOOL_NAMES = ['knowledge_schema', 'knowledge_ingest', 'knowledge_query']
+const TOOL_NAMES = ['knowledge_workspace', 'knowledge_schema', 'knowledge_ingest', 'knowledge_query']
+
+/** The three tools that drive the engine, and therefore share its canonical envelope. */
+const ENGINE_TOOLS = ['knowledge_schema', 'knowledge_ingest', 'knowledge_query']
 
 /** A result frame shaped exactly like the engine's (`engine/Program.cs:ResultFrame`). */
 function resultFrame(operation, options = {}) {
@@ -82,7 +85,7 @@ async function harness(reply) {
   return { tools, context, calls: recording.calls, logs: recording.logs, byName }
 }
 
-test('registerTools registers the three deliberate tool names, in order', async () => {
+test('registerTools registers the four deliberate tool names, in order', async () => {
   const { context } = await harness(() => resultFrame('GetSchema'))
   assert.deepEqual(context.registered(), TOOL_NAMES)
   for (const definition of context.definitions) {
@@ -109,13 +112,13 @@ test('registerTools takes includeIngest as an option and defaults it to true', a
   assert.deepEqual(withTrue.registered(), TOOL_NAMES)
   // The two survivors keep their names *and* their order: schema first, query last,
   // whether or not the ingest tool sits between them.
-  assert.deepEqual(without.registered(), ['knowledge_schema', 'knowledge_query'])
+  assert.deepEqual(without.registered(), ['knowledge_workspace', 'knowledge_schema', 'knowledge_query'])
 })
 
-test('every tool declares the same canonical envelope output schema', async () => {
+test('every engine tool declares the same canonical envelope output schema', async () => {
   const { byName } = await harness(() => resultFrame('GetSchema'))
 
-  for (const name of TOOL_NAMES) {
+  for (const name of ENGINE_TOOLS) {
     const schema = byName[name].output.schema
     assert.equal(schema.type, 'object', name)
     assert.equal(schema.additionalProperties, false, name)
@@ -142,12 +145,33 @@ test('every tool declares the same canonical envelope output schema', async () =
   }
 })
 
-test('the declared parameters require exactly what the engine requires', async () => {
+test('the discovery tool declares its own local envelope, not the engine one', async () => {
+  const { byName } = await harness(() => resultFrame('GetSchema'))
+  const schema = byName['knowledge_workspace'].output.schema
+
+  // The engine envelope's `operation` and `durationMs` describe an engine call
+  // this tool never makes, so it declares the local-tool shape instead (the same
+  // members the engineering-context plugin's local tools use).
+  assert.deepEqual(
+    [...schema.required].sort(),
+    ['details', 'ok', 'summary', 'tool', 'warnings'],
+    'the local envelope has no operation/durationMs/dryRun',
+  )
+  assert.deepEqual(Object.keys(schema.properties).sort(), ['data', 'details', 'error', 'ok', 'summary', 'tool', 'warnings'])
+  assert.equal(schema.properties.tool.type, 'string')
+  assert.equal(schema.properties.details.type, 'array')
+  assert.equal(schema.properties.warnings.type, 'array')
+})
+
+test('the declared parameters require exactly what the engine requires; discovery needs nothing', async () => {
   const { byName } = await harness(() => resultFrame('GetSchema'))
 
   assert.deepEqual([...byName['knowledge_ingest'].parameters.required], ['device_dir'])
-  assert.deepEqual([...byName['knowledge_query'].parameters.required], ['db_path', 'sql'])
+  // db_path became optional: the tool resolves the workspace's database when the
+  // model cannot name one (docs/decisions.md D24).
+  assert.deepEqual([...byName['knowledge_query'].parameters.required], ['sql'])
   assert.ok(!('required' in byName['knowledge_schema'].parameters), 'knowledge_schema has no required parameter')
+  assert.deepEqual(Object.keys(byName['knowledge_workspace'].parameters.properties ?? {}), [], 'knowledge_workspace takes no arguments')
 
   assert.deepEqual(Object.keys(byName['knowledge_schema'].parameters.properties), ['known_version'])
   assert.deepEqual(Object.keys(byName['knowledge_ingest'].parameters.properties).sort(), ['db_path', 'device_dir'])
@@ -169,11 +193,13 @@ test('knowledge_query says the statement is read-only and points at knowledge_sc
 test('every tool declares a presentCall in the plugin presentation shape', async () => {
   const { byName } = await harness(() => resultFrame('GetSchema'))
 
+  const workspace = byName['knowledge_workspace'].presentCall({})
   const schema = byName['knowledge_schema'].presentCall({})
   const ingest = byName['knowledge_ingest'].presentCall({ device_dir: 'C:\\exp' })
   const query = byName['knowledge_query'].presentCall({ db_path: 'C:\\a.db', sql: 'SELECT 1' })
 
   for (const [presentation, kind] of [
+    [workspace, 'read'],
     [schema, 'read'],
     [ingest, 'other'],
     [query, 'read'],
@@ -183,6 +209,7 @@ test('every tool declares a presentCall in the plugin presentation shape', async
     assert.ok(presentation.title.length > 0)
     assert.ok('rawInput' in presentation)
   }
+  assert.equal(workspace.title, 'Engineering knowledge databases')
   assert.equal(schema.title, 'Engineering graph schema')
   assert.equal(ingest.title, 'Ingest engineering exports')
   assert.equal(query.title, 'Query engineering graph')
@@ -211,6 +238,29 @@ test('each tool maps its parameters onto the engine\'s own camelCase names', asy
 
   await executeTool(byName['knowledge_query'], { db_path: 'C:\\a.db', sql: 'SELECT 1', max_rows: 5 }, NO_SIGNAL)
   assert.deepEqual(calls[5].params, { dbPath: 'C:\\a.db', sql: 'SELECT 1', maxRows: 5 })
+})
+
+test('a relative db_path is resolved against the session working directory, not the engine\'s', async () => {
+  const { calls, byName } = await harness((operation) => resultFrame(operation))
+
+  await executeTool(
+    byName['knowledge_query'],
+    { db_path: 'knowledge/Sino_PEI/Sino_PEI_knowledge.db', sql: 'SELECT 1' },
+    { signal: new AbortController().signal, agent: { session: { header: { cwd: 'C:\\ws' } } } },
+  )
+  assert.deepEqual(calls[0].params, { dbPath: 'C:\\ws\\knowledge\\Sino_PEI\\Sino_PEI_knowledge.db', sql: 'SELECT 1' })
+})
+
+test('an omitted db_path with no working directory is refused before the engine is touched', async () => {
+  const { calls, byName } = await harness((operation) => resultFrame(operation))
+
+  const outcome = await executeTool(byName['knowledge_query'], { sql: 'SELECT 1' }, NO_SIGNAL)
+
+  assert.equal(calls.length, 0, 'the engine must not see a query whose database was never decided')
+  assert.equal(outcome.ok, false)
+  assert.equal(outcome.error.code, 'workspace_unavailable')
+  assert.match(outcome.error.details.remediation, /absolute db_path/)
+  assert.equal(outcome.durationMs, 0, 'no engine time elapsed, so none is reported')
 })
 
 test('a successful operation fills the envelope from the engine frame', async () => {

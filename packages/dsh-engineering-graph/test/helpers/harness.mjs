@@ -110,6 +110,16 @@ export async function loadToolsModule() {
   return await importBuilt('tools.js')
 }
 
+/** Load the built workspace discovery module. */
+export async function loadWorkspaceModule() {
+  return await importBuilt('workspace.js')
+}
+
+/** Load the built discovery tool module (`knowledge_workspace`). */
+export async function loadWorkspaceToolModule() {
+  return await importBuilt('workspace-tool.js')
+}
+
 /** The engine executable this package ships, resolved the way `apply` resolves it. */
 export const enginePath = (await loadEnginePathModule()).bundledEnginePath()
 

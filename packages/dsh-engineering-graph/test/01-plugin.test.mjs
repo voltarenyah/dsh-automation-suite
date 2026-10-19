@@ -34,10 +34,10 @@ const runtimeModule = await loadRuntimeModule()
 const { bundledEnginePath } = await loadEnginePathModule()
 
 /** The tool names this plugin registers, in registration order (deliberate; see `src/tools.ts`). */
-const TOOL_NAMES = ['knowledge_schema', 'knowledge_ingest', 'knowledge_query']
+const TOOL_NAMES = ['knowledge_workspace', 'knowledge_schema', 'knowledge_ingest', 'knowledge_query']
 
 /** The tool names the read-only preset keeps (`includeIngest: false`). */
-const READ_ONLY_TOOL_NAMES = ['knowledge_schema', 'knowledge_query']
+const READ_ONLY_TOOL_NAMES = ['knowledge_workspace', 'knowledge_schema', 'knowledge_query']
 
 /** Apply the host row and then the tools row on the same context, as a preset does. */
 function applyBoth(config = {}, toolsConfig = {}) {
@@ -79,7 +79,7 @@ test('the host row registers no model-facing tool at all', () => {
   assert.notEqual(services.get('knowledgeGraph'), undefined, 'the public seam other plugins consume stays on the host row')
 })
 
-test('the /tools row registers the three knowledge tools, in order', () => {
+test('the /tools row registers the four knowledge tools, in order', () => {
   const { definitions } = applyBoth({ enginePath: missingEnginePath() })
   assert.deepEqual(
     definitions.map((definition) => definition.name),
@@ -92,7 +92,7 @@ test('the /tools row registers the three knowledge tools, in order', () => {
   }
 })
 
-test('the /tools row with includeIngest:false registers only schema and query', () => {
+test('the /tools row with includeIngest:false registers discovery, schema and query', () => {
   const { definitions } = applyBoth({ enginePath: missingEnginePath() }, { includeIngest: false })
   assert.deepEqual(
     definitions.map((definition) => definition.name),
@@ -200,7 +200,7 @@ test('the /tools row logs the names it registered, and says who owns the engine'
   const info = logsAt(logs, 'info').filter((entry) => entry.scope === 'engineering-graph-tools')
 
   assert.equal(info.length, 1)
-  assert.ok(info[0].message.includes('3 engineering-graph tools'))
+  assert.ok(info[0].message.includes(`${TOOL_NAMES.length} engineering-graph tools`))
   assert.ok(info[0].message.includes(TOOL_NAMES.join(', ')))
   assert.ok(info[0].message.includes('host row'))
 })

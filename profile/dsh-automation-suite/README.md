@@ -37,8 +37,8 @@
 
 | preset | 谁用 | 工具面 |
 |---|---|---|
-| **`leader`** | 主 agent | 内置 `standard` 的全部工具 + 本发行版三个工程工具行（TIA 26、`create_engineering_project`、图谱 3）+ git 12（宿主面） |
-| **`expert`** | 子 agent（`subagent` 工具默认挂它） | **只读**：图谱 `knowledge_schema` / `knowledge_query`（`includeIngest: false`）、`read`/`read_image`/`glob`/`grep`、`send_message`/`interrupt_agent`、`time-context`、`compaction` |
+| **`leader`** | 主 agent | 内置 `standard` 的全部工具 + 本发行版三个工程工具行（TIA 26、`create_engineering_project`、图谱 4）+ git 12（宿主面） |
+| **`expert`** | 子 agent（`subagent` 工具默认挂它） | **只读**：图谱 `knowledge_workspace` / `knowledge_schema` / `knowledge_query`（`includeIngest: false`）、`read`/`read_image`/`glob`/`grep`、`send_message`/`interrupt_agent`、`time-context`、`compaction` |
 
 `expert` **没有**：任何 TIA 操作工具、git、工程上下文工作流、`pwsh`、`jobs`、`schedule`、
 `goal`、`plan`、`web`、`todo`、`ask_user`、`skill`。它也不掌握 `knowledge_ingest`（整库重建是
