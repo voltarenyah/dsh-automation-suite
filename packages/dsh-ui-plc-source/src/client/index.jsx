@@ -19,6 +19,7 @@
  */
 
 import { Panel } from './Panel.jsx'
+import { createPlcStore } from './store.js'
 import { ensureStyle } from './style.js'
 
 /** Package name. Also the tab-type id and the body seat's key — they must agree. */
@@ -126,6 +127,10 @@ export function apply(ctx) {
     `${ID}: tab type`,
   )
 
+  // One handle, created in the apply world; the framework then makes one store
+  // instance per session scope, which is what survives a tab switch.
+  const store = createPlcStore()
+
   ctx.effect(
     () =>
       ctx.slots.inject('sidebar.right.pane.tab', () =>
@@ -133,6 +138,7 @@ export function apply(ctx) {
           {
             name: 'sidebar.right.pane.tab',
             key: ID,
+            store,
             inject: (sessionId) => ({
               listDirectory: (path, signal) => listDirectory(ctx, sessionId, path, signal),
               readTextFile: (path, signal) => readTextFile(ctx, sessionId, path, signal),

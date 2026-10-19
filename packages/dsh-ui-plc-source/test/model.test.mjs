@@ -28,6 +28,7 @@ import {
   parseManifest,
   relativeUnder,
   resourceAddress,
+  rowKey,
   sizeLabel,
   sortRows,
   typeOptions,
@@ -287,6 +288,15 @@ describe('options and filtering', () => {
     assert.equal(matchesQuery({ name: 'SCP_IN', number: '1001' }, '100'), true)
     assert.equal(matchesQuery({ name: 'SCP_IN' }, '1001'), false)
     assert.equal(matchesQuery({ name: 'SCP_IN', number: '1001' }, ''), true)
+  })
+
+  it('identifies a row by device, type, name, number and whether it was refused', () => {
+    const exported = { device: 'D', simaticType: 'FB', name: 'X', number: '1' }
+    assert.equal(rowKey(exported), 'D\u0000FB\u0000X\u00001\u0000exported')
+    assert.notEqual(rowKey(exported), rowKey({ ...exported, refused: true }))
+    assert.notEqual(rowKey(exported), rowKey({ ...exported, number: '2' }))
+    assert.notEqual(rowKey(exported), rowKey({ ...exported, device: 'E' }))
+    assert.equal(rowKey({ device: 'D', simaticType: 'FB', name: 'X' }), 'D\u0000FB\u0000X\u0000\u0000exported')
   })
 
   it('keeps the filter options independent of the current selection', () => {

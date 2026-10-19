@@ -117,17 +117,64 @@ body[data-ds-dark-theme] .plps-select {
 }
 .plps-row:hover { background: var(--dsw-alias-fill-l1, rgba(128, 128, 128, 0.12)); }
 /*
- * A refused object has no file to open: the row stays as evidence (which objects
- * are missing and why) but is not a control. The cursor is restated as default,
- * because the shared row style says pointer.
+ * Selection is a view state the tab keeps (the actions that will consume it come
+ * later), so it has to be visible without looking like a hover.
  */
-.plps-row:disabled {
-  cursor: default;
-  opacity: 1;
+.plps-selected,
+.plps-selected:hover {
+  background: var(--dsw-alias-fill-l2, rgba(128, 128, 128, 0.2));
+}
+/*
+ * A refused object has no file: the row still reads as evidence (which objects
+ * are missing and why), marked with the warning-tinted badge.
+ */
+.plps-refused {
   color: var(--dsw-alias-label-tertiary, #6b7280);
 }
 .plps-refused .plps-badge {
   color: var(--dsw-alias-label-warning, #b7791f);
+}
+/*
+ * The context menu, using the app's own menu recipe: the shared menu surface
+ * token (which is a translucent layer) plus the menu backdrop filter, so it
+ * reads like every other menu in the product. A real element composites with its
+ * backdrop; only the native option popup could not, which is why the selects
+ * needed opaque colours of their own.
+ */
+.plps-menu {
+  position: fixed;
+  z-index: 100;
+  min-width: 168px;
+  padding: 3px;
+  border-radius: var(--dsw-radius-lg, 10px);
+  background: var(--dsw-specific-menu, Canvas);
+  backdrop-filter: var(--dsw-menu-backdrop-filter, blur(12px));
+  box-shadow: var(--dsw-elevation-prominent, 0 8px 24px rgba(0, 0, 0, 0.24));
+}
+.plps-menu-item {
+  display: block;
+  width: 100%;
+  padding: 4px 8px;
+  border: 0;
+  border-radius: var(--dsw-radius-sm, 4px);
+  background: none;
+  color: var(--dsw-alias-label-primary, CanvasText);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.plps-menu-item:hover:enabled,
+.plps-menu-item:focus-visible {
+  background: var(--dsw-alias-fill-l1, rgba(128, 128, 128, 0.12));
+}
+.plps-menu-item:disabled {
+  color: var(--dsw-alias-label-tertiary, #6b7280);
+  cursor: default;
+}
+.plps-menu-note {
+  padding: 0 8px 4px;
+  color: var(--dsw-alias-label-tertiary, #6b7280);
+  font-size: 11px;
 }
 .plps-badge {
   flex: none;

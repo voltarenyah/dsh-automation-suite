@@ -266,6 +266,22 @@ export interface FilterOption {
 }
 
 /**
+ * Stable identity of a row, used both as the React key and as the selection
+ * value. The manifest has no cross-export object id (only name/group/type), so
+ * this is the same composite key the rest of the pipeline falls back to; it is
+ * unique within one export because two objects cannot share device, type, name
+ * and number.
+ *
+ * @param row - one row.
+ * @returns the identity string.
+ */
+export function rowKey(row: SourceRow): string {
+  return [row.device, row.simaticType, row.name, row.number ?? '', row.refused === true ? 'refused' : 'exported'].join(
+    '\u0000',
+  )
+}
+
+/**
  * Devices present in the rows, with counts, in natural order.
  *
  * @param rows - flattened rows.

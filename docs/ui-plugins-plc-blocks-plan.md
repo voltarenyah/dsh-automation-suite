@@ -336,3 +336,15 @@ actions.openResource(resourceAddress(sessionId, relativeUnder(cwd, row.file)))
   深色 `rgb(18,18,18)`+白字。
 - 表头拆成两行（标题+计数+刷新 / 两个下拉），搜索框独占一行，窄面板不再把控件叠成三行。
 
+### 10.3 第三轮：交互模型与状态保持（本节取代 §4.3 / §4.4 里那两点）
+
+| 改动 | 实现 | 验收 |
+|---|---|---|
+| **视图状态持久化** | 新增 `src/client/store.js`：`defineStore` + 在 `apply` 里建句柄、随 `slots.register({ store })` 交给框架（每会话一个实例）；状态按 tab id 分桶，装两个筛选、搜索串、选中行、滚动位置，**以及已读到的行**（视图缓存，与官方 files tab 同一做法）；`tab.signal` 中止时清桶 | 选 `FB（218）` + 搜 `scp` + 选中 `SCP_IN` → 打开预览文件切走 → 点回 **PLC Blocks** chip：三项原样、**没有出现"正在读取"**（用的是缓存）；滚动 300px 切走再回来仍是 300 |
+| **单击 = 选中，右键 = 打开** | 行改为 `onClick` 选中（`aria-pressed`、`.plps-selected` 高亮），`onContextMenu` 开一个自绘菜单（用产品自己的菜单配方：`--dsw-specific-menu` + `--dsw-menu-backdrop-filter` + `--dsw-elevation-prominent`），菜单项「打开源文件」；拒导行的该项禁用并附一行原因；`Shift+F10`/菜单键同效，`Esc`、点击别处、滚动都会关闭 | 单击只高亮、**不打开**（tabs 仍是 `["PLC Blocks"]`）；右键出现菜单（`打开源文件`，enabled）；点它 → 新 tab `000_Cycle_Interrupt_EMS.xml` 显示 XML、菜单消失；拒导行菜单项 `disabled` |
+
+> 由此产生的两点偏离：选中态**故意没有后续动作**（使用者要求：动作后续再加）；
+> 「刷新」不再清空筛选/搜索（状态现在归 store，刷新只重读数据）。
+> 另有两点计划里的说法要按现状理解：列表是**平铺**的，没有可折叠层级，所以"保折叠状态"落在
+> 滚动位置与筛选上；`rowKey`（device+type+name+number+是否拒导）既是 React key，也是选中值。
+
