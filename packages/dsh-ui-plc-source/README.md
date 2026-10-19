@@ -1,0 +1,61 @@
+# dsh-ui-plc-source
+
+DSH 插件（**浏览器半侧**）：在 dsh-web 的**右侧栏**增加一个 **PLC Blocks** 标签页，把会话工作区
+`source/` 下每个 device 导出的 PLC 源对象**平铺**成一张可筛选的表。
+
+> 本包只有 UI：宿主半侧是一个空的 `apply()`，存在的意义是让包在 Loader 里有一行——
+> `client-modules` 是**扫描已启用的 Loader 条目**才发现 `lib/client.js` 的，
+> 没有行就不会有 `/plugins/??dsh-ui-plc-source/client.js`，而且**不报错**。
+
+## 它做什么
+
+- 列 `source/` 找到 device 目录，读每个 device 的 `_tia-openness-manifest.json`（**整文件** `readBytes`，
+  一次往返；不用按行分页的 `read`——17 464 行要 4 页）；
+- 把 `blocks[]` 的每条对象**平铺**成一行：类型徽章、名称、编号、语言、大小、写后校验标记；
+  **不渲染** `group` 的目录层级；
+- 两个筛选器：**device** 与 **simaticType**（各带计数，互不收窄对方选项）；
+- 点一行 → 用既有的文档预览打开那个 `.xml`（复用 `ui-sidebar-documentpreview`，不自己写查看器）；
+- 「刷新」清缓存重读。
+
+`simaticType`（`OB/FB/FC/InstanceDB/GlobalDB/ArrayDB/PlcStruct/PlcTagTable`）只存在于清单里，
+所以这个 tab **必须**读清单；清单缺失/不可读时该 device 退回递归列目录（只有名字与大小，
+类型显示为「未知」），其余 device 照常。
+
+## 装到本发行版
+
+三处（少一处就静默不生效）：
+
+1. `profile/dsh-automation-suite/package.json` 的 `dependencies` 加 `"dsh-ui-plc-source": "workspace:^"`；
+2. 同文件 `dsh.profile.bundles` **末尾**加 `"dsh-ui-plc-source"`；
+3. 已物化的 profile（`<DSH_HOME>/profiles/dsh-automation-suite/package.json`）的
+   `dsh.profile.bundles` 也要补这一行——`start-env.ps1` 只写依赖，CLI 只追加"本次新加的依赖"。
+
+```powershell
+pwsh -NoProfile -File scripts\start-env.ps1 -DshHome <那个 home> -Restart
+```
+
+## 开发
+
+```powershell
+node scripts/build.mjs      # tsc → lib/index.js + lib/model.js；esbuild → lib/client.js
+node scripts/run-tests.mjs  # 先构建，再 node --test（纯模型：清单解析/筛选/排序/地址/文案）
+node scripts/tsc.mjs -p tsconfig.json --noEmit
+```
+
+两个构建面各有原因：
+
+- **宿主半侧 + 纯模型**：`tsc`（仓库根的 typescript），与兄弟包一致；
+- **浏览器半侧**：`esbuild`（本仓 `.pnpm` 里已有，按候选路径探测，不新增依赖），产出
+  `window.__ModuleLoader__.load({ id, factory })` 包装 —— 宿主只认这个形状，不是普通 ESM；
+  只有宿主冻结的基座模块保持 external（`react` / `react/jsx-runtime` 等，清单见
+  `scripts/build.mjs` 的 `PLATFORM_MODULES`），**其它 `@deepseek-ai/*` 一律不 import**。
+
+浏览器半侧写 `.jsx` 而不是 `.tsx` 是有意的：本仓没有 `@types/react`，抽取的宿主运行时也没有 `.d.ts`，
+`.tsx` 过不了 `tsc`。于是把"能类型检查的部分"留在 `src/model.ts`（有单测），
+把"只能靠浏览器验证的部分"写成 `.jsx`。
+
+## 已知边界
+
+- 折叠/筛选状态在组件内：切 tab 再回来会重新读一遍（每 device 一次 `readBytes`）。
+- 清单超过 `maxFileBytes`（32 MiB）时该 device 退化到目录列举；行数超过 2000 会截断并提示收窄筛选。
+- 清单的 `sha256` 是"导出文件字节"的哈希，**每次导出都会变**，所以本 tab **不做**变更标记。

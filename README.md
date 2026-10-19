@@ -186,6 +186,7 @@ PLC 对象增删改、监视表与软件单元、F 相关服务、编译与关�
 | `dsh-tool-git` | 插件 bundle（vendor） | 0.1.3 | **12 个工具**：`git_status` / `git_diff` / `git_log` / `git_branch` / `git_stage` / `git_commit` / `git_stash` / `git_show` / `git_fetch` / `git_pull` / `git_remote` / `git_checkout`；外加破坏性命令闸门。**宿主面全局行**，所以子 agent 也看得到（v1 已知欠账，见 `docs/decisions.md` D23） |
 | `@voltarenyah/dsh-engineering-context` | 插件 bundle | 0.1.0 | **1 个工具**：`create_engineering_project` —— 把 TIA 当前打开的工程另存进 `<workspace>/tia/<workspace 名>/`、把源文件树重建到 `<workspace>/source/<device>/`，再经【缝 B】逐设备调用图谱插件的 `knowledgeGraph.ingestDevice`（库落在 `<workspace>/knowledge/<device>/<device>_knowledge.db`），默认只给计划（`dry_run: true`）；工具参数里没有路径，全部由 workspace 根 + 配置目录名 + TIA 的报告推出。图谱这一步**不参与成败**：服务缺席/引擎未构建/引擎不可达只报"图谱未建成"。`.gitignore` 只追加 `tia/` 与 `knowledge/**/*.db*` 两行（尾随的 `*` 连 SQLite 的 `-wal` / `-shm` / `-journal` 旁挂文件一起挡）。**未实现**：指纹变更检测、变更台账。**已删除**：P0 的工程注册表（`_dsh-eng/projects.json`）与 P1 的内部 git 版本层，以及 `eng_status` / `eng_project` / `eng_scope` / `eng_version` 四个工具（该包 D22、图谱这一步见 D25）。**没有宿主面资源，所以整行只出现在 `leader` preset 里** |
 | `@voltarenyah/dsh-engineering-graph` | 插件 bundle | 0.1.0 | **两个 Loader 行**：宿主行 = C# 引擎子进程 + `knowledgeGraph` 服务（供族 2 的 `create_engineering_project` 逐设备调用）；`/tools` 行 = **3 个工具**（`knowledge_schema` / `knowledge_ingest` / `knowledge_query`，其中 `includeIngest: false` 可只给前两者——`expert` 就是这么配的）—— Simatic ML XML → 属性图 → SQLite，引擎以 net8 子进程运行（`engine/`）。**未实现**：新鲜度/增量更新、按需下钻工具（某个块、某变量用法）、兼容层。数据库位置与目录约定见 [`docs/roadmap.md`](docs/roadmap.md) §4 |
+| `dsh-ui-plc-source` | 插件 bundle（**仅浏览器半侧**） | 0.1.0 | **一个 Loader 行 + 一个右侧栏 tab 类型**：在 dsh-web 右侧栏（Files / Terminal / Browser 之后）增加 **PLC Blocks**。读 `<workspace>/source/<device>/_tia-openness-manifest.json`，把每个对象**平铺**成一行（类型徽章 / 名称 / 编号 / 语言 / 大小 / 写后校验标记），可按 **device** 与 **simaticType** 筛选，点行用既有文档预览打开那个 `.xml`。宿主半侧是空 `apply()`；清单不可读时该 device 退回目录列举。可行性与机制见 [`docs/ui-plugins.md`](docs/ui-plugins.md)，本插件的计划与验收见 [`docs/ui-plugins-plc-blocks-plan.md`](docs/ui-plugins-plc-blocks-plan.md) |
 | `profile/dsh-automation-suite` | profile 蓝图 | 0.1.0 | 把官方 Web 组合（`dsh-base` + `dsh-web-app`）与上面的本地插件叠成一个可直接启动的 profile；并声明两个 preset：`leader`（主 agent）与 `expert`（子 agent） |
 | `scripts/start-env.ps1` | 启动器 | — | 一条命令完成"物化 profile + 装插件 + 起服务 + 带 token 开浏览器" |
 | `scripts/clean-build.mjs` | 工具 | — | 只清理 `lib/`、`dist/`，遇链接只 unlink、不递归下降 |
@@ -637,6 +638,12 @@ packages/
                                    Graph/ Parsing/ Import/ 为 vendored（命名空间拍平，见 D17）；
                                    build.ps1 构建到 engine/bin（**不进 git**），fixtures/ 是 7 个真实 V17 导出物
     scripts/                       link-dsh-runtime.mjs / tsc.mjs / run-tests.mjs
+  dsh-ui-plc-source/               右侧栏「PLC Blocks」标签页：**仅浏览器半侧，已登记进蓝图**
+    src/index.ts                   宿主半侧：空 apply()，只为让包在 Loader 里有一行
+    src/model.ts                   纯模型：清单解析/平铺/筛选/排序/资源地址/文案（tsc → lib/）
+    src/client/                    apply(ctx) + 面板组件 + 样式（esbuild → lib/client.js，宿主认的 loader 包装）
+    test/                          node:test 套件（20 项，纯模型）
+    scripts/                       tsc.mjs / build.mjs / run-tests.mjs
 profile/
   dsh-automation-suite/            发行版的 profile 蓝图
     package.json                   dsh.profile.bundles = 组合顺序
@@ -717,7 +724,7 @@ npm run skills:build     # TIA：按 pinned commit 重新取上游知识库
 dsh --profile dsh-automation-suite --dump-config
 ```
 
-预期结尾出现（每个本地插件 3 行，4 个插件共 12 行）：
+预期结尾出现（每个本地插件 3 行，5 个插件共 15 行）：
 
 ```yaml
 # == @voltarenyah/dsh-tia-openness-v17-min
@@ -732,6 +739,9 @@ dsh --profile dsh-automation-suite --dump-config
 # == dsh-tool-git
 - id: tool-git
   name: dsh-tool-git
+# == dsh-ui-plc-source
+- id: ui-plc-source
+  name: dsh-ui-plc-source
 ```
 
 带上 **§8.1 的政策层**后，行数见根 `AGENTS.md` §4 的权威基线表（本蓝图改成两个 preset 后已重测；
@@ -871,6 +881,8 @@ TIA 排障第一步永远是让模型调：
 | [`docs/roadmap.md`](docs/roadmap.md) | **路线图与现状**：按插件逐项记录进度、缺口、验收口径 |
 | [`docs/tool-surface.md`](docs/tool-surface.md) | **工具面重设计（调研 + 提案）**：现状体检（26 工具 1:1、20 行渲染上限、~14k tokens 常驻目录）、用户工作流清单、目标工具面与返回契约、从哪一步开始 |
 | [`docs/ui-plugins.md`](docs/ui-plugins.md) | **Web GUI UI 插件**：客户端插件加载机制（含端到端实测）、基座模块表、座位目录、`source/` 数据面、以「工程块树」为例的落地设计与客户端打包配方 |
+| [`docs/ui-plugins-plc-blocks-plan.md`](docs/ui-plugins-plc-blocks-plan.md) | **`dsh-ui-plc-source` 的实施计划与验收记录**：规格、数据面（清单平铺 + device/类型筛选）、降级、构建、接线、实测结果 |
+| [`packages/dsh-ui-plc-source/README.md`](packages/dsh-ui-plc-source/README.md) | 右侧栏 **PLC Blocks** 标签页的用法、构建（tsc + esbuild）与安装位置 |
 | [`packages/dsh-engineering-context/README.md`](packages/dsh-engineering-context/README.md) | 工程上下文插件的用法、配置与开发命令（**P0 已实现**：作用域 + 工程注册表） |
 | [`packages/dsh-engineering-context/docs/`](packages/dsh-engineering-context/docs/) | 该插件的设计与取舍：`ARCHITECTURE.md`（核心架构、作用域模型、变更引擎、工具面）、`PATH-RULES.md`（workspace 内路径规则）、`decisions.md`（编号决策 D1–D14、夜间自主决定 N1–N7、**P0 实现期的决定 P0-1–P0-13**） |
 | [`profile/dsh-automation-suite/README.md`](profile/dsh-automation-suite/README.md) | 蓝图的组成、三种部署方式、验收方式 |

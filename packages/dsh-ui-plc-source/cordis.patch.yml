@@ -1,0 +1,10 @@
+# This plugin's own bundle layer: one Loader row. The row is what makes the
+# browser half in `lib/client.js` reachable at all — client-modules discovers
+# bundles by scanning enabled Loader entries, so a package with a perfect
+# `lib/client.js` and no row is never asked for it (and never reports an error).
+#
+# `name` must equal package.json's `name` verbatim. No quotes are needed here
+# because the name does not start with `@`; a scoped name would need them.
+- insert:
+    - id: ui-plc-source
+      name: dsh-ui-plc-source

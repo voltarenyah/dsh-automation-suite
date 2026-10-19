@@ -1,0 +1,138 @@
+/**
+ * The tab's stylesheet, inlined into the client bundle and injected once as a
+ * `<style data-plugin …>` node. Tagging it is not decorative: the module system
+ * reclaims plugin styles by `data-plugin` when the entry is invalidated, so an
+ * untagged node would be claimed by whichever plugin materialises next.
+ *
+ * Only `--dsw-*` semantic tokens are used (with fallbacks), so the list follows
+ * the app's light/dark themes without a second palette of its own.
+ *
+ * @module dsh-ui-plc-source/style
+ */
+
+/** Identifier of the injected stylesheet, unique across the page. */
+export const TAG_ID = 'dsh-ui-plc-source/plc-blocks.css'
+
+/** Stylesheet text. Class names are prefixed to stay out of the app's way. */
+export const CSS = `
+.plps-root {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  height: 100%;
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--dsw-alias-label-primary, #1f2328);
+}
+.plps-head {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px 6px 12px;
+  border-bottom: 1px solid var(--dsw-alias-border-l1, rgba(128, 128, 128, 0.2));
+  flex-wrap: wrap;
+}
+.plps-title { flex: none; font-weight: 600; }
+.plps-count { flex: none; color: var(--dsw-alias-label-tertiary, #6b7280); font-size: 11px; }
+.plps-select {
+  flex: 0 1 auto;
+  max-width: 46%;
+  min-width: 0;
+  font: inherit;
+  color: inherit;
+  background: var(--dsw-alias-fill-l1, rgba(128, 128, 128, 0.12));
+  border: 1px solid var(--dsw-alias-border-l1, rgba(128, 128, 128, 0.24));
+  border-radius: var(--dsw-radius-sm, 4px);
+  padding: 1px 4px;
+}
+.plps-btn {
+  margin-left: auto;
+  flex: none;
+  border: 0;
+  background: none;
+  padding: 2px 6px;
+  border-radius: var(--dsw-radius-sm, 4px);
+  color: var(--dsw-alias-label-tertiary, #6b7280);
+  font: inherit;
+  cursor: pointer;
+}
+.plps-btn:hover, .plps-btn:focus-visible {
+  background: var(--dsw-alias-fill-l1, rgba(128, 128, 128, 0.12));
+  color: var(--dsw-alias-label-secondary, #4b5563);
+}
+.plps-body { flex: 1 1 auto; min-height: 0; overflow: auto; padding: 4px 0 12px; }
+.plps-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  height: 22px;
+  padding: 0 10px 0 12px;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.plps-row:hover { background: var(--dsw-alias-fill-l1, rgba(128, 128, 128, 0.12)); }
+.plps-badge {
+  flex: none;
+  min-width: 34px;
+  padding: 0 4px;
+  border-radius: var(--dsw-radius-sm, 4px);
+  font-size: 10px;
+  line-height: 15px;
+  text-align: center;
+  background: var(--dsw-alias-fill-l2, rgba(128, 128, 128, 0.18));
+  color: var(--dsw-alias-label-secondary, #4b5563);
+}
+.plps-badge.plps-obj { color: var(--dsw-alias-label-tertiary, #6b7280); }
+.plps-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.plps-meta {
+  flex: none;
+  color: var(--dsw-alias-label-tertiary, #6b7280);
+  font-size: 11px;
+}
+.plps-warn { flex: none; color: var(--dsw-alias-label-warning, #b7791f); font-size: 11px; }
+.plps-device {
+  flex: none;
+  color: var(--dsw-alias-label-tertiary, #6b7280);
+  font-size: 11px;
+  max-width: 90px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.plps-hint { padding: 4px 12px; color: var(--dsw-alias-label-tertiary, #6b7280); }
+.plps-note {
+  margin: 6px 12px 0;
+  padding: 6px 8px;
+  border-radius: var(--dsw-radius-sm, 4px);
+  background: var(--dsw-alias-fill-l1, rgba(128, 128, 128, 0.12));
+  color: var(--dsw-alias-label-secondary, #4b5563);
+  white-space: normal;
+}
+.plps-error { padding: 4px 12px; white-space: normal; color: var(--dsw-alias-label-error, #c0392b); }
+`
+
+/**
+ * Inject the stylesheet once per page.
+ *
+ * @param pluginId - the owning package name, written to `data-plugin`.
+ */
+export function ensureStyle(pluginId) {
+  if (typeof document === 'undefined') return
+  if (document.querySelector('style[data-plugin-css=' + JSON.stringify(TAG_ID) + ']') !== null) return
+  const tag = document.createElement('style')
+  tag.dataset.plugin = pluginId
+  tag.dataset.pluginCss = TAG_ID
+  tag.textContent = CSS
+  document.head.appendChild(tag)
+}

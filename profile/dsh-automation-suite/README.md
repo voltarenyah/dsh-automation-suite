@@ -15,6 +15,7 @@
 | `@voltarenyah/dsh-engineering-context` | 工程上下文插件：`create_engineering_project`。**没有宿主面资源**，所以宿主面这一行被 `disabled: true`，整行搬进 `leader` preset |
 | `@voltarenyah/dsh-engineering-graph` | 工程知识图谱插件：C# 引擎子进程 + `knowledgeGraph` 服务（**模型面工具同样拆到 `/tools`**） |
 | `dsh-tool-git` | 结构化 Git 工具族 + 破坏性命令闸门（vendor 自上游 `lxj808624/dsh-tool-git` v0.1.3）。**仍是宿主面全局行**，所以每个 preset 的 agent 都看得到它 |
+| `dsh-ui-plc-source` | **纯 UI 插件**：右侧栏多一个 **PLC Blocks** 标签页（读 `source/<device>/_tia-openness-manifest.json`，按 device 与 simaticType 筛选，点行打开既有文档预览）。宿主半侧是空 `apply()`，**不注册任何模型可见的东西**；必须在 `dsh-web-app` 之后，浏览器半侧才拿得到客户端座位 |
 
 `dsh-web-app` 是**超出最初清单额外加的**：只列 `dsh-base` 的话 profile 能 `--dump-config`，
 但没有任何 app 可启动。官方 `web` 模板就是 `dsh-base` + `dsh-web-app`。

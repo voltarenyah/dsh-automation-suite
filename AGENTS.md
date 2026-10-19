@@ -149,12 +149,12 @@ pnpm run clean:build      # 清构建产物（只碰 lib/ dist/）
 ## 4. 测试与验收
 
 ```powershell
-pnpm test          # 全仓：TIA 84 项（83 通过 / 1 跳过）+ dsh-tool-git 33 项 + engineering-context 56 项 + engineering-graph 66 项
+pnpm test          # 全仓：TIA 84 项（83 通过 / 1 跳过）+ dsh-tool-git 33 项 + engineering-context 56 项 + engineering-graph 66 项 + ui-plc-source 20 项
 pnpm -r build
 pnpm -r typecheck
 ```
 
-四个插件用**两种测试运行器**，`pnpm -r test` 会把四者都跑到：
+五个插件用**两种测试运行器**，`pnpm -r test` 会把五者都跑到：
 
 | 包 | 运行器 | 命令 |
 |---|---|---|
@@ -162,6 +162,7 @@ pnpm -r typecheck
 | `dsh-tool-git` | `vitest` | `vitest run` |
 | `dsh-engineering-context` | `node:test` | `node scripts/run-tests.mjs`（**先构建再跑**，因为它不提交 `lib/`） |
 | `dsh-engineering-graph` | `node:test` | `node scripts/run-tests.mjs`（**先构建再跑**，同上） |
+| `dsh-ui-plc-source` | `node:test` | `node scripts/run-tests.mjs`（**先构建再跑**，同上；浏览器半侧是 `.jsx`，不进 `tsc`，靠这套纯模型单测 + 浏览器验收） |
 
 ⚠️ `dsh-engineering-graph` 还有一个 **C# 引擎**（`engine/`，net8）。`pnpm -r build` 只构建 TypeScript ——
 它的产物 `engine/bin/` **进 git**（与接口插件族的 `controller/bin` 同理），所以 checkout 开箱可用；只有改了 C# 源码才需要 `pwsh -NoProfile -File engine/build.ps1` 重建（输出到 `engine/bin/`，其中 `engine/bin/fixtures/` 与 `engine/obj/` 被 ignore）。
@@ -205,7 +206,7 @@ profile 组合的端到端验收：
 dsh --profile dsh-automation-suite --dump-config
 ```
 
-预期结尾出现 **4 个本地插件行**，顺序与蓝图的 `dsh.profile.bundles` 一致；其中
+预期结尾出现 **5 个本地插件行**，顺序与蓝图的 `dsh.profile.bundles` 一致；其中
 `engineering-context` 带 `disabled: true`（它整行搬进了 `leader` preset）：
 
 ```yaml
@@ -222,6 +223,9 @@ dsh --profile dsh-automation-suite --dump-config
 # == dsh-tool-git
 - id: tool-git
   name: dsh-tool-git
+# == dsh-ui-plc-source
+- id: ui-plc-source
+  name: dsh-ui-plc-source
 ```
 
 行数基线（**DSH 0.2.1-rc.2 实测，2026-10-19（两个 preset 之后）**；换宿主版本、改蓝图或增减插件后必须重测）：
