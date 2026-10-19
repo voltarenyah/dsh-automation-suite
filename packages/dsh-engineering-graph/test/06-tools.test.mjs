@@ -90,6 +90,28 @@ test('registerTools registers the three deliberate tool names, in order', async 
   }
 })
 
+test('registerTools takes includeIngest as an option and defaults it to true', async () => {
+  const tools = await loadToolsModule()
+
+  const withDefault = createTestContext()
+  const withTrue = createTestContext()
+  const without = createTestContext()
+  const recording = () => ({
+    request: async (operation) => resultFrame(operation),
+    log: { debug() {}, info() {}, warn() {}, error() {} },
+  })
+
+  tools.registerTools(withDefault.ctx, recording())
+  tools.registerTools(withTrue.ctx, recording(), { includeIngest: true })
+  tools.registerTools(without.ctx, recording(), { includeIngest: false })
+
+  assert.deepEqual(withDefault.registered(), TOOL_NAMES, 'an omitted option keeps today\'s full surface')
+  assert.deepEqual(withTrue.registered(), TOOL_NAMES)
+  // The two survivors keep their names *and* their order: schema first, query last,
+  // whether or not the ingest tool sits between them.
+  assert.deepEqual(without.registered(), ['knowledge_schema', 'knowledge_query'])
+})
+
 test('every tool declares the same canonical envelope output schema', async () => {
   const { byName } = await harness(() => resultFrame('GetSchema'))
 

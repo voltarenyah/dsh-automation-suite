@@ -15,17 +15,32 @@
 #    preset 的 plugins 列表里。
 #    ⇒ 覆盖或新建 preset 必须把 plugins 整份写出来，只写一个 persona 行会把工具全丢掉。
 #
-# ── 本文件做三件事 ────────────────────────────────────────────────────────────
+# ── 本文件做四件事 ────────────────────────────────────────────────────────────
 # 1. 覆盖全局 system-prompt 的 persona：管**非 preset** agent（例如将来这个 profile 接
 #    headless / ACP 入口时）。config 是整体替换，所以每个键都要重述一遍。
-# 2. 插入发行版自己的 preset `suite`：内置 standard 的工具清单原样 + 发行版政策文本。
-# 3. 把 agent-preset-registry 的默认 preset 指到 `suite`，新会话默认就用它。
+# 2. 插入两个发行版 preset（整份照抄上游 standard 的工具清单，再按下面第 4 条增删）：
+#      • `leader` —— 主 agent：全部工程工具 + 全部操作层工具，并持有"何时派发"的政策；
+#      • `expert` —— 子 agent：只读的工程知识专家（图谱 + 只读文件检索 + 回父通信）。
+# 3. 把 agent-preset-registry 的默认 preset 指到 `leader`，新会话默认就用它。
+# 4. 工程工具按 preset 分发（本发行版对方案 A 的落地，见 docs/decisions.md D23）：
+#      • 宿主面（bundle 层）只留**控制器/引擎子进程与服务**：
+#        dsh-tia-openness-v17-min 提供 `engineeringAccess` + TIA 控制器，
+#        dsh-engineering-graph 提供 `knowledgeGraph` + C# 引擎；
+#        它们的**模型面工具**已经拆到各自的 `/tools` 子路径行，由 preset 声明。
+#      • `dsh-engineering-context` 没有宿主面资源，所以它**整行搬进 `leader`**，
+#        宿主面这一行显式 `disabled: true` —— 否则它的 `create_engineering_project`
+#        会落在全局层，被包括子 agent 在内的每个 agent 继承。
+#      ⇒ 后果（有意为之）：一个会话能用哪些工程工具，取决于它的 preset。切到没有
+#        声明这些行的内置 preset（standard / minimal / …）时，这些工具**不存在**。
+#      ⚠️ dsh-tool-git 的 12 个工具**仍是宿主面全局行**，所以 `expert` 也看得到它们
+#        （v1 的已知欠账：不在本轮拆分范围内，见 docs/decisions.md D23）。
 #
-# ⚠️ 升级 DSH 后：preset-suite 的 plugins 列表**不会**自动跟随上游 standard 的更新
+# ⚠️ 升级 DSH 后：两个 preset 的 plugins 列表**不会**自动跟随上游 standard 的更新
 #    （registry 文档：覆盖替换完整子插件列表，不自动合并）。重新生成办法：
 #    打开 <app.asar>/dsh/node_modules/@deepseek-ai/dsh-web-app/presets/standard.patch.yml，
-#    把 `- insert:` 块整段粘到下面，改三处 —— 行 id（preset-suite）、config.id（suite）、
-#    order（0），再把 persona 行的 prefix/suffix 换成本文件里的政策文本。
+#    把 `- insert:` 块整段粘到下面，改三处 —— 行 id（preset-leader）、config.id（leader）、
+#    order（0），再把 persona 行的 prefix/suffix 换成本文件里的政策文本；
+#    然后 `preset-expert` 按同一份上游清单核对一次（它只声明自己需要的那几行）。
 #
 #    本文件最近一次按上游重新生成：DSH 0.2.1-rc.2（2026-10-19）。相对 0.2.0-rc.2 的差异：
 #    上游新增 time-context / tool-schedule / tool-plugin-market（最后一条在两端都是 disabled），
@@ -33,7 +48,9 @@
 #    去掉了 dsh-tool-subagent 上已不存在的 `backgroundMode`，并更新了 plan-mode 的 section 文案。
 #
 # ⚠️ 用户若在 UI 里手动选过 preset，注册表条目的 volatile 字段 `selectedDefault` 会优先
-#    于这里的部署默认值（见 dsh-agent-preset-registry README）。
+#    于这里的部署默认值（见 dsh-agent-preset-registry README）。改 preset **id** 会让
+#    记录着旧 id 的会话与独立选过 preset 的子会话无法恢复（docs/decisions.md D23）：
+#    `suite` → `leader` 这一次改名就属于这种情况。
 #
 # ── 想锁死政策（不许切回无政策的 preset）──────────────────────────────────────
 # 给四个内置 preset 各加一条**只改 disabled** 的覆盖补丁即可 —— 不动 config，所以不会
@@ -48,7 +65,8 @@
 #   - id: preset-cordis
 #     disabled: true
 #
-# ── 想改政策文本：只改下面两处 block scalar ───────────────────────────────────
+# ── 想改政策文本：只改下面三处 block scalar ───────────────────────────────────
+#    （全局 system-prompt、preset-leader 的 persona、preset-expert 的 persona）
 
 - id: system-prompt
   config:
@@ -59,7 +77,7 @@
       that ships Siemens TIA Openness (V17) and git tooling. When a task matches one of those
       tools, use it instead of improvising shell commands.
     personaSuffix: |-
-      Your working directory is {{cwd}}.
+      Your working directory is the session working directory reported in the runtime context.
 
       Deployment rules for this distribution. They are stricter than your defaults and outrank
       any conflicting habit of your own:
@@ -77,26 +95,35 @@
 
 - id: agent-preset-registry
   config:
-    default: suite
+    default: leader
+
+# 工程上下文插件没有宿主面资源（既不开子进程也不提供服务），所以它整行搬进 leader preset。
+# 宿主面这一行必须显式禁用：留着启用状态会让它的 `create_engineering_project` 落在全局层，
+# 被包括子 agent 在内的每个 agent 继承 —— 那正是本方案要消除的形态。
+- id: engineering-context
+  disabled: true
 
 - insert:
-    - id: preset-suite
+    # ══ leader：主 agent 的 preset ════════════════════════════════════════════
+    # 工具面 = 内置 standard 的全部 + 本发行版的四个工程工具面（TIA 26 / 工程上下文 1 /
+    # 图谱 3，git 12 由宿主面全局行提供）。相对上游 standard 只多这三行 + persona 政策文本。
+    - id: preset-leader
       name: '@deepseek-ai/dsh-agent-preset'
       config:
-        id: suite
+        id: leader
         order: 0
-        name: dsh-automation-suite
-        description: 发行版默认 preset：内置工具面 + 发行版政策文本
+        name: dsh-automation-suite-leader
+        description: 发行版主 agent：全部工程工具（TIA / git / 工程上下文 / 知识图谱）+ 派发政策
         plugins:
           - id: persona
             name: '@deepseek-ai/dsh-persona'
             config:
               prefix: |-
-                You are the dsh-automation-suite agent: the deployment distribution of DeepSeek Harness
-                that ships Siemens TIA Openness (V17) and git tooling. When a task matches one of those
-                tools, use it instead of improvising shell commands.
+                You are the `leader` agent of the dsh-automation-suite distribution: the deployment
+                distribution of DeepSeek Harness that ships Siemens TIA Openness (V17) and git tooling.
+                When a task matches one of those tools, use it instead of improvising shell commands.
               suffix: |-
-                Your working directory is {{cwd}}.
+                Your working directory is the session working directory reported in the runtime context.
 
                 Deployment rules for this distribution. They are stricter than your defaults and outrank
                 any conflicting habit of your own:
@@ -111,6 +138,23 @@
                   credential files, tokens, or private keys.
                 - Use only the tools this deployment provides. When a capability is missing, say so instead
                   of emulating it.
+
+                Delegation policy. You own the project-level work and you keep doing it yourself:
+
+                - Open/save/export/import/compile the project, fingerprint and version it, run the git
+                  tools, and make every write to the engineering project or the workspace. None of that
+                  is delegated.
+                - Delegate to the `expert` subagent when a question needs close reading of program
+                  logic: call chains, variable reads and writes, what a block or network really does,
+                  or the impact of a proposed change on specific blocks.
+                - `expert` has read-only access to the engineering knowledge graph and to the exported
+                  source tree. It cannot open TIA Portal, cannot write, and cannot use git. Do not ask
+                  it for any of those; do that work yourself.
+                - Write the delegation brief with the object (device / block / group / variable), the
+                  exact question, and the form you want back: a consolidated answer plus, when a change
+                  is warranted, a modification plan naming blocks and networks.
+                - `expert` works in its own context; you only see its closing message. If it needs
+                  something only you have, it will `send_message` you.
           - id: agent-instructions
             name: '@deepseek-ai/dsh-agent-instructions'
             config:
@@ -189,12 +233,18 @@
                 name: '@deepseek-ai/dsh-tool-subagent-control'
               - id: tool-subagent-list-agents
                 name: '@deepseek-ai/dsh-tool-subagent-control/list-agents'
+              # 子 agent 一律挂 `expert` preset（本发行版只声明了这一个独立子 preset）；
+              # `allowedAgentPresets` 同时给出模型可选的枚举，所以两者必须包含同一个 id。
+              # 深度上限沿用宿主设置 subagent.maxDepth（默认 1）：expert 不能再派孙代。
               - id: tool-subagent
                 name: '@deepseek-ai/dsh-tool-subagent'
                 config:
                   provider: spawn
                   toolName: subagent
                   modelSelectionSettings: true
+                  agentPreset: expert
+                  allowedAgentPresets:
+                    - expert
               - id: tool-subagent-fork
                 name: '@deepseek-ai/dsh-tool-subagent'
                 config:
@@ -206,6 +256,15 @@
                   provider: spawn
               - id: tool-workflow
                 name: '@deepseek-ai/dsh-tool-workflow'
+          # ── 本发行版的工程工具面（方案 A：宿主行留服务，工具行由 preset 声明）──
+          # leader 拿全部：TIA 26 + 工程上下文 1 + 图谱 3。
+          # 注意这三行的 name 必须与各包 package.json 的 exports 逐字对应。
+          - id: leader-engineering-context
+            name: '@voltarenyah/dsh-engineering-context'
+          - id: leader-tia-tools
+            name: '@voltarenyah/dsh-tia-openness-v17-min/tools'
+          - id: leader-graph-tools
+            name: '@voltarenyah/dsh-engineering-graph/tools'
           - id: tool-ask-user
             name: '@deepseek-ai/dsh-tool-ask-user'
           - id: tool-todo
@@ -225,3 +284,93 @@
           - id: tool-plugin-market
             name: '@deepseek-ai/dsh-plugin-market/tools'
             disabled: true
+
+    # ══ expert：子 agent 的 preset ════════════════════════════════════════════
+    # 刻意的**极小**工具面。它是只读的知识专家，不是第二个主 agent：
+    #   • 图谱：只有 knowledge_schema / knowledge_query（includeIngest: false）。
+    #     knowledge_ingest 是重度写操作（整库重建），属于主 agent 的建工程流程。
+    #   • 文件：只有读。write/edit 关掉，glob/grep/read 保留 —— 用来读导出物里的 XML/源码。
+    #   • 通信：send_message（回父）/ interrupt_agent，以及它自己的子会话目录。
+    #   • 不给：任何 TIA 操作工具、工程上下文工作流、pwsh/bash、jobs、schedule、
+    #     goal、plan、web、todo、ask_user（它没有面向用户的通道，问父 agent 就好）、
+    #     skill（v1 有意省略，见 docs/decisions.md D23）。
+    #   ⇒ 它自己的 preset 只声明 8 个工具（图谱 2 + read/read_image + glob/grep +
+    #     send_message/interrupt_agent）。**仍会继承宿主面的 13 个全局工具**：
+    #     dsh-tool-git 的 12 个（本轮不拆，D23）+ dsh-tool-working-directory 的
+    #     `working_directory`（上游本来就把这一行留在宿主面）。这是已知欠账，不是遗漏。
+    # ⚠️ 沙箱与权限：子 agent 继承父会话的**显式**沙箱覆盖（本 profile 默认
+    #   danger-full-access），审批策略被钉死 `never`（需要审批的操作自动拒绝、不弹给用户）。
+    #   所以"只读"这件事**只由工具面保证**，不要以为沙箱会拦它。
+    - id: preset-expert
+      name: '@deepseek-ai/dsh-agent-preset'
+      config:
+        id: expert
+        order: 10
+        name: dsh-automation-suite-expert
+        description: >-
+          Engineering-knowledge expert subagent: read-only investigation over the project's knowledge
+          graph and exported sources, returning one consolidated answer plus a modification plan.
+        plugins:
+          - id: persona
+            name: '@deepseek-ai/dsh-persona'
+            config:
+              prefix: |-
+                You are the `expert` subagent of the dsh-automation-suite distribution: a read-only
+                engineering-knowledge specialist. A `leader` agent delegated one specific question
+                about a PLC project's program logic to you.
+              suffix: |-
+                Your working directory is the session working directory reported in the runtime context. The project's exported sources live under
+                `source/<device>/`; its knowledge graph databases live under
+                `knowledge/<device>/<device>_knowledge.db`.
+
+                What you have: the engineering knowledge graph (`knowledge_schema`, `knowledge_query`)
+                and read-only file access (`glob`, `grep`, `read`). What you do not have: any TIA Portal
+                operation, any git tool, and any way to write. Do not claim otherwise and do not try to
+                work around it — state the limitation in your reply instead.
+
+                Rules:
+
+                - Answer the delegated question, not the surrounding project. Stay inside it.
+                - Ground every conclusion in a query result or an exported source file, and name the
+                  exact objects: device, block, network, variable, plus the query or file that shows it.
+                - If you need something only the delegating agent has (a project open in TIA, a fresh
+                  export, a workspace path), ask it with `send_message`. You have no channel to the user
+                  and must never wait on one.
+                - Your closing message is your whole deliverable: the delegating agent sees your final
+                  text and nothing else of your working context. Make it the consolidated answer and,
+                  when a change is warranted, a concrete modification plan naming the blocks, the
+                  networks and the change to make.
+          - id: time-context
+            name: '@deepseek-ai/dsh-time-context'
+          - id: expert-graph-tools
+            name: '@voltarenyah/dsh-engineering-graph/tools'
+            config:
+              includeIngest: false
+          - id: expert-fs-readonly
+            name: '@deepseek-ai/dsh-tool-fs'
+            config:
+              write: false
+              edit: false
+          - id: expert-fs-search
+            name: '@deepseek-ai/dsh-tool-fs-search'
+            config:
+              sampleOverCapGlobResults: false
+          # 导出物里的单个 XML 动辄几十 KB，一次 grep/read 就可能吃掉大半个窗口，
+          # 所以子 agent 也要有工具结果修剪与自动压缩（不写会"研究到一半上下文爆掉"）。
+          - id: compaction
+            name: cordis:group
+            group: true
+            isolate:
+              compaction: true
+              toolResultPruner: true
+            config:
+              - id: compaction-basic
+                name: '@deepseek-ai/dsh-compaction-basic'
+              - id: tool-result-pruner
+                name: '@deepseek-ai/dsh-compaction-tool-result-pruner'
+                config:
+                  thresholdChars: 8192
+                  headChars: 4096
+                  tailChars: 1024
+          - id: expert-subagent-control
+            name: '@deepseek-ai/dsh-tool-subagent-control'

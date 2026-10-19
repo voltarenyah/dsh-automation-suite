@@ -287,13 +287,35 @@ async function runOperation(
   return outcomeOf(operation, frame)
 }
 
+/** Options that select which tools become visible, without changing any of them. */
+export interface RegisterToolsOptions {
+  /**
+   * Whether `knowledge_ingest` is registered. Defaults to `true`, so a caller
+   * that says nothing keeps the full three-tool surface.
+   *
+   * A full graph rebuild is a heavy write (one database per device, minutes on a
+   * large project), so it belongs to the main agent's project workflow; a
+   * read-only subagent preset turns it off and keeps `knowledge_schema` and
+   * `knowledge_query`. The two remaining tools are unaffected, and their order
+   * and definitions are identical either way.
+   */
+  includeIngest?: boolean
+}
+
 /**
  * Registers every tool of this plugin on `ctx.tools`. The framework owns the
  * registrations, so their disposers are not managed here.
  *
+ * @param ctx - the context whose `ctx.tools` receives the definitions.
+ * @param dependencies - the engine seam every tool body runs against.
+ * @param options - which tools to register; omitted means all three.
  * @returns the registered tool names, in registration order.
  */
-export function registerTools(ctx: Context, dependencies: ToolDependencies): string[] {
+export function registerTools(ctx: Context, dependencies: ToolDependencies, options: RegisterToolsOptions = {}): string[] {
+  // Only a literal `false` removes the tool: an omitted, `undefined` or
+  // non-boolean value keeps today's behaviour, so an untyped caller cannot
+  // silently lose the ingest tool.
+  const includeIngest = options.includeIngest !== false
   const registered: string[] = []
 
   const register = (definition: ToolDefinition): void => {
@@ -336,58 +358,64 @@ export function registerTools(ctx: Context, dependencies: ToolDependencies): str
     }),
   )
 
-  register(
-    defineTool({
-      name: 'knowledge_ingest',
-      description:
-        "Build (or rebuild) ONE device's knowledge database: read the export manifest in the device folder, parse " +
-        'every source file it lists into a graph of nodes and edges, and write it to a SQLite database. It is a full ' +
-        'rebuild, so point db_path at a database this tool owns. Call it once per device -- a project with several ' +
-        'PLCs has one folder per device under source/. Progress is reported while the files are parsed and the ' +
-        'database is written. Fails with DEVICE_DIR_REQUIRED, DEVICE_DIR_NOT_FOUND, NO_SOURCE_FILES or ' +
-        'MANIFEST_INVALID, and with an engine error only if the database itself cannot be written.',
-      parameters: {
-        device_dir: {
-          type: 'string',
-          required: true,
-          description:
-            'Absolute path of the device folder to ingest, i.e. <project>/source/<device>. It holds the export ' +
-            'manifest plus blocks/, types/ and tag_tables/. It must already exist; a missing folder is ' +
-            'DEVICE_DIR_NOT_FOUND and one with nothing importable is NO_SOURCE_FILES.',
+  // The one tool a read-only preset must not see. Skipping the whole definition
+  // (rather than registering a body that refuses) is deliberate: a tool the model
+  // cannot call at all is a clearer boundary than one that answers "no", and the
+  // other two tools keep their names, order and definitions untouched.
+  if (includeIngest) {
+    register(
+      defineTool({
+        name: 'knowledge_ingest',
+        description:
+          "Build (or rebuild) ONE device's knowledge database: read the export manifest in the device folder, parse " +
+          'every source file it lists into a graph of nodes and edges, and write it to a SQLite database. It is a full ' +
+          'rebuild, so point db_path at a database this tool owns. Call it once per device -- a project with several ' +
+          'PLCs has one folder per device under source/. Progress is reported while the files are parsed and the ' +
+          'database is written. Fails with DEVICE_DIR_REQUIRED, DEVICE_DIR_NOT_FOUND, NO_SOURCE_FILES or ' +
+          'MANIFEST_INVALID, and with an engine error only if the database itself cannot be written.',
+        parameters: {
+          device_dir: {
+            type: 'string',
+            required: true,
+            description:
+              'Absolute path of the device folder to ingest, i.e. <project>/source/<device>. It holds the export ' +
+              'manifest plus blocks/, types/ and tag_tables/. It must already exist; a missing folder is ' +
+              'DEVICE_DIR_NOT_FOUND and one with nothing importable is NO_SOURCE_FILES.',
+          },
+          db_path: {
+            type: 'string',
+            description:
+              'Absolute path of the SQLite database to write. Omit for ' +
+              '<project>/knowledge/<device>/<device>_knowledge.db, where <project> holds source/ -- one folder per ' +
+              'device holds everything generated for it.',
+          },
         },
-        db_path: {
-          type: 'string',
-          description:
-            'Absolute path of the SQLite database to write. Omit for ' +
-            '<project>/knowledge/<device>/<device>_knowledge.db, where <project> holds source/ -- one folder per ' +
-            'device holds everything generated for it.',
+        output: {
+          schema: OUTCOME_SCHEMA,
+          render: (_args, value) => [{ type: 'text', text: renderValue(value) }],
         },
-      },
-      output: {
-        schema: OUTCOME_SCHEMA,
-        render: (_args, value) => [{ type: 'text', text: renderValue(value) }],
-      },
-      presentCall: (args) => ({
-        card: 'generic',
-        title: 'Ingest engineering exports',
-        kind: 'other',
-        rawInput: args,
+        presentCall: (args) => ({
+          card: 'generic',
+          title: 'Ingest engineering exports',
+          kind: 'other',
+          rawInput: args,
+        }),
+        async execute(args, exec) {
+          const params: JsonRecord = { deviceDir: args.device_dir }
+          if (args.db_path !== undefined) params['dbPath'] = args.db_path
+          return asJsonOutcome(
+            await runOperation(dependencies, 'Ingest', params, {
+              signal: exec.signal,
+              // The engine reports what it is crawling and where it is writing.
+              // Turning that into debug lines is what makes a slow ingest visible in
+              // the plugin log without changing the tool result.
+              onProgress: (frame) => dependencies.log.debug(`engine ingest [${frame.phase}] ${frame.message}`),
+            }),
+          )
+        },
       }),
-      async execute(args, exec) {
-        const params: JsonRecord = { deviceDir: args.device_dir }
-        if (args.db_path !== undefined) params['dbPath'] = args.db_path
-        return asJsonOutcome(
-          await runOperation(dependencies, 'Ingest', params, {
-            signal: exec.signal,
-            // The engine reports what it is crawling and where it is writing.
-            // Turning that into debug lines is what makes a slow ingest visible in
-            // the plugin log without changing the tool result.
-            onProgress: (frame) => dependencies.log.debug(`engine ingest [${frame.phase}] ${frame.message}`),
-          }),
-        )
-      },
-    }),
-  )
+    )
+  }
 
   register(
     defineTool({

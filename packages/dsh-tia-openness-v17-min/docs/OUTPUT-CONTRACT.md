@@ -6,7 +6,9 @@
 
 ## 1. 工具与统一输出信封
 
-26 个工具（`inject: ['tools']`）。**完整的参数与返回契约在
+26 个工具，由**工具行**注册（子路径导出 `@voltarenyah/dsh-tia-openness-v17-min/tools`，
+`inject: ['tools', 'tiaOpennessRuntime']`）—— 宿主行只持有控制器与 `engineeringAccess` 服务，
+所以**该看到 TIA 的 agent preset 才声明工具行**（见 README §4.0）。**完整的参数与返回契约在
 [`EXTENDED-SURFACE.md`](EXTENDED-SURFACE.md)**，这里只列工具清单与信封。
 
 | 工具 | 作用 | 写入 | 默认 dry-run |

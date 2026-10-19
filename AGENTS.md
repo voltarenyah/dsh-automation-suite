@@ -69,14 +69,15 @@ DSH 的解析机制有两条独立路径，**两者都靠包名**：
 
 | 位置 | 是什么 |
 |---|---|
-| `profile/dsh-automation-suite/cordis.patch.yml` | 政策层本体：`- id: system-prompt`（全局 persona）、`- id: agent-preset-registry`（默认 preset）、`- insert: - id: preset-suite`（发行版 preset，政策文本就在它的 persona 行里） |
-| 同上文件头部注释 | 为什么必须整份重述 preset、升级 DSH 后怎么重新生成 |
-| `profile/dsh-automation-suite/README.md` | 「发行版政策层」一节：机理、验收、演示命令 |
+| `profile/dsh-automation-suite/cordis.patch.yml` | 政策层本体：`- id: system-prompt`（全局 persona）、`- id: agent-preset-registry`（默认 preset = `leader`）、`- insert: - id: preset-leader`（主 agent preset，政策文本在它的 persona 行里）、`- insert: - id: preset-expert`（子 agent preset）、`- id: engineering-context`（`disabled: true`，整行搬进 `leader`） |
+| 同上文件头部注释 | 为什么必须整份重述 preset、工具面为什么按 preset 分发、升级 DSH 后怎么重新生成 |
+| `profile/dsh-automation-suite/README.md` | 「发行版政策层」「两个 preset：`leader` 与 `expert`」两节：机理、验收、演示命令 |
 | 根 `README.md` §8.1 / §11 | 用户向说明与验收行数 |
 
-**要改政策文字，只改 `personaPrefix` / `personaSuffix` 两处 block scalar。**
+**要改政策文字，只改三处 block scalar**（全局 `personaPrefix`/`personaSuffix`、`preset-leader`
+的 persona、`preset-expert` 的 persona）。
 
-三条会**静默出错**的注意事项（都已实测，别凭直觉改）：
+四条会**静默出错**的注意事项（都已实测，别凭直觉改）：
 
 1. **别"简化"成只留 `- id: system-prompt` 一行**。web 组合的 agent 一律走 preset，preset 里的
    `dsh-persona` 按作用域**遮蔽**全局 persona —— 实测：给全局 persona 打标记，该标记不会出现在
@@ -84,10 +85,20 @@ DSH 的解析机制有两条独立路径，**两者都靠包名**：
 2. **别只往 preset 里写一个 persona 行**。loader 的 patch 是「按 key 浅合并、`config` 整体替换」
    （`cordis-plugin-loader` 的 `Entry.update`），嵌套 `config.plugins` **不按 id 合并**；而 web 组合里
    `dsh-base` 的全局工具行全是 `disabled: true`，真正生效的工具面就在 preset 的 `plugins` 里 ——
-   漏掉整份清单会让该 agent 的工具**静默消失**，不报错。所以 `preset-suite` 必须整份照抄 `standard`。
-3. **改完蓝图不等于生效**。`scripts/start-env.ps1` 只在 profile 目录**尚不存在**时拷贝
+   漏掉整份清单会让该 agent 的工具**静默消失**，不报错。所以 `preset-leader` 必须整份照抄 `standard`。
+3. **宿主面注册的工具会被每个 agent 继承，包括子 agent**。工具可见性 = 全局层 + 作用域链上的祖先层
+   逐层过 `admits`（`dsh-tools` 的 `view()`）；preset 里"不写"**不等于**隐藏。所以想让某个工具只归
+   某一层 agent，只能把它拆成独立的 `/tools` 行、由 preset 声明 —— 这正是 D23 做的事。
+   宿主面**只放资源与服务**（子进程、`engineeringAccess`、`knowledgeGraph`）。
+4. **改完蓝图不等于生效**。`scripts/start-env.ps1` 只在 profile 目录**尚不存在**时拷贝
    `cordis.patch.yml`，已物化的 profile 要 `-Reset` 或手动同步；而物化目录里那份是**应用会回写的
    活状态**（设置项以行形式写回，CST 保留式写入），同步时**追加/合并**，不要整文件覆盖。
+5. **persona 里的 `{{...}}` 是严格插值，可用的只有 `provider` 与 `model`**（`dsh-agent-loop`
+   注册的，`dsh-system-prompt` 的 `interpolate()` 遇到未注册名字会抛错）。写 `{{cwd}}` 这类
+   想象出来的变量，症状不是日志警告而是**用户发第一句话时整轮失败**：
+   `unknown prompt variable "{{cwd}}" in section "deployment:persona-suffix"; registered variables: provider, model`。
+   这条既适用于 preset 的 `dsh-persona` 行，也适用于全局 `system-prompt` 行 —— 两处都会炸。
+   工作目录/模型名本来就在 runtime context 里，persona 不必再插值一遍。
 
 验证政策是否真的进了提示词，不必猜：会话日志（`<DSH_HOME>/sessions/**/session.v4.jsonl.zstd`，
 多帧 zstd）里有真实的 `system/message` 事件，可直接读渲染后的全文。
@@ -138,7 +149,7 @@ pnpm run clean:build      # 清构建产物（只碰 lib/ dist/）
 ## 4. 测试与验收
 
 ```powershell
-pnpm test          # 全仓：TIA 77 项（76 通过 / 1 跳过）+ dsh-tool-git 33 项 + engineering-context 56 项 + engineering-graph 49 项
+pnpm test          # 全仓：TIA 84 项（83 通过 / 1 跳过）+ dsh-tool-git 33 项 + engineering-context 56 项 + engineering-graph 66 项
 pnpm -r build
 pnpm -r typecheck
 ```
@@ -194,15 +205,17 @@ profile 组合的端到端验收：
 dsh --profile dsh-automation-suite --dump-config
 ```
 
-预期结尾出现 **4 个本地插件、每个 3 行（共 12 行）**，顺序与蓝图的 `dsh.profile.bundles` 一致：
+预期结尾出现 **4 个本地插件行**，顺序与蓝图的 `dsh.profile.bundles` 一致；其中
+`engineering-context` 带 `disabled: true`（它整行搬进了 `leader` preset）：
 
 ```yaml
 # == @voltarenyah/dsh-tia-openness-v17-min
 - id: tia-openness-v17-min
   name: '@voltarenyah/dsh-tia-openness-v17-min'
-# == @voltarenyah/dsh-engineering-context
+# == @voltarenyah/dsh-engineering-context, patched by …\cordis.patch.yml
 - id: engineering-context
   name: '@voltarenyah/dsh-engineering-context'
+  disabled: true
 # == @voltarenyah/dsh-engineering-graph
 - id: engineering-graph
   name: '@voltarenyah/dsh-engineering-graph'
@@ -211,16 +224,18 @@ dsh --profile dsh-automation-suite --dump-config
   name: dsh-tool-git
 ```
 
-行数基线（**DSH 0.2.1-rc.2 实测，2026-10-19**；换宿主版本、改蓝图或增减插件后必须重测）：
+行数基线（**DSH 0.2.1-rc.2 实测，2026-10-19（两个 preset 之后）**；换宿主版本、改蓝图或增减插件后必须重测）：
 
 | 命令 | 行数 |
 |---|---|
-| `dsh --profile web --dump-config`（官方组合） | **1235** |
-| `dsh --profile web --patch profile/dsh-automation-suite/cordis.patch.yml --dump-config` | **1471**（政策层净增 236） |
-| 按蓝图物化的 profile：`dsh --profile dsh-automation-suite --dump-config` | **1477** |
+| `dsh --profile web --dump-config`（官方组合，本机当前） | **1183** |
+| `dsh --profile web --patch profile/dsh-automation-suite/cordis.patch.yml --dump-config` | **1508** |
+| 按蓝图物化的 profile：`dsh --profile dsh-automation-suite --dump-config` | **1522** |
 
-行数只用来发现「整行消失」这类事故，别把它当精确断言 —— 上游每次改动 preset 都会让这三个数一起变
-（0.2.0-rc.2 时是 1259 / 1268 / 1520）。**要证明插件真的被 import 过，用下面的 `--dump-config-schema`。**
+> ⚠️ 旧基线 **1235 / 1471 / 1477** 已作废：同一天重测时官方 `web` 组合本身就少了几十行
+> （不是本仓改动 —— 那三条命令的第一条不含本仓任何文件）。别拿新旧数值互相解释，用自己那次跑出来的三个数
+> 一起看。行数只用来发现「整行消失」这类事故，别把它当精确断言。
+> **要证明插件真的被 import 过，用下面的 `--dump-config-schema`。**
 
 装 tarball 的验收链路：
 
@@ -232,10 +247,10 @@ dsh --profile <临时 profile> --dump-config     # 含你的插件行 = 通过�
 
 强于 `--dump-config` 的一条：`dsh --profile <p> --dump-config-schema`，若输出里出现该插件的
 Config 字段（如 `opennessDir`，或 git 插件的 `destructivePolicy`），说明模块被**真实 import
-并读取了 schema**。注意该命令本身在未装任何插件的 `web` profile 上也返回 exit 1 —— 那 4 条
-`unrecognized Loader tree carrier` 错误落在官方 `dsh-agent-preset` 的 4 个行上（0.2.1-rc.2 实测
-是 `/186`–`/189`），与插件无关，**不要**把它当成插件问题去查。套件 profile 上是 5 条：多出的
-一条就是本蓝图插入的 `preset-suite`（它同样是 `dsh-agent-preset` 行）。
+并读取了 schema**。注意该命令本身在未装任何插件的 `web` profile 上也返回 exit 1 —— 那几条
+`unrecognized Loader tree carrier` 错误落在 `dsh-agent-preset` 行上，**每个 preset 行一条**：
+官方 `web` 是 4 条（`/186`–`/189`），本套件 profile 是 **6 条**（多出 `/194`、`/195`，即
+本蓝图插入的 `preset-leader` 与 `preset-expert`），与插件无关，**不要**把它当成插件问题去查。
 
 ---
 

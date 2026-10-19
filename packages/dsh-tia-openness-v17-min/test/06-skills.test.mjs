@@ -19,7 +19,7 @@ import { existsSync, readFileSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
 import { test } from 'node:test'
 
-import { createTestContext, EXPECTED_TOOLS, loadPlugin, packageRoot, withPlugin } from './helpers/harness.mjs'
+import { EXPECTED_TOOLS, packageRoot, withTools } from './helpers/harness.mjs'
 
 const SKILLS = join(packageRoot, 'skills')
 const ROUTER = join(SKILLS, 'tia-openness', 'SKILL.md')
@@ -31,15 +31,15 @@ const MAX_CATALOG_DESCRIPTION_CHARS = 500
 const manifest = JSON.parse(readFileSync(join(SKILLS, 'UPSTREAM.json'), 'utf8'))
 const vendored = Object.keys(manifest.skills)
 
-test('apply registers the knowledge base on the skill registry, through ctx.inject', async (t) => {
-  const { harness } = await withPlugin(t)
+test('the host row registers the knowledge base on the skill registry, through ctx.inject', async (t) => {
+  const { harness } = await withTools(t)
 
   assert.deepEqual(harness.injectedServices, [['skills']], 'the skill registry must be injected, not read directly')
   assert.equal(harness.skillProviders.length, 1, 'exactly one bundled skill provider is registered')
   assert.equal(harness.skillProviders[0].name, 'tia-openness-v17-min')
 
   // The knowledge base must never gate the tools: a profile without the skill
-  // registry has to keep working, which is why `skills` is not in the
+  // registry still has to load, which is why `skills` is not in the host row's
   // module-level inject (test 01 pins that).
   assert.deepEqual(harness.registered().sort(), [...EXPECTED_TOOLS].sort())
   assert.equal(
@@ -49,22 +49,16 @@ test('apply registers the knowledge base on the skill registry, through ctx.inje
   )
 })
 
-test('a composition without a skill registry still loads every tool', async (t) => {
-  const plugin = await loadPlugin()
-  const harness = createTestContext({ skills: false })
-  t.after(async () => {
-    await harness.unload()
-  })
+test('a composition without a skill registry still loads the controller and every tool', async (t) => {
+  const { harness } = await withTools(t, {}, { skills: false })
 
-  plugin.apply(harness.ctx, {})
-
-  assert.deepEqual(harness.injectedServices, [['skills']], 'the plugin asks for the registry and moves on')
+  assert.deepEqual(harness.injectedServices, [['skills']], 'the host row asks for the registry and moves on')
   assert.equal(harness.skillProviders.length, 0)
   assert.deepEqual(harness.registered().sort(), [...EXPECTED_TOOLS].sort(), 'the tools are unaffected')
 })
 
 test('the provider advertises exactly one skill, sized for the session catalog', async (t) => {
-  const { harness } = await withPlugin(t)
+  const { harness } = await withTools(t)
   const candidates = await harness.skillProviders[0].list()
 
   assert.equal(candidates.length, 1, '31 separate catalog entries would cost every session context')
@@ -81,7 +75,7 @@ test('the provider advertises exactly one skill, sized for the session catalog',
 })
 
 test('get() returns the router body and an existing file behind every reference', async (t) => {
-  const { harness } = await withPlugin(t)
+  const { harness } = await withTools(t)
   const provider = harness.skillProviders[0]
   const [candidate] = await provider.list()
   const skill = await provider.get(candidate)
@@ -124,7 +118,7 @@ test('the vendored tree matches the manifest it ships with', () => {
 })
 
 test('every tool description points the model at the skill', async (t) => {
-  const { harness } = await withPlugin(t)
+  const { harness } = await withTools(t)
 
   for (const definition of harness.definitions) {
     assert.ok(

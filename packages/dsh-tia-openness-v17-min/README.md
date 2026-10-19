@@ -7,6 +7,11 @@
 > tools backed by a whitelisted C# controller subprocess. Every write runs in an
 > exclusive-access transaction and is read back for verification; the operations
 > whose preview carries information are dry-run by default.
+>
+> 插件由**两个 Loader 行**组成：宿主行（`.`,`src/index.ts`）持有控制器子进程、`engineeringAccess`
+> 服务与知识库；工具行（`./tools`,`src/tools-entry.ts`）才是 26 个模型可见的工具，
+> **由 agent preset 决定要不要声明** —— 主 agent（leader）声明它、子 agent（expert）不声明，
+> 于是子 agent 看不到任何 TIA 工具。见 [§4.0](#40-两个-loader-行宿主行与-tools-行)。
 
 ---
 
@@ -24,8 +29,13 @@
 ```
 ┌─ DSH 宿主进程 (Node) ──────────────────────────┐
 │  dsh-tia-openness-v17-min (本插件, TypeScript) │
-│   • 注册 26 个工具                              │
+│  宿主行 ('.')：                                │
 │   • ctx.effect() 拥有 C# 控制器子进程           │
+│   • 注册 engineeringAccess 服务（公开缝）        │
+│   • 注册 tiaOpennessRuntime（本包工具行的内部缝）│
+│   • 注册知识库 skill provider                   │
+│  工具行 ('./tools'，按 preset 声明)：            │
+│   • 注册 26 个模型可见工具                       │
 │   • 请求串行化 / 超时 / 硬超时终止与重启         │
 │   • 结构化错误 → 结构化工具结果                  │
 └───────────────┬────────────────────────────────┘
@@ -53,7 +63,7 @@
 |---|---|
 | TypeScript 构建 / typecheck | ✅ 0 错误 |
 | C# 控制器编译（对着本机真实 V17 `Siemens.Engineering.dll`） | ✅ 0 Warning / 0 Error |
-| 自动化测试 `npm test` | ✅ **58 项：57 通过 / 0 失败 / 1 跳过**（跳过项为"控制器未构建"的降级路径；含 9 项知识库与 3 项对**真实** skill 注册表的集成测试） |
+| 自动化测试 `npm test` | ✅ **84 项：83 通过 / 0 失败 / 1 跳过**（跳过项为"控制器未构建"的降级路径；含 9 项知识库、3 项对**真实** skill 注册表的集成测试，以及 6 项两行拆分契约——其中 2 项在**真实** cordis 服务图上把两行当兄弟插件挂载） |
 | C# 控制器自检（无 TIA） | ✅ **14/14**（含"启动时不加载 Openness 程序集"与"Siemens 解析器包可用"） |
 | Openness 环境探测（DLL 版本 / 位数 / 用户组） | ✅ `17.0.0.0` / x64 / 已在 `Siemens TIA Openness` 组 |
 | 安装进真实 DSH 宿主的加载 / 卸载验证 | ✅ **已验证（真实宿主）**：独立 `DSH_HOME` + 测试 profile 启动真实宿主 → 控制器子进程出现（`apply` 执行、`ctx.effect` 持有）；宿主结束 → 子进程自行退出，无残留。`~/.dsh` 未被修改 |
@@ -106,7 +116,7 @@
 | .NET Framework | 4.6.1+（本控制器以 **4.8** 为目标框架构建） |
 | 进程位数 | **x64**（Openness 是 64 位 API） |
 | Windows 用户组 | 当前用户必须属于本地组 **`Siemens TIA Openness`** |
-| DSH | 任何能加载 bundle 的版本（`inject: ['tools']`） |
+| DSH | 任何能加载 bundle 的版本（宿主行 `inject: []`；工具行 `inject: ['tools', 'tiaOpennessRuntime']`） |
 | 重新构建 C# 时才需要 | .NET SDK（\dotnet build\）+ .NET Framework 4.8 targeting pack + **能访问 NuGet 源**（首次还原约 13 秒，见 §7.1） |
 | 重新构建 TS 时才需要 | Node ≥ 22.19、`npm install`（只装 typescript 与 @types/node） |
 
@@ -124,7 +134,8 @@ net localgroup "Siemens TIA Openness"
 
 仓库已包含构建结果，安装前无需编译：
 
-- `lib/` —— TypeScript 编译输出（插件入口 `lib/index.js`）
+- `lib/` —— TypeScript 编译输出（宿主行入口 `lib/index.js`；工具行入口 `lib/tools-entry.js`，
+  即 `exports["./tools"]`）
 - `controller/bin/TiaOpennessV17Min.Controller.exe`（+ `.exe.config`）—— C# 控制器
 
 ### 3.2 安装到 DSH profile
@@ -145,7 +156,19 @@ plugin_manager(action: "install_bundle", target: "C:\\Users\\Ansel\\dsh-automati
         requestTimeoutMs: 600000     # 大项目导入/编译可能需要更长时间
 ```
 
-本插件的 bundle patch（`cordis.patch.yml`）只插入自己的条目，不含任何环境相关配置，
+**工具行要另行声明**（宿主行只提供控制器与服务，不含任何模型可见工具）：
+
+```yaml
+- insert:
+    - id: tia-openness-v17-min-tools
+      name: '@voltarenyah/dsh-tia-openness-v17-min/tools'
+```
+
+两条行可以放在 composition 的任意位置：工具行的 `inject` 会让 loader 等到 `tiaOpennessRuntime`
+出现再调用它的 `apply`。但**只有该看到 TIA 的 agent preset 才应该声明工具行** ——
+把它写进全局组合等于回到拆分之前（见 [§4.0](#40-两个-loader-行宿主行与-tools-行)）。
+
+本插件的 bundle patch（`cordis.patch.yml`）只插入宿主行那一条，不含任何环境相关配置，
 因此同一份 bundle 可以装在任意 profile。**profile 的 `patchReload` 不是 `live` 时需要重启 DSH 才会生效。**
 
 ### 3.3 配置项（全部有默认值，可整块省略）
@@ -163,9 +186,35 @@ plugin_manager(action: "install_bundle", target: "C:\\Users\\Ansel\\dsh-automati
 
 ---
 
+### 4.0 两个 Loader 行：宿主行与 `/tools` 行
+
+DSH 按**声明作用域**决定工具对谁可见：一行里注册的工具属于该行的作用域。插件原来把 26 个工具
+和控制器放在同一行，于是它们落在**宿主（全局）平面**上 —— 任何 agent（包括被派生的子 agent）
+都继承。发行版要区分 `leader`（主 agent，保留 26 个工具）与 `expert`（子 agent，不应看到任何
+TIA 工具），所以注册被拆成两行：
+
+| 行 | 子路径导出 | `name` | `inject` | 内容 |
+|---|---|---|---|---|
+| 宿主行 | `.`（`lib/index.js`） | `tia-openness-v17-min` | `[]` | `ControllerProcess` + `ctx.effect` 的所有权、`engineeringAccess` 服务（公开缝）、`tiaOpennessRuntime`（本包工具行的内部缝）、bundled skill provider |
+| 工具行 | `./tools`（`lib/tools-entry.js`） | `tia-openness-v17-min-tools` | `['tools', 'tiaOpennessRuntime']` | 26 个模型可见工具（`src/tools.ts`，两份行共用的唯一实现） |
+
+- **只有该看到 TIA 的 preset 才声明工具行**：`leader` 声明它 → 保留 26 个工具；
+  `expert` 不声明 → 一个 TIA 工具都没有。宿主行对所有 agent 都加载，因为控制器与会话是
+  composition 级资源。
+- **宿主行没有工具，所以 `inject` 是空数组**；它唯一想等的 `skills` 是**可选**的，
+  仍旧走 `apply` 里的 `ctx.inject(['skills'], …)`，缺 skill 注册表的 profile 照常加载。
+- **工具行不拥有任何配置**：所有配置（`controllerPath`、`requestTimeoutMs`、`verboseResults`…）
+  都写进宿主行，工具行从 `tiaOpennessRuntime` 读回已经归一化的值。
+- **一个 composition 仍然只有一个控制器子进程 / 一个 TIA Portal 会话**，无论多少 agent 声明工具行。
+- **`inject` 让顺序安全**：工具行可以在 composition 里写在宿主行之前，loader 会等
+  `tiaOpennessRuntime` 出现再调用它的 `apply`。反过来，只声明工具行而不声明宿主行，
+  工具行就一直等不到那个服务、不注册任何工具。
+
+---
+
 ## 4. 工具
 
-26 个工具，统一返回同一个信封（`ok` / `summary` / `data` / `changes` / `diagnostics` / `error`）。
+工具行注册的 26 个工具，统一返回同一个信封（`ok` / `summary` / `data` / `changes` / `diagnostics` / `error`）。
 每个工具对应控制器的一个白名单操作，参数与返回结构见
 [`docs/EXTENDED-SURFACE.md`](docs/EXTENDED-SURFACE.md)。
 
@@ -289,7 +338,9 @@ commit `b5c7041`）**逐字**打进包里，并注册成模型可见的**一个*
 - **为什么只注册一个**：会话目录是每个会话都要付的持久消息，描述上限 500 字符；31 条目录项会让
   每个（哪怕与 TIA 无关的）会话都替它买单。路由 skill 只占一行，同时把绝对 base directory 交给模型。
 - **怎么注册**：`src/skills.ts` 通过 `ctx.inject(['skills'], …)` 注册 bundled provider；
-  `skills` **没有**被放进模块级 `inject`，所以未挂 skill 注册表的 profile 里 26 个工具照常可用。
+  `skills` **没有**被放进宿主行的模块级 `inject`，所以未挂 skill 注册表的 profile 里
+  宿主行（以及工具行）照常加载。知识库属于**宿主行**：它是 composition 级的知识，
+  不是"某个 agent 的工具面"，所以不随工具行一起按 preset 开关。
   两条都有单测守着：`test/06-skills.test.mjs` 用替身注册表，`test/07-skills-registry.test.mjs`
   用**真实**的 `@deepseek-ai/dsh-skill` 注册表（含"卸载后目录项消失"）。
 - **模型一定会看到它**：每个工具的 description 末尾都带一句
@@ -307,10 +358,12 @@ commit `b5c7041`）**逐字**打进包里，并注册成模型可见的**一个*
 
 ### 4.5 给工程上下文插件的服务：`engineeringAccess`
 
-除了 26 个模型可见的工具，插件还注册一个 **cordis 服务** `engineeringAccess`
+宿主行**不注册任何模型可见工具**，它注册两个 cordis 服务。公开的那个是 `engineeringAccess`
 （[`src/access.ts`](src/access.ts)），供**工程上下文插件**调用 —— 它要指纹做工程级
 变更检测，而按架构规定它**自己不允许与 TIA Portal 对话**（发行版
-[`docs/decisions.md`](../../docs/decisions.md) **D12** 的"缝 A"）。
+[`docs/decisions.md`](../../docs/decisions.md) **D12** 的"缝 A"）。另一个是
+`tiaOpennessRuntime`（[`src/runtime-service.ts`](src/runtime-service.ts)），只给本包的工具行读，
+**不是公开接口**：其它插件要驱动 TIA 只能走 `engineeringAccess`。
 
 | 方法 | 触发的操作 | 关键点 |
 |---|---|---|
@@ -431,13 +484,15 @@ npm run test:controller  # 只跑 C# 控制器自检
 
 | 文件 | 覆盖 |
 |---|---|
-| `01-load.test.mjs` | **加载测试**：模块级 `name`/`inject`/`Config`/`apply`；26 个工具按注册顺序注册；参数与输出 schema 用**真实** `@deepseek-ai/dsh-tools` 编译器编译；校验器拒绝缺参/错类型/越界枚举；工具描述包含 dry-run 策略与错误码；工具返回值通过 output schema 校验；控制器缺失时仍能加载并给出结构化原因 |
+| `01-load.test.mjs` | **加载与拆分契约**：两行的模块级 `name`/`inject`/`apply`（宿主行 `inject: []`，工具行 `['tools', 'tiaOpennessRuntime']`）；工具行按注册顺序注册相同的 26 个工具、宿主行一个工具都不注册、缺少宿主行时工具行报错；参数与输出 schema 用**真实** `@deepseek-ai/dsh-tools` 编译器编译；校验器拒绝缺参/错类型/越界枚举；工具描述包含 dry-run 策略与错误码；工具返回值通过 output schema 校验；控制器缺失时宿主行仍能加载并给出结构化原因 |
 | `02-lifecycle.test.mjs` | **生命周期测试**：用真实 exe 启动控制器，断言操作系统可见该进程；`ctx.effect` 的 disposer 卸载后断言**进程已消失**；卸载幂等；配置了不存在的路径时调用失败为 `controller_not_found`。注意：触发卸载的是测试里忠实模拟 `ctx.effect` 语义的 disposer，不是真实 DSH loader 的 HMR 路径（该环待人工验证） |
 | `03-controller-protocol.test.mjs` | **协议测试**：握手、白名单拒绝、参数校验、`project_not_open`、ASCII 转义、进度帧、请求串行化、队列上限；用 stub 控制器覆盖**卡死超时→终止→重启**、请求中途退出、协议版本不匹配、stdout 噪声（这一组还捕获并回归了一个真实的 bug：被替换的旧子进程的迟到 `exit` 事件会清掉新子进程引用，导致进程泄漏） |
 | `04-tools.test.mjs` | **工具语义**：每个工具发送的参数与默认值、dry-run 只留给预览带信息量的 7 个工具（决策 D22）、只发送白名单操作、`controller_status` 不触碰控制器、渲染文本包含错误码/提示/诊断 |
 | `05-controller-cli.test.mjs` | **C# 控制器**：`--self-test` 14 项检查全绿；Openness 探测与用户组；`--version`/`--help`；命令行输出重定向为结构化帧；`--param` 重复值成数组 |
-| `06-skills.test.mjs` | **知识库（替身注册表）**：`ctx.inject(['skills'], …)` 注册；没有 skills 服务的 profile 仍加载 26 个工具；目录只多一条且 description ≤ 500；`get()` 正文无 frontmatter、引用的每个上游文件都存在、正文 < 8192；vendored 树与 `UPSTREAM.json` 一致；每个工具描述都指向该 skill |
-| `07-skills-registry.test.mjs` | **知识库（真实注册表）**：把 `@deepseek-ai/dsh-skill` 的真实 `SkillRegistry` 挂到裸 cordis context 上，验证 candidate 被真实校验接受、重名注册被拒、`get()` 能加载、`renderSkillContent` 带上 base directory、卸载插件后目录项消失 |
+| `06-skills.test.mjs` | **知识库（替身注册表）**：宿主行 `ctx.inject(['skills'], …)` 注册；没有 skills 服务的 profile 仍加载控制器与全部工具；目录只多一条且 description ≤ 500；`get()` 正文无 frontmatter、引用的每个上游文件都存在、正文 < 8192；vendored 树与 `UPSTREAM.json` 一致；每个工具描述都指向该 skill |
+| `07-skills-registry.test.mjs` | **知识库（真实注册表）**：把 `@deepseek-ai/dsh-skill` 的真实 `SkillRegistry` 挂到裸 cordis context 上（**不需要**工具注册表，因为宿主行已不含工具），验证 candidate 被真实校验接受、重名注册被拒、`get()` 能加载、`renderSkillContent` 带上 base directory、卸载宿主行后目录项消失 |
+| `08-access-service.test.mjs` | **服务缝**：`engineeringAccess` 每个方法发送与对应工具相同的操作与参数、族信封摊平、截断如实上报、`closeProject` 必须显式给 `dryRun`、操作级失败回数据而传输级失败抛出；宿主行发布内部 `tiaOpennessRuntime` 缝（恰好三个成员）且卸载后消失 |
+| `09-two-rows.test.mjs` | **两行接线的真实服务图**：把两行当**兄弟插件**挂在裸 cordis `Context` 上（只有记录用的 `tools` 服务），断言工具行的 `inject` 由宿主行满足、跨行读到 `tiaOpennessRuntime` 并注册同名同序的 26 个工具；宿主行自己一个工具都不注册，卸载后缝消失 |
 
 C# 控制器自检（无需 TIA Portal，14 项）：
 
@@ -540,12 +595,14 @@ pnpm run link:runtime -- --force   # 无视缓存，按当前宿主版本重抽
 
 ```
 src/
-  index.ts             插件入口：name / inject / Config / apply，ctx.effect 拥有子进程
+  index.ts             宿主行入口：name / inject[] / Config / apply，ctx.effect 拥有子进程
+  tools-entry.ts       工具行入口（exports["./tools"]）：读 tiaOpennessRuntime，注册 26 个工具
+  runtime-service.ts   宿主行与工具行之间的内部缝 tiaOpennessRuntime（恰好 request/status/verbose）
   config.ts            Schemastery 配置 schema + 归一化（所有字段有默认值）
   controller.ts        C# 控制器的生命周期、NDJSON 帧、串行化、超时与终止
   protocol.ts          线路类型 + 容错帧解析 + 统一结果信封
   skills.ts            知识库：把 skills/ 注册成一个 bundled skill（ctx.inject(['skills'], …)）
-  tools.ts             26 个 defineTool 定义（模型可见描述）与渲染
+  tools.ts             26 个 defineTool 定义（模型可见描述）与渲染；两行共用的唯一实现
   errors.ts            ToolFailure（传输层错误）
   dsh-runtime.d.ts     本插件用到的 DSH 运行时类型（离线可构建）
 skills/                随包出货的 Openness 知识库：31 个上游 SKILL.md（逐字，MIT）+ 路由 skill（见 §4.4）

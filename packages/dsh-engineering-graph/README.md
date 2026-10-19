@@ -4,12 +4,19 @@ DeepSeek Harness 插件（**工程知识图谱插件**）：在工程产物（�
 建立可查询的知识图谱。
 
 > **实现状态：TypeScript 半边已接通引擎，并已登记进蓝图。**
-> 本包导出 `name` / `inject` / `Config` / `apply` / `resolveConfig` / `resolveEnginePath` /
-> `EngineClient` / `registerTools` / `KnowledgeGraph`，注册**三个工具**（`knowledge_schema`、
-> `knowledge_ingest`、`knowledge_query`）与**一个 cordis 服务** `knowledgeGraph`，并由 `ctx.effect`
-> 持有引擎子进程（**首次请求时**才启动，卸载时 `stop()`）。
+> 本包导出**两个 Loader 行**：
+>
+> | 行 | 包入口 | 导出 |
+> |---|---|---|
+> | **宿主行**（host row） | `"."` → `lib/index.js` | `name` = `engineering-graph`、`inject` = `[]`、`Config`、`apply`、`resolveConfig`、`resolveEnginePath`、`EngineClient` |
+> | **工具行**（tools row） | `"./tools"` → `lib/tools-entry.js` | `name` = `engineering-graph-tools`、`inject` = `['tools', 'knowledgeEngine']`、`Config`（`includeIngest`）、`apply`、`resolveToolsEntryConfig` |
+>
+> 宿主行**不注册任何工具**：它持有引擎子进程（**首次请求时**才启动，卸载时 `stop()`）并发布两个
+> cordis 服务 —— 给别的插件用的 `knowledgeGraph`，以及给本包自己的工具行用的内部缝
+> `knowledgeEngine`。三个工具（`knowledge_schema`、`knowledge_ingest`、`knowledge_query`）由工具行
+> 注册，所以**哪个 agent 看得见它们由 preset 决定**（见 §2.2）。
 > C# 引擎（`engine/`，`EngineeringGraph.Engine`）由另一条工作线 vendoring 进来；
-> 引擎缺席时插件照常加载并注册工具，只打一条警告，每次调用以 `engine_not_found` 失败（见 §2）。
+> 引擎缺席时两行都照常加载，宿主行只打一条警告，每次调用以 `engine_not_found` 失败（见 §2）。
 > 已登记进 `profile/dsh-automation-suite/` 的 `dsh.profile.bundles`，并已被族 2 的工作流消费：
 > 工程上下文插件的 `create_engineering_project` 在导出完成后逐设备调用 `knowledgeGraph.ingestDevice`
 > （族 2 的 D25；那一步是软的 —— 本包缺席或引擎不可达只报"图谱未建成"，不让它的流程失败）。
@@ -21,9 +28,10 @@ DeepSeek Harness 插件（**工程知识图谱插件**）：在工程产物（�
 | 概念 | 归属 |
 |---|---|
 | **引擎** | 本包内 vendored 的 C# 可执行文件 `engine/bin/EngineeringGraph.Engine.exe`（默认位置见 §3） |
-| **插件** | 本目录的 TypeScript 外壳：解析配置、定位引擎、持有引擎子进程的生命周期（`EngineClient` + `ctx.effect`） |
-| **工具面** | 三个工具：`knowledge_schema` / `knowledge_ingest` / `knowledge_query`（见 §4） |
-| **服务面** | 一个 cordis 服务 `knowledgeGraph`（`src/service.ts`）：`status()` + `ingestDevice(deviceDir, opts?)`。它是给**另一个插件**用的缝（族 2 的 `create_engineering_project` 在导出后逐设备调用它），工具与它共用同一套请求与信封转换，所以两边永远不会对默认值或错误形状各说各话 |
+| **宿主行** | 本目录的 TypeScript 外壳：解析配置、定位引擎、持有引擎子进程的生命周期（`EngineClient` + `ctx.effect`），发布两个服务 |
+| **工具行** | 三个工具：`knowledge_schema` / `knowledge_ingest` / `knowledge_query`（见 §2.1），由 preset 按需声明 |
+| **服务面（公开）** | 一个 cordis 服务 `knowledgeGraph`（`src/service.ts`）：`status()` + `ingestDevice(deviceDir, opts?)`。它是给**另一个插件**用的缝（族 2 的 `create_engineering_project` 在导出后逐设备调用它），工具与它共用同一套请求与信封转换，所以两边永远不会对默认值或错误形状各说各话 |
+| **服务面（内部）** | 一个 cordis 服务 `knowledgeEngine`（`src/runtime-service.ts`）：`request(operation, params, options?)`。它是**本包自己的工具行**读回宿主行引擎的缝，**不是**给别的插件用的接口；外部插件该用的仍然是 `knowledgeGraph` |
 
 工具名刻意保留来源库（`Tools/KnowledgeTools.cs`）的 `knowledge_*` 命名，而不是本仓
 verb_noun 风格：改名会静默打断按旧名字写的提示词与调用方。
@@ -35,18 +43,20 @@ verb_noun 风格：改名会静默打断按旧名字写的提示词与调用方�
 
 ## 2. 引擎缺席时的行为（硬约束）
 
-`apply` **永不抛错**：
+宿主行的 `apply` **永不抛错**：
 
 - 引擎可执行文件不存在 → 以 `warn` 级别打出一条日志，写明**解析出的路径**、
   **来源**（`config` 还是 `package`）以及**如何构建**（
   `dotnet build engine/EngineeringGraph.Engine.csproj -c Release`），然后继续；
 - 插件加载本身不受影响 —— 缺引擎**不会**变成插件加载失败；
-- 三个工具**照样注册**：每次调用以传输错误 `engine_not_found` 失败（消息以错误码开头），
+- 工具行**照样注册**三个工具：每次调用以传输错误 `engine_not_found` 失败（消息以错误码开头），
   这样模型能区分"引擎拒绝了这条语句"与"根本没有引擎"。
 
-`apply` 注册**一个** `ctx.effect` 清理器持有 `EngineClient`：引擎在**第一次请求**时才被
+宿主行的 `apply` 注册**一个** `ctx.effect` 清理器持有 `EngineClient`：引擎在**第一次请求**时才被
 spawn（`apply` 不预热，所以缺引擎时加载没有任何副作用），卸载（或宿主关闭）时由该 disposer
 `await client.stop()` 停掉子进程；`stop()` 可重复调用，不会留下子进程。
+**构造 `knowledgeEngine` 服务不会启动任何东西** —— 它只保存依赖，`request` 原样转给
+`EngineClient`，所以"懒启动"这个性质在拆行之后仍然成立。
 
 ## 2.1 工具面与统一信封
 
@@ -55,6 +65,9 @@ spawn（`apply` 不预热，所以缺引擎时加载没有任何副作用），�
 | `knowledge_schema` | `GetSchema` | 图谱 schema：DDL、节点种类、边类型、示例查询 | 否 |
 | `knowledge_ingest` | `Ingest` | 爬取导出目录 → 解析成图 → 写入 SQLite（**整库重建**） | 写 `.db` |
 | `knowledge_query` | `Query` | 单条只读 `SELECT`/`WITH`/`EXPLAIN` | 否 |
+
+三者的名字、顺序、参数、描述与渲染都是**冻结的**契约。唯一可变的只有"`knowledge_ingest` 在不在"
+（工具行的 `includeIngest`，见 §2.2）：另外两个工具在任何配置下都完全一致。
 
 **服务面 `knowledgeGraph`**（`src/service.ts`，供族 2 的 `create_engineering_project` 调用）走的是同一套
 `runOperation` + `outcomeOf`，只是没有工具 schema：
@@ -96,7 +109,47 @@ spawn（`apply` 不预热，所以缺引擎时加载没有任何副作用），�
 （`engine_not_found` / `engine_handshake_timeout` / `engine_timeout` / `engine_exited` /
 `engine_protocol_mismatch` / `engine_spawn_failed` / `engine_write_failed` / `engine_cancelled`）。
 
+## 2.2 两行与 `includeIngest` 开关
+
+DSH 按**声明作用域**解析工具可见性：一行插件注册的工具会落在宿主（全局）层，被**包括子 agent 在内**
+的每个 agent 继承。所以本包把"持有引擎"和"给模型看工具"拆成两行：
+
+| preset | 声明哪几行 | 工具面 |
+|---|---|---|
+| `leader`（主 agent） | 宿主行 `@voltarenyah/dsh-engineering-graph` + 工具行 `@voltarenyah/dsh-engineering-graph/tools`（默认配置） | `knowledge_schema` / `knowledge_ingest` / `knowledge_query` |
+| `expert`（子 agent） | 工具行 `@voltarenyah/dsh-engineering-graph/tools` + `includeIngest: false` | `knowledge_schema` / `knowledge_query` |
+
+两行都必须声明宿主行（`leader` 在 bundle 层，`expert` 由 composition 的宿主行提供）——工具行的
+`inject: ['tools', 'knowledgeEngine']` 让 loader 等宿主行发布 `knowledgeEngine` 之后才调 `apply`，
+所以**声明顺序无所谓**，但宿主行必须在同一个 composition 里。宿主行缺席时工具行的 `apply` 直接抛错
+（而不是注册一批调用必然失败的工具），错误文本会指出缺的是哪个服务。
+
+工具行自己的配置只有一个字段：
+
+| 字段 | 默认 | 说明 |
+|---|---|---|
+| `includeIngest` | `true` | `false` 时**不注册** `knowledge_ingest`；另外两个工具的名字、顺序、参数、描述与渲染完全不变 |
+
+```yaml
+# expert preset 里的那一行
+- id: expert-graph-tools
+  name: '@voltarenyah/dsh-engineering-graph/tools'
+  config:
+    includeIngest: false
+```
+
+**子 agent 故意关掉 ingest**：`knowledge_ingest` 是重度写操作 —— 整库重建，一台设备一个 `.db`，
+实测 1376 个源文件约 30 s、库约 450 MB。它属于**主 agent 的建工程流程**
+（族 2 的 `create_engineering_project` 在导出后逐设备经 `knowledgeGraph` 触发），不属于一次只读调查。
+`expert` 的职责是"回答一个被委派的问题"，它只需要 `knowledge_schema` 看表结构、`knowledge_query`
+读数据；给它 ingest 等于给它一条静默重写整个图谱库的路径。
+
+只有**真正的布尔 `false`** 会关掉 ingest：省略、`undefined`、字符串 `"false"`、`0` 等都回落到默认
+`true`（与 `src/config.ts` 的 `flag()` 同一套规则），所以一个写错类型的 preset 不会静默丢掉工具。
+
 ## 3. 配置
+
+### 3.1 宿主行（`"."`）
 
 | 字段 | 默认 | 说明 |
 |---|---|---|
@@ -105,9 +158,16 @@ spawn（`apply` 不预热，所以缺引擎时加载没有任何副作用），�
 | `startupTimeoutMs` | `30000` | 引擎 ready 握手的截止时间（毫秒），下限 1000 |
 | `logEngineOutput` | `false` | 是否把引擎自身的 stdout/stderr 转发到插件日志 |
 
+### 3.2 工具行（`"./tools"`）
+
+| 字段 | 默认 | 说明 |
+|---|---|---|
+| `includeIngest` | `true` | 是否注册 `knowledge_ingest`（见 §2.2） |
+
 时间字段用 `Schema.natural()`（非负整数），与接口插件族的写法一致；`resolveConfig` 重新施加
 同一套默认值与范围校验（钳到下限而不是拒绝），所以即使不经 loader 的 schema 解析
-（例如测试直接调用 `apply`）行为也一致。
+（例如测试直接调用 `apply`）行为也一致。工具行同理：`resolveToolsEntryConfig` 重新施加
+`includeIngest` 的默认值，**永不抛错**，只信任真正的布尔值。
 
 **默认引擎路径**（相对本包根目录）：
 
@@ -122,7 +182,16 @@ engine/bin/EngineeringGraph.Engine.exe
 
 ```
 packages/dsh-engineering-graph/
-├── src/                    # 插件源码（tsc 编译到 lib/）
+├── src/
+│   ├── index.ts            # 宿主行（包 "."）：引擎生命周期 + 两个服务，不注册工具
+│   ├── tools-entry.ts      # 工具行（包 "./tools"）：Config(includeIngest) + 注册三个工具
+│   ├── runtime-service.ts  # 内部缝 knowledgeEngine：宿主行交给自己的工具行
+│   ├── service.ts          # 公开缝 knowledgeGraph：给工程上下文插件用
+│   ├── tools.ts            # 三个 defineTool 定义（模型可见描述）与渲染；两行共用的唯一实现
+│   ├── config.ts           # 宿主行配置（enginePath / 超时 / logEngineOutput）
+│   ├── engine-client.ts    # 引擎子进程：懒启动、串行化、超时、终止
+│   ├── engine-path.ts / protocol.ts / errors.ts
+│   └── dsh-runtime.d.ts    # 手写的 DSH 运行时声明（抽取的运行时不含 .d.ts）
 ├── scripts/                # 构建 / 测试 / 运行时链接脚本
 ├── test/                   # node:test 套件，驱动构建后的 lib/
 └── engine/                 # vendored C# 引擎（另一条工作线；本包只读它的 bin/）
@@ -155,11 +224,20 @@ node $pnpm --filter @voltarenyah/dsh-engineering-graph run test          # 先�
   自行调 `linkRuntime()` 补链接（与接口插件族一致），但同样绝不抽取缓存。
 - `src/dsh-runtime.d.ts` 是手写的宿主运行时环境声明：抽取出来的运行时不含 `.d.ts`。
   新增任何 `@deepseek-ai/*` import 或访问新成员时，必须同步该文件与 `RUNTIME_ROOTS`。
+- **`package.json` 的 `exports` 必须同时有 `"."`、`"./tools"` 与 `"./package.json"`**：preset 里那两行
+  的 `name` 是逐字比对模块标识符的，漏掉 `"./tools"` 会让工具行在加载期报模块解析失败。
+  构建仍是纯 `tsc`（`node scripts/tsc.mjs`），`src/tools-entry.ts` 自动产出 `lib/tools-entry.js`，
+  不需要额外配置。
 
 ## 6. 边界
 
 不做：直接调用 Openness / 启动 TIA Portal（接口插件族）、工程注册表与版本层（工程上下文插件）、
 解析 XML 与建图逻辑本身（在 C# `engine/` 里）。本包只负责"模型怎么问、引擎怎么被拥有"。
+
+**`knowledgeEngine` 不是公开接口。** 它是本包两行之间的内部缝（§1），别的插件该用的仍然是
+`knowledgeGraph`。两者刻意分开：`knowledgeGraph` 是"请帮我重建一台设备的库"的业务请求，
+`knowledgeEngine` 是"把这次请求转给引擎"的管道；把后者暴露出去等于给外部插件第二个驱动引擎的入口，
+而这个入口的生命周期属于 preset 里那一行工具，不属于 composition。
 
 已知限制（实测，2026-10）：
 

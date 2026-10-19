@@ -160,7 +160,8 @@ stdout 噪声）在真实控制器上**无法构造**（要构造就得先把 TI
 
 ## D10. 进程模型：一个宿主进程一个控制器
 
-**决定**：`apply` 每次组合只创建一个 `ControllerProcess`；`inject: ['tools']`；
+**决定**：`apply` 每次组合只创建一个 `ControllerProcess`；`inject: ['tools']`
+（**已被 D25 取代**：宿主行现在是 `inject: []`，工具注册移到 `/tools` 行）；
 子进程由 `ctx.effect()` 的异步 disposer 停止（框架 await 它）。
 `apply` 里对进程做 pre-warm（fire-and-forget），但**不**因启动失败而让插件加载失败。
 
@@ -665,3 +666,58 @@ Openness 用户组 `isMember: true`）；`npm run matrix:build` + `matrix:check`
 
 **未验证**：真机上的一次调用导出（需要 TIA Portal 里打开一个真实项目）。**注意**：
 `controller/bin/*.exe` 是随包出货的交付物，已按本条重新构建 —— 源码与二进制必须一起提交。
+
+---
+
+## D25. 工具注册拆成第二个 Loader 行（`./tools`），宿主行改为不含工具
+
+**背景**：DSH 按**声明作用域**决定工具对谁可见。原来 26 个工具与控制器在**同一行**（`src/index.ts`）
+里注册，于是它们落在**宿主（全局）平面**：任何 agent —— 包括被派生的子 agent —— 都继承。
+发行版要引入两个 agent preset：`leader`（主 agent，保留全部 26 个工具）与 `expert`
+（子 agent，**不应**看到任何 TIA 工具）。只要工具还挂在宿主行，preset 就无法把工具面收窄。
+
+**决定**：把**模型可见的工具注册**拆成第二个 Loader 行，宿主行只留 composition 级资源。
+
+| | 宿主行 | 工具行 |
+|---|---|---|
+| 入口 | `src/index.ts` → `lib/index.js`（`exports["."]`） | `src/tools-entry.ts` → `lib/tools-entry.js`（`exports["./tools"]`） |
+| `name` | `tia-openness-v17-min` | `tia-openness-v17-min-tools` |
+| `inject` | `[]` | `['tools', 'tiaOpennessRuntime']` |
+| 内容 | `ControllerProcess` + `ctx.effect` 所有权、`engineeringAccess`（公开缝，D20）、`tiaOpennessRuntime`（**内部**缝）、bundled skill provider | 26 个模型可见工具（`src/tools.ts`，两份行共用） |
+
+- 新文件 `src/runtime-service.ts` 提供 `TIA_RUNTIME_SERVICE = 'tiaOpennessRuntime'` 与
+  `class TiaOpennessRuntime extends Service`，构造签名 `(ctx, dependencies)` 与 `EngineeringAccess`
+  一致；它**只**暴露 `request` / `status` / `verbose` 三个成员（就是 `ToolDependencies` 里工具真正
+  用到的部分），并且只以**类型**方式 import `tools.ts`，所以构造它不会注册任何工具。
+- 工具行 `apply` 通过 `ctx.get('tiaOpennessRuntime')` 读回该缝，用
+  `registerTools(ctx, { request, status, verbose, log: ctx.logger(name) })` 注册；工具名、顺序、
+  参数与描述**一个字符都没改**。
+- `src/tools.ts` 不动：它仍是唯一实现，工具行只决定这些工具**在哪里可见**。
+
+**为什么不让工具行自己再起一个控制器（或有自己的一份配置）**：一个宿主进程只能有一个 Openness
+客户端（D10），第二份 `ControllerProcess` 会开第二个 TIA Portal 会话并互相阻塞；而且配置应只有
+一处（宿主行的 `Config`），工具行从缝里读归一化后的值即可。
+
+**为什么这个缝不是公开接口**：它只服务本包的两行。其它插件要驱动 TIA 仍只能走 `engineeringAccess`
+（D20 / 发行版 D12），否则就等于给外部开了第二条绕过架构约束的通路。因此它不进 package 根导出，
+文档里也明确标注"internal"。
+
+**顺序**：工具行的 `inject` 含 `TIA_RUNTIME_SERVICE`，loader 会等到宿主行把它提供出来再调用
+`apply` —— 所以两行在 composition 里的先后无所谓；反过来，**只声明工具行而不声明宿主行**时，
+工具行会一直等不到该服务（`inject` 的语义），不会静默注册一堆够不到 TIA 的工具。
+手工调用 `apply` 时会以该服务名抛错（`test/01-load.test.mjs` 有一项守着）。
+
+**代价（破坏性）**：`inject` 变了。任何**期望宿主行自己带上 26 个工具**的 profile 都必须显式声明
+`./tools` 行，否则模型看不到工具（`--dump-config` 不会报错，属于静默变化）；
+`packages/` 之外的调用方（发行版蓝图）由本次改动的调用方负责同步。
+
+**验证**：`npm test` 84 项（83 通过 / 1 跳过）；`npm run build`；`npm run matrix:build` +
+`matrix:check`；`npm run skills:check`。测试改动：`01-load` 改为对两行分别断言并新增
+"工具行注册同名同序的 26 个工具""宿主行不注册任何工具""缺宿主行时工具行报错"三项；
+`02-lifecycle`、`06-skills` 改用 `withTools`（同 context 上先后挂两行）；`08-access-service`
+新增内部缝的生命周期断言；新增 `09-two-rows.test.mjs`，在**真实** cordis 服务图上把两行当
+兄弟插件挂载，证明跨行 `inject` / `ctx.get` 能解析到宿主行的缝、且宿主行一个工具都不注册。
+
+**未验证**：真实宿主里把 `./tools` 行写进 agent preset 后的实际可见性
+（需要在物化 profile 里声明两行并观察 leader / expert 的工具面）。本次只到包内单测与
+构建/矩阵/知识库校验。

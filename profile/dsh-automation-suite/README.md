@@ -11,9 +11,10 @@
 |---|---|
 | `@deepseek-ai/dsh-base` | DSH 基础层（会话、工具注册表、LLM……） |
 | `@deepseek-ai/dsh-web-app` | Web 应用层 —— 没有它这个 profile 启动后没有 app 可跑 |
-| `@voltarenyah/dsh-tia-openness-v17-min` | 本发行版的第一个插件（接口插件族：与 TIA Portal 对话） |
-| `@voltarenyah/dsh-engineering-context` | 工程上下文插件：作用域 + 工程注册表。排在接口插件之后，因为它要消费前者暴露的服务 |
-| `dsh-tool-git` | 结构化 Git 工具族 + 破坏性命令闸门（vendor 自上游 `lxj808624/dsh-tool-git` v0.1.3） |
+| `@voltarenyah/dsh-tia-openness-v17-min` | 接口插件族：TIA 控制器子进程 + `engineeringAccess` 服务（**模型面工具已拆到 `/tools` 子路径行**，见下节） |
+| `@voltarenyah/dsh-engineering-context` | 工程上下文插件：`create_engineering_project`。**没有宿主面资源**，所以宿主面这一行被 `disabled: true`，整行搬进 `leader` preset |
+| `@voltarenyah/dsh-engineering-graph` | 工程知识图谱插件：C# 引擎子进程 + `knowledgeGraph` 服务（**模型面工具同样拆到 `/tools`**） |
+| `dsh-tool-git` | 结构化 Git 工具族 + 破坏性命令闸门（vendor 自上游 `lxj808624/dsh-tool-git` v0.1.3）。**仍是宿主面全局行**，所以每个 preset 的 agent 都看得到它 |
 
 `dsh-web-app` 是**超出最初清单额外加的**：只列 `dsh-base` 的话 profile 能 `--dump-config`，
 但没有任何 app 可启动。官方 `web` 模板就是 `dsh-base` + `dsh-web-app`。
@@ -29,12 +30,69 @@
 `dsh` 首次启动一个 profile 目录时会额外生成 `cordis.yml`（空的根 include 存根，内容写着
 "Edit cordis.patch.yml, not this file"）与 `.plugin-manager/`。两者都已 gitignore，不要手改。
 
+## 两个 preset：`leader` 与 `expert`
+
+本蓝图声明两个 preset，默认（新会话）是 `leader`：
+
+| preset | 谁用 | 工具面 |
+|---|---|---|
+| **`leader`** | 主 agent | 内置 `standard` 的全部工具 + 本发行版三个工程工具行（TIA 26、`create_engineering_project`、图谱 3）+ git 12（宿主面） |
+| **`expert`** | 子 agent（`subagent` 工具默认挂它） | **只读**：图谱 `knowledge_schema` / `knowledge_query`（`includeIngest: false`）、`read`/`read_image`/`glob`/`grep`、`send_message`/`interrupt_agent`、`time-context`、`compaction` |
+
+`expert` **没有**：任何 TIA 操作工具、git、工程上下文工作流、`pwsh`、`jobs`、`schedule`、
+`goal`、`plan`、`web`、`todo`、`ask_user`、`skill`。它也不掌握 `knowledge_ingest`（整库重建是
+主 agent 建工程流程的一部分）。
+
+### 工具面按 preset 分发（方案 A 的落地）
+
+DSH 的工具可见性是**按声明作用域**解析的（`dsh-tools` 的 `view()`：继承面 = 全局层 + 作用域链上的
+祖先层，再逐层过 `admits` 过滤）。所以：
+
+- **宿主面（bundle 层）只留资源与服务**：TIA 控制器子进程、`engineeringAccess`、
+  C# 引擎、`knowledgeGraph`。
+- **模型面工具行由 preset 声明**：`@voltarenyah/dsh-tia-openness-v17-min/tools`、
+  `@voltarenyah/dsh-engineering-graph/tools`。哪个 preset 写了这一行，它名下的 agent 才有这些工具。
+- **`dsh-engineering-context` 没有宿主面资源**，所以它的行整个搬进 `leader`，宿主面那份
+  `disabled: true`（否则 `create_engineering_project` 会落在全局层被所有 agent 继承）。
+
+⇒ 一个会话能用哪些工程工具，取决于它的 preset。切到没有声明这些行的内置 preset
+（`standard` / `minimal` / …）时，**这些工具不存在**——这是有意的，不是故障。
+
+> ⚠️ 欠账：`dsh-tool-git` 的 12 个工具仍是全局行，所以 `expert` 也看得到它们。v1 不拆
+> （vendor 副本每多一处差异就要在同步时维护），见 `docs/decisions.md` **D23**。
+
+### 子 agent 的"只读"靠什么保证
+
+只有工具面这一层，**不要指望沙箱**：子 agent 继承父会话的**显式**沙箱覆盖
+（本 profile 默认 `danger-full-access` 会原样继承），而审批策略被宿主钉死为 `never`
+（`dsh-subagent` 的 `captureDelegatedPolicyOverrides`）——需要审批的操作自动拒绝、不会弹给用户。
+所以"它写不了工程"由"它没有被授予任何 TIA 写工具"成立。
+
+> ⚠️ **但 git 是例外**：`dsh-tool-git` 的 12 个工具仍是宿主面全局行，其中
+> `git_commit` / `git_stage` / `git_checkout` / `git_stash` 能改仓库。实测要求子 agent
+> 回答"你有没有 TIA 或 git 写工具"时它答的是 **yes**（指的是 git）。
+> 想让它真的只读，要么把该包也拆成 `/tools` 行（第 5 处 vendor 偏离），要么接受这一点 ——
+> 见 `docs/decisions.md` **D23**。
+
+## 三个文件
+
+| 文件 | 说明 |
+|---|---|
+| `package.json` | profile 清单。`dsh.profile.bundles` 是**按包名**解析 bundle 目录的依据 |
+| `cordis.patch.yml` | 用户 patch 层，在所有 bundle 层之后应用。环境相关设置（`opennessDir`、超时）写这里；发行版的行为政策也在这里（见下节） |
+| `pnpm-workspace.yaml` | 与 DSH `initProfile()` 生成的模板逐字一致，`nodeLinker: hoisted` 是树外插件需要的 |
+
+`dsh` 首次启动一个 profile 目录时会额外生成 `cordis.yml`（空的根 include 存根，内容写着
+"Edit cordis.patch.yml, not this file"）与 `.plugin-manager/`。两者都已 gitignore，不要手改。
+
 ## 发行版政策层：往系统提示词里注入发行版规矩
 
-`cordis.patch.yml` 里那三块（全局 `system-prompt` persona、`preset-suite`、`agent-preset-registry`）
-把发行版的政策文本注入到 **system 角色**的提示词里。**纯配置，没有任何插件代码**，改文字不用重新构建。
+`cordis.patch.yml` 里的四块（全局 `system-prompt` persona、`preset-leader`、`preset-expert`、
+`agent-preset-registry`）把发行版的政策文本注入到 **system 角色**的提示词里。
+**纯配置，没有任何插件代码**，改文字不用重新构建。
 
-**要改政策文本，只改文件里那两处 block scalar**（`personaPrefix` / `personaSuffix`）。
+**要改政策文本，只改文件里那三处 block scalar**（全局的 `personaPrefix`/`personaSuffix`、
+`preset-leader` 的 persona、`preset-expert` 的 persona）。
 文件头部注释记录了另外两种改法：把它换成中文、以及给四个内置 preset 各加一条 `disabled: true`
 把政策锁死（不许切回无政策的 preset）。
 
@@ -53,9 +111,13 @@
    真正生效的工具面就在 preset 的 `plugins` 列表里。
    ⇒ 覆盖或新建 preset 必须把 `plugins` 整份写出来；只写一个 persona 行会把该 agent 的工具全丢掉。
 
-因此本文件里的 `preset-suite` 与上游 `standard` 的 32 条子插件行**逐项等价**（id、name、顺序、
-`disabled`/`group`/`isolate`/`config` 全部相同），只有 persona 行与 id/order/名称不同。
-升级 DSH 后上游若改了 `standard`，这份副本**不会**自动跟随，需要按文件头注释重新生成。
+因此本文件里的 `preset-leader` 与上游 `standard` 的 **22 条**顶层子插件行**逐项等价**（id、name、顺序、
+`disabled`/`group`/`isolate`/`config` 全部相同），只在三处不同：persona 行、id/order/名称，
+以及**多出的三个工程工具行**（`leader-engineering-context` / `leader-tia-tools` / `leader-graph-tools`，
+共 25 条）。
+`preset-expert` 则是一个**刻意从零写的极小清单**（6 行），不与上游对齐——它要的正是"少"。
+升级 DSH 后上游若改了 `standard`，`preset-leader` 这份副本**不会**自动跟随，需要按文件头注释重新生成；
+`preset-expert` 只需核对它引用的那几个包名是否还在。
 
 ### 验收
 
@@ -69,16 +131,31 @@ dsh --profile web --patch .\profile\dsh-automation-suite\cordis.patch.yml --dump
 ```yaml
 - id: agent-preset-registry
   config:
-    default: suite
-- id: preset-suite
+    default: leader
+- id: preset-leader
   name: '@deepseek-ai/dsh-agent-preset'
   config:
-    id: suite
+    id: leader
     ...
           - id: persona
             config:
               prefix: |-
-                You are the dsh-automation-suite agent: ...
+                You are the `leader` agent of the dsh-automation-suite distribution: ...
+- id: preset-expert
+  name: '@deepseek-ai/dsh-agent-preset'
+  config:
+    id: expert
+    ...
+```
+
+**两条比行数更硬的断言**（行数只用来发现"整行消失"这类事故）：
+
+```powershell
+# 1. 两个 preset 行都在
+dsh --profile dsh-automation-suite --dump-config | Select-String "preset-(leader|expert)"
+
+# 2. 工程工具的宿主面行已被禁用、工具行在 preset 里
+dsh --profile dsh-automation-suite --dump-config | Select-String "engineering-context|tia-openness-v17-min/tools|engineering-graph/tools"
 ```
 
 本 profile 自身（物化后）的验收：
@@ -87,8 +164,7 @@ dsh --profile web --patch .\profile\dsh-automation-suite\cordis.patch.yml --dump
 dsh --profile dsh-automation-suite --dump-config
 ```
 
-输出以**四个插件行**结尾，总行数 **1477**（DSH **0.2.1-rc.2** 实测，2026-10-19；官方 web 组合
-1235 行，本政策层净增 236 行）。行数会随上游 preset 改动而变，权威基线表在根 `AGENTS.md` §4。
+输出以**四个插件行**结尾。行数基线见根 `AGENTS.md` §4 的权威表（本蓝图改成两个 preset 后已重测）。
 
 > ⚠️ `start-env.ps1` 只在 profile 目录**尚不存在**时从蓝图拷贝 `cordis.patch.yml`
 > （`if (-not (Test-Path $manifest))`）。所以改完蓝图后要让它生效，得 `-Reset` 重建，
@@ -187,9 +263,9 @@ dsh --profile dsh-automation-suite --dump-config
   name: dsh-tool-git
 ```
 
-行数（**DSH 0.2.1-rc.2 实测，2026-10-19**）：官方 web 组合 **1235 行**；叠加本蓝图政策层后
-**1471 行**（净增 236 —— 多出全局 `system-prompt` 覆盖行、`agent-preset-registry` 覆盖行，
-以及 `preset-suite` 那一整块工具清单）；按蓝图物化出四个本地插件的 profile 是 **1477 行**。
+行数（**DSH 0.2.1-rc.2**）：官方 web 组合 **1183 行**（本机当前；旧基线 1235 已作废）；
+叠加本蓝图政策层、以及按蓝图物化出四个本地插件的 profile 行数，见根 `AGENTS.md` §4 的权威表
+（本蓝图改成两个 preset 后已重测，旧值 1471 / 1477 作废）。
 这三个数会随宿主升级与上游 preset 改动而变（0.2.0-rc.2 时是 1259 / 1268 / 1520），换版本后要重测。
 
 > 注意这两条命令都是对**已物化的 profile**生效的：`--profile` 读的是

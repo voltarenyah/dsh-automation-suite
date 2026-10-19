@@ -64,9 +64,25 @@ async function importBuilt(...segments) {
   return await import(pathToFileURL(join(packageRoot, 'lib', ...segments)).href)
 }
 
-/** Load the built plugin entry point (`lib/index.js`). */
+/** Load the built plugin entry point (`lib/index.js`) — the host row. */
 export async function loadPlugin() {
   return await importBuilt('index.js')
+}
+
+/**
+ * Load the built `/tools` row (`lib/tools-entry.js`).
+ *
+ * This is the second Loader entry, reachable as the package's `./tools` subpath
+ * export in a real composition; the tools are registered there, not by the host
+ * row.
+ */
+export async function loadToolsEntry() {
+  return await importBuilt('tools-entry.js')
+}
+
+/** Load the built runtime-service module (the host row's internal seam). */
+export async function loadRuntimeModule() {
+  return await importBuilt('runtime-service.js')
 }
 
 /** Load the built config module. */

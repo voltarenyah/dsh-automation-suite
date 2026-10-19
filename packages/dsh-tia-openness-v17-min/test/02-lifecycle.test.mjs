@@ -1,10 +1,15 @@
 /**
- * Lifecycle test: the plugin owns the controller subprocess.
+ * Lifecycle test: the host row owns the controller subprocess.
  *
- * The checklist requires that unloading the plugin terminates the subprocess.
+ * The checklist requires that unloading the host row terminates the subprocess.
  * This test uses the *real* controller executable: it starts it through `apply`,
- * asserts the operating system sees the process, unloads the plugin through the
- * disposer that `ctx.effect` registered, and then asserts the process id is gone.
+ * asserts the operating system sees the process, unloads the host row through
+ * the disposer that `ctx.effect` registered, and then asserts the process id is
+ * gone.
+ *
+ * The tools come from the `/tools` row, mounted by `withTools` on the same
+ * context; `controller_status` is the one tool that reports what the host row's
+ * process is doing, so it is the probe used throughout.
  */
 
 import assert from 'node:assert/strict'
@@ -12,12 +17,11 @@ import { test } from 'node:test'
 
 import {
   controllerAvailable,
-  createTestContext,
   findTool,
   loadOperations,
-  loadPlugin,
   processAlive,
   waitFor,
+  withTools,
 } from './helpers/harness.mjs'
 
 async function statusOf(harness) {
@@ -45,9 +49,7 @@ test('the controller is started lazily and terminated when the plugin unloads', 
     return
   }
 
-  const plugin = await loadPlugin()
-  const harness = createTestContext()
-  plugin.apply(harness.ctx, {})
+  const { harness } = await withTools(t)
   const statusTool = captureStatusTool(harness)
 
   // `apply` pre-warms the process; either way the tools are registered first.
@@ -80,11 +82,9 @@ test('the controller is started lazily and terminated when the plugin unloads', 
 })
 
 test('unloading is idempotent and removes every registration it made', async (t) => {
-  const plugin = await loadPlugin()
-  const harness = createTestContext()
-  // A path that cannot exist makes `apply` register the tools, warn, and never
-  // spawn anything, so this test is independent of the process probes above.
-  plugin.apply(harness.ctx, { controllerPath: 'C:\\does\\not\\exist\\controller.exe' })
+  // A path that cannot exist makes the host row warn and never spawn anything,
+  // so this test is independent of the process probes above.
+  const { harness } = await withTools(t, { controllerPath: 'C:\\does\\not\\exist\\controller.exe' })
   assert.equal(harness.registered().length, 26)
   const statusTool = captureStatusTool(harness)
 
@@ -100,12 +100,7 @@ test('unloading is idempotent and removes every registration it made', async (t)
 })
 
 test('a configured but missing controller path fails the call with controller_not_found', async (t) => {
-  const plugin = await loadPlugin()
-  const harness = createTestContext()
-  t.after(async () => {
-    await harness.unload()
-  })
-  plugin.apply(harness.ctx, { controllerPath: 'C:\\does\\not\\exist\\controller.exe' })
+  const { harness } = await withTools(t, { controllerPath: 'C:\\does\\not\\exist\\controller.exe' })
 
   const openProject = findTool(harness.definitions, 'open_project')
   const statusTool = captureStatusTool(harness)

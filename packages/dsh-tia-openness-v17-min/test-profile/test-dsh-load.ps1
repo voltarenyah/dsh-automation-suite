@@ -131,9 +131,9 @@ for ($i = 0; $i -lt 60; $i++) {
 }
 if ($appeared) {
   Write-Host "  [OK]   控制器子进程已启动: pid=$($appeared -join ', ')" -ForegroundColor Green
-  Write-Host '         → 这证明插件被真实 DSH 宿主加载，apply() 执行、ctx.effect 持有子进程' -ForegroundColor DarkGray
-  # 插件自己的日志也会留下证据（apply 里 log.info 注册的工具名）。
-  $registered = Select-String -Path $outLog, $errLog -Pattern 'TIA Portal V17 tools|Registered 6|tia-openness-v17-min' -ErrorAction SilentlyContinue | Select-Object -First 3
+  Write-Host '         → 这证明宿主行被真实 DSH 宿主加载，apply() 执行、ctx.effect 持有子进程' -ForegroundColor DarkGray
+  # 两行各自的日志也会留下证据：宿主行的 host row 行、工具行注册的工具名、skill provider。
+  $registered = Select-String -Path $outLog, $errLog -Pattern 'TIA Portal V17 host row|TIA Portal V17 tools|tia-openness-v17-min' -ErrorAction SilentlyContinue | Select-Object -First 4
   foreach ($line in $registered) { Write-Host ("         插件日志: " + $line.Line.Trim()) -ForegroundColor DarkGray }
 } else {
   Write-Host '  [FAIL] 等待 60 秒未看到控制器子进程' -ForegroundColor Red

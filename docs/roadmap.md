@@ -124,7 +124,7 @@
 > 落地位置 `packages/dsh-engineering-context`，**已登记进 profile 蓝图**
 > （`profile/dsh-automation-suite/package.json` 的 `dependencies` + `dsh.profile.bundles`）。
 > 验收：`pwsh -NoProfile -File scripts\start-env.ps1` 之后 `dsh --profile dsh-automation-suite
-> --dump-config` 出现本插件行（DSH 0.2.1-rc.2 实测 **1477 行**，见根 `AGENTS.md` §4）；本包自身的
+> --dump-config` 出现本插件行（行数基线见根 `AGENTS.md` §4）；本包自身的
 > `check` 可独立跑。
 > 设计见该包 [`docs/ARCHITECTURE.md`](../packages/dsh-engineering-context/docs/ARCHITECTURE.md)、
 > [`docs/PATH-RULES.md`](../packages/dsh-engineering-context/docs/PATH-RULES.md)、
@@ -220,7 +220,7 @@
 | 引擎协议（NDJSON 帧 + 操作白名单） | ✅ | **D19**；`dotnet build` **0 warning / 0 error**；stdio 实测 ready / result / progress 三类帧与四条错误路径 |
 | PLC 语法翻译（SCL 与 LAD/FBD 语句级，深度随结果标注） | 🟡 | 来源库的 FlgNet → 类 SCL 翻译器原样移植；**STL / GRAPH 明确不支持**（**D14**） |
 | 查询接口 | 🟡 | 只读 SQL（`knowledge_query`）+ schema（`knowledge_schema`）；**按需下钻的工具（某个块、某变量用法、网段逻辑分块）尚未移植** |
-| 测试与 CI 覆盖 | ✅ | 该包 **49 项** `node:test`，含**经真实引擎**的端到端（ingest → query → 计数、只读闸门拒绝 `DROP`）与传输层故障注入；引擎自检也被 `pnpm test` 覆盖 |
+| 测试与 CI 覆盖 | ✅ | 该包 **66 项** `node:test`，含**经真实引擎**的端到端（ingest → query → 计数、只读闸门拒绝 `DROP`）与传输层故障注入；引擎自检也被 `pnpm test` 覆盖 |
 | 新鲜度 / 增量更新 | ⬜ | 属 **D13** 第 4 步。来源库**没有** `status` 操作（新鲜度住在消费端），需新写；contentHash 兜底还须先归一化 |
 | 兼容层（跨版本 / 跨来源降级） | ⬜ | 目前只有 manifest 与 crawl 两条入口，没有按版本降级 |
 | LLM 友好的分级表示（项目摘要 + 分页） | ⬜ | 第 8 项。vendored 代码里有 `knowledge_networks` 投影与 FTS 索引，但**还没有工具暴露它们** |
@@ -238,7 +238,11 @@
 > `knowledge/<device>/`。这一步是**软的**：服务缺席 / 引擎没构建 / 引擎不可达时只报"图谱未建成"，
 > 工作流照常成功（工程与源文件树仍是它的交付物），工具级与缝级的 19 项新测试覆盖这些降级路径。
 >
-> 仍待做：**D16** 的子 agent preset、以及**新鲜度/增量**（没有它，唯一刷新方式就是"每次导出后整库重建"；
+> **两个 Loader 行（2026-10-19，发行版 D23）**：宿主行 = C# 引擎子进程 + `knowledgeGraph` 服务；
+> `/tools` 行 = 3 个模型面工具，带 `includeIngest` 开关。子 agent preset `expert` 用
+> `includeIngest: false` 只拿到 `knowledge_schema` / `knowledge_query`。
+>
+> 仍待做：**新鲜度/增量**（没有它，唯一刷新方式就是"每次导出后整库重建"；
 > 实测 1376 个源文件约 30 s、库约 450 MB，图谱插件的 `requestTimeoutMs` 默认 300 s 要留够）。
 
 ### 计划做的事（顺序即依赖顺序）

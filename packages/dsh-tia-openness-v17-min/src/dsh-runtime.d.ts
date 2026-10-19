@@ -112,6 +112,12 @@ declare module '@deepseek-ai/cordis' {
      */
     readonly skills: DshSkillRegistry
     /**
+     * Looks a service up by name. The `/tools` row uses it to read the host
+     * row's internal `tiaOpennessRuntime` seam; a service that is not in the
+     * composition is `undefined`.
+     */
+    get(name: string): unknown
+    /**
      * Runs `execute` and registers everything it returns as owned resources.
      * The disposers run in reverse order when the plugin unloads.
      */

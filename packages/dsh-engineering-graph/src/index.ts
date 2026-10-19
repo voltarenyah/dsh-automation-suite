@@ -2,30 +2,45 @@
  * dsh-engineering-graph — engineering knowledge graph for DeepSeek Harness
  * (engineering-graph plugin).
  *
- * The plugin is the TypeScript half of a two-part design:
+ * The package ships **two Loader rows**, because DSH resolves tool visibility
+ * per declaration scope:
  *
- *   DSH host process                    engine subprocess (C#, .NET, x64)
- *   ─────────────────                   ──────────────────────────────────────
- *   tools: knowledge_schema,            the graph itself: GetSchema (DDL, node
- *          knowledge_ingest,            kinds, edge types), Ingest (crawl a
- *          knowledge_query              device export folder into SQLite),
- *   lifecycle: ctx.effect owns the      Query (one read-only SELECT)
- *              child process             one structured JSON protocol
- *   config: enginePath / timeouts       stderr carries human notes, stdout frames
+ *   the host row (this module, package `"."`) — composition-wide, agent-independent
+ *   ────────────────────────────────────────────────────────────────────────────
+ *   engine:     ctx.effect owns the C# engine subprocess (spawned lazily by the
+ *               first request, structured JSON over stdio)
+ *   services:   `knowledgeGraph` — the public seam for other plugins
+ *               (`service.ts`; the engineering-context plugin calls it, D21);
+ *               `knowledgeEngine` — this row's internal seam for its own tools
+ *               row (`runtime-service.ts`), not a public interface
+ *   config:     enginePath / timeouts
  *
- * `apply` registers the three tools and takes ownership of the engine subprocess
- * through `ctx.effect`. The engine is started lazily by the first request: `apply`
- * neither spawns nor warms it, so loading the plugin on a machine that has never
- * built the C# half stays cheap and side-effect free, and the disposer stops an
- * engine that may never have existed.
+ *   the tools row (`tools-entry.ts`, package `"./tools"`) — declared per preset
+ *   ────────────────────────────────────────────────────────────────────────────
+ *   tools:      knowledge_schema, knowledge_ingest, knowledge_query, registered
+ *               by `tools.ts` against the host row's runtime seam
+ *
+ * Why the split: one row would register the tools in the host (global) plane, so
+ * every agent — delegated subagents included — would inherit all three. The
+ * leader preset declares the `/tools` row and keeps all three; the expert
+ * subagent preset declares it too but with `includeIngest: false`, because a
+ * full graph rebuild is a heavy write that belongs to the main agent's project
+ * workflow. Both presets still share the one engine subprocess and the
+ * `knowledgeGraph` service the host row owns.
+ *
+ * `apply` takes ownership of the engine subprocess through `ctx.effect` and
+ * publishes the two services; it registers no tool. The engine is started lazily
+ * by the first request: `apply` neither spawns nor warms it, so loading the host
+ * row on a machine that has never built the C# half stays cheap and
+ * side-effect free, and the disposer stops an engine that may never have existed.
  *
  * A missing engine is never a load failure. `apply` warns with the path, where
  * that path came from (`config` or `package`) and how to build the engine, then
- * continues: the plugin must load on a machine that has never built the C# half,
- * exactly like the TIA Openness plugin loads without TIA Portal installed. The tools are
- * registered either way and fail per call with the honest transport error
- * (`engine_not_found`), which is what tells the model the difference between "the
- * engine refused this" and "there is no engine".
+ * continues: the host row must load on a machine that has never built the C#
+ * half, exactly like the TIA Openness plugin loads without TIA Portal installed.
+ * The tools row registers its tools either way and every call fails with the
+ * honest transport error (`engine_not_found`), which is what tells the model the
+ * difference between "the engine refused this" and "there is no engine".
  *
  * @module dsh-engineering-graph
  */
@@ -36,28 +51,39 @@ import type { Context } from '@deepseek-ai/cordis'
 import { Config, resolveConfig, type PluginConfig } from './config.js'
 import { ENGINE_RELATIVE_PATH, bundledEnginePath, resolveEnginePath } from './engine-path.js'
 import { EngineClient, type LogSink } from './engine-client.js'
-import { registerTools, type ToolDependencies } from './tools.js'
-import { KnowledgeGraph } from './service.js'
+import { KnowledgeEngine, KNOWLEDGE_ENGINE_SERVICE } from './runtime-service.js'
+import type { ToolDependencies } from './tools.js'
+import { KnowledgeGraph, KNOWLEDGE_GRAPH_SERVICE } from './service.js'
 
 /** Plugin identity; the loader uses it as the entry id in the profile tree. */
 export const name = 'engineering-graph'
 
 /**
- * The plugin registers tools, so the tool registry must exist before `apply`
- * runs. Declaring it here makes the loader wait for it instead of failing.
+ * The host row needs no service before `apply` runs.
+ *
+ * It used to declare `['tools']` because it registered the three tools itself.
+ * Those now live in the `/tools` row (`tools-entry.ts`), which is where
+ * `inject: ['tools', 'knowledgeEngine']` belongs. What is left here is the
+ * engine subprocess and the two services, none of which is a dependency of
+ * another plugin row — so an empty list states the truth: the host row waits for
+ * nothing, and a composition that declares only the host row still loads.
  */
-export const inject = ['tools']
+export const inject: readonly string[] = []
 
 export { Config }
 
 /**
- * Resolve the configuration and the engine, register the tools, and hand the
- * engine subprocess to the effect disposer.
+ * Takes ownership of the engine subprocess and publishes the two seams other
+ * rows read: `knowledgeGraph` for other plugins and `knowledgeEngine` for this
+ * package's own `/tools` row.
+ *
+ * No tool is registered here; the model-facing surface is the separate
+ * `tools-entry.ts` row, so an agent preset can decide whether to declare it and
+ * with which config.
  *
  * Never throws when the engine executable is missing (see the module comment).
  *
- * @param ctx - the plugin context; `ctx.tools` takes the tools and `ctx.effect`
- *   owns the engine subprocess.
+ * @param ctx - the plugin context; `ctx.effect` owns the engine subprocess.
  * @param config - the validated profile config, or undefined when the profile
  *   inserts the bundle without a config block.
  */
@@ -81,27 +107,37 @@ export function apply(ctx: Context, config?: Partial<PluginConfig>): void {
     log,
   }
 
-  const registered = registerTools(ctx, dependencies)
+  // The seam this package's own `/tools` row reads back. It is internal on
+  // purpose: constructing it registers a service, but no tool and no process, so
+  // the host row stays tool-free and the engine stays lazy. See
+  // `runtime-service.ts`.
+  new KnowledgeEngine(ctx, dependencies)
 
+  // The seam the engineering-context plugin consumes: it asks this service to
+  // rebuild one device's database once it has written that device's source tree.
   // Constructing the service is what registers it, and the registration belongs to
   // this plugin's fiber, so it disappears when the plugin unloads (docs/decisions.md
   // D21). Nothing else needs the instance, which is why it is not stored.
   new KnowledgeGraph(ctx, dependencies, settings.enginePath)
 
+  const exposed =
+    `exposing the ${KNOWLEDGE_GRAPH_SERVICE} service and the ${KNOWLEDGE_ENGINE_SERVICE} seam for the /tools row`
+
   if (existsSync(enginePath)) {
     log.info(
-      `Registered ${registered.length} engineering-graph tools (${registered.join(', ')}); engine: ${enginePath} (resolved from ${source}).`,
+      `Loaded the engineering-graph host row (${exposed}); the model-facing tools are registered by the separate ` +
+        `/tools row; engine: ${enginePath} (resolved from ${source}).`,
     )
   } else {
     // Deliberately a warning, not a throw: the engine is built separately from this
     // package (it needs the .NET SDK), so requiring it here would make the bundle
-    // unloadable on a checkout that has not built it. The tools are registered
-    // anyway and each call reports the structured transport failure.
+    // unloadable on a checkout that has not built it. The /tools row registers the
+    // tools anyway and each call reports the structured transport failure.
     log.warn(
-      `The engineering-graph engine was not found at ${enginePath} (resolved from ${source}). The tools are ` +
-        `registered (${registered.join(', ')}) but every call will fail with engine_not_found until it is built: ` +
-        `build it with "dotnet build engine/EngineeringGraph.Engine.csproj -c Release" (the default output is ` +
-        `${ENGINE_RELATIVE_PATH}, Windows x64), or point the plugin's enginePath config at an existing executable.`,
+      `The engineering-graph engine was not found at ${enginePath} (resolved from ${source}). The host row is ` +
+        `loaded (${exposed}), but every call through the /tools row will fail with engine_not_found until it is ` +
+        `built: build it with "dotnet build engine/EngineeringGraph.Engine.csproj -c Release" (the default output ` +
+        `is ${ENGINE_RELATIVE_PATH}, Windows x64), or point the plugin's enginePath config at an existing executable.`,
     )
   }
 
@@ -124,7 +160,7 @@ export function apply(ctx: Context, config?: Partial<PluginConfig>): void {
 }
 
 /** Exposed for the tests. */
-export { EngineClient, resolveConfig, resolveEnginePath, bundledEnginePath, ENGINE_RELATIVE_PATH, registerTools }
+export { EngineClient, resolveConfig, resolveEnginePath, bundledEnginePath, ENGINE_RELATIVE_PATH }
 export { OPERATIONS, PROTOCOL_VERSION } from './protocol.js'
 export { KnowledgeGraph, KNOWLEDGE_GRAPH_SERVICE } from './service.js'
 export type { PluginConfig } from './config.js'

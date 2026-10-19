@@ -6,7 +6,7 @@
 | 层 | 验证什么 | 会不会写磁盘 | 需要 TIA 项目 | 需要模型 |
 |---|---|---|---|---|
 | **0. 控制器直测** | 协议、白名单、dry-run、Openness 探测、参数校验 | 只写 `test-profile/logs`（第 1 层）与临时导出目录 | 否（可选） | 否 |
-| **1. 独立 profile 装载/退出** | DSH 真的调用 `apply`、注册工具、持有并回收子进程 | 新建 `~/.dsh/profiles/tia-test`（可整目录删除） | 否 | 否 |
+| **1. 独立 profile 装载/退出** | DSH 真的调用两行的 `apply`、工具行注册 26 个工具、宿主行持有并回收子进程 | 新建 `~/.dsh/profiles/tia-test`（可整目录删除） | 否 | 否 |
 | **2. 真实项目功能验收** | 导出 → 改 → 导入 → 编译，读写后验证 | 导出目录 + 你操作的项目（建议用副本） | **是** | 是（要模型来调工具） |
 
 一次性准备（两个变量，后面命令都用它们）：
@@ -67,7 +67,9 @@ pwsh -NoProfile -File $repo\test-profile\test-controller.ps1 -ProjectPath D:\Dem
 & $dsh plugin --profile tia-test add link:$repo
 ```
 
-> 说明：本插件的 bundle patch 只声明"插入自己这一行"，而 `--patch` 叠加层正好做同一件事，
+> 说明：本插件的 bundle patch 只声明"插入宿主行这一条"，而 `--patch` 叠加层
+> （[`plugin-overlay.yml`](plugin-overlay.yml)）**同时插入宿主行与 `./tools` 工具行** ——
+> 因为 26 个模型可见的工具在工具行里注册（见 [`../README.md`](../README.md) §4.0）。
 > 所以**不需要**改 `package.json` 的 `dsh.profile.bundles`，也不需要动 profile 的 `cordis.patch.yml`。
 > `link:` 只建立符号链接，不改动本仓库。
 
@@ -88,7 +90,7 @@ pwsh -NoProfile -File $repo\test-profile\test-dsh-load.ps1
 脚本会：启动**第二个** DSH 实例（独立端口 3080、`--patch` 叠加、`--no-open`，不写任何 profile 文件）→
 轮询等 `TiaOpennessV17Min.Controller` 子进程出现 → 结束宿主 → 再等子进程消失，并打印结论。
 
-- **子进程出现** = 插件被真实 DSH 加载、`apply()` 执行、`ctx.effect` 持有子进程（这是验收清单里
+- **子进程出现** = 宿主行被真实 DSH 加载、`apply()` 执行、`ctx.effect` 持有子进程（这是验收清单里
   "插件能被 DSH 正确加载"的真实宿主证据）。
 - **子进程消失** = 宿主退出后没有残留（控制器读到 stdin EOF 后自行退出）。
 
@@ -171,7 +173,7 @@ Select-String -Path "$env:USERPROFILE\.dsh\profiles\desktop\cordis.patch.yml" -P
 |---|---|
 | `test-controller.ps1` 全流程 | ✅ 本机实跑通过（输出见上） |
 | `test-dsh-load.ps1 -PlanOnly` 前置检查 | ✅ 本机实跑通过（正确报出缺 profile / 缺 link） |
-| `--patch` 叠加层被接受、顺序正确（插在最后）、不写 profile | ✅ 用 `--dump-config` 验证：exit 0，组合树末尾出现 `id: tia-openness-v17-min` |
+| `--patch` 叠加层被接受、顺序正确（插在最后）、不写 profile | ✅ 用 `--dump-config` 验证：exit 0，组合树末尾出现 `id: tia-openness-v17-min`（宿主行；`./tools` 工具行是拆分之后才加的，尚未重跑这条手工验收） |
 | `dsh web --help` 不监听端口、`--port` / `--no-open` 可用 | ✅ 实测（无新增监听端口） |
 | `dsh plugin --profile X add ...` 是 pnpm 直通 | ✅ 实测（打印 pnpm 帮助；0.2.0-rc.2 上是 11.7.0，0.2.1-rc.2 上是 11.28.5） |
 | **`--from-default-profile` + `--dump-config` 是否"创建后立即退出"** | ⚠️ **未验证**（我没有创建你的 profile）。若它直接启动了服务，`Ctrl+C` 即可，profile 已建好；再用 `-PlanOnly` 复核 |

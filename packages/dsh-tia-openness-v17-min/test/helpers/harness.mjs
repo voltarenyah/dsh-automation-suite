@@ -84,6 +84,18 @@ export async function loadPlugin() {
   return await import(`../../lib/index.js?t=${Date.now()}${Math.random()}`)
 }
 
+/**
+ * The `/tools` row: the second Loader entry, reachable as the package's
+ * `./tools` subpath export in a real composition.
+ */
+export async function loadToolsEntry() {
+  return await import(`../../lib/tools-entry.js?t=${Date.now()}${Math.random()}`)
+}
+
+export async function loadRuntimeModule() {
+  return await import(`../../lib/runtime-service.js?t=${Date.now()}${Math.random()}`)
+}
+
 export async function loadToolsModule() {
   return await import(`../../lib/tools.js?t=${Date.now()}${Math.random()}`)
 }
@@ -315,9 +327,12 @@ export async function waitFor(predicate, { timeoutMs = 20_000, intervalMs = 100,
 export const controllerAvailable = existsSync(controllerExe)
 
 /**
- * Loads the plugin, applies it to a fresh context, and guarantees that it is
- * unloaded when the test ends — a failing test must not leak a controller
+ * Loads the **host row**, applies it to a fresh context, and guarantees that it
+ * is unloaded when the test ends — a failing test must not leak a controller
  * subprocess.
+ *
+ * This row registers no model-facing tool any more; tests that need the tools
+ * must use {@link withTools} (or apply the `/tools` entry themselves).
  *
  * @param {import('node:test').TestContext} t - the test context providing `after`.
  * @param {object} [config] - profile config handed to `apply`.
@@ -331,4 +346,24 @@ export async function withPlugin(t, config = {}, options = {}) {
   })
   plugin.apply(harness.ctx, config)
   return { plugin, harness }
+}
+
+/**
+ * Loads both rows the way a preset that should see TIA declares them: the host
+ * row first (controller, services, skills), then the `/tools` row on the same
+ * context.
+ *
+ * In a real composition the `/tools` row's `inject` makes the loader wait for
+ * `tiaOpennessRuntime`, so the order above is what the loader itself guarantees
+ * regardless of declaration order.
+ *
+ * @param {import('node:test').TestContext} t - the test context providing `after`.
+ * @param {object} [config] - profile config handed to the host row.
+ * @param {{ skills?: boolean }} [options] - context options (see {@link createTestContext}).
+ */
+export async function withTools(t, config = {}, options = {}) {
+  const { plugin, harness } = await withPlugin(t, config, options)
+  const toolsEntry = await loadToolsEntry()
+  toolsEntry.apply(harness.ctx, {})
+  return { plugin, toolsEntry, harness }
 }

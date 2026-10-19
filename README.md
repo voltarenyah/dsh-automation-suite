@@ -168,8 +168,8 @@ PLC 对象增删改、监视表与软件单元、F 相关服务、编译与关�
 | 插件 | 目标 | 状态 |
 |---|---|---|
 | **工控软件接口插件族** | 把工控软件暴露的能力整体变成 LLM 的能力范围（含配套文档） | 🟡 **V17 × min**（块·UDT·标签表）；std/pro 能力层级与 V18+ 待补 |
-| **工程上下文插件** | 管住"现在谈的是哪个工程、它在 workspace 的哪里、里面是什么" | 🟡 **部分实现**：`create_engineering_project` 一个工具（56 项单测）—— 把 TIA 打开的工程另存进 workspace、把源文件树读出来、再经【缝 B】逐设备触发知识图谱建库（`knowledge/<device>/*.db`）；图谱缺席/引擎未构建只报"图谱未建成"，不让流程失败。指纹变更检测/变更台账未做。P0 的工程注册表与 P1 的内部 git 版本层**已删除**（该包 D22）。**已登记进蓝图**（`--dump-config` 实测 1477 行，DSH 0.2.1-rc.2） |
-| **工程知识图谱插件** | 准确翻译 XML 中的 PLC 语法，XML → 图数据库 → 按需给出工程细节 | 🟡 **部分实现**：Simatic ML → 图 → SQLite 已通（7 个真实 fixture 出 72 节点 / 153 边，覆盖 15 种节点种类），引擎协议 + 3 个工具 + `knowledgeGraph` 服务（49 项单测，含经真实引擎的端到端）；**被族 2 的 `create_engineering_project` 调用**（该包 D25）。**新鲜度/增量、按需下钻工具、兼容层未做**。**已登记进蓝图** |
+| **工程上下文插件** | 管住"现在谈的是哪个工程、它在 workspace 的哪里、里面是什么" | 🟡 **部分实现**：`create_engineering_project` 一个工具（56 项单测）—— 把 TIA 打开的工程另存进 workspace、把源文件树读出来、再经【缝 B】逐设备触发知识图谱建库（`knowledge/<device>/*.db`）；图谱缺席/引擎未构建只报"图谱未建成"，不让流程失败。指纹变更检测/变更台账未做。P0 的工程注册表与 P1 的内部 git 版本层**已删除**（该包 D22）。**已登记进蓝图**（`--dump-config` 行数见根 `AGENTS.md` §4，DSH 0.2.1-rc.2） |
+| **工程知识图谱插件** | 准确翻译 XML 中的 PLC 语法，XML → 图数据库 → 按需给出工程细节 | 🟡 **部分实现**：Simatic ML → 图 → SQLite 已通（7 个真实 fixture 出 72 节点 / 153 边，覆盖 15 种节点种类），引擎协议 + 3 个工具 + `knowledgeGraph` 服务（66 项单测，含经真实引擎的端到端）；**被族 2 的 `create_engineering_project` 调用**（该包 D25）。**新鲜度/增量、按需下钻工具、兼容层未做**。**已登记进蓝图** |
 
 逐项进度、缺口与验收口径见 [`docs/roadmap.md`](docs/roadmap.md)；
 已定的取舍见 [`docs/decisions.md`](docs/decisions.md)，**34 条待决策问题在
@@ -182,15 +182,26 @@ PLC 对象增删改、监视表与软件单元、F 相关服务、编译与关�
 
 | 交付物 | 类型 | 版本 | 提供什么 |
 |---|---|---|---|
-| `@voltarenyah/dsh-tia-openness-v17-min` | 插件 bundle | 0.1.0 | **26 个工具**：工程生命周期与工程数据 8（`create_project` / `save_project` / `archive_project` / `project_info` / `project_languages` / `project_texts` / `update_project` / `portal_settings`）、PLC 设备数据 9（`list_plc_objects` / `create_plc_objects` / `delete_plc_objects` / `write_tags` / `set_block_attributes` / `protect_blocks` / `generate_source` / `watch_and_force_tables` / `software_units`）、F 相关 3（`safety_status` / `set_safety_settings` / `safety_signatures`）、块读写主线 5 + `controller_status`；外加 1 个随包出货的知识库 skill。v0.2 的 20 个新操作**尚未在真实项目上验证**（见该包 `docs/VERIFICATION-PLAN.md`） |
-| `dsh-tool-git` | 插件 bundle（vendor） | 0.1.3 | **12 个工具**：`git_status` / `git_diff` / `git_log` / `git_branch` / `git_stage` / `git_commit` / `git_stash` / `git_show` / `git_fetch` / `git_pull` / `git_remote` / `git_checkout`；外加破坏性命令闸门 |
-| `@voltarenyah/dsh-engineering-context` | 插件 bundle | 0.1.0 | **1 个工具**：`create_engineering_project` —— 把 TIA 当前打开的工程另存进 `<workspace>/tia/<workspace 名>/`、把源文件树重建到 `<workspace>/source/<device>/`，再经【缝 B】逐设备调用图谱插件的 `knowledgeGraph.ingestDevice`（库落在 `<workspace>/knowledge/<device>/<device>_knowledge.db`），默认只给计划（`dry_run: true`）；工具参数里没有路径，全部由 workspace 根 + 配置目录名 + TIA 的报告推出。图谱这一步**不参与成败**：服务缺席/引擎未构建/引擎不可达只报"图谱未建成"。`.gitignore` 只追加 `tia/` 与 `knowledge/**/*.db*` 两行（尾随的 `*` 连 SQLite 的 `-wal` / `-shm` / `-journal` 旁挂文件一起挡）。**未实现**：指纹变更检测、变更台账。**已删除**：P0 的工程注册表（`_dsh-eng/projects.json`）与 P1 的内部 git 版本层，以及 `eng_status` / `eng_project` / `eng_scope` / `eng_version` 四个工具（该包 D22、图谱这一步见 D25） |
-| `@voltarenyah/dsh-engineering-graph` | 插件 bundle | 0.1.0 | **3 个工具**（`knowledge_schema` / `knowledge_ingest` / `knowledge_query`）+ 1 个 cordis 服务（`knowledgeGraph`，供族 2 的 `create_engineering_project` 逐设备调用）—— Simatic ML XML → 属性图 → SQLite，引擎以 net8 子进程运行（`engine/`）。**未实现**：新鲜度/增量更新、按需下钻工具（某个块、某变量用法）、兼容层。**已登记进蓝图**，所以这 3 个工具在本会话里可用；数据库位置与目录约定见 [`docs/roadmap.md`](docs/roadmap.md) §4 |
-| `profile/dsh-automation-suite` | profile 蓝图 | 0.1.0 | 把官方 Web 组合（`dsh-base` + `dsh-web-app`）与上面的本地插件叠成一个可直接启动的 profile |
+| `@voltarenyah/dsh-tia-openness-v17-min` | 插件 bundle | 0.1.0 | **两个 Loader 行**：宿主行 = TIA 控制器子进程 + `engineeringAccess` 服务 + 随包 skill；`/tools` 行 = **26 个工具**：工程生命周期与工程数据 8（`create_project` / `save_project` / `archive_project` / `project_info` / `project_languages` / `project_texts` / `update_project` / `portal_settings`）、PLC 设备数据 9（`list_plc_objects` / `create_plc_objects` / `delete_plc_objects` / `write_tags` / `set_block_attributes` / `protect_blocks` / `generate_source` / `watch_and_force_tables` / `software_units`）、F 相关 3（`safety_status` / `set_safety_settings` / `safety_signatures`）、块读写主线 5 + `controller_status`。工具行由 preset 声明（`leader` 有、`expert` 没有）。v0.2 的 20 个新操作**尚未在真实项目上验证**（见该包 `docs/VERIFICATION-PLAN.md`） |
+| `dsh-tool-git` | 插件 bundle（vendor） | 0.1.3 | **12 个工具**：`git_status` / `git_diff` / `git_log` / `git_branch` / `git_stage` / `git_commit` / `git_stash` / `git_show` / `git_fetch` / `git_pull` / `git_remote` / `git_checkout`；外加破坏性命令闸门。**宿主面全局行**，所以子 agent 也看得到（v1 已知欠账，见 `docs/decisions.md` D23） |
+| `@voltarenyah/dsh-engineering-context` | 插件 bundle | 0.1.0 | **1 个工具**：`create_engineering_project` —— 把 TIA 当前打开的工程另存进 `<workspace>/tia/<workspace 名>/`、把源文件树重建到 `<workspace>/source/<device>/`，再经【缝 B】逐设备调用图谱插件的 `knowledgeGraph.ingestDevice`（库落在 `<workspace>/knowledge/<device>/<device>_knowledge.db`），默认只给计划（`dry_run: true`）；工具参数里没有路径，全部由 workspace 根 + 配置目录名 + TIA 的报告推出。图谱这一步**不参与成败**：服务缺席/引擎未构建/引擎不可达只报"图谱未建成"。`.gitignore` 只追加 `tia/` 与 `knowledge/**/*.db*` 两行（尾随的 `*` 连 SQLite 的 `-wal` / `-shm` / `-journal` 旁挂文件一起挡）。**未实现**：指纹变更检测、变更台账。**已删除**：P0 的工程注册表（`_dsh-eng/projects.json`）与 P1 的内部 git 版本层，以及 `eng_status` / `eng_project` / `eng_scope` / `eng_version` 四个工具（该包 D22、图谱这一步见 D25）。**没有宿主面资源，所以整行只出现在 `leader` preset 里** |
+| `@voltarenyah/dsh-engineering-graph` | 插件 bundle | 0.1.0 | **两个 Loader 行**：宿主行 = C# 引擎子进程 + `knowledgeGraph` 服务（供族 2 的 `create_engineering_project` 逐设备调用）；`/tools` 行 = **3 个工具**（`knowledge_schema` / `knowledge_ingest` / `knowledge_query`，其中 `includeIngest: false` 可只给前两者——`expert` 就是这么配的）—— Simatic ML XML → 属性图 → SQLite，引擎以 net8 子进程运行（`engine/`）。**未实现**：新鲜度/增量更新、按需下钻工具（某个块、某变量用法）、兼容层。数据库位置与目录约定见 [`docs/roadmap.md`](docs/roadmap.md) §4 |
+| `profile/dsh-automation-suite` | profile 蓝图 | 0.1.0 | 把官方 Web 组合（`dsh-base` + `dsh-web-app`）与上面的本地插件叠成一个可直接启动的 profile；并声明两个 preset：`leader`（主 agent）与 `expert`（子 agent） |
 | `scripts/start-env.ps1` | 启动器 | — | 一条命令完成"物化 profile + 装插件 + 起服务 + 带 token 开浏览器" |
 | `scripts/clean-build.mjs` | 工具 | — | 只清理 `lib/`、`dist/`，遇链接只 unlink、不递归下降 |
 
-合计 **42 个模型可见工具**，全部在同一个会话里可用 —— 例如"改完这个块，顺便把导出目录提交一下"。
+主 agent（`leader`）名下有本发行版自己的 **42 个工具**（TIA 26 + git 12 + `create_engineering_project`
++ 图谱 3），全部在同一个会话里可用 —— 例如"改完这个块，顺便把导出目录提交一下"；另有内置 `standard`
+自带的那批（fs / 检索 / skills / todo / web / present / subagent …）。
+
+子 agent（`expert`）自己的 preset 只声明 **8 个**（图谱 2：`knowledge_schema` / `knowledge_query`；
+只读文件 2：`read` / `read_image`；检索 2：`glob` / `grep`；通信 2：`send_message` / `interrupt_agent`），
+加上**宿主面仍是全局行的 13 个**（git 12 + `working_directory`）= **实测 21 个**（用真实
+`@deepseek-ai/dsh-tools` 的 `view()` 在真实作用域链上算出来的，见 D23 的验证一节）。
+这 13 个是 v1 的已知欠账，见 [`docs/decisions.md`](docs/decisions.md) **D23**。
+
+两层 agent 的形态与理由见 [§8.1](#81-发行版政策层注入系统提示词) 与
+[`docs/decisions.md`](docs/decisions.md) **D23**。
 
 ---
 
@@ -501,28 +512,57 @@ plugin_manager(action: "install_bundle", target: "C:\\Users\\Ansel\\dsh-automati
 顶层是 loader patch 条目数组：按 `id` 覆盖 config、`disable` 某行，或 `insert` 新行。
 蓝图里那份**不是**空数组了：它同时承载下面的发行版政策层，物化 profile 时会被拷进去。
 
-### 8.1 发行版政策层（注入系统提示词）
+### 8.1 发行版政策层（注入系统提示词）与两层 agent
 
-`profile/dsh-automation-suite/cordis.patch.yml` 最前面那三块，把发行版规矩注入到 **system 角色**的
+`profile/dsh-automation-suite/cordis.patch.yml` 最前面那四块，把发行版规矩注入到 **system 角色**的
 提示词里。**纯配置、无插件代码**，改文字不需要重新构建：
 
 | 条目 | 作用 |
 |---|---|
 | `- id: system-prompt` | 覆盖全局 persona（管**非 preset** 的 agent） |
-| `- id: agent-preset-registry` | 把新会话的默认 preset 指到 `suite` |
-| `- insert: - id: preset-suite` | 发行版自己的 preset：内置 `standard` 的工具清单原样 + 政策文本 |
+| `- id: agent-preset-registry` | 把新会话的默认 preset 指到 `leader` |
+| `- insert: - id: preset-leader` | **主 agent**：内置 `standard` 的工具清单原样 + 三个工程工具行 + 政策文本 |
+| `- insert: - id: preset-expert` | **子 agent**：只读的工程知识专家（图谱查询 + 只读文件检索 + `send_message`） |
 
-**要改政策文字，只改 `personaPrefix` / `personaSuffix` 两处 block scalar。**
-想换成中文、或锁死政策（给四个内置 preset 各加一条 `disabled: true`），写法都在文件头注释里。
+**要改政策文字，只改三处 block scalar**（全局 `personaPrefix`/`personaSuffix`、`preset-leader`
+的 persona、`preset-expert` 的 persona）。想换成中文、或锁死政策（给四个内置 preset 各加一条
+`disabled: true`），写法都在文件头注释里。
+
+#### 两层 agent 为什么这样切
+
+目的只有一个：**拆上下文**。主 agent 管工程层级的事（开工程、导出、改块、提交），
+子 agent 钻进具体代码问题（调用链、变量读写、某个网段到底做什么），各自在自己的窗口里推理，
+只有结论回流。
+
+- **派发**：主 agent 用 `subagent` 工具派给 `expert`（preset 由配置钉死：`agentPreset: expert`）。
+  工具立刻返回 `started subagent <id>`，**不等待**；子 agent 结束时宿主把它的收尾文本作为一条
+  notice 写回主会话。
+- **用户插话**：父会话 header 的「后代数」触发器 → 目录树 → 点一行在主区打开、或点行尾箭头
+  在**右侧栏分栏**打开。continuable 子会话有完整 composer，可以继续追问；追问也会回流给主 agent。
+  （左侧会话列表**刻意不含**子会话，这是宿主的设计。）
+- **工具面**：`expert` 看不到任何 TIA 操作工具、git、`pwsh`、工程上下文工作流，也拿不到
+  `knowledge_ingest`。它的"只读"只由工具面保证——子 agent 继承父会话的显式沙箱覆盖，
+  审批策略被宿主钉死 `never`，所以别指望沙箱拦它。
+- **深度**：`subagent.maxDepth` 默认 1，`expert` 不能再派孙代。
 
 实测效果（一次真实请求落盘的 `system/message`）：identity 之后紧接着就是 `personaPrefix`，
-`personaSuffix` 落在提示词最末尾；`{{cwd}}`、`{{model}}` 按当次会话求值。
+`personaSuffix` 落在提示词最末尾。
+
+> ⚠️ **persona 文本里的 `{{...}}` 是严格插值，只有 `provider` 与 `model` 两个变量存在**
+> （`dsh-agent-loop` 注册的）。写别的名字（例如 `{{cwd}}`）会让**整个回合失败**：
+> `unknown prompt variable "{{cwd}}" in section "deployment:persona-suffix"; registered variables: provider, model`。
+> 工作目录本来就在 runtime context 里，persona 不必再写一遍 —— 本蓝图早期版本踩过这个坑，
+> 全局与两个 preset 的 persona 现已统一改成一句话引用 runtime context。
 
 > ⚠️ 别把这段"简化"成只留一行 `- id: system-prompt`。web 组合的 agent 一律走 preset，
 > preset 内的 `dsh-persona` 行按作用域**遮蔽**全局 persona——已实测：给全局 persona 打标记，
 > 该标记**不会**出现在 preset 会话的提示词里；而 `dsh-base` 的全局工具行全是 `disabled: true`，
 > 真正生效的工具面就在 preset 的 `plugins` 里。机理与升级时的重生成办法见
 > [profile/dsh-automation-suite/README.md](profile/dsh-automation-suite/README.md)。
+>
+> ⚠️ 工程工具**按 preset 分发**：宿主面只留控制器/引擎子进程与服务，模型面工具行写在 preset 里。
+> 所以切到没声明这些行的内置 preset（`standard` / `minimal` / …）时，**TIA、工程上下文、
+> 图谱工具都不存在**——这是有意的。详见 [`docs/decisions.md`](docs/decisions.md) **D23**。
 
 ### 8.2 插件配置
 
@@ -592,7 +632,7 @@ packages/
     docs/                          ARCHITECTURE.md / PATH-RULES.md / decisions.md
   dsh-engineering-graph/           工程知识图谱插件：**引擎 + 协议 + 3 个工具 + knowledgeGraph 服务，已登记进蓝图**
     src/                           NDJSON 协议客户端、3 个知识工具、knowledgeGraph 服务（tsc → lib/）
-    test/                          node:test 套件（49 项，含经真实引擎的端到端与传输层故障注入）
+    test/                          node:test 套件（66 项，含经真实引擎的端到端与传输层故障注入）
     engine/                        C# 引擎（net8 + Microsoft.Data.Sqlite）：Simatic ML → 图 → SQLite
                                    Graph/ Parsing/ Import/ 为 vendored（命名空间拍平，见 D17）；
                                    build.ps1 构建到 engine/bin（**不进 git**），fixtures/ 是 7 个真实 V17 导出物
@@ -633,10 +673,10 @@ pnpm run clean:build      # 清构建产物（只碰 lib/ dist/）
 
 | 包 | 运行器 | 测试规模 |
 |---|---|---|
-| `dsh-tia-openness-v17-min` | `node:test`（`node --test test/*.test.mjs`） | 62 项：61 通过 / 1 跳过（跳过项是"控制器未构建"的降级路径） |
+| `dsh-tia-openness-v17-min` | `node:test`（`node --test test/*.test.mjs`） | 84 项：83 通过 / 1 跳过（跳过项是"控制器未构建"的降级路径） |
 | `dsh-tool-git` | `vitest`（`vitest run`） | 33 项全通过 |
 | `@voltarenyah/dsh-engineering-context` | `node:test`（`node scripts/run-tests.mjs`，先构建再跑） | 56 项全通过（含经假 `engineeringAccess` / 假 `knowledgeGraph` 服务的契约用例） |
-| `@voltarenyah/dsh-engineering-graph` | `node:test`（`node scripts/run-tests.mjs`，先构建再跑） | 49 项全通过（含经真实引擎的端到端；引擎没构建时该项 skip 并打印构建命令） |
+| `@voltarenyah/dsh-engineering-graph` | `node:test`（`node scripts/run-tests.mjs`，先构建再跑） | 66 项全通过（含经真实引擎的端到端；引擎没构建时该项 skip 并打印构建命令） |
 
 单测都需要**真实的** `@deepseek-ai/*` 运行时（不是 stub）。裸 checkout 首次运行时，
 两个包的测试自举会各自自动触发抽取；也可以手动：
@@ -694,16 +734,20 @@ dsh --profile dsh-automation-suite --dump-config
   name: dsh-tool-git
 ```
 
-带上 **§8.1 的政策层**后，行数变成 **1477**（DSH **0.2.1-rc.2** 实测，2026-10-19；官方 web 组合
-1235 行，本政策层净增 236），多出全局 `system-prompt` 覆盖行、
-`agent-preset-registry` 覆盖行，以及 `preset-suite` 那一整块 ≈ 200 行的工具清单），并且多出：
+带上 **§8.1 的政策层**后，行数见根 `AGENTS.md` §4 的权威基线表（本蓝图改成两个 preset 后已重测；
+旧值 1477 作废）。比官方 web 组合多出的部分包括全局 `system-prompt` 覆盖行、
+`agent-preset-registry` 覆盖行、`preset-leader` 那一整块工具清单，以及 `preset-expert` 那 6 行，并且多出：
 
 ```yaml
 - id: agent-preset-registry
   config:
-    default: suite
-- id: preset-suite
+    default: leader
+- id: preset-leader
   name: '@deepseek-ai/dsh-agent-preset'
+- id: preset-expert
+  name: '@deepseek-ai/dsh-agent-preset'
+- id: engineering-context
+  disabled: true
 ```
 
 想在不改动任何环境的前提下预览政策层，用 `--patch` 叠加（`--dump-config` 不会挂载插件）：

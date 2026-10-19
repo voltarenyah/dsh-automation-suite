@@ -301,7 +301,7 @@ V17 子集需实测确认；该包 `docs/EXTENDED-SURFACE.md` 已在接线 `incl
 
 ---
 
-## D16 · 图谱能力的暴露形态（B16）🟡
+## D16 · 图谱能力的暴露形态（B16）✅
 
 **背景**：[B16](open-questions.md) 问图谱能力是走工具族、随包索引文件，还是 skill 资源。
 
@@ -317,15 +317,15 @@ V17 子集需实测确认；该包 `docs/EXTENDED-SURFACE.md` 已在接线 `incl
 - **`get_schema` 类能力保留为工具**（返回活的 DDL / 词表），**不做成 bundled skill**。
   这与接口插件族的 skill 形态（`packages/dsh-tia-openness-v17-min/src/skills.ts` / **D4**）**不冲突** ——
   那一条服务的是**静态手册知识**，两者载体不同。
-- **需要一个子 agent 的 preset**（在 profile 蓝图 `profile/dsh-automation-suite/cordis.patch.yml` 里），
-  把图谱工具列进去、把操作层工具排除。
-  ⚠️ 按根 [`AGENTS.md`](../AGENTS.md) §1，preset 必须**整份重述** `config.plugins` ——
+- **子 agent 的 preset 已落地**（**D23**）：`expert` 拿图谱工具、拿不到操作层工具。
+  按根 [`AGENTS.md`](../AGENTS.md) §1，preset 必须**整份重述** `config.plugins` ——
   漏写会让该 agent 的工具**静默消失**（不报错）。
 - **工具目录成本不再由主 agent 承担**，所以 B16 **不再需要**"工作流层 / 原子层两层收口"
   来省常驻字符。但 `query`（任意只读 SQL）**是否进子 agent 面仍是独立取舍** —— 见
   [`architecture.md`](architecture.md) §6「不向模型暴露任意代码执行」。
-- **待验证**：DSH 里"按 agent 隐藏工具"的**确切机制**（工程上下文插件 `ARCHITECTURE.md` §5.3 提到工具解析
-  "按可见性"，`dsh-tools/lib/index.js:3058`）—— **写工具层之前必须先核实，别猜**。
+  本轮的决定：**进**（`expert` 有 `knowledge_query`）；它只读，写不了任何东西，
+  而"不暴露任意代码执行"约束的是**任意代码**，不是参数化查询。
+- **"按 agent 隐藏工具"的机制已查实并落地**（见 **D23** 与待验证清单 #9）。
 
 ---
 
@@ -499,6 +499,110 @@ stdio 通道实测：`ready` 帧列出三个操作，`GetSchema` 返回 34 字�
 
 ---
 
+## D23 · 两层 agent：`leader` 主 agent + `expert` 子 agent，工程工具按 preset 分发 ✅
+
+**背景**：[B16](open-questions.md) 答复里提出"回答特定工程问题的 agent 会启用子 agent，
+其中隐藏一些操作层面的工具，但图谱工具要暴露给子 agent"。D16 记下了这个意图，但把
+"DSH 按 agent 隐藏工具的确切机制"列为**待验证**（[待验证清单](#待办验证清单由以上决策派生) #9）。
+本轮把机制查实并落地。
+
+**机制（实测 + 读宿主源码，`@deepseek-ai/*` 0.2.1-rc.2）**
+
+工具可见性由 `dsh-tools` 的 `view(scope)` 解析：**继承面 = 全局层 + 作用域链上的每个祖先层
+（不含"自己这一层"）**，逐层过 `admits`（即 `tools.restrict({allow|deny})` 铺的掩码）后才可见。
+三个后果：
+
+1. **preset 里"不写" ≠ 隐藏**。宿主面（profile 顶层行）注册的工具落在**全局层**，
+   每个 preset 的 agent 都会继承 —— 包括子 agent。实测：改造前父子工具面**完全相同**（各 32 个）。
+2. 上游就是这个形态：`dsh-web-app/cordis.patch.yml` 把宿主面所有工具行 `disabled: true`
+   （含 `tool-subagent*`/`tool-todo`/`tool-web`），注释写明"what a preset chooses is which
+   delegation TOOLS its agent sees"。
+3. 模型面工具**不接受内联过滤**：`@deepseek-ai/dsh-tool-subagent` 的配置里写 `persona`/`toolFilter`
+   会直接报迁移错误，要求"configure persona and tool plugins in an Agent Preset"。
+
+**决定**
+
+1. **方案 A：把模型面工具注册拆成独立 Loader 行**（`/<pkg>/tools` 子路径导出），
+   宿主行只留**资源与服务**：
+   - `dsh-tia-openness-v17-min`：宿主行 = TIA 控制器子进程 + `engineeringAccess` + 随包 skill；
+     `/tools` 行 = 26 个工具。
+   - `dsh-engineering-graph`：宿主行 = C# 引擎子进程 + `knowledgeGraph`；`/tools` 行 = 3 个工具，
+     带 `includeIngest` 开关（`false` 时只给 `knowledge_schema` / `knowledge_query`）。
+   - `dsh-engineering-context`：**没有宿主面资源**，所以不拆包，只把它的行整个搬进 `leader`，
+     宿主面那份 `disabled: true`。
+2. **两个 preset**：`leader`（主 agent，内置 `standard` 的全部 + 上述三个工程工具行 + 派发政策）
+   与 `expert`（子 agent）。preset id 由 `suite` 改名为 `leader`。
+3. **`expert` 的工具面刻意极小**：图谱 `schema`/`query`（`includeIngest: false`）、
+   `read`/`read_image`/`glob`/`grep`（`tool-fs` 配 `write: false`/`edit: false`）、
+   `send_message`/`interrupt_agent`、`time-context`、`compaction` —— **8 个**。
+   **不给**：任何 TIA 工具、工程上下文工作流、`pwsh`、`jobs`、`schedule`、`goal`、`plan`、
+   `web`、`todo`、`ask_user`、`skill`。
+   **仍会继承**宿主面仍是全局行的 13 个：`dsh-tool-git` 的 12 个 + `working_directory`
+   （上游本来就把 `dsh-tool-working-directory` 留在宿主面）。已知欠账，不是遗漏。
+4. **接线**：`tool-subagent` 行配 `agentPreset: expert` + `allowedAgentPresets: [expert]`；
+   深度沿用宿主设置 `subagent.maxDepth`（默认 1，`expert` 不能再派孙代）。
+5. **`knowledge_ingest` 不给子 agent**（用户决定）：整库重建是重度写操作（实测 1376 个源文件约 30 s、
+   库约 450 MB），属于主 agent 的建工程流程。
+6. **git 的 12 个工具本轮不拆**（用户决定）：`dsh-tool-git` 是 vendor 副本，拆 `/tools` 会成为
+   **第 5 处与上游的差异**（现有 4 处见该包 `AGENTS.md` §1/§5），而它只是卫生问题。
+   ⇒ **已知欠账：`expert` 也看得到 git 的 12 个工具。**
+
+**后果与必须知道的事**
+
+- **工程工具按 preset 分发**：切到没声明这些行的内置 preset（`standard`/`minimal`/…）时，
+  TIA、工程上下文、图谱工具**不存在**。这是有意的，不是故障。
+- **"子 agent 只读"只由工具面保证，不要指望沙箱**：子 agent 继承父会话的**显式**沙箱覆盖
+  （本 profile 默认 `danger-full-access` 会原样继承），而审批策略被宿主钉死 `never`
+  （`dsh-subagent` 的 `captureDelegatedPolicyOverrides`）——需要审批的操作自动拒绝、不弹给用户。
+- **preset id 是稳定标识**：`suite` → `leader` 这次改名会让记录着旧 id 的会话、
+  以及独立选过 preset 的子会话**无法恢复**（宿主明确"缺失/损坏的 preset 拒绝恢复、不回退"）。
+- **维护成本**：`preset-leader` 必须整份重述上游 `standard` 的插件清单，升级宿主后要按
+  [profile 蓝图 README](../profile/dsh-automation-suite/README.md) 重新生成；`preset-expert`
+  只需核对它引用的包名。preset 清单从一份变两份。
+- **用户插话的通道**：宿主不把子会话放进左侧会话列表（"The ordinary sidebar omits subagent
+  conversations"），入口是父会话 header 的后代树 → 主区或**右侧栏分栏**；continuable 子会话有
+  完整 composer，追问会回流给主 agent（源码依据：`subagents/prompt` 置 `announced`，
+  结算通知的条件就是 `announced`；**端到端未实测**）。
+- **行数基线会变**：`--dump-config` 的三个数要重测，见根 `AGENTS.md` §4。
+
+**验证**（2026-10-19，本机）：
+
+1. **真实解析器算出的工具面** —— 用真实的 `@deepseek-ai/dsh-tools` `ToolRuntime` + 真实的
+   `@deepseek-ai/dsh-scope` 作用域链（`createScope` 建 preset 层、再建 agent 层，宿主面工具注册在
+   global 层），工具名取自两个包**构建后的** `registerTools`（不是手抄）：
+   - `expert` 可见 **21 个** = global 13（git 12 + `working_directory`）+ preset 8，逐项相等 ——
+     **没有** 任何一个 TIA 工具、**没有** `knowledge_ingest`、**没有** `create_engineering_project`。
+   - `leader` 可见 **43 个** = global 13 + 工程 30（TIA 26 + `create_engineering_project` + 图谱 3），
+     26 个 TIA 工具全在。
+2. **组合与解析**：`--dump-config` exit 0（1520 行；`default: leader`、两个 preset 行、
+   宿主 `engineering-context` 带 `disabled: true`）；在**物化 profile 目录**里逐个 `import()`
+   这 8 行，`name` / `inject` / `Config(...)` 全部按蓝图实参解析（含 `includeIngest:false`
+   与 `write:false, edit:false`）。
+3. **交付物**：两个包的 `pnpm pack` 产物都含 `lib/tools-entry.js`、`lib/runtime-service.js`
+   与 `exports["./tools"]`（`-Mode pack` 那条验收链走得通）。
+4. **实例**：`start-env.ps1` 起得来，`TiaOpennessV17Min.Controller` 子进程在（宿主行 apply 成功），
+   启动日志无 preset 挂载报错。
+5. **真实模型驱动的一次派发（2026-10-19，实测）**：在 `dsh-suite-env` 的 3092 实例里让 `leader`
+   派发 `expert`，子 agent 自报的工具名**逐项等于**上面第 1 条算出的 21 个
+   （git 12 + `working_directory` + `knowledge_schema`/`knowledge_query`/`read`/`read_image`/
+   `glob`/`grep`/`send_message`/`interrupt_agent`），**没有**任何 TIA 工具、**没有**
+   `knowledge_ingest`、**没有** `create_engineering_project`。
+   会话头部出现"1 subagent"目录触发器，子会话标记为 **continuable**（带 token 数与耗时）；
+   对**已结束**的子 agent 用 `send_message` 追问，宿主先回 `Message delivered to <id>`，
+   随后子 agent 的结算通知作为新消息回到父会话 —— 续聊与回流都成立。
+6. **暴露出来的两个真问题**（都在 live 跑第一次时炸出来，已修/已记）：
+   - persona 里的 `{{cwd}}` **不是注册变量**，导致整轮失败
+     （`unknown prompt variable "{{cwd}}" ... registered variables: provider, model`）。
+     全局与两个 preset 的 persona 已改掉；机理记在根 `AGENTS.md` §1 第 5 条。
+     这条**在本轮之前就存在**：`{{cwd}}` 是照抄来的，旧 `preset-suite` 同样会炸。
+   - 子 agent 对"你有没有 TIA 或 git 写工具"答 **yes** —— 因为 git 的 12 个里含
+     `git_commit`/`git_stage`/`git_checkout`/`git_stash`。**只读靠工具面保证这句话，
+     目前对 git 不成立**。要么把 `dsh-tool-git` 也拆成 `/tools` 行（第 5 处 vendor 偏离），
+     要么接受"expert 能改 git"。
+
+---
+
+
 ## 待办验证清单（由以上决策派生）
 
 | # | 待验证 | 来源 |
@@ -511,5 +615,5 @@ stdio 通道实测：`ready` 帧列出三个操作，`GetSchema` 返回 34 字�
 | 6 | 图谱 db 的具体路径（倾向 `_dsh-eng/<project-id>/`）+ 回写 `PATH-RULES.md` §2/§8 —— ⚠️ **需重新定**：`_dsh-eng/` 注册表层随 D22 删除，P2/P3 的状态路径待定 | D13（A10） |
 | 7 | contentHash 兜底必须归一化（剥 `<DocumentInfo>`/`<Created>`）才可用作变更键 | D13 |
 | 8 | 工程知识图谱插件取指纹的路径：消费工程上下文插件的变更集（默认）还是自己经接口插件族 `engineeringAccess` 服务 | D13（A10） |
-| 9 | DSH 按 agent 隐藏工具的确切机制（子 agent preset 如何排除操作层工具） | D16（B16） |
+| 9 | ~~DSH 按 agent 隐藏工具的确切机制（子 agent preset 如何排除操作层工具）~~ → **✅ 已查实并落地**：工具可见性 = 全局层 + 祖先层逐层过 `admits`；方案 A 拆 `/tools` 行 + 两个 preset，见 **D23** | D16（B16） |
 | 10 | ~~工程知识图谱插件把 12 个文件拍平到单一命名空间后是否撞名~~ → **✅ 已验证无撞名**（`dotnet build` 0 error / 0 warning，37 个顶层类型无重名） | D17 |

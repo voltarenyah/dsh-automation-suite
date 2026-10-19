@@ -13,6 +13,9 @@
     ".": {
       "default": "./lib/index.js"
     },
+    "./tools": {
+      "default": "./lib/tools-entry.js"
+    },
     "./package.json": "./package.json"
   },
   "files": [

@@ -9,6 +9,10 @@
 #     都可以在下面 config 里按需覆盖（全部有默认值，可整块省略）。
 #   * 模块名 @voltarenyah/dsh-tia-openness-v17-min 必须能从被启动的 profile 解析到
 #     （见 test-profile/README.md 的两种装法：link: 安装，或用绝对路径）。
+#   * **两行都要插**：宿主行只提供控制器、engineeringAccess 服务与内部运行时缝，
+#     模型可见的 26 个工具在 `./tools` 这一行里注册。发行版里由 agent preset 决定
+#     `./tools` 行声明与否（leader 声明、expert 不声明）；这里的 overlay 是
+#     "单 profile 手工验收"，两行都插才能照旧看到工具。
 - insert:
     - id: tia-openness-v17-min
       name: '@voltarenyah/dsh-tia-openness-v17-min'
@@ -16,3 +20,5 @@
       #   requestTimeoutMs: 600000        # 大项目导入/编译放大超时
       #   logControllerOutput: true       # 把控制器 stdout/stderr 转进 DSH 日志
       #   verboseResults: true            # 工具结果附带完整控制器 payload
+    - id: tia-openness-v17-min-tools
+      name: '@voltarenyah/dsh-tia-openness-v17-min/tools'

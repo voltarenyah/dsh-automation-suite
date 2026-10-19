@@ -11,8 +11,10 @@
  * `scripts/dsh-runtime-cache.mjs` extracts `@deepseek-ai/dsh-skill` next to the
  * packages the plugin itself imports.
  *
- * The bare context has no tool registry, so these tests provide a no-op `tools`
- * service; that is exactly the seam `apply` requires, and nothing else.
+ * The bare context has no tool registry, and the host row does not need one any
+ * more: the models-facing tools were split into the separate `/tools` row, so
+ * mounting the host row here proves the skill registration does not depend on
+ * the tool surface.
  */
 
 import assert from 'node:assert/strict'
@@ -27,10 +29,9 @@ import { loadPlugin, packageRoot } from './helpers/harness.mjs'
 const SKILLS = join(packageRoot, 'skills')
 const ROUTER = join(SKILLS, 'tia-openness', 'SKILL.md')
 
-/** A root context carrying the real skill registry and a no-op tool registry. */
+/** A root context carrying the real skill registry, and no tool registry. */
 async function withRegistry(t) {
   const ctx = new Context()
-  ctx.provide('tools', { register: () => () => {} })
   const fiber = await ctx.plugin(SkillRegistry)
   t.after(async () => {
     await fiber.dispose()
@@ -86,7 +87,7 @@ test('a skill loaded through the registry renders with its base directory', asyn
   assert.equal(await ctx.skills.get('does-not-exist'), undefined, 'unknown names resolve to nothing')
 })
 
-test('apply() registers through the real registry, and unloading removes it', async (t) => {
+test('the host row registers through the real registry, and unloading removes it', async (t) => {
   const ctx = await withRegistry(t)
   const plugin = await loadPlugin()
 
@@ -95,7 +96,7 @@ test('apply() registers through the real registry, and unloading removes it', as
   // its effects — including the controller subprocess — are torn down with it.
   const fiber = ctx.plugin({
     name: 'probe',
-    inject: ['tools'],
+    inject: [],
     apply: (scoped) => plugin.apply(scoped, {}),
   })
   await fiber

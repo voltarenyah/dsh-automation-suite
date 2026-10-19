@@ -1,10 +1,12 @@
 /**
- * Minimal load test: the plugin must load through the loader contract and
- * register well-formed tools.
+ * Minimal load test: both Loader rows must load through the loader contract.
  *
  * This is the test the checklist names first ("插件能被 DSH 正确加载"). It asserts
  * the three rules that plugins get wrong: module-level exports, a complete
- * `inject`, and tool definitions that the *real* tool runtime accepts.
+ * `inject`, and tool definitions that the *real* tool runtime accepts. Since the
+ * tool registration moved to the `/tools` row, the tool-facing assertions run
+ * against `lib/tools-entry.js`; the host row must stay tool-free so an agent
+ * preset can leave it undeclared.
  */
 
 import assert from 'node:assert/strict'
@@ -18,27 +20,39 @@ import {
   dshTools,
   EXPECTED_TOOLS,
   loadPlugin,
+  loadRuntimeModule,
+  loadToolsEntry,
   loadToolsModule,
   parameterViolations,
   renderedText,
   withPlugin,
+  withTools,
 } from './helpers/harness.mjs'
 
-test('the module exports name, inject, Config and apply at module level', async () => {
+test('the host row exports name, inject, Config and apply at module level', async () => {
   const plugin = await loadPlugin()
 
   assert.equal(plugin.name, 'tia-openness-v17-min')
-  assert.deepEqual(plugin.inject, ['tools'])
+  // The host row registers no tool now, so it has nothing to wait for: `skills`
+  // stays optional through `ctx.inject` inside `apply`.
+  assert.deepEqual(plugin.inject, [], 'the host row waits for no service')
   assert.equal(typeof plugin.apply, 'function')
   assert.notEqual(plugin.Config, undefined, 'a Config schema must be exported so profiles can configure the plugin')
-
-  // The three high-frequency mistakes: name/inject inside apply, or a missing
-  // inject entry for the service the tools are registered on.
-  assert.equal(plugin.inject.includes('tools'), true, "inject must declare 'tools' because apply uses ctx.tools")
 })
 
-test('apply registers every tool exactly once on ctx.tools', async (t) => {
-  const { harness } = await withPlugin(t)
+test('the /tools row exports its own name, inject and apply at module level', async () => {
+  const entry = await loadToolsEntry()
+  const { TIA_RUNTIME_SERVICE } = await loadRuntimeModule()
+
+  assert.equal(entry.name, 'tia-openness-v17-min-tools')
+  // The tool registry is where the tools go; the runtime seam is the host row's
+  // controller. Declaring both is what makes the loader wait for them.
+  assert.deepEqual(entry.inject, ['tools', TIA_RUNTIME_SERVICE])
+  assert.equal(typeof entry.apply, 'function')
+})
+
+test('the /tools row registers every tool exactly once on ctx.tools', async (t) => {
+  const { harness } = await withTools(t)
 
   assert.deepEqual(harness.registered().sort(), [...EXPECTED_TOOLS].sort())
   for (const definition of harness.definitions) {
@@ -48,8 +62,43 @@ test('apply registers every tool exactly once on ctx.tools', async (t) => {
   }
 })
 
+test('the /tools row registers exactly the 26 names, in the order the host row used to', async (t) => {
+  const { harness } = await withTools(t)
+
+  // Order is part of the model-facing contract: the tool list is rendered in
+  // registration order, so a reordering is a visible change even when the set is
+  // identical.
+  assert.deepEqual(harness.registered(), EXPECTED_TOOLS)
+})
+
+test('the host row registers no model-facing tool at all', async (t) => {
+  const { harness } = await withPlugin(t, { controllerPath: 'C:\\does\\not\\exist\\controller.exe' })
+  const { TIA_RUNTIME_SERVICE } = await loadRuntimeModule()
+
+  assert.deepEqual(harness.registered(), [], 'the host row must not leak tools into the host (global) plane')
+  assert.notEqual(
+    harness.ctx.get(TIA_RUNTIME_SERVICE),
+    undefined,
+    'the host row still publishes the seam its /tools row reads',
+  )
+})
+
+test('the /tools row refuses to load without the host row', async (t) => {
+  const entry = await loadToolsEntry()
+  const { TIA_RUNTIME_SERVICE } = await loadRuntimeModule()
+  const harness = createTestContext()
+  t.after(async () => {
+    await harness.unload()
+  })
+
+  // `inject` is what prevents this in a real composition; applying the row by
+  // hand must fail loudly instead of registering tools that cannot reach TIA.
+  assert.throws(() => entry.apply(harness.ctx, {}), new RegExp(TIA_RUNTIME_SERVICE))
+  assert.deepEqual(harness.registered(), [])
+})
+
 test('every declared parameter and output schema compiles in the real tool runtime', async (t) => {
-  const { harness } = await withPlugin(t)
+  const { harness } = await withTools(t)
 
   for (const definition of harness.definitions) {
     const parameters = definition.parameters
@@ -72,7 +121,7 @@ test('every declared parameter and output schema compiles in the real tool runti
 })
 
 test('the registry validator rejects missing required, wrong-typed and out-of-enum arguments', async (t) => {
-  const { harness } = await withPlugin(t)
+  const { harness } = await withTools(t)
   const byName = Object.fromEntries(harness.definitions.map((definition) => [definition.name, definition]))
   const openProject = byName['open_project']
   const exportBlocks = byName['export_blocks']
@@ -88,7 +137,7 @@ test('the registry validator rejects missing required, wrong-typed and out-of-en
 })
 
 test('the model-facing descriptions name the operation, the dry-run policy and the failures', async (t) => {
-  const { harness } = await withPlugin(t)
+  const { harness } = await withTools(t)
 
   for (const definition of harness.definitions) {
     assert.ok(definition.description.length > 120, `${definition.name} has a descriptive description`)
@@ -184,7 +233,7 @@ test('a failure reported by the controller is a structured outcome, not a thrown
   assert.match(text, /block_not_found/)
 })
 
-test('the plugin loads without a controller build and still reports a clear reason', async (t) => {
+test('the rows load without a controller build and the host row still reports a clear reason', async (t) => {
   if (controllerAvailable) {
     t.skip('the controller is built, so the missing-controller path cannot be exercised here')
     return
@@ -197,8 +246,12 @@ test('the plugin loads without a controller build and still reports a clear reas
   })
   plugin.apply(harness.ctx, {})
 
-  assert.equal(harness.registered().length, EXPECTED_TOOLS.length, 'the tools are registered anyway')
+  assert.deepEqual(harness.registered(), [], 'the host row registers no model-facing tool')
   const warning = harness.logs.find((entry) => entry[0] === 'warn')
   assert.notEqual(warning, undefined, 'loading logs a warning that names the missing controller')
   assert.match(warning[2], /was not found/)
+
+  const entry = await loadToolsEntry()
+  entry.apply(harness.ctx, {})
+  assert.equal(harness.registered().length, EXPECTED_TOOLS.length, 'the /tools row registers them anyway')
 })

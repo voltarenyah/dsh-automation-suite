@@ -43,11 +43,11 @@ controller\bin\TiaOpennessV17Min.Controller.exe --self-test
 
 | 已覆盖 | 证据 |
 |---|---|
-| 模块级导出齐全：`name` / `inject` / `Config` / `apply` | `src/index.ts:29`（`export const name`）、`:35`（`export const inject = ['tools']`）、`:48`（`export function apply`）；测试 `test/01-load.test.mjs:28` |
-| `apply` 真的会注册工具 | `src/tools.ts:313`（`ctx.tools.register`）；测试 `test/01-load.test.mjs:41` 断言 6 个工具名与顺序 |
-| 生产构建产物（`lib/`）可被 Node 直接 `import` | `test/helpers/harness.mjs` 动态导入 `../../lib/index.js`（带 cache-bust），全部 45 项测试都建立在此之上 |
-| 注册的 schema 能被**真实** registry 接受 | `test/01-load.test.mjs:52`（`parameterSchemaSpecToJsonSchema` / `assertSupportedJsonSchema`）、`:75`（`validateJsonSchemaValue` 拒绝缺参/错类型/越界枚举）、`:114`（返回的 canonical value 通过 output schema 校验）、`test/04-tools.test.mjs:187`（6 个工具全量校验） |
-| 控制器缺失/未构建时插件仍能加载并给出原因 | `test/01-load.test.mjs:188`、`test/02-lifecycle.test.mjs:101` |
+| 模块级导出齐全：`name` / `inject` / `Config` / `apply` | 宿主行 `src/index.ts`（`export const name = 'tia-openness-v17-min'`、`export const inject: readonly string[] = []`、`export function apply`）；工具行 `src/tools-entry.ts`（`name = 'tia-openness-v17-min-tools'`、`inject = ['tools', TIA_RUNTIME_SERVICE]`）。测试 `test/01-load.test.mjs` 对两行分别断言 |
+| 工具行真的会注册工具 | `src/tools.ts` 的 `registerTools`（`ctx.tools.register`）；测试 `test/01-load.test.mjs` 断言 26 个工具名与注册顺序，且断言宿主行**不注册任何工具** |
+| 生产构建产物（`lib/`）可被 Node 直接 `import` | `test/helpers/harness.mjs` 动态导入 `../../lib/index.js` 与 `../../lib/tools-entry.js`（带 cache-bust），全部 84 项测试都建立在此之上 |
+| 注册的 schema 能被**真实** registry 接受 | `test/01-load.test.mjs`（`assertSupportedJsonSchema`、`validateJsonSchemaValue` 拒绝缺参/错类型/越界枚举、返回的 canonical value 通过 output schema 校验）、`test/04-tools.test.mjs`（26 个工具全量校验） |
+| 控制器缺失/未构建时插件仍能加载并给出原因 | `test/01-load.test.mjs`（宿主行给警告、工具行照常注册）、`test/02-lifecycle.test.mjs` |
 
 **该环现已覆盖**（本轮实测）：在**隔离 `DSH_HOME`** 里创建测试 profile、`link:` 安装本仓库、用 `--patch` 叠加层启动真实宿主，观察到控制器子进程出现 → 证明真实 loader 组合了插件并调用了 `apply`。原始输出见 [REAL-RUN.md](REAL-RUN.md) §D.5。
 原因与取舍见 [`docs/decisions.md` D1](decisions.md#d1-不做安装进真实-dsh-profile的实机验证最重要的一条)（本仓库不在夜间修改用户 profile）。
@@ -55,13 +55,21 @@ controller\bin\TiaOpennessV17Min.Controller.exe --self-test
 
 ### A2. `inject` 声明了所有依赖 —— ✅ 已验证
 
-`apply` 只使用 `ctx.tools`、`ctx.logger`、`ctx.effect`；`inject` 声明 `['tools']`
-（`src/index.ts:35`）。`logger` 与 `effect` 由 cordis 内建提供，不需要注入。
-测试：`test/01-load.test.mjs:36`（断言 `inject` 含 `'tools'`）。
+**宿主行**（`src/index.ts`）：`apply` 只用 `ctx.logger`、`ctx.effect`、`ctx.inject(['skills'], …)`
+与 `Config`，前两者由 cordis 内建提供、`skills` 是可选的，因此 `inject` 是**空数组** ——
+它等待任何服务都会让缺该服务的 profile 加载不了。
+
+**工具行**（`src/tools-entry.ts`）：`apply` 用 `ctx.tools`（注册工具）与 `ctx.get('tiaOpennessRuntime')`
+（宿主行的内部缝），所以 `inject` 必须声明两者：`['tools', TIA_RUNTIME_SERVICE]`。
+这也是两行的顺序保证 —— loader 会等到宿主行把 `tiaOpennessRuntime` 提供出来。
+
+测试：`test/01-load.test.mjs` 分别断言两行的 `inject`；另有一项断言缺少宿主行时工具行
+以该服务名报错而不是静默注册一堆够不到 TIA 的工具。
 
 ### A3. `ctx.effect()` 管理了子进程生命周期 —— ✅ 已验证
 
-- 注册点：`src/index.ts:93`（`ctx.effect(() => async () => { … await controller.stop() … })`）。
+- 注册点：`src/index.ts` 的 `apply`（`ctx.effect(() => async () => { … await controller.stop() … })`，
+  宿主行仍然独占这个 disposer）。
 - disposer 是**异步**的（框架会 await），并且先 `await startup` 再 `stop()`，
   避免"卸载跑在启动之前"留下孤儿进程。
 - `ControllerProcess.stop()` 先关 stdin 走优雅路径，`shutdownGraceMs` 超时后强杀：

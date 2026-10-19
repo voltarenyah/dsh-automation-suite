@@ -13,7 +13,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 
-import { createTestContext, loadAccessModule, loadPlugin } from './helpers/harness.mjs'
+import { createTestContext, loadAccessModule, loadPlugin, loadRuntimeModule } from './helpers/harness.mjs'
 
 const { DEFAULT_LIST_MAX_ITEMS, ENGINEERING_ACCESS_SERVICE, EngineeringAccess } = await loadAccessModule()
 
@@ -100,6 +100,28 @@ test('apply exposes engineeringAccess, and unloading takes it away', async () =>
   await harness.unload()
   assert.equal(harness.ctx.get(ENGINEERING_ACCESS_SERVICE), undefined, 'unloading must unregister the service')
   assert.equal(harness.ctx.engineeringAccess, undefined)
+})
+
+test('the host row publishes the internal tiaOpennessRuntime seam, and unloading removes it', async () => {
+  const { TIA_RUNTIME_SERVICE } = await loadRuntimeModule()
+  const plugin = await loadPlugin()
+  const harness = createTestContext()
+
+  // A path that cannot exist keeps this test free of a subprocess.
+  plugin.apply(harness.ctx, { controllerPath: 'C:\\does\\not\\exist\\controller.exe' })
+
+  const runtime = harness.ctx.get(TIA_RUNTIME_SERVICE)
+  assert.notEqual(runtime, undefined, 'the /tools row reads this seam back by name')
+  assert.equal(harness.ctx[TIA_RUNTIME_SERVICE], runtime, 'a service is also a context property')
+  // Exactly the tool seam, nothing more: it must not become a second public API.
+  assert.equal(typeof runtime.request, 'function')
+  assert.equal(typeof runtime.status, 'function')
+  assert.equal(runtime.verbose, false, 'verbose mirrors the host row config')
+  assert.equal(runtime.status().exeExists, false)
+  assert.equal(runtime.openProject, undefined, 'the public API stays on engineeringAccess')
+
+  await harness.unload()
+  assert.equal(harness.ctx.get(TIA_RUNTIME_SERVICE), undefined, 'unloading must unregister the seam')
 })
 
 test('openProject sends the same operation and parameters the tool does', async () => {
