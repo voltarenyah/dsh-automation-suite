@@ -100,6 +100,17 @@ export async function loadToolsModule() {
   return await import(`../../lib/tools.js?t=${Date.now()}${Math.random()}`)
 }
 
+/**
+ * The `/commands` row: the human-facing slash commands.
+ */
+export async function loadCommandsEntry() {
+  return await import(`../../lib/commands-entry.js?t=${Date.now()}${Math.random()}`)
+}
+
+export async function loadCommandsModule() {
+  return await import(`../../lib/commands.js?t=${Date.now()}${Math.random()}`)
+}
+
 export async function loadAccessModule() {
   return await import(`../../lib/access.js?t=${Date.now()}${Math.random()}`)
 }
@@ -144,6 +155,8 @@ export function createTestContext(options = {}) {
   const disposers = []
   /** @type {object[]} providers registered through the stand-in skill registry */
   const skillProviders = []
+  /** @type {object[]} slash-command definitions registered through the stand-in registry */
+  const commands = []
   /** @type {string[][]} every service list handed to `ctx.inject` */
   const injectedServices = []
 
@@ -163,8 +176,44 @@ export function createTestContext(options = {}) {
     },
   }
 
+  /**
+   * The command registry stand-in.
+   *
+   * A real `CommandRuntime` needs a session log, an agent and the Remote
+   * transport to execute a line; none of that is what these tests assert. They
+   * assert the registration metadata and the handler bodies, so the stand-in
+   * records definitions and hands them back for direct invocation.
+   */
+  const commandRegistry = {
+    register(definition) {
+      commands.push(definition)
+      return () => {
+        const index = commands.indexOf(definition)
+        if (index >= 0) commands.splice(index, 1)
+      }
+    },
+  }
+
   /** Service instances registered through `ctx.reflect.provide`. */
   const services = new Map()
+
+  /**
+   * Normalizes the value an effect body returns.
+   *
+   * Cordis accepts one disposer or an iterable of them; the stand-in has to do
+   * the same, or a row that returns several disposers (the `/commands` row
+   * returns one per command) would silently never unregister.
+   */
+  const own = (disposer) => {
+    if (typeof disposer === 'function') return disposer
+    if (disposer !== null && typeof disposer === 'object' && Symbol.iterator in disposer) {
+      const entries = [...disposer]
+      return async () => {
+        for (const entry of [...entries].reverse()) await entry()
+      }
+    }
+    return () => {}
+  }
 
   const ctx = {
     tools: {
@@ -179,9 +228,9 @@ export function createTestContext(options = {}) {
       },
     },
     logger,
+    commands: commandRegistry,
     effect(execute, label) {
-      const disposer = execute()
-      const undo = typeof disposer === 'function' ? disposer : () => {}
+      const undo = own(execute())
       if (label !== undefined) undo.label = label
       disposers.push(undo)
       return undo
@@ -207,8 +256,7 @@ export function createTestContext(options = {}) {
      */
     fiber: {
       effect(execute) {
-        const disposer = execute()
-        const undo = typeof disposer === 'function' ? disposer : () => {}
+        const undo = own(execute())
         disposers.push(undo)
         return undo
       },
@@ -236,6 +284,7 @@ export function createTestContext(options = {}) {
     logs,
     services,
     skillProviders,
+    commands,
     injectedServices,
     registered: () => definitions.map((definition) => definition.name),
     /** Runs every disposer in reverse registration order, as cordis does. */

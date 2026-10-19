@@ -762,12 +762,20 @@ function renderValue(value: OutcomeValue, verbose: boolean): string {
   return renderOutcome(value as unknown as ToolOutcome, verbose)
 }
 
-/** The single place that turns a controller frame into the model-facing text. */
-export function renderOutcome(outcome: ToolOutcome, verbose: boolean): string {
-  const header = outcome.ok
-    ? `${outcome.operation} succeeded${outcome.dryRun ? ' (dry run — nothing was written)' : ''}.`
-    : `${outcome.operation} FAILED.`
-  const parts = [header, outcome.summary]
+/**
+ * Everything below the first line of {@link renderOutcome}: the operation detail,
+ * the structured error, the applied changes, the diagnostics and the duration.
+ *
+ * The slash-command cards (`/tia-…`) need this: their collapsed row shows the
+ * text's first line, so a command prepends its own human headline and appends
+ * this body instead of the tool's `"<Operation> succeeded."` boilerplate.
+ *
+ * @param outcome - one controller outcome.
+ * @param verbose - true to append the full controller payload.
+ * @returns the detail lines, joined by newlines; empty when there is nothing.
+ */
+export function renderOutcomeBody(outcome: ToolOutcome, verbose: boolean): string {
+  const parts: string[] = []
   const detail = renderData(outcome.operation, outcome.data, verbose)
   if (detail.length > 0) parts.push(detail)
   const error = renderError(outcome.error)
@@ -777,6 +785,16 @@ export function renderOutcome(outcome: ToolOutcome, verbose: boolean): string {
   const diagnostics = renderDiagnostics(outcome.diagnostics)
   if (diagnostics.length > 0) parts.push(diagnostics)
   if (outcome.durationMs > 0) parts.push(`(${outcome.durationMs} ms in the controller)`)
+  return parts.filter((part) => part.length > 0).join('\n')
+}
+
+/** The single place that turns a controller frame into the model-facing text. */
+export function renderOutcome(outcome: ToolOutcome, verbose: boolean): string {
+  const header = outcome.ok
+    ? `${outcome.operation} succeeded${outcome.dryRun ? ' (dry run — nothing was written)' : ''}.`
+    : `${outcome.operation} FAILED.`
+  const body = renderOutcomeBody(outcome, verbose)
+  const parts = [header, outcome.summary, body]
   return parts.filter((part) => part.length > 0).join('\n')
 }
 
@@ -828,6 +846,71 @@ async function runOperation(
     diagnostics: diagnosticsOf(frame),
     error: frame.ok ? null : (frame.error ?? { code: 'unknown_failure', message: 'The controller reported no error detail.' }),
     durationMs: frame.durationMs ?? 0,
+  }
+}
+
+/**
+ * Builds the controller-status outcome without ever touching TIA Portal.
+ *
+ * Shared by the `controller_status` tool and the `/tia-status` slash command:
+ * the command plane must not start the controller just to ask about it, so this
+ * is a pure read of the host row's snapshot. When the controller has never run,
+ * the result says so instead of probing Openness.
+ *
+ * @param dependencies - the host row's controller seam.
+ * @param includeControllerOutput - true to keep the captured stdout/stderr tails.
+ * @returns the complete outcome, with every line already rendered into `summary`.
+ */
+export function controllerStatusOutcome(dependencies: ToolDependencies, includeControllerOutput: boolean): ToolOutcome {
+  const status = dependencies.status()
+  const verboseStatus: JsonRecord = { ...status }
+  if (!includeControllerOutput) {
+    delete verboseStatus['stderrTail']
+    delete verboseStatus['unexpectedOutput']
+  }
+
+  const ready = record(status['ready'])
+  const openness = ready === null ? null : record(ready['openness'])
+  const userGroup = ready === null ? null : record(ready['opennessUserGroup'])
+  const parts = [
+    `Controller state: ${text(status['state']) ?? 'unknown'}`,
+    `Executable: ${text(status['exePath']) ?? '?'} (exists: ${status['exeExists'] === true ? 'yes' : 'no'})`,
+  ]
+  if (status['pid'] !== null && status['pid'] !== undefined) parts.push(`Process id: ${text(status['pid'])}`)
+  if (openness !== null) {
+    parts.push(
+      `Openness: ${openness['available'] === true ? 'available' : 'NOT AVAILABLE'} at ${text(openness['assemblyPath']) ?? '?'}` +
+        (text(openness['fileVersion']) === undefined ? '' : ` (file version ${text(openness['fileVersion'])})`),
+    )
+    const reason = text(openness['message'])
+    if (reason !== undefined && openness['available'] !== true) parts.push(reason)
+  } else {
+    parts.push('The controller has not been started yet, so Openness has not been probed.')
+  }
+  if (userGroup !== null) {
+    const member = userGroup['isMember']
+    parts.push(
+      `"${text(userGroup['group']) ?? 'Siemens TIA Openness'}" membership: ${member === null || member === undefined ? 'unknown' : member === true ? 'yes' : 'NO'}`,
+    )
+    const message = text(userGroup['message'])
+    if (message !== undefined) parts.push(message)
+  }
+  parts.push(
+    `Requests served: ${numberOf(status['requestsServed']) ?? 0}, restarts: ${numberOf(status['restarts']) ?? 0}, queued: ${numberOf(status['queueDepth']) ?? 0}`,
+  )
+  const lastError = record(status['lastError'])
+  if (lastError !== null) parts.push(`Last error: ${text(lastError['code']) ?? '?'} — ${text(lastError['message']) ?? '?'}`)
+
+  return {
+    ok: true,
+    operation: 'ControllerStatus',
+    dryRun: true,
+    summary: parts.join('\n'),
+    data: verboseStatus,
+    changes: [],
+    diagnostics: [],
+    error: null,
+    durationMs: 0,
   }
 }
 
@@ -2130,53 +2213,7 @@ export function registerTools(ctx: Context, dependencies: ToolDependencies): str
         render: (_args, value) => [{ type: 'text', text: renderValue(value, verbose) }],
       },
       async execute(args) {
-        const status = dependencies.status()
-        const verboseStatus: JsonRecord = { ...status }
-        if (args.include_controller_output !== true) {
-          delete verboseStatus['stderrTail']
-          delete verboseStatus['unexpectedOutput']
-        }
-
-        const ready = record(status['ready'])
-        const openness = ready === null ? null : record(ready['openness'])
-        const userGroup = ready === null ? null : record(ready['opennessUserGroup'])
-        const parts = [
-          `Controller state: ${text(status['state']) ?? 'unknown'}`,
-          `Executable: ${text(status['exePath']) ?? '?'} (exists: ${status['exeExists'] === true ? 'yes' : 'no'})`,
-        ]
-        if (status['pid'] !== null && status['pid'] !== undefined) parts.push(`Process id: ${text(status['pid'])}`)
-        if (openness !== null) {
-          parts.push(
-            `Openness: ${openness['available'] === true ? 'available' : 'NOT AVAILABLE'} at ${text(openness['assemblyPath']) ?? '?'}` +
-              (text(openness['fileVersion']) === undefined ? '' : ` (file version ${text(openness['fileVersion'])})`),
-          )
-          const reason = text(openness['message'])
-          if (reason !== undefined && openness['available'] !== true) parts.push(reason)
-        } else {
-          parts.push('The controller has not been started yet, so Openness has not been probed.')
-        }
-        if (userGroup !== null) {
-          const member = userGroup['isMember']
-          parts.push(`"${text(userGroup['group']) ?? 'Siemens TIA Openness'}" membership: ${member === null || member === undefined ? 'unknown' : member === true ? 'yes' : 'NO'}`)
-          const message = text(userGroup['message'])
-          if (message !== undefined) parts.push(message)
-        }
-        parts.push(`Requests served: ${numberOf(status['requestsServed']) ?? 0}, restarts: ${numberOf(status['restarts']) ?? 0}, queued: ${numberOf(status['queueDepth']) ?? 0}`)
-        const lastError = record(status['lastError'])
-        if (lastError !== null) parts.push(`Last error: ${text(lastError['code']) ?? '?'} — ${text(lastError['message']) ?? '?'}`)
-
-        const outcome: ToolOutcome = {
-          ok: true,
-          operation: 'ControllerStatus',
-          dryRun: true,
-          summary: parts.join('\n'),
-          data: verboseStatus,
-          changes: [],
-          diagnostics: [],
-          error: null,
-          durationMs: 0,
-        }
-        return asJsonOutcome(outcome)
+        return asJsonOutcome(controllerStatusOutcome(dependencies, args.include_controller_output === true))
       },
     }),
   )

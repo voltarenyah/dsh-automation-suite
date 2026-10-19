@@ -16,6 +16,9 @@
     "./tools": {
       "default": "./lib/tools-entry.js"
     },
+    "./commands": {
+      "default": "./lib/commands-entry.js"
+    },
     "./package.json": "./package.json"
   },
   "files": [

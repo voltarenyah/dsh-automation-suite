@@ -63,7 +63,7 @@
 |---|---|
 | TypeScript 构建 / typecheck | ✅ 0 错误 |
 | C# 控制器编译（对着本机真实 V17 `Siemens.Engineering.dll`） | ✅ 0 Warning / 0 Error |
-| 自动化测试 `npm test` | ✅ **84 项：83 通过 / 0 失败 / 1 跳过**（跳过项为"控制器未构建"的降级路径；含 9 项知识库、3 项对**真实** skill 注册表的集成测试，以及 6 项两行拆分契约——其中 2 项在**真实** cordis 服务图上把两行当兄弟插件挂载） |
+| 自动化测试 `npm test` | ✅ **97 项：96 通过 / 0 失败 / 1 跳过**（跳过项为"控制器未构建"的降级路径；含 9 项知识库、3 项对**真实** skill 注册表的集成测试、6 项两行拆分契约与 13 项斜线指令测试——其中 2 项在**真实** cordis 服务图上把两行当兄弟插件挂载） |
 | C# 控制器自检（无 TIA） | ✅ **14/14**（含"启动时不加载 Openness 程序集"与"Siemens 解析器包可用"） |
 | Openness 环境探测（DLL 版本 / 位数 / 用户组） | ✅ `17.0.0.0` / x64 / 已在 `Siemens TIA Openness` 组 |
 | 安装进真实 DSH 宿主的加载 / 卸载验证 | ✅ **已验证（真实宿主）**：独立 `DSH_HOME` + 测试 profile 启动真实宿主 → 控制器子进程出现（`apply` 执行、`ctx.effect` 持有）；宿主结束 → 子进程自行退出，无残留。`~/.dsh` 未被修改 |
@@ -186,29 +186,32 @@ plugin_manager(action: "install_bundle", target: "C:\\Users\\Ansel\\dsh-automati
 
 ---
 
-### 4.0 两个 Loader 行：宿主行与 `/tools` 行
+### 4.0 三个 Loader 行：宿主行、`/tools` 行与 `/commands` 行
 
 DSH 按**声明作用域**决定工具对谁可见：一行里注册的工具属于该行的作用域。插件原来把 26 个工具
 和控制器放在同一行，于是它们落在**宿主（全局）平面**上 —— 任何 agent（包括被派生的子 agent）
 都继承。发行版要区分 `leader`（主 agent，保留 26 个工具）与 `expert`（子 agent，不应看到任何
-TIA 工具），所以注册被拆成两行：
+TIA 工具），所以注册被拆成两行；**人**用的斜线指令是第三个面，再拆一行：
 
 | 行 | 子路径导出 | `name` | `inject` | 内容 |
 |---|---|---|---|---|
-| 宿主行 | `.`（`lib/index.js`） | `tia-openness-v17-min` | `[]` | `ControllerProcess` + `ctx.effect` 的所有权、`engineeringAccess` 服务（公开缝）、`tiaOpennessRuntime`（本包工具行的内部缝）、bundled skill provider |
-| 工具行 | `./tools`（`lib/tools-entry.js`） | `tia-openness-v17-min-tools` | `['tools', 'tiaOpennessRuntime']` | 26 个模型可见工具（`src/tools.ts`，两份行共用的唯一实现） |
+| 宿主行 | `.`（`lib/index.js`） | `tia-openness-v17-min` | `[]` | `ControllerProcess` + `ctx.effect` 的所有权、`engineeringAccess` 服务（公开缝）、`tiaOpennessRuntime`（本包另两行的内部缝）、bundled skill provider |
+| 工具行 | `./tools`（`lib/tools-entry.js`） | `tia-openness-v17-min-tools` | `['tools', 'tiaOpennessRuntime']` | 26 个模型可见工具（`src/tools.ts`） |
+| 命令行 | `./commands`（`lib/commands-entry.js`） | `tia-openness-v17-min-commands` | `['commands', 'tiaOpennessRuntime']` | 7 个 `/tia-…` 斜线指令（`src/commands.ts`，复用工具的操作与渲染） |
 
 - **只有该看到 TIA 的 preset 才声明工具行**：`leader` 声明它 → 保留 26 个工具；
   `expert` 不声明 → 一个 TIA 工具都没有。宿主行对所有 agent 都加载，因为控制器与会话是
   composition 级资源。
+- **命令行独立于工具行**：它不注册任何工具，也不要求 `/tools` 行存在；一个只想给人用 `/tia-open`
+  的 preset 可以只声明命令行。反过来，声明工具行不会让命令出现。
 - **宿主行没有工具，所以 `inject` 是空数组**；它唯一想等的 `skills` 是**可选**的，
   仍旧走 `apply` 里的 `ctx.inject(['skills'], …)`，缺 skill 注册表的 profile 照常加载。
-- **工具行不拥有任何配置**：所有配置（`controllerPath`、`requestTimeoutMs`、`verboseResults`…）
-  都写进宿主行，工具行从 `tiaOpennessRuntime` 读回已经归一化的值。
-- **一个 composition 仍然只有一个控制器子进程 / 一个 TIA Portal 会话**，无论多少 agent 声明工具行。
-- **`inject` 让顺序安全**：工具行可以在 composition 里写在宿主行之前，loader 会等
-  `tiaOpennessRuntime` 出现再调用它的 `apply`。反过来，只声明工具行而不声明宿主行，
-  工具行就一直等不到那个服务、不注册任何工具。
+- **工具行与命令行不拥有任何配置**：所有配置（`controllerPath`、`requestTimeoutMs`、`verboseResults`…）
+  都写进宿主行，两行都从 `tiaOpennessRuntime` 读回已经归一化的值。
+- **一个 composition 仍然只有一个控制器子进程 / 一个 TIA Portal 会话**，无论多少 agent 声明这些行。
+- **`inject` 让顺序安全**：工具行/命令行可以在 composition 里写在宿主行之前，loader 会等
+  `tiaOpennessRuntime` 出现再调用它们的 `apply`。反过来，只声明它们而不声明宿主行，
+  它们就一直等不到那个服务、什么也不注册。
 
 ---
 
@@ -386,6 +389,35 @@ commit `b5c7041`）**逐字**打进包里，并注册成模型可见的**一个*
 - 为什么"翻页"在 V17 上不存在、为什么 `closeProject` 这样定、`source/` 布局为什么归本插件：
   [`docs/decisions.md`](docs/decisions.md) **D20** / **D21**；契约镜像在
   [`packages/dsh-engineering-context/docs/ARCHITECTURE.md`](../dsh-engineering-context/docs/ARCHITECTURE.md) §5.3。
+
+---
+
+### 4.6 斜线指令：`/tia-…`（`/commands` 行）
+
+DSH 的斜线指令是**绕过模型**的直接执行面：命令行与结果都不进模型上下文，UI 只落一张可折叠的
+结果卡（折叠时只显示正文第一行）。因此只有"人能在一行里说清、结果能一眼看完"的操作才做成命令；
+需要 dry-run → 复核 → apply 的结构化写入（导入、删对象、写变量、改属性、保护块）仍然只走模型工具。
+
+| 命令 | 语法 | 映射 | 默认行为 |
+|---|---|---|---|
+| `/tia-open` | 无参数 | `OpenProject` | 打开**本工作区**的 TIA 项目，**可见窗口**；不升级旧工程 |
+| `/tia-save` | 无参数 | `SaveProject` | 就地保存 |
+| `/tia-compile` | 无参数 | `CompilePlc` | 编译当前 PLC，最多回 50 条消息 |
+| `/tia-close` | `[--discard] [--portal] [--dry]` | `CloseProject` | **保存并关闭**；`--discard` 丢弃改动，`--portal` 同时关掉 TIA，`--dry` 只报告 |
+| `/tia-info` | `[sections…]` | `ProjectInfo` | 默认 `attributes comment software`；`history_limit=10`、`max_objects=50` |
+| `/tia-find` | `<substring> [--blocks] [--types] [--tables] [--units] [--fp]` | `ListPlcObjects` | 默认块/类型/变量表，`max_items=50` |
+| `/tia-status` | 无参数 | —（控制器快照） | **从不启动控制器**，只读状态 |
+
+- **`/tia-open` 不带路径**：先读 `source/_dsh-engineering-context.json` 的 `project.savedAs`，
+  没有索引就扫 `tia/<name>/<name>.ap17`；**只认工作区里的副本**，绝不打开 `project.path` 指向的源工程。
+  找到多个就报错列出，不猜。
+- **`/tia-close` 默认保存**：工具面的 `close_project` 为模型默认 `dry_run=true`（模型可能不知道有没有
+  未保存改动），而人敲 `/tia-close` 就是要关；丢改动必须显式 `--discard`。
+- **结果是给人看的文本**：每条命令的第一行是摘要（如 `Opened Sino_PEI — 1 PLC software, 1155 block(s)`），
+  其余是多行详情；失败时沿用工具的 `Error code / Reason / Hint` 渲染。
+- **命令不写模型历史**：`/tia-open`、`/tia-save` 执行后模型并不知道状态变了；需要模型接着做时，
+  让它先调 `project_info` / `controller_status`，或直接在对话里说明。
+- **取消是协作式的**：命令卡上的取消只停止等待，TIA 侧的 Openness 操作不保证被打断。
 
 ---
 
@@ -597,12 +629,14 @@ pnpm run link:runtime -- --force   # 无视缓存，按当前宿主版本重抽
 src/
   index.ts             宿主行入口：name / inject[] / Config / apply，ctx.effect 拥有子进程
   tools-entry.ts       工具行入口（exports["./tools"]）：读 tiaOpennessRuntime，注册 26 个工具
-  runtime-service.ts   宿主行与工具行之间的内部缝 tiaOpennessRuntime（恰好 request/status/verbose）
+  commands-entry.ts    命令行入口（exports["./commands"]）：读 tiaOpennessRuntime，注册 7 个 /tia-… 斜线指令
+  runtime-service.ts   宿主行与另两行之间的内部缝 tiaOpennessRuntime（恰好 request/status/verbose）
   config.ts            Schemastery 配置 schema + 归一化（所有字段有默认值）
   controller.ts        C# 控制器的生命周期、NDJSON 帧、串行化、超时与终止
   protocol.ts          线路类型 + 容错帧解析 + 统一结果信封
   skills.ts            知识库：把 skills/ 注册成一个 bundled skill（ctx.inject(['skills'], …)）
-  tools.ts             26 个 defineTool 定义（模型可见描述）与渲染；两行共用的唯一实现
+  tools.ts             26 个 defineTool 定义（模型可见描述）与渲染；工具行/命令行共用的唯一实现
+  commands.ts          7 个斜线指令：单行语法解析、首行摘要、工作区工程定位
   errors.ts            ToolFailure（传输层错误）
   dsh-runtime.d.ts     本插件用到的 DSH 运行时类型（离线可构建）
 skills/                随包出货的 Openness 知识库：31 个上游 SKILL.md（逐字，MIT）+ 路由 skill（见 §4.4）

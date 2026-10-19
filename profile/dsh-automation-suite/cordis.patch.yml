@@ -275,11 +275,16 @@
                 name: '@deepseek-ai/dsh-tool-workflow'
           # ── 本发行版的工程工具面（方案 A：宿主行留服务，工具行由 preset 声明）──
           # leader 拿全部：TIA 26 + 工程上下文 1 + 图谱 4。
-          # 注意这三行的 name 必须与各包 package.json 的 exports 逐字对应。
+          # 注意这几行的 name 必须与各包 package.json 的 exports 逐字对应。
+          # `leader-tia-commands` 是**人**的斜线指令面（/tia-…），与 `leader-tia-tools`
+          # 的模型工具面分开声明：它只 inject `commands` + `tiaOpennessRuntime`，
+          # 不声明任何工具，所以没有 `/tools` 行的 preset 也能单独挂它。
           - id: leader-engineering-context
             name: '@voltarenyah/dsh-engineering-context'
           - id: leader-tia-tools
             name: '@voltarenyah/dsh-tia-openness-v17-min/tools'
+          - id: leader-tia-commands
+            name: '@voltarenyah/dsh-tia-openness-v17-min/commands'
           - id: leader-graph-tools
             name: '@voltarenyah/dsh-engineering-graph/tools'
           - id: tool-ask-user

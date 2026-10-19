@@ -16,6 +16,8 @@
  *   - `@deepseek-ai/dsh-skill`       the `skills` service (reached through
  *                                    `ctx.inject(['skills'], …)`, never imported,
  *                                    so the plugin also loads without it)
+ *   - `@deepseek-ai/dsh-commands`    the `commands` service of the `/commands`
+ *                                    row (`ctx.commands.register`)
  *
  * This file must stay a script (no top-level import/export) so that
  * `declare module` augments the global module map instead of a module body.
@@ -80,6 +82,47 @@ interface DshSkillRegistry {
   registerProvider(create: (control: DshSkillProviderControl) => DshSkillProvider): unknown
 }
 
+/** One slash-command invocation, as `@deepseek-ai/dsh-commands` hands it over. */
+interface DshCommandInvocation {
+  /**
+   * The exact agent whose UI received the command. Only the session working
+   * directory is read here (`agent.session.header.cwd`), which is the workspace
+   * root of every engineering path.
+   */
+  readonly agent: { readonly session?: { readonly header?: { readonly cwd?: string } } }
+  /** The text after the command name, verbatim, including separator whitespace. */
+  readonly rawInput: string
+  /** Admitted attachments; empty unless the definition declared them. */
+  readonly attachments: readonly unknown[]
+  /** Cancellation owned by the dispatching UI request. */
+  readonly signal: AbortSignal
+}
+
+/** The settled outcome a command handler returns to the dispatching UI. */
+type DshCommandResult =
+  | { readonly kind: 'success'; readonly text?: string }
+  | { readonly kind: 'error'; readonly text: string }
+
+/** A command definition registered through `ctx.commands.register`. */
+interface DshCommandDefinition {
+  /** Lowercase command name without the leading slash. */
+  readonly name: string
+  /** Human-readable summary shown in discovery UI. */
+  readonly description: string
+  /** Optional free-form input hint advertised to capable clients. */
+  readonly input?: { readonly hint: string; readonly attachments?: boolean }
+  /** Whether `command/run` records `rawInput` (defaults to true). */
+  readonly recordInput?: boolean
+  /** Runs against the receiving agent without sending anything to the model. */
+  readonly handler: (invocation: DshCommandInvocation) => DshCommandResult | Promise<DshCommandResult>
+}
+
+/** The `commands` service, provided by `@deepseek-ai/dsh-commands`. */
+interface DshCommandRegistry {
+  /** Registers one global or agent-scoped command; returns its disposer. */
+  register(definition: DshCommandDefinition): () => void
+}
+
 declare module '@deepseek-ai/cordis' {
   /** A disposer returned by an effect; unloading awaits it when it is async. */
   export type Disposable<T = unknown> = () => T
@@ -105,6 +148,11 @@ declare module '@deepseek-ai/cordis' {
     readonly tools: import('@deepseek-ai/dsh-tools').ToolRuntime
     /** The logging service. */
     readonly logger: LoggerService
+    /**
+     * The human slash-command registry, provided by `@deepseek-ai/dsh-commands`.
+     * Read only from the `/commands` row, whose `inject` waits for it.
+     */
+    readonly commands: DshCommandRegistry
     /**
      * The skill registry, provided by `@deepseek-ai/dsh-skill`. Read it inside
      * `inject`, never directly: a composition without the registry has no
