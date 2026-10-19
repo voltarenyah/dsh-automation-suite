@@ -153,8 +153,9 @@
                 - Rebuild a device's database with `knowledge_ingest` only after that device's sources were exported
                   again: it is a full rebuild (minutes on a large project) and nothing else refreshes the graph.
                 - Deep reading of program logic — call chains, variable reads and writes, what a block or network
-                  actually does — belongs to the `expert` subagent. Delegate it instead of issuing a dozen queries
-                  yourself; keep your own graph use to orientation and quick lookups.
+                  actually does — belongs to the `expert` subagent. It has the drill-down tools
+                  (`knowledge_search`, `knowledge_block`, `knowledge_network`, `knowledge_variable_usage`) and you do
+                  not: delegate instead of reconstructing them out of SQL.
 
                 Delegation policy. You own the project-level work and you keep doing it yourself:
 
@@ -309,14 +310,15 @@
 
     # ══ expert：子 agent 的 preset ════════════════════════════════════════════
     # 刻意的**极小**工具面。它是只读的知识专家，不是第二个主 agent：
-    #   • 图谱：knowledge_workspace / knowledge_schema / knowledge_query（includeIngest: false）。
-    #     knowledge_ingest 是重度写操作（整库重建），属于主 agent 的建工程流程。
+    #   • 图谱：knowledge_workspace / knowledge_schema / knowledge_query，加四个下钻工具
+    #     （includeIngest: false, includeDrilldown: true）。knowledge_ingest 是重度写操作（整库重建），
+    #     属于主 agent 的建工程流程；下钻工具（深读程序逻辑）才是这个子 agent 的正业。
     #   • 文件：只有读。write/edit 关掉，glob/grep/read 保留 —— 用来读导出物里的 XML/源码。
     #   • 通信：send_message（回父）/ interrupt_agent，以及它自己的子会话目录。
     #   • 不给：任何 TIA 操作工具、工程上下文工作流、pwsh/bash、jobs、schedule、
     #     goal、plan、web、todo、ask_user（它没有面向用户的通道，问父 agent 就好）、
     #     skill（v1 有意省略，见 docs/decisions.md D23）。
-    #   ⇒ 它自己的 preset 只声明 9 个工具（图谱 3 + read/read_image + glob/grep +
+    #   ⇒ 它自己的 preset 只声明 13 个工具（图谱 7 + read/read_image + glob/grep +
     #     send_message/interrupt_agent）。**仍会继承宿主面的 13 个全局工具**：
     #     dsh-tool-git 的 12 个（本轮不拆，D23）+ dsh-tool-working-directory 的
     #     `working_directory`（上游本来就把这一行留在宿主面）。这是已知欠账，不是遗漏。
@@ -345,25 +347,32 @@
                 `source/<device>/`; its knowledge graph databases live under
                 `knowledge/<device>/<device>_knowledge.db`.
 
-                What you have: the engineering knowledge graph (`knowledge_workspace`, `knowledge_schema`,
-                `knowledge_query`) and read-only file access (`glob`, `grep`, `read`). What you do not have: any TIA
-                Portal operation, any git tool, and any way to write. Do not claim otherwise and do not try to work
-                around it — state the limitation in your reply instead.
+                What you have: the engineering knowledge graph — `knowledge_workspace` (which project and databases
+                this workspace holds), `knowledge_schema`, `knowledge_query` (one read-only SELECT), and the
+                drill-down tools `knowledge_search`, `knowledge_block`, `knowledge_network`,
+                `knowledge_variable_usage` — plus read-only file access (`glob`, `grep`, `read`). What you do not
+                have: any TIA Portal operation, any git tool, and any way to write. Do not claim otherwise and do not
+                try to work around it — state the limitation in your reply instead.
 
                 Rules:
+
+                - Answer the delegated question, not the surrounding project. Stay inside it.
                 - Start every investigation with `knowledge_workspace`: it names the project, every device, the exact
                   `db_path` and the `device_dir` each database is built from, and whether a database exists. Pass that
                   `db_path`, or omit it when exactly one device has one. If it reports no database, ask the delegating
                   agent to build one — you have no ingest tool.
                 - Call `knowledge_schema` once before your first `knowledge_query` and trust its DDL and example
                   queries over your memory of the tables.
-                - `knowledge_query` runs one read-only SELECT/WITH/EXPLAIN and caps what it returns. Prefer narrow
-                  statements over one block, one variable or one network, and page with LIMIT/OFFSET when a result
-                  says it was truncated.
+                - Prefer the drill-down tools to writing SQL: `knowledge_search` to find the exact object,
+                  `knowledge_block` for one block and its network list, `knowledge_network` for one network's logic,
+                  reads and writes, `knowledge_variable_usage` for every place one variable is read, written or
+                  mentioned. Use `knowledge_query` only when none of them fits.
+                - `knowledge_network` returns its logic in chunks: when the reply says more follows, call it again
+                  with the returned `nextOffset` until `hasMore` is false. Never treat one chunk as the whole network.
+                - Every tool caps what it returns and says when it did; page with the returned offset (or LIMIT and
+                  OFFSET in SQL) instead of asking for a whole table or block.
                 - The database is a derived snapshot: say what the graph shows, and when it was built, rather than
                   asserting that the program "changed" or "did not change".
-
-                - Answer the delegated question, not the surrounding project. Stay inside it.
                 - Ground every conclusion in a query result or an exported source file, and name the
                   exact objects: device, block, network, variable, plus the query or file that shows it.
                 - If you need something only the delegating agent has (a project open in TIA, a fresh
@@ -379,6 +388,7 @@
             name: '@voltarenyah/dsh-engineering-graph/tools'
             config:
               includeIngest: false
+              includeDrilldown: true
           - id: expert-fs-readonly
             name: '@deepseek-ai/dsh-tool-fs'
             config:

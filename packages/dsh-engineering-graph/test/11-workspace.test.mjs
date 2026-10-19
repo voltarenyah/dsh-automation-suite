@@ -274,7 +274,7 @@ test('knowledge_workspace with no working directory fails with a code, not a cra
 
   const value = await executeTool(definition, {}, NO_SIGNAL)
   assert.equal(value.ok, false)
-  assert.equal(value.error.code, 'workspace_unavailable')
+  assert.equal(value.error.code, 'WORKSPACE_UNAVAILABLE')
   assert.match(value.error.remediation, /working directory/u)
 })
 

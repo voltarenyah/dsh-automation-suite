@@ -601,9 +601,10 @@ stdio 通道实测：`ready` 帧列出三个操作，`GetSchema` 返回 34 字�
      要么接受"expert 能改 git"。
 
 > **数字变更（D24，2026-10-19）**：图谱工具面新增 `knowledge_workspace`（本地工具，引擎无关），
-> 两个 preset **都**声明了这一行，所以按 D23 的同一口径各 **+1**：`leader` **44**、`expert` **22**。
-> 这是按 D23 的账目推出的（全局 13 + 该 preset 声明的工程行），**没有**重跑作用域链测量；
-> 上面的 43 / 21 是 D23 落地当次的实测记录，保留原样以便对照，不互相解释。
+> 两个 preset **都**声明了这一行，所以按 D23 的同一口径各 **+1**：`leader` **44**、`expert` **22**；
+> 阶段 3 的四个下钻工具只给 `expert`（`includeDrilldown: true`），所以 `expert` 再 **+4 = 26**，
+> `leader` 仍是 **44**。这是按 D23 的账目推出的（全局 13 + 该 preset 声明的工程行），
+> **没有**重跑作用域链测量；上面的 43 / 21 是 D23 落地当次的实测记录，保留原样以便对照，不互相解释。
 
 ---
 
@@ -650,6 +651,41 @@ stdio 通道实测：`ready` 帧列出三个操作，`GetSchema` 返回 34 字�
 **验证**：`packages/dsh-engineering-graph/test/11-workspace.test.mjs`（18 项）覆盖空 workspace、
 单库、缺库、SQLite 旁挂文件、索引外的库、损坏索引、约定外的顶层 `.db`、解析的三种分支、
 路径可携带化与大小渲染，以及两个工具体（含"拒绝时引擎零调用"）。工具面数字见 D23 的补充说明。
+
+### D24 阶段 3（2026-10-19，同一决策的第二半）✅
+
+**做了什么**
+
+1. **四个下钻工具，全部走 `/tools` 行**（`expert` 用 `includeDrilldown: true` 全拿，`leader` 默认关）：
+   - `knowledge_search`：FTS5 `knowledge_search` 索引（trigram，≥3 字符），短文本退化 LIKE；命中给
+     `[kind] name (matchedIn) — snippet`，snippet 在 SQL 侧就 `substr` 到 240 字符。
+   - `knowledge_block`：解析块名 → 属性 + 网段紧凑清单（索引 / 标题 / 语言 / 逻辑字符数），
+     用来决定"读哪个网段"。
+   - `knowledge_network`：一个网段的读写变量 + 逻辑**分块**（默认 3000，硬顶 6000，给
+     `offset` / `nextOffset` / `hasMore`），续读是明确指令而不是让模型猜。
+   - `knowledge_variable_usage`：READS/WRITES 边 + 逻辑文本 mention 合并，每行标 read/write/mention。
+2. **实现位置**：TypeScript 拼**固定 SQL**，经现有 `Query` 操作执行 —— **零 C#、零协议白名单、
+   `engine/bin` 未重发**。转义在 `src/drilldown.ts` 里集中做（`'` 双写、LIKE 的 `%_\` 转义、
+   FTS 引号字面量），并且**拒绝含 `;` 的调用方取值**（引擎只接受单语句，否则整条被拒）。
+3. **`knowledge_query` 的渲染预算化**：逐字段截断到 200 字符、整段 3500 字符预算、行渲染成**列名化的
+   JSON 对象**；超出如实计数并给"用 `LIMIT`/`OFFSET` 翻页"的指引。**删掉了原先那句
+   "其余在 `data.rows`"** —— 框架只把 `render` 文本交给模型，`data` 到不了它（D23 的实测）。
+4. **本地信封抽成共享模块** `src/local-outcome.ts`：`knowledge_workspace` 与四个下钻工具同形
+   （`ok`/`tool`/`summary`/`details`/`data`/`warnings`/`error`），**不含 `operation`/`durationMs`**
+   —— 一个下钻工具可能发 3~4 次 `Query`，报"哪一次"都是错的。
+
+**后果**
+
+- 工具面：`leader` 仍是 4 个图谱工具（43/44 不变）；`expert` 从 3 个变 **7 个**（22 → **26**）。
+  `docs/roadmap.md` §4 的"查询接口"由 🟡 转 ✅，"按需下钻尚未移植"这句话删掉。
+- **没有引擎操作增加**：协议仍是 `GetSchema` / `Ingest` / `Query` 三个，`OPERATIONS` 未动，
+  所以 `protocol.ts` 与 C# 的同步测试不需要改。
+- 每个工具都自己限界，**不把"内容在 `data` 里"当作答复**；这是 DSH 只下发 render 的直接后果。
+
+**验证**：`test/12-drilldown.test.mjs`（20 项）—— 转义与 `;` 拒绝、FTS/LIKE 分支与 kind 过滤、
+`LIMIT n+1` 截断探针、clamp 边界、逻辑分块与越界取空、明细预算裁剪、四个工具的形状/拒绝/续读、
+"解析失败时引擎零调用"、以及 `includeDrilldown` 的注册顺序与列名化渲染的长度上限。
+包内合计 **104 项**全绿。
 
 ---
 

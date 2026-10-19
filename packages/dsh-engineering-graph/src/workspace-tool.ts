@@ -1,7 +1,7 @@
 /**
- * `knowledge_workspace`: the one local tool of this plugin — it answers "what
- * engineering project does this workspace hold, and which knowledge databases
- * exist?" without touching the engine.
+ * `knowledge_workspace`: the discovery tool — it answers "what engineering
+ * project does this workspace hold, and which knowledge databases exist?"
+ * without touching the engine.
  *
  * It exists because `knowledge_query` needs an absolute `db_path` and the model
  * has no way to learn one: the layout convention (D20) is a distribution
@@ -10,14 +10,11 @@
  * — including the `device_dir` that `knowledge_ingest` takes, so a missing
  * database is a next step rather than a dead end.
  *
- * **It declares its own output envelope, not the engine one.** The canonical
- * envelope of this plugin carries `operation` (the engine operation that ran) and
- * `durationMs` (time spent in the engine); neither exists here, and inventing an
- * `operation` for a call the engine never saw is exactly the kind of small lie
- * this package's documents forbid (compare `knowledge_ingest` refusing to expose
- * a `dry_run` the engine does not have). The shape below mirrors the sibling
- * plugin's local-tool envelope (`dsh-engineering-context`'s `outcome.ts`):
- * `ok` / `tool` / `summary` / `details` / `data` / `warnings` / `error`.
+ * It speaks the shared local-tool envelope (`local-outcome.ts`), not the engine
+ * envelope: reporting an `operation` and a `durationMs` for a call the engine
+ * never saw would be exactly the kind of small lie this package's documents
+ * forbid (compare `knowledge_ingest` refusing to expose a `dry_run` the engine
+ * does not have).
  *
  * @module dsh-engineering-graph/workspace-tool
  */
@@ -25,8 +22,9 @@
 import { join } from 'node:path'
 
 import type { Context } from '@deepseek-ai/cordis'
-import { defineTool, type JsonValue, type ToolDefinition } from '@deepseek-ai/dsh-tools'
+import { defineTool, type ToolDefinition } from '@deepseek-ai/dsh-tools'
 
+import { asWireOutcome, localFailure, localOutcomeSchema, renderLocalOutcome, type LocalOutcome } from './local-outcome.js'
 import {
   discoverWorkspace,
   portablePath,
@@ -39,50 +37,10 @@ import {
 /** The tool name; the `knowledge_` prefix is deliberate (D19). */
 export const WORKSPACE_TOOL = 'knowledge_workspace'
 
-/** Caps on the rendered lists, mirroring the engine tools' `MAX_LISTED`. */
+/** Caps on the rendered device list, mirroring the other local tools. */
 const MAX_DEVICES = 20
-const MAX_WARNINGS = 10
 
-/** One local tool result, before it is converted to the wire envelope. */
-export interface WorkspaceOutcome {
-  ok: boolean
-  tool: string
-  summary: string
-  details: string[]
-  data: JsonValue
-  warnings: string[]
-  error: { code: string; message: string; remediation: string | null } | null
-}
-
-/** The declared output schema of {@link WORKSPACE_TOOL}. */
-export const WORKSPACE_OUTCOME_SCHEMA = {
-  type: 'object',
-  additionalProperties: false,
-  description:
-    'Outcome of one workspace discovery: the project this session works in, one entry per device and its knowledge ' +
-    'database, and any failure as data. No engine operation ran.',
-  properties: {
-    ok: { type: 'boolean', required: true, description: 'True when the workspace could be inspected.' },
-    tool: { type: 'string', required: true, description: 'Always knowledge_workspace.' },
-    summary: { type: 'string', required: true, description: 'One-line result.' },
-    details: {
-      type: 'array',
-      required: true,
-      items: { type: 'string' },
-      description: 'Bounded, human-readable lines: the project, one line per device, and the next step.',
-    },
-    data: { type: 'json', description: 'The structured report: workspaceRoot, project and devices[].' },
-    warnings: {
-      type: 'array',
-      required: true,
-      items: { type: 'string' },
-      description: 'Conditions worth knowing even though the call succeeded (a stale index, a stray database file).',
-    },
-    error: { type: 'json', description: 'Structured failure: code, message and remediation.' },
-  },
-} as const
-
-/** The report member of {@link WorkspaceOutcome.data}. */
+/** The report member of the outcome's `data`. */
 export interface WorkspaceData {
   workspaceRoot: string
   project: {
@@ -103,35 +61,16 @@ export interface WorkspaceData {
 }
 
 /**
- * Renders the outcome: one header, the bounded details, the warnings and the
- * failure. The structured report stays in `data`, but nothing the model *needs*
- * to act on lives only there — the framework delivers `render` text and never the
- * canonical value.
- */
-export function renderWorkspaceOutcome(outcome: WorkspaceOutcome): string {
-  const lines = [`${outcome.tool}: ${outcome.summary}`]
-  lines.push(...outcome.details)
-  if (outcome.warnings.length > 0) {
-    lines.push(`Warnings (${outcome.warnings.length}):`)
-    for (const warning of outcome.warnings.slice(0, MAX_WARNINGS)) lines.push(`  - ${warning}`)
-    if (outcome.warnings.length > MAX_WARNINGS) {
-      lines.push(`  … ${outcome.warnings.length - MAX_WARNINGS} more warning(s) in data`)
-    }
-  }
-  if (outcome.error !== null) {
-    lines.push(`Error code: ${outcome.error.code}`, `Reason: ${outcome.error.message}`)
-    if (outcome.error.remediation !== null) lines.push(`Remediation: ${outcome.error.remediation}`)
-  }
-  return lines.join('\n')
-}
-
-/**
- * Build the successful outcome for one report.
+ * Builds the successful outcome for one report.
+ *
+ * Nothing the model must act on lives only in `data`: the framework delivers the
+ * rendered text and never the canonical value, so the device lines and the next
+ * step are part of `details`.
  *
  * @param workspaceRoot - the session working directory.
  * @param report - the discovery result.
  */
-export function workspaceSuccess(workspaceRoot: string, report: WorkspaceReport): WorkspaceOutcome {
+export function workspaceSuccess(workspaceRoot: string, report: WorkspaceReport): LocalOutcome {
   const existing = report.devices.filter((device) => device.exists && device.database !== null)
   const project = report.project
   const details: string[] = [`Workspace: ${workspaceRoot}`]
@@ -183,7 +122,7 @@ export function workspaceSuccess(workspaceRoot: string, report: WorkspaceReport)
         ? `No engineering project is recorded in ${workspaceRoot}; ${report.devices.length} database folder(s) found.`
         : `${project.name ?? '(unnamed project)'}: ${report.devices.length} device(s), ${existing.length} with a knowledge database.`,
     details,
-    data: asJson(workspaceData(workspaceRoot, report)),
+    data: workspaceData(workspaceRoot, report) as unknown as LocalOutcome['data'],
     warnings: report.warnings,
     error: null,
   }
@@ -214,49 +153,11 @@ function workspaceData(workspaceRoot: string, report: WorkspaceReport): Workspac
   }
 }
 
-/** Build the failure outcome for a workspace this tool cannot inspect at all. */
-export function workspaceFailure(code: string, message: string, remediation: string | null): WorkspaceOutcome {
-  return {
-    ok: false,
-    tool: WORKSPACE_TOOL,
-    summary: message,
-    details: [],
-    data: null,
-    warnings: [],
-    error: { code, message, remediation },
-  }
-}
-
-/** Bridges the report types into the lossless-JSON envelope the registry wants. */
-function asJson(value: unknown): JsonValue {
-  return value as JsonValue
-}
-
-function asWireOutcome(outcome: WorkspaceOutcome): {
-  ok: boolean
-  tool: string
-  summary: string
-  details: string[]
-  data: JsonValue
-  warnings: string[]
-  error: JsonValue
-} {
-  return {
-    ok: outcome.ok,
-    tool: outcome.tool,
-    summary: outcome.summary,
-    details: [...outcome.details],
-    data: outcome.data,
-    warnings: [...outcome.warnings],
-    error: asJson(outcome.error),
-  }
-}
-
 /**
  * The registered definition of `knowledge_workspace`.
  *
- * It is exported as a definition rather than registered here so `registerTools`
- * stays the single place that decides the model-facing surface and its order.
+ * Exported as a definition rather than registered here, so `registerTools` stays
+ * the single place that decides the model-facing surface and its order.
  */
 export const workspaceToolDefinition: ToolDefinition = defineTool({
   name: WORKSPACE_TOOL,
@@ -270,8 +171,11 @@ export const workspaceToolDefinition: ToolDefinition = defineTool({
     'and again after an export or an ingest. It never decides whether the database is up to date.',
   parameters: {},
   output: {
-    schema: WORKSPACE_OUTCOME_SCHEMA,
-    render: (_args, value) => [{ type: 'text', text: renderWorkspaceOutcome(value as unknown as WorkspaceOutcome) }],
+    schema: localOutcomeSchema(
+      'Outcome of one workspace discovery: the project this session works in, one entry per device and its knowledge ' +
+        'database, and any failure as data. No engine operation ran.',
+    ),
+    render: (_args, value) => [{ type: 'text', text: renderLocalOutcome(value as unknown as LocalOutcome) }],
   },
   presentCall: (args) => ({
     card: 'generic',
@@ -283,8 +187,9 @@ export const workspaceToolDefinition: ToolDefinition = defineTool({
     const cwd = exec.agent?.session?.header?.cwd
     if (typeof cwd !== 'string' || cwd.trim().length === 0) {
       return asWireOutcome(
-        workspaceFailure(
-          'workspace_unavailable',
+        localFailure(
+          WORKSPACE_TOOL,
+          'WORKSPACE_UNAVAILABLE',
           'The harness supplied no session working directory, so this workspace cannot be inspected.',
           'Run this tool from a session that has a working directory.',
         ),
@@ -296,7 +201,7 @@ export const workspaceToolDefinition: ToolDefinition = defineTool({
   },
 })
 
-/** Register the tool on a context; kept next to the definition it registers. */
+/** Registers the tool on a context; kept next to the definition it registers. */
 export function registerWorkspaceTool(ctx: Context): string {
   ctx.tools.register(workspaceToolDefinition)
   return workspaceToolDefinition.name

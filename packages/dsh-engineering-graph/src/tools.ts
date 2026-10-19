@@ -29,15 +29,14 @@
  * @module dsh-engineering-graph/tools
  */
 
-import { isAbsolute, join } from 'node:path'
-
 import type { Context } from '@deepseek-ai/cordis'
 import { defineTool, type InferValue, type JsonValue, type ToolDefinition } from '@deepseek-ai/dsh-tools'
 
 import type { LogSink } from './engine-client.js'
 import type { JsonRecord, Operation, ProgressFrame, ResultFrame, ToolError, ToolOutcome } from './protocol.js'
 import { workspaceToolDefinition } from './workspace-tool.js'
-import { discoverWorkspace, resolveDatabasePath } from './workspace.js'
+import { chooseDatabase, type DatabaseChoice } from './workspace.js'
+import { drilldownToolDefinitions } from './drilldown-tools.js'
 
 /** Dependencies every tool body needs. */
 export interface ToolDependencies {
@@ -93,6 +92,59 @@ function tableNames(ddl: string): string[] {
     match = pattern.exec(ddl)
   }
   return names
+}
+
+/** Characters kept from one long field value before it is cut. */
+const MAX_FIELD_CHARS = 200
+
+/**
+ * Characters the rendered `knowledge_query` rows may occupy.
+ *
+ * Deliberately far below the framework's Pruner threshold (8192 chars), which cuts
+ * the **middle** of an oversized result — the very rows a listing exists for. The
+ * budget is spent row by row, and the remainder is reported with the next action
+ * ("add LIMIT/OFFSET") instead of pointing at `data`, which the model never sees.
+ */
+const QUERY_RENDER_BUDGET = 3500
+
+/**
+ * Renders query rows as column-named JSON objects, bounded twice: each long value
+ * is cut, and the listing stops at {@link QUERY_RENDER_BUDGET}.
+ *
+ * Column names rather than bare arrays because a model reading `{"name": "Main"}`
+ * cannot mis-count which position it is looking at, and because the row shape is
+ * exactly what the statement selected.
+ *
+ * @param rows - the engine's rows, one array per row.
+ * @param columns - the column names the engine reported, in order.
+ * @returns the lines that fit, how many rows did not, and how many fields were cut.
+ */
+function renderQueryRows(rows: readonly unknown[], columns: readonly string[]): { lines: string[]; omitted: number; clipped: number } {
+  const lines: string[] = []
+  let used = 0
+  let clipped = 0
+
+  for (const row of rows) {
+    const values = Array.isArray(row) ? row : [row]
+    const entry: Record<string, unknown> = {}
+    values.forEach((value, index) => {
+      const key = columns[index] ?? `column${index + 1}`
+      if (typeof value === 'string' && value.length > MAX_FIELD_CHARS) {
+        clipped += 1
+        entry[key] = `${value.slice(0, MAX_FIELD_CHARS)}…[${value.length} chars]`
+      } else {
+        entry[key] = value
+      }
+    })
+    const line = `  ${JSON.stringify(entry)}`
+    if (used + line.length > QUERY_RENDER_BUDGET) {
+      return { lines, omitted: rows.length - lines.length, clipped }
+    }
+    lines.push(line)
+    used += line.length + 1
+  }
+
+  return { lines, omitted: 0, clipped }
 }
 
 // ------------------------------------------------------------------ rendering
@@ -168,13 +220,29 @@ function renderData(operation: string, data: JsonRecord | null): string {
       break
     }
     case 'Query': {
-      lines.push(`Database: ${text(data['dbPath']) ?? '?'}`)
-      lines.push(`Columns: ${strings(data['columns']).join(', ') || 'none'}`)
+      const columns = strings(data['columns'])
       const rows = list(data['rows'])
       const rowCount = numberOf(data['rowCount']) ?? rows.length
-      lines.push(`Rows: ${rowCount}${data['truncated'] === true ? ' (TRUNCATED — the row cap was reached; raise max_rows, up to 1000)' : ''}`)
-      for (const row of rows.slice(0, MAX_LISTED)) lines.push(`  ${JSON.stringify(row)}`)
-      if (rows.length > MAX_LISTED) lines.push(`  … ${rows.length - MAX_LISTED} more row(s) in data.rows`)
+      lines.push(`Database: ${text(data['dbPath']) ?? '?'}`)
+      lines.push(`Columns: ${columns.join(', ') || 'none'}`)
+      lines.push(`Rows: ${rowCount}${data['truncated'] === true ? ' — the engine stopped at max_rows' : ''}`)
+      const rendered = renderQueryRows(rows, columns)
+      lines.push(...rendered.lines)
+      if (rendered.omitted > 0) {
+        lines.push(
+          `… ${rendered.omitted} more row(s) not shown (this tool renders a bounded slice): narrow the statement with a ` +
+            'WHERE clause, or page with LIMIT and OFFSET.',
+        )
+      }
+      if (rendered.clipped > 0) {
+        lines.push(
+          `Long values were cut at ${MAX_FIELD_CHARS} characters (${rendered.clipped} field(s)); select one column to read ` +
+            'a value whole.',
+        )
+      }
+      if (data['truncated'] === true) {
+        lines.push('Raise max_rows (hard maximum 1000) or narrow the statement; the engine caps what it reads.')
+      }
       break
     }
   }
@@ -327,56 +395,23 @@ function localFailure(operation: Operation, code: string, message: string, remed
 }
 
 /** The outcome of resolving which database a call runs against. */
-type DatabaseChoice = { ok: true; path: string } | { ok: false; outcome: ToolOutcome }
+type DatabaseChoiceOutcome = { ok: true; path: string } | { ok: false; outcome: ToolOutcome }
 
 /**
  * Decide the database a query runs against.
  *
- * An explicit `db_path` wins, as it always has: an absolute path is taken
- * verbatim, a relative one is resolved against the session working directory
- * (the engine resolves relative paths against its **own** process directory,
- * which is never what a caller means). Without one, the workspace is inspected
- * and the single existing device database is used; none or several is a refusal
- * naming the alternatives, because answering a question about the wrong PLC with
- * full confidence is worse than asking for a path (docs/decisions.md D24).
+ * The decision itself lives in `workspace.ts` (D24), because the drill-down tools
+ * need exactly the same one; this only maps its refusal into the envelope an
+ * engine refusal arrives in.
  *
  * @param explicitPath - the tool argument, if the model supplied one.
  * @param cwd - the session working directory, if the harness supplied one.
  * @returns the absolute path, or the refusal to hand back.
  */
-async function resolveQueryDatabase(explicitPath: string | undefined, cwd: string | undefined): Promise<DatabaseChoice> {
-  const spelled = explicitPath?.trim() ?? ''
-  if (spelled.length > 0) {
-    if (isAbsolute(spelled)) return { ok: true, path: spelled }
-    if (cwd === undefined) {
-      return {
-        ok: false,
-        outcome: localFailure(
-          'Query',
-          'workspace_unavailable',
-          `The relative db_path '${spelled}' cannot be resolved: the harness supplied no session working directory.`,
-          'Pass an absolute db_path.',
-        ),
-      }
-    }
-    return { ok: true, path: join(cwd, spelled) }
-  }
-
-  if (cwd === undefined) {
-    return {
-      ok: false,
-      outcome: localFailure(
-        'Query',
-        'workspace_unavailable',
-        'db_path was omitted and the harness supplied no session working directory, so there is no workspace to resolve it in.',
-        'Pass an absolute db_path, or run this tool from a session that has a working directory.',
-      ),
-    }
-  }
-
-  const resolution = resolveDatabasePath(await discoverWorkspace(cwd))
-  if (resolution.ok) return { ok: true, path: resolution.path }
-  return { ok: false, outcome: localFailure('Query', resolution.code, resolution.message, resolution.remediation) }
+async function resolveQueryDatabase(explicitPath: string | undefined, cwd: string | undefined): Promise<DatabaseChoiceOutcome> {
+  const choice = await chooseDatabase(explicitPath, cwd)
+  if (choice.ok) return { ok: true, path: choice.path }
+  return { ok: false, outcome: localFailure('Query', choice.code, choice.message, choice.remediation) }
 }
 
 /** Options that select which tools become visible, without changing any of them. */
@@ -392,6 +427,17 @@ export interface RegisterToolsOptions {
    * identical either way.
    */
   includeIngest?: boolean
+  /**
+   * Whether the four drill-down tools are registered. Defaults to `false`.
+   *
+   * They are the "read the program" surface — search, one block, one network,
+   * one variable's usages — and they belong to the agent that does the reading:
+   * the `expert` subagent declares the row with `includeDrilldown: true`, while
+   * the `leader` keeps the workspace, schema, ingest and raw-query tools and
+   * delegates deep reading instead (docs/decisions.md **D24** §4). Same rule as
+   * `includeIngest`: only a literal `true` adds them.
+   */
+  includeDrilldown?: boolean
 }
 
 /**
@@ -409,10 +455,12 @@ export interface RegisterToolsOptions {
  * @returns the registered tool names, in registration order.
  */
 export function registerTools(ctx: Context, dependencies: ToolDependencies, options: RegisterToolsOptions = {}): string[] {
-  // Only a literal `false` removes the tool: an omitted, `undefined` or
-  // non-boolean value keeps today's behaviour, so an untyped caller cannot
-  // silently lose the ingest tool.
+  // Only a literal `false` removes the ingest tool and only a literal `true` adds
+  // the drill-down ones: an omitted, `undefined` or non-boolean value keeps
+  // today's behaviour, so an untyped caller cannot silently change an agent's
+  // surface in either direction.
   const includeIngest = options.includeIngest !== false
+  const includeDrilldown = options.includeDrilldown === true
   const registered: string[] = []
 
   const register = (definition: ToolDefinition): void => {
@@ -528,8 +576,12 @@ export function registerTools(ctx: Context, dependencies: ToolDependencies, opti
         'UPDATE, and more than one statement) is refused with QUERY_REJECTED, and the database is opened read-only ' +
         'as a backstop. knowledge_schema documents the tables (graph_nodes, graph_edges and the rest), their columns ' +
         'and worked example queries; call it first when you are unsure, and note that an unknown table or column ' +
-        'fails with QUERY_INVALID_SQL, which names the tables that do exist. max_rows caps the returned rows ' +
-        '(default 200, hard maximum 1000) and a capped result says so with truncated: true.',
+        'fails with QUERY_INVALID_SQL, which names the tables that do exist. Reach for the drill-down tools ' +
+        '(knowledge_search, knowledge_block, knowledge_network, knowledge_variable_usage) when the question is about a ' +
+        'block, a network or a variable: they run the fixed statements and shape the answer, while this tool is the ' +
+        'escape hatch for everything else. The reply renders a bounded slice of the rows (long values are cut, and it ' +
+        'says how many rows it left out) — page with LIMIT and OFFSET rather than asking for a whole table. max_rows ' +
+        'caps what the engine reads (default 200, hard maximum 1000) and a capped result says so.',
       parameters: {
         db_path: {
           type: 'string',
@@ -571,6 +623,12 @@ export function registerTools(ctx: Context, dependencies: ToolDependencies, opti
       },
     }),
   )
+
+  // The reading surface, off unless a preset asks for it. Registered last so the
+  // first four names — the ones every preset shares — keep their order.
+  if (includeDrilldown) {
+    for (const definition of drilldownToolDefinitions(dependencies)) register(definition)
+  }
 
   return registered
 }

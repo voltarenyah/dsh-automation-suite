@@ -420,3 +420,59 @@ export function renderBytes(bytes: number | null): string | null {
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
 }
+
+/** The database a call will run against, or why there is none to use. */
+export type DatabaseChoice =
+  | { ok: true; path: string }
+  | { ok: false; code: string; message: string; remediation: string }
+
+/**
+ * Decide the database a read-only call runs against, shared by every tool that
+ * needs one (`knowledge_query` and the drill-down tools).
+ *
+ * An explicit path always wins: absolute is taken verbatim, relative is resolved
+ * against the session working directory — the engine resolves relative paths
+ * against its **own** process directory, which is never what a caller means.
+ * Without one, the workspace is inspected and the single existing device database
+ * is used; none or several is a refusal naming the alternatives, because
+ * answering a question about the wrong PLC with full confidence is worse than
+ * asking for a path (D24).
+ *
+ * @param explicitPath - the tool argument, if the model supplied one.
+ * @param cwd - the session working directory, if the harness supplied one.
+ * @returns the absolute path, or a coded refusal the caller renders.
+ */
+export async function chooseDatabase(explicitPath: string | undefined, cwd: string | undefined): Promise<DatabaseChoice> {
+  const spelled = explicitPath?.trim() ?? ''
+  if (spelled.length > 0) {
+    if (isAbsolute(spelled)) return { ok: true, path: spelled }
+    if (cwd === undefined || cwd.trim().length === 0) {
+      return {
+        ok: false,
+        code: 'WORKSPACE_UNAVAILABLE',
+        message: `The relative db_path '${spelled}' cannot be resolved: the harness supplied no session working directory.`,
+        remediation: 'Pass an absolute db_path.',
+      }
+    }
+    return { ok: true, path: join(cwd, spelled) }
+  }
+
+  if (cwd === undefined || cwd.trim().length === 0) {
+    return {
+      ok: false,
+      code: 'WORKSPACE_UNAVAILABLE',
+      message:
+        'db_path was omitted and the harness supplied no session working directory, so there is no workspace to resolve it in.',
+      remediation: 'Pass an absolute db_path, or run this tool from a session that has a working directory.',
+    }
+  }
+
+  const resolution = resolveDatabasePath(await discoverWorkspace(cwd))
+  if (resolution.ok) return { ok: true, path: resolution.path }
+  return {
+    ok: false,
+    code: resolution.code,
+    message: resolution.message,
+    remediation: resolution.remediation,
+  }
+}

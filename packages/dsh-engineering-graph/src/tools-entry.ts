@@ -58,16 +58,26 @@ export interface ToolsEntryConfig {
    * `knowledge_query` only.
    */
   includeIngest: boolean
+  /**
+   * Whether the four drill-down tools are registered (`knowledge_search`,
+   * `knowledge_block`, `knowledge_network`, `knowledge_variable_usage`).
+   * `false` (the default) keeps the row to the orientation tools; the `expert`
+   * preset turns it on, because reading program logic is that agent's job
+   * (docs/decisions.md D24 §4).
+   */
+  includeDrilldown: boolean
 }
 
 /** Default values, applied both by the schema and by {@link resolveToolsEntryConfig}. */
 export const toolsEntryConfigDefaults: ToolsEntryConfig = {
   includeIngest: true,
+  includeDrilldown: false,
 }
 
 /** Schemastery configuration schema for this row. */
 export const Config = Schema.object({
   includeIngest: Schema.boolean().default(toolsEntryConfigDefaults.includeIngest),
+  includeDrilldown: Schema.boolean().default(toolsEntryConfigDefaults.includeDrilldown),
 })
 
 /**
@@ -97,6 +107,7 @@ export function resolveToolsEntryConfig(config?: Partial<ToolsEntryConfig>): Too
   const source: Partial<ToolsEntryConfig> = config ?? {}
   return {
     includeIngest: flag(source.includeIngest, toolsEntryConfigDefaults.includeIngest),
+    includeDrilldown: flag(source.includeDrilldown, toolsEntryConfigDefaults.includeDrilldown),
   }
 }
 
@@ -119,12 +130,13 @@ export function apply(ctx: Context, config?: Partial<ToolsEntryConfig>): void {
   const registered = registerTools(
     ctx,
     { request: runtime.request, log },
-    { includeIngest: settings.includeIngest },
+    { includeIngest: settings.includeIngest, includeDrilldown: settings.includeDrilldown },
   )
 
   log.info(
     `Registered ${registered.length} engineering-graph tools (${registered.join(', ')}); ` +
       `the engine subprocess and the knowledgeGraph service are owned by the host row.` +
-      (settings.includeIngest ? '' : ' knowledge_ingest is disabled by this row\'s includeIngest config.'),
+      (settings.includeIngest ? '' : ' knowledge_ingest is disabled by this row\'s includeIngest config.') +
+      (settings.includeDrilldown ? '' : ' The drill-down tools are off: this row left includeDrilldown at its default.'),
   )
 }

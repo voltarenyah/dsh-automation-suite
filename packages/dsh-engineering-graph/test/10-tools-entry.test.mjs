@@ -48,9 +48,10 @@ test('the row is a Loader entry in its own right, under its own name', () => {
 })
 
 test('resolveToolsEntryConfig defaults includeIngest to true', () => {
-  assert.deepEqual(entry.resolveToolsEntryConfig(), { includeIngest: true })
-  assert.deepEqual(entry.resolveToolsEntryConfig({}), { includeIngest: true })
+  assert.deepEqual(entry.resolveToolsEntryConfig(), { includeIngest: true, includeDrilldown: false })
+  assert.deepEqual(entry.resolveToolsEntryConfig({}), { includeIngest: true, includeDrilldown: false })
   assert.equal(entry.toolsEntryConfigDefaults.includeIngest, true)
+  assert.equal(entry.toolsEntryConfigDefaults.includeDrilldown, false, 'the reading surface is opt-in')
 })
 
 test('resolveToolsEntryConfig trusts only a real boolean', () => {
@@ -70,8 +71,9 @@ test('resolveToolsEntryConfig trusts only a real boolean', () => {
 })
 
 test('the real schemastery schema applies the same default and rejects non-booleans', () => {
-  assert.deepEqual(entry.Config({}), { includeIngest: true })
-  assert.deepEqual(entry.Config({ includeIngest: false }), { includeIngest: false })
+  assert.deepEqual(entry.Config({}), { includeIngest: true, includeDrilldown: false })
+  assert.deepEqual(entry.Config({ includeIngest: false }), { includeIngest: false, includeDrilldown: false })
+  assert.deepEqual(entry.Config({ includeIngest: false, includeDrilldown: true }), { includeIngest: false, includeDrilldown: true })
   assert.throws(() => entry.Config({ includeIngest: 'yes' }), 'a non-boolean must not validate')
 })
 
