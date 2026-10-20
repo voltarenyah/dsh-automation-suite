@@ -1,0 +1,9 @@
+# This plugin's own bundle layer: one Loader row. The row is what makes the
+# browser half in `lib/client.js` reachable at all — client-modules discovers
+# bundles by scanning enabled Loader entries, so a package with a perfect
+# `lib/client.js` and no row is never asked for it.
+#
+# `name` must equal package.json's `name` verbatim.
+- insert:
+    - id: ui-tia-console
+      name: dsh-ui-tia-console

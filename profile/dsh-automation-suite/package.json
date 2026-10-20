@@ -8,7 +8,8 @@
     "@voltarenyah/dsh-engineering-graph": "workspace:^",
     "@voltarenyah/dsh-tia-openness-v17-min": "workspace:^",
     "dsh-tool-git": "workspace:^",
-    "dsh-ui-plc-source": "workspace:^"
+    "dsh-ui-plc-source": "workspace:^",
+    "dsh-ui-tia-console": "workspace:^"
   },
   "dsh": {
     "profile": {
@@ -19,7 +20,8 @@
         "@voltarenyah/dsh-engineering-context",
         "@voltarenyah/dsh-engineering-graph",
         "dsh-tool-git",
-        "dsh-ui-plc-source"
+        "dsh-ui-plc-source",
+        "dsh-ui-tia-console"
       ]
     }
   }
