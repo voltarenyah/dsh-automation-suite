@@ -101,18 +101,19 @@ export function TiaBar({ t, eventSource, runCommand }) {
   const tooltip = state.lastError?.text ?? admissionError ?? undefined
 
   return (
-    <div className="tiac-root" role="group" aria-label={t('aria.status')}>
-      <div className="tiac-row">
-        <span className="tiac-dot" data-state={dot} aria-hidden="true" />
-        <span className="tiac-text" title={tooltip}>
-          {label}
-          {elapsed === null ? null : <span className="tiac-elapsed"> {elapsed}</span>}
-        </span>
-        {compileBadge === null ? null : (
-          <span className="tiac-badge" data-error={compile.errors > 0 ? 'true' : 'false'}>
-            {compileBadge}
+    <div className="tiac-dock">
+      <div className="tiac-root" role="group" aria-label={t('aria.status')}>
+        <div className="tiac-row">
+          <span className="tiac-dot" data-state={dot} aria-hidden="true" />
+          <span className="tiac-text" title={tooltip}>
+            {label}
+            {elapsed === null ? null : <span className="tiac-elapsed"> {elapsed}</span>}
           </span>
-        )}
+          {compileBadge === null ? null : (
+            <span className="tiac-badge" data-error={compile.errors > 0 ? 'true' : 'false'}>
+              {compileBadge}
+            </span>
+          )}
         <span className="tiac-actions">
           <button type="button" className="tiac-btn" disabled={!canOpen} onClick={() => dispatch('/tia-open')}>
             {t('action.open')}
@@ -193,6 +194,7 @@ export function TiaBar({ t, eventSource, runCommand }) {
           <div className="tiac-note">{t('detail.scope')}</div>
         </div>
       ) : null}
+      </div>
     </div>
   )
 }

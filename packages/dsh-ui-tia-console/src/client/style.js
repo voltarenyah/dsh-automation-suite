@@ -11,10 +11,24 @@ export const TAG_ID = 'dsh-ui-tia-console/console.css'
 
 /** Stylesheet text. All class names are prefixed to stay out of the app's way. */
 export const CSS = `
+/*
+ * The dock entry is full width of the composer seat; the visual card must line
+ * up with the composer card, which is narrower and centred. These two rules
+ * mirror the goal bar's dock/bar pair exactly (same tokens), so every dock
+ * occupant shares one width.
+ */
+.tiac-dock {
+  box-sizing: border-box;
+  width: calc(100% - var(--dsh-composer-side-clearance) - var(--dsh-composer-side-clearance) - var(--dsh-composer-dock-inset) - var(--dsh-composer-dock-inset) - var(--dsh-composer-dock-inset) - var(--dsh-composer-dock-inset));
+  margin: 0 auto;
+}
 .tiac-root {
+  box-sizing: border-box;
   display: flex;
   flex-direction: column;
-  margin: 0 2px 8px;
+  width: 100%;
+  max-width: calc(var(--dsh-composer-card-max-width) - 4 * var(--dsh-composer-dock-inset));
+  margin: 0 auto 8px;
   border: 1px solid var(--dsw-alias-border-l1, rgba(128, 128, 128, 0.24));
   border-radius: var(--dsw-radius-lg, 10px);
   background: var(--dsw-alias-fill-l1, rgba(128, 128, 128, 0.06));
