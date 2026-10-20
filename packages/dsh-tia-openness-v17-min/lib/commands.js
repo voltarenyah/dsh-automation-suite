@@ -9,8 +9,9 @@
  *   - the handler gets one free-form `rawInput` line and must parse it itself;
  *   - the result is plain text, and only the first line is visible while the
  *     card is collapsed, so every command starts with a human headline;
- *   - there is no confirmation dialog, so the destructive variants are explicit
- *     flags (`--discard`) and the safe default wins (`/tia-close` saves);
+ *   - there is no confirmation dialog, so a command that changes state is one
+ *     explicit gesture with a safe direction: `/tia-close` saves first and
+ *     closes the project and the TIA Portal instance;
  *   - a command must not start TIA Portal just to answer a question, so
  *     `/tia-status` reads the host row's snapshot (`controllerStatusOutcome`).
  *
@@ -237,7 +238,7 @@ const USAGE_OPEN = 'Usage: /tia-open (no arguments — opens the project this wo
 const USAGE_SAVE = 'Usage: /tia-save (no arguments — saves the open project in place)';
 const USAGE_COMPILE = 'Usage: /tia-compile (no arguments — compiles the PLC software of the open project)';
 const USAGE_STATUS = 'Usage: /tia-status (no arguments)';
-const USAGE_CLOSE = 'Usage: /tia-close [--discard] [--portal] [--dry]';
+const USAGE_CLOSE = 'Usage: /tia-close (no arguments — saves the project, closes it and shuts TIA Portal down)';
 const USAGE_INFO = 'Usage: /tia-info [attributes] [comment] [languages] [history] [products] [devices] [software] [settings]';
 const USAGE_FIND = 'Usage: /tia-find [<substring>] [--blocks] [--types] [--tables] [--units] [--fp]';
 /** Opens the workspace project in a **visible** TIA Portal instance. */
@@ -295,37 +296,24 @@ async function handleCompile(dependencies, invocation) {
     return accepted(outcome, headline, dependencies.verbose);
 }
 /**
- * Closes the open project.
+ * Saves and closes the project **and the TIA Portal instance**.
  *
- * The tool defaults to a dry run because a model may not know whether the
- * project is saved; a human typing `/tia-close` does. Saving first is therefore
- * the default, `--discard` opts into the lossy variant, and `--dry` asks for the
- * report instead.
+ * The tool defaults to a dry run and separates "save" from "close the portal"
+ * because a model may not know whether the project is saved; a human typing
+ * `/tia-close` has already decided. It is one gesture: save, close the project,
+ * shut TIA Portal down. Flags would only add a second step to a command whose
+ * whole point is speed, and `close_portal` is what actually frees the instance
+ * for the next `/tia-open`.
  */
 async function handleClose(dependencies, invocation) {
     const parsed = parseInput(invocation.rawInput);
-    if (parsed.positionals.length > 0)
-        return usageError(USAGE_CLOSE);
-    const invalid = unknownOptions(parsed, ['discard', 'save', 'portal', 'dry'], USAGE_CLOSE);
-    if (invalid !== null)
-        return invalid;
-    const discard = parsed.flags.has('discard');
-    const save = parsed.flags.has('save');
-    if (discard && save)
-        return usageError('--discard and --save contradict each other.\n' + USAGE_CLOSE);
-    const dry = parsed.flags.has('dry');
-    if (dry && parsed.flags.has('portal'))
-        return usageError('--dry cannot be combined with --portal.\n' + USAGE_CLOSE);
-    const outcome = await runOperation(dependencies, 'CloseProject', { save: !discard, close_portal: parsed.flags.has('portal'), dry_run: dry }, invocation.signal);
+    if (parsed.flags.size > 0 || parsed.positionals.length > 0)
+        return noArguments('tia-close', USAGE_CLOSE);
+    const outcome = await runOperation(dependencies, 'CloseProject', { save: true, close_portal: true, dry_run: false }, invocation.signal);
     if (!outcome.ok)
         return refused(outcome, dependencies.verbose);
     const data = outcome.data ?? {};
     const name = text(data['projectName']) ?? 'the open project';
-    if (dry) {
-        const wouldSave = data['wouldSave'] === true ? 'save and ' : '';
-        const wouldPortal = data['wouldClosePortal'] === true ? ' and shut TIA Portal down' : '';
-        return accepted(outcome, `Dry run: would ${wouldSave}close ${name}${wouldPortal}`, dependencies.verbose);
-    }
     const saved = data['saved'] === true ? 'saved' : 'unsaved changes discarded';
     const portal = data['portalClosed'] === true ? '; TIA Portal shut down' : '';
     return accepted(outcome, `Closed ${name} — ${saved}${portal}`, dependencies.verbose);
@@ -462,8 +450,7 @@ export function registerCommands(ctx, dependencies) {
         },
         {
             name: 'tia-close',
-            description: '保存并关闭当前项目（--discard 不保存，--portal 同时关闭 TIA）',
-            input: { hint: '[--discard] [--portal] [--dry]' },
+            description: '保存并关闭当前项目与 TIA Portal',
             handler: (invocation) => guard(() => handleClose(dependencies, invocation), invocation),
         },
         {

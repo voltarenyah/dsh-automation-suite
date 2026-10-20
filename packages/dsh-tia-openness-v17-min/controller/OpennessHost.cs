@@ -97,7 +97,18 @@ namespace TiaOpennessV17Min.Controller
         /// </summary>
         private void EnsurePortal(bool withWindow, IProgressSink progress)
         {
-            if (_portal != null) return;
+            if (_portal != null)
+            {
+                if (PortalResponsive()) return;
+
+                // The instance behind the handle is gone: TIA shuts an
+                // Openness-started portal down once its last project closes, and
+                // an operator can close the window at any time. Keeping the dead
+                // handle is what turns the next OpenProject into
+                // "Access to a disposed object of type TiaPortal".
+                _log.Warning("The TIA Portal instance of the session is no longer usable; dropping the stale handle.");
+                ResetPortal();
+            }
 
             if (withWindow)
             {
@@ -126,6 +137,59 @@ namespace TiaOpennessV17Min.Controller
             progress.Report("open", "Starting TIA Portal V17 (" + (withWindow ? "with" : "without") + " user interface).");
             _portal = new TiaPortal(mode);
             _log.Info("Started a new TIA Portal instance in mode " + mode + ".");
+        }
+
+        /// <summary>Drops the current portal handle, disposing it first when possible.</summary>
+        private void ResetPortal()
+        {
+            if (_portal == null) return;
+            try
+            {
+                _portal.Dispose();
+            }
+            catch (Exception ex)
+            {
+                // A portal whose process already exited throws here; the handle
+                // is dropped regardless, which is the whole point.
+                _log.Info("Disposing the TIA Portal handle failed (dropping it anyway): " + ex.Message);
+            }
+            _portal = null;
+        }
+
+        /// <summary>
+        /// Whether the current portal handle still points at a live TIA Portal
+        /// instance. Enumerating the project list is the cheapest Openness
+        /// member that throws <c>EngineeringObjectDisposedException</c> on a
+        /// disposed object (and a connection error on a dead process), so it
+        /// answers exactly the question the next operation depends on.
+        /// </summary>
+        private bool PortalResponsive()
+        {
+            if (_portal == null) return false;
+            try
+            {
+                foreach (Project unused in _portal.Projects)
+                {
+                    break;
+                }
+                return true;
+            }
+            catch (Exception ex)
+            {
+                _log.Info("The TIA Portal handle does not respond (" + ex.GetType().Name + ": " + ex.Message + ").");
+                return false;
+            }
+        }
+
+        /// <summary>Whether a failure is Openness reporting a dead object handle.</summary>
+        private static bool IsDisposedObject(Exception exception)
+        {
+            for (Exception current = exception; current != null; current = current.InnerException)
+            {
+                if (current is ObjectDisposedException) return true;
+                if (string.Equals(current.GetType().Name, "EngineeringObjectDisposedException", StringComparison.Ordinal)) return true;
+            }
+            return false;
         }
 
         // --------------------------------------------------------------- project
@@ -159,17 +223,32 @@ namespace TiaOpennessV17Min.Controller
             FileInfo file = new FileInfo(fullPath);
             progress.Report("open", (allowUpgrade ? "Opening and upgrading " : "Opening ") + fullPath);
             DateTime started = DateTime.UtcNow;
-            try
+            Project opened;
+            for (int attempt = 0; ; attempt++)
             {
-                _project = allowUpgrade ? _portal.Projects.OpenWithUpgrade(file) : _portal.Projects.Open(file);
+                try
+                {
+                    opened = allowUpgrade ? _portal.Projects.OpenWithUpgrade(file) : _portal.Projects.Open(file);
+                    break;
+                }
+                catch (Exception ex) when (attempt == 0 && IsDisposedObject(ex))
+                {
+                    // PortalResponsive() should have caught this before the call,
+                    // but a portal can also die between the probe and the open.
+                    // One retry on a fresh instance is enough.
+                    _log.Warning("Opening the project hit a disposed TIA Portal instance; retrying with a fresh instance.");
+                    ResetPortal();
+                    EnsurePortal(withWindow, progress);
+                }
+                catch (Exception ex)
+                {
+                    throw OpennessFailure(
+                        "project_open_failed",
+                        "TIA Portal could not open " + Text.Quote(fullPath) + ": " + ex.Message,
+                        ex);
+                }
             }
-            catch (Exception ex)
-            {
-                throw OpennessFailure(
-                    "project_open_failed",
-                    "TIA Portal could not open " + Text.Quote(fullPath) + ": " + ex.Message,
-                    ex);
-            }
+            _project = opened;
 
             JsonObject data = new JsonObject();
             data.Add("projectName", SafeProjectName());
@@ -281,6 +360,15 @@ namespace TiaOpennessV17Min.Controller
                 }
                 _portal = null;
                 data.Add("portalClosed", true);
+            }
+            else if (_portal != null && !PortalResponsive())
+            {
+                // Closing the last project can take the portal down with it
+                // (observed on a visible Openness-started instance: the next
+                // OpenProject failed with EngineeringObjectDisposedException).
+                // Drop the dead handle now so the next open starts a new one.
+                _log.Info("The TIA Portal instance exited when the project closed; the session no longer holds it.");
+                ResetPortal();
             }
 
             return data;

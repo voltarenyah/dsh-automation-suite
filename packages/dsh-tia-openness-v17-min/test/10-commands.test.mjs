@@ -109,11 +109,11 @@ test('registers the seven /tia- commands with menu metadata', async () => {
     assert.match(definition.name, /^[a-z][a-z0-9-]*$/)
     assert.ok(definition.description.length > 0, `${definition.name} needs a description`)
   }
-  for (const name of ['tia-close', 'tia-info', 'tia-find']) {
+  for (const name of ['tia-info', 'tia-find']) {
     const definition = harness.commands.find((candidate) => candidate.name === name)
     assert.ok(definition.input?.hint.length > 0, `/${name} advertises an input hint`)
   }
-  for (const name of ['tia-open', 'tia-save', 'tia-compile', 'tia-status']) {
+  for (const name of ['tia-open', 'tia-save', 'tia-compile', 'tia-close', 'tia-status']) {
     const definition = harness.commands.find((candidate) => candidate.name === name)
     assert.equal(definition.input, undefined, `/${name} runs directly, without an input step`)
   }
@@ -195,33 +195,27 @@ test('/tia-open refuses a path argument', async () => {
   assert.equal(controller.calls.length, 0)
 })
 
-test('/tia-close saves by default, discards with --discard and reports with --dry', async () => {
+test('/tia-close saves and shuts TIA Portal down, and takes no arguments', async () => {
   const controller = recordingController(() => ({
     ok: true,
     dryRun: false,
     durationMs: 40,
-    data: { projectName: 'ws', saved: true, closed: true, portalClosed: false },
+    data: { projectName: 'ws', saved: true, closed: true, portalClosed: true },
   }))
   const { find } = register(controller.dependencies)
   const close = find('tia-close')
 
   const plain = await close.handler(invocation('C:\\work', ''))
   assert.equal(plain.kind, 'success')
-  assert.deepEqual(controller.calls[0].params, { save: true, close_portal: false, dry_run: false })
-  assert.equal(plain.text.split('\n')[0], 'Closed ws — saved')
+  assert.deepEqual(controller.calls[0].params, { save: true, close_portal: true, dry_run: false })
+  assert.equal(plain.text.split('\n')[0], 'Closed ws — saved; TIA Portal shut down')
 
-  const discard = await close.handler(invocation('C:\\work', '--discard'))
-  assert.equal(discard.kind, 'success')
-  assert.deepEqual(controller.calls[1].params, { save: false, close_portal: false, dry_run: false })
-
-  const dry = await close.handler(invocation('C:\\work', '--dry'))
-  assert.equal(dry.kind, 'success')
-  assert.deepEqual(controller.calls[2].params, { save: true, close_portal: false, dry_run: true })
-
-  const contradictory = await close.handler(invocation('C:\\work', '--discard --save'))
-  assert.equal(contradictory.kind, 'error')
-  assert.match(contradictory.text, /contradict/)
-  assert.equal(controller.calls.length, 3)
+  for (const line of ['--discard', '--dry', 'anything']) {
+    const rejected = await close.handler(invocation('C:\\work', line))
+    assert.equal(rejected.kind, 'error', `/${line} must be rejected`)
+    assert.match(rejected.text, /takes no arguments/)
+  }
+  assert.equal(controller.calls.length, 1, 'a rejected argument never reaches the controller')
 })
 
 test('/tia-save and /tia-compile send only their documented parameters', async () => {
