@@ -106,7 +106,7 @@
 - insert:
     # ══ leader：主 agent 的 preset ════════════════════════════════════════════
     # 工具面 = 内置 standard 的全部 + 本发行版的四个工程工具面（TIA 26 / 工程上下文 1 /
-    # 图谱 4，git 12 由宿主面全局行提供）。相对上游 standard 只多这三行 + persona 政策文本。
+    # 图谱 6，git 12 由宿主面全局行提供）。相对上游 standard 只多这三行 + persona 政策文本。
     - id: preset-leader
       name: '@deepseek-ai/dsh-agent-preset'
       config:
@@ -152,10 +152,24 @@
                   when a result says it was truncated.
                 - Rebuild a device's database with `knowledge_ingest` only after that device's sources were exported
                   again: it is a full rebuild (minutes on a large project) and nothing else refreshes the graph.
+                - You have `knowledge_block` and `knowledge_network` for reading one block or one network. Use them to
+                  prepare a delegation brief — not `knowledge_query` with hand-written `substr()` paging.
+                - The graph is the reading surface. Do not read the exported XML, and do not `grep`/`glob` over
+                  `source/`, to answer a program-logic question. Only when a fact genuinely is not in the graph may
+                  you ask the user with `ask_user_question` first — name the file, the exact line range, the missing
+                  fact, and why the graph cannot carry it — and then read only that range, after they approve.
+                - Treat the graph as trustworthy. Do not tell an expert or the user that it is wrong, and do not
+                  broadcast a data-quality warning, unless an approved XML excerpt proved it; a suspicion is not a
+                  finding. (The graph marks networks whose source is commented out, so a network with no logic is a
+                  fact, not a defect.)
                 - Deep reading of program logic — call chains, variable reads and writes, what a block or network
-                  actually does — belongs to the `expert` subagent. It has the drill-down tools
-                  (`knowledge_search`, `knowledge_block`, `knowledge_network`, `knowledge_variable_usage`) and you do
-                  not: delegate instead of reconstructing them out of SQL.
+                  actually does — belongs to the `expert` subagent. It has the full drill-down surface
+                  (`knowledge_search`, `knowledge_block`, `knowledge_network`, `knowledge_variable_usage`) and you
+                  have only the first two: delegate the rest instead of reconstructing it out of SQL.
+                - Before you report on delegated work — and always at the start of a turn that follows a restart, a
+                  long pause or an interruption — call `list_agents` and re-read the answer. A subagent that no
+                  longer appears is interrupted: say so, then re-dispatch or report what is missing. Never claim a
+                  delegated track is "still running" without a fresh check.
 
                 Delegation policy. You own the project-level work and you keep doing it yourself:
 
@@ -170,7 +184,9 @@
                   it for any of those; do that work yourself.
                 - Write the delegation brief with the object (device / block / group / variable), the
                   exact question, and the form you want back: a consolidated answer plus, when a change
-                  is warranted, a modification plan naming blocks and networks.
+                  is warranted, a modification plan naming blocks and networks. Include the block id and
+                  the network ranges you already resolved, and require a coverage list back (which
+                  networks were read, which were not, and why) so a gap cannot hide.
                 - `expert` works in its own context; you only see its closing message. If it needs
                   something only you have, it will `send_message` you.
           - id: agent-instructions
@@ -275,7 +291,8 @@
               - id: tool-workflow
                 name: '@deepseek-ai/dsh-tool-workflow'
           # ── 本发行版的工程工具面（方案 A：宿主行留服务，工具行由 preset 声明）──
-          # leader 拿全部：TIA 26 + 工程上下文 1 + 图谱 4。
+          # leader 拿全部操作工具 + 图谱的**检查面**（inspect：block + network），
+          # 以便写派发 brief 时不必手写 SQL：TIA 26 + 工程上下文 1 + 图谱 6。
           # 注意这几行的 name 必须与各包 package.json 的 exports 逐字对应。
           # `leader-tia-commands` 是**人**的斜线指令面（/tia-…），与 `leader-tia-tools`
           # 的模型工具面分开声明：它只 inject `commands` + `tiaOpennessRuntime`，
@@ -288,6 +305,9 @@
             name: '@voltarenyah/dsh-tia-openness-v17-min/commands'
           - id: leader-graph-tools
             name: '@voltarenyah/dsh-engineering-graph/tools'
+            config:
+              includeIngest: true
+              includeDrilldown: inspect
           - id: tool-ask-user
             name: '@deepseek-ai/dsh-tool-ask-user'
           - id: tool-todo
@@ -311,7 +331,7 @@
     # ══ expert：子 agent 的 preset ════════════════════════════════════════════
     # 刻意的**极小**工具面。它是只读的知识专家，不是第二个主 agent：
     #   • 图谱：knowledge_workspace / knowledge_schema / knowledge_query，加四个下钻工具
-    #     （includeIngest: false, includeDrilldown: true）。knowledge_ingest 是重度写操作（整库重建），
+    #     （includeIngest: false, includeDrilldown: all）。knowledge_ingest 是重度写操作（整库重建），
     #     属于主 agent 的建工程流程；下钻工具（深读程序逻辑）才是这个子 agent 的正业。
     #   • 文件：只有读。write/edit 关掉，glob/grep/read 保留 —— 用来读导出物里的 XML/源码。
     #   • 通信：send_message（回父）/ interrupt_agent，以及它自己的子会话目录。
@@ -371,24 +391,36 @@
                   with the returned `nextOffset` until `hasMore` is false. Never treat one chunk as the whole network.
                 - Every tool caps what it returns and says when it did; page with the returned offset (or LIMIT and
                   OFFSET in SQL) instead of asking for a whole table or block.
+                - Read only through the knowledge tools. Do not read the exported XML, and do not `grep`/`glob` over
+                  `source/`: the graph carries the titles, the logic, the reads and writes, and whether a network's
+                  source is commented out. If a fact is genuinely absent — LAD contact and coil wiring, or an enable
+                  condition, because the translation is statement-level — ask the user with `ask_user_question`
+                  before reading anything: give the file, the exact line range, the fact you need and why the graph
+                  cannot carry it. Read only that range, only after they approve, and cite the approval and range in
+                  your answer.
+                - Trust the graph. It is produced from the export and checked; a value that surprises you is more
+                  likely your reading of it than a data-quality defect. Never report the graph as wrong, and never
+                  warn the delegating agent about "data quality", without an approved XML cross-check of that exact
+                  value.
                 - The database is a derived snapshot: say what the graph shows, and when it was built, rather than
                   asserting that the program "changed" or "did not change".
-                - Ground every conclusion in a query result or an exported source file, and name the
-                  exact objects: device, block, network, variable, plus the query or file that shows it.
+                - Ground every conclusion in a tool result, and name the exact objects: device, block, network,
+                  variable, plus the call that shows it.
                 - If you need something only the delegating agent has (a project open in TIA, a fresh
                   export, a workspace path), ask it with `send_message`. You have no channel to the user
                   and must never wait on one.
                 - Your closing message is your whole deliverable: the delegating agent sees your final
                   text and nothing else of your working context. Make it the consolidated answer and,
                   when a change is warranted, a concrete modification plan naming the blocks, the
-                  networks and the change to make.
+                  networks and the change to make. End it with a coverage list: for every network in your
+                  assigned range, read or not read (and why), plus anything you could not settle.
           - id: time-context
             name: '@deepseek-ai/dsh-time-context'
           - id: expert-graph-tools
             name: '@voltarenyah/dsh-engineering-graph/tools'
             config:
               includeIngest: false
-              includeDrilldown: true
+              includeDrilldown: all
           - id: expert-fs-readonly
             name: '@deepseek-ai/dsh-tool-fs'
             config:

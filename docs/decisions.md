@@ -689,6 +689,57 @@ stdio 通道实测：`ready` 帧列出三个操作，`GetSchema` 返回 34 字�
 
 ---
 
+## D25 · 第一次真机复盘后的四件事：SCL 注释、长值读取、检查面、读源纪律 ✅
+
+**背景**：2026-10-20 用真实工程（`CoolingCoupelleSWT2`，72 网络）跑了一次"查逻辑缺陷"的会话，
+4 个会话合计 **19.7 M token**、3 个 expert 里 2 个被重启打断、只有 1 份报告交付。复盘
+（会话 `session-f4c65979-…`；证据见下面各条）暴露了四类问题，本轮全部修掉。
+
+**决定**
+
+1. **SCL 注释不再当成可执行逻辑（引擎）**。Openness 把被注释掉的 SCL 语句放在
+   `<LineComment>` 的 `<Text>` 里，注释标记只存在于元素名；`AppendStructuredTextElement`
+   没有这个分支，于是整段注释被拼进源码、`StripSclComments` 无从识别，**整网注释的网络看起来像活代码**
+   （本次 net 32 就是，直接导致一个假缺陷结论）。现在注释按行加 `//` 前缀，
+   整网只有注释时 `logicStatements` 为空、另存 `logicCommented=true` + `commentedLogic=<原文>`。
+   工具侧：`knowledge_network` 明说"no executable logic — the source is commented out"，
+   `knowledge_block` 在列表里标 `COMMENTED OUT`。
+2. **`knowledge_query` 能读长值**：新增 `max_field_chars`（默认 200，上限 3500）。原实现里 200 字符上限
+   对任何结果生效，提示语却写"select one column to read a value whole"——**做不到**，
+   实测 leader 因此改用 `substr()` 切片，34 次查询里 15 次花在手工分页一段逻辑文本上。
+3. **主 agent 拿"检查面"而不是全量下钻**：`includeDrilldown` 由布尔改成
+   `none | inspect | all`。`leader` 用 `inspect`（`knowledge_block` + `knowledge_network`），
+   写 brief 时不必手写 SQL；`expert` 用 `all`（再加 search / variable usage）。
+   旧的 `true`/`false` 仍然等价于 `all`/`none`。
+4. **读源纪律（P1，policy 层）**：两个 preset 的 persona 都写死——
+   - **不允许**为了回答程序逻辑问题直接读导出的 XML，也不允许对 `source/` 跑 `grep`/`glob`；
+   - 只有图里**确实没有**的事（LAD 的触点/线圈连线、使能条件——翻译是语句级）才允许读，
+     且必须先 `ask_user_question` 报上文件、精确行范围、缺的事实与理由，**用户批准后只读那一段**；
+   - **默认相信图谱**：不得轻易断言"知识库不对"，更不得把数据质量警告广播给子 agent 或用户，
+     除非用获批的 XML 片段证明了那一条；
+   - 子 agent 的收尾必须带**覆盖清单**（自己负责的每个网络：读了/没读/为什么），主 agent 据此找漏网；
+   - 主 agent 在**重启、长时间停顿或任何中断之后**必须先 `list_agents` 复核，**不得**在未复核时
+     声称某条子任务"还在跑"（本次到收尾还以为两个已死的 expert 在跑）。
+
+**后果**
+
+- 引擎需要重建（`engine/bin` 随包提交）；SCL 网络的 `logicStatements` 可能变空、并新增两个属性，
+  所以**旧库要重新 ingest** 才有这两个属性 —— 属性缺失时工具按"没有注释信息"处理，不会报错。
+- 工具面：`leader` 图谱工具 4 → **6**（多 block/network），`expert` 保持 7；按 D23 口径
+  `leader` 可见工具 **46**、`expert` 仍 **26**。
+- "读 XML 要审批"仍是 **policy**，不是硬闸门：真要做成硬闸门，需要在宿主侧注册
+  `tools/pre-execute` 策略对 `read`/`grep` 的 `source/**/*.xml` 拦截并转审批。
+  本轮没做（成本与风险都更高），记在这里，避免下次以为已经拦住了。
+
+**验证**
+
+- 引擎：`--self-test` 通过；用真实块 XML 单独 ingest，确认 net 32 的 `logicStatements` 为空、
+  `logicCommented=true`、`commentedLogic` 保留原文；其余 71 个网络不变。
+- 包内 **110 项** `node:test`：新增"整网注释"与"字段预算"两类；`includeDrilldown` 的三档注册面
+  （`none` 4 个 / `inspect` 6 个 / `all` 8 个）与旧布尔等价性；`knowledge_block` 的 `COMMENTED OUT` 标记。
+
+---
+
 ## 待办验证清单（由以上决策派生）
 
 | # | 待验证 | 来源 |
