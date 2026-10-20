@@ -652,7 +652,7 @@ packages/
     src/client/model.js            纯事件折叠：command/tool 事件 → 控制台状态（可单测）
     src/client/TiaBar.jsx          控制台组件（状态、按钮、展开详情、秒表）
     src/client/index.jsx           注册 conversation.input.dock 占位
-    test/                          node:test 套件（18 项，纯折叠 + 字典）
+    test/                          node:test 套件（22 项，纯折叠 + 字典）
     scripts/                       tsc.mjs / build.mjs / run-tests.mjs
 profile/
   dsh-automation-suite/            发行版的 profile 蓝图
@@ -695,7 +695,7 @@ pnpm run clean:build      # 清构建产物（只碰 lib/ dist/）
 | `@voltarenyah/dsh-engineering-context` | `node:test`（`node scripts/run-tests.mjs`，先构建再跑） | 56 项全通过（含经假 `engineeringAccess` / 假 `knowledgeGraph` 服务的契约用例） |
 | `@voltarenyah/dsh-engineering-graph` | `node:test`（`node scripts/run-tests.mjs`，先构建再跑） | 110 项全通过（含经真实引擎的端到端；引擎没构建时该项 skip 并打印构建命令） |
 | `dsh-ui-plc-source` | `node:test`（`node scripts/run-tests.mjs`，先构建再跑；浏览器半侧 `.jsx` 不进 `tsc`） | 47 项全通过（纯模型 33 + 宿主 9 + 字典 5） |
-| `dsh-ui-tia-console` | `node:test`（`node scripts/run-tests.mjs`，先构建再跑） | 18 项全通过（纯事件折叠 + 字典） |
+| `dsh-ui-tia-console` | `node:test`（`node scripts/run-tests.mjs`，先构建再跑） | 22 项全通过（纯事件折叠 + 字典） |
 
 单测都需要**真实的** `@deepseek-ai/*` 运行时（不是 stub）。裸 checkout 首次运行时，
 两个包的测试自举会各自自动触发抽取；也可以手动：

@@ -11,6 +11,7 @@ import {
   firstLine,
   foldTiaState,
   formatElapsed,
+  isSubagentSession,
   parseCompileText,
   parseProjectText,
 } from '../src/client/model.js'
@@ -204,6 +205,57 @@ test('/tia-info refreshing a controller with no project is not an error', () => 
   assert.equal(state.project, null)
   assert.equal(state.lastError, null)
   assert.equal(state.lastResult.kind, 'error')
+})
+
+test('a model project_info that failed is not read as an open project', () => {
+  // The exact reader the bug produced: the tool returned its canonical value,
+  // so `tool/result.isError` is false while the text says FAILED/project_not_open.
+  const state = foldTiaState(
+    windowOf(
+      toolCall('t1', 'project_info', 1000),
+      toolResult(
+        't1',
+        false,
+        'ProjectInfo FAILED.\nProjectInfo requires an open project. Call OpenProject first.\n' +
+          'Error code: project_not_open\nReason: ProjectInfo requires an open project.\n(341 ms in the controller)',
+        2000,
+      ),
+    ),
+  )
+  assert.equal(state.phase, 'idle')
+  assert.equal(state.project, null)
+  assert.equal(state.lastError, null)
+  assert.equal(state.lastResult.kind, 'error')
+})
+
+test('a model tool failure with isError=false is still a failure', () => {
+  const state = foldTiaState(
+    windowOf(
+      toolCall('t1', 'open_project', 1000),
+      toolResult('t1', false, 'OpenProject FAILED.\nError code: project_not_found\nReason: no file', 2000),
+    ),
+  )
+  assert.equal(state.phase, 'idle')
+  assert.equal(state.project, null)
+  assert.equal(state.lastError.code, 'project_not_found')
+})
+
+test('a successful project_info without a project line does not fabricate one', () => {
+  const state = foldTiaState(
+    windowOf(
+      toolCall('t1', 'project_info', 1000),
+      toolResult('t1', false, 'ProjectInfo succeeded.\nNo attributes to report.', 2000),
+    ),
+  )
+  assert.equal(state.phase, 'idle')
+  assert.equal(state.project, null)
+})
+
+test('only the main agent session shows the console', () => {
+  assert.equal(isSubagentSession({ subagent: { address: { parent: 'p', child: 'c' } } }), true)
+  assert.equal(isSubagentSession({ subagent: null }), false)
+  assert.equal(isSubagentSession(undefined), false)
+  assert.equal(isSubagentSession(null), false)
 })
 
 test('a queued second operation becomes the visible one after the first settles', () => {

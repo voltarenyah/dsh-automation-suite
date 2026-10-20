@@ -100,6 +100,16 @@ export function isTiaTool(name) {
 }
 
 /**
+ * Whether this session is a subagent's. Subagent sessions carry a `subagent`
+ * address in their snapshot; the console belongs to the main agent only.
+ * @param {{ subagent?: unknown } | null | undefined} session - session snapshot.
+ * @returns {boolean} true for a subagent session.
+ */
+export function isSubagentSession(session) {
+  return session != null && session.subagent != null
+}
+
+/**
  * @param {string} phase - console phase.
  * @returns {boolean} whether an operation is in flight.
  */
@@ -254,6 +264,10 @@ function applySuccess(state, run, text, at) {
     case 'open_project':
     case 'create_project': {
       const project = parseProjectText(text)
+      // A successful open always names the project. Without a name there is
+      // nothing to conclude — fabricating an empty project here is exactly how
+      // the bar used to show "TIA open" with no project at all.
+      if (project.name === null && project.path === null) break
       state.project = {
         name: project.name ?? state.project?.name ?? null,
         path: project.path ?? state.project?.path ?? null,
@@ -266,6 +280,7 @@ function applySuccess(state, run, text, at) {
     case 'tia-info':
     case 'project_info': {
       const project = parseProjectText(text)
+      if (project.name === null && project.path === null) break
       state.project = {
         name: project.name ?? state.project?.name ?? null,
         path: project.path ?? state.project?.path ?? null,
@@ -308,9 +323,15 @@ function applySuccess(state, run, text, at) {
 function settle(state, run, kind, text, at) {
   state.operation = null
   state.updatedAt = at
-  state.lastResult = { at, kind, text }
 
-  if (kind !== 'success') {
+  // A model-facing tool returns its canonical value even when the operation
+  // failed, so the `tool/result` carries `isError: false` while the rendered
+  // text says "ProjectInfo FAILED." and names an `Error code:`. Trust the text:
+  // otherwise a failed `project_info` is read as a successful open project.
+  const failed = kind !== 'success' || errorCodeOf(text) !== null || /^\s*\S+ FAILED\./m.test(text)
+  state.lastResult = { at, kind: failed ? 'error' : 'success', text }
+
+  if (failed) {
     const code = errorCodeOf(text)
 
     // A refresh (or project_info) that reports "no project" answered the

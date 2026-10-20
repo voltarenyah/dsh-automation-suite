@@ -16,7 +16,7 @@
 
 import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from 'react'
 
-import { firstLine, foldTiaState, formatElapsed } from './model.js'
+import { firstLine, foldTiaState, formatElapsed, isSubagentSession } from './model.js'
 
 /** Stable empty window used before the session binding exists. */
 const EMPTY_WINDOW = Object.freeze({ entries: [], hasMore: false, revision: -1, change: null })
@@ -28,7 +28,15 @@ const EMPTY_WINDOW = Object.freeze({ entries: [], hasMore: false, revision: -1, 
  * @param {(line: string) => Promise<unknown>} props.runCommand - dispatch one command line.
  * @returns {import('react').JSX.Element} the bar.
  */
-export function TiaBar({ t, eventSource, runCommand }) {
+export function TiaBar(props) {
+  // The console is the main agent's control surface. A subagent session (the
+  // expert preset) has no TIA tools or commands behind the buttons, so its
+  // window must not show the bar at all.
+  if (isSubagentSession(props.session)) return null
+  return <TiaBarBody {...props} />
+}
+
+function TiaBarBody({ t, eventSource, runCommand }) {
   const source = eventSource()
   const subscribe = useCallback(
     (listener) => (source === undefined ? () => {} : source.subscribe(listener)),
