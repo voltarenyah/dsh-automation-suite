@@ -18,8 +18,9 @@ DSH 插件（**浏览器半侧**）：在 dsh-web 的**右侧栏**增加一个 *
 - 三个筛选：**device** 与 **simaticType** 两个下拉（各带计数，互不收窄对方选项）＋ **名称/编号搜索框**
   （不分大小写，`scp` 命中 `SCP_IN`，`1001` 命中编号 1001）；
 - **单击 = 选中**（高亮该行；选中本身暂时不做任何事，留给后续功能），
-  **右键菜单**里是动作：目前一项「打开源文件」，用既有的文档预览打开那个 `.xml`
-  （复用 `ui-sidebar-documentpreview`，不自己写查看器）。拒导对象的这一项是禁用状态并说明原因；
+  **右键菜单**里是动作：「打开源文件」用既有的文档预览打开那个 `.xml`
+  （复用 `ui-sidebar-documentpreview`，不自己写查看器）；「在对话里提及」把 `@'块名'` 插进输入框。
+  拒导对象的这两项都是禁用状态并说明原因；
 - 「刷新」清缓存重读（保留当前的筛选/搜索/选中/滚动位置）。
 
 **视图状态放在 slot store 里**（`src/client/store.js`，`defineStore` + `ctx.slots.register({ store })`）：
@@ -51,6 +52,43 @@ DSH 插件（**浏览器半侧**）：在 dsh-web 的**右侧栏**增加一个 *
 
 面板里"语言"那一列是 **PLC 编程语言**（STL / LAD / FBD），不是界面语言，不进字典。
 
+## 在对话里提及（Mention in chat）
+
+右键菜单第二项「在对话里提及」把 **`@'块名'`** 插到当前会话的输入框里（插在光标处、单独成段），
+并且**模型会收到这个块的引用信息**。两件事分在两半做，是这个功能唯一的复杂点：
+
+- 输入框里只有 `@'SCP_IN'` 一行，没有别的字；
+- 发送后，模型在那条消息后面看到一段 **宿主半侧追加的上下文**：
+
+  ```
+  ## PLC blocks cited in this message
+  [plc-block] name="SCP_IN" device="Sino_PEI" type="FB" number="1001" language="SCL" file="source/Sino_PEI/blocks/…/SCP_IN.xml"
+  ```
+
+  一行一个对象，`key="value"` 是为了让模型能分别挑出设备、类型、编号与文件；名字对不上时
+  写 `found="false"`，模型就不会去找一个不存在的文件。
+
+**为什么不在输入框里直接写全。** DSH 没有"只给模型看"的输入通道：输入框里的字就是模型看到的字。
+所以要么把引用信息也塞进输入框（吵，而且用户要的是干净的 `@'块名'`），要么在宿主拦截请求时补上。
+选后者：浏览器半侧只插记号，宿主半侧在 `agent/pre-step` 把记号解析成上下文块，追加到那条用户消息的
+content 里（内置的 `@session` 引用用的是同一个事件，见它的 `prepend: true` 用法）。
+
+几处不显然的取舍：
+
+- 记号用**单引号** `@'…'`。`@path` 与 `@"path with spaces"` 已经被文件引用语法占用，
+  单引号是唯一不会和它抢同一个 span 的写法；对话记录里这个记号渲染成一个小 chip
+  （`conversation.user.text.node` 座位 + 一条 `order: 5` 的 userText 规则），
+  否则文件语法会把它当成一个打不开的文件。输入框里不渲染 chip（输入机只认 pick 产生的 chip），
+  就是普通文本，用户还能自己改。
+- 解析在宿主、复用 `src/model.ts` 的 `parseManifest`：读 `<cwd>/source/*/_tia-openness-manifest.json`，
+  按名字**精确匹配**、再**大小写不敏感**匹配。结果按 `source/` 绝对路径缓存，
+  **只有名字没命中时才重读一次**——刚导出的块能认到，打错字也不会每步扫一遍目录。
+  实测 777 KB 清单首次 **16 ms**、命中缓存 **120 µs**。
+- 拒导对象（`failures[]`）**不能**提及：菜单项禁用，和「打开源文件」一致——它没有文件，
+  让模型按名字去找只会得到空结果。（手动打这个记号仍会解析成 `export="refused"` 一行，
+  那是有意留的逃生口。）
+- 读取失败不会让这一轮失败：异常只写一条 warn，消息原样发出去。
+
 ## 装到本发行版
 
 三处（少一处就静默不生效）：
@@ -68,7 +106,7 @@ pwsh -NoProfile -File scripts\start-env.ps1 -DshHome <那个 home> -Restart
 
 ```powershell
 node scripts/build.mjs      # tsc → lib/index.js + lib/model.js；esbuild → lib/client.js
-node scripts/run-tests.mjs  # 先构建，再 node --test（纯模型 25 项 + 文案 5 项）
+node scripts/run-tests.mjs  # 先构建，再 node --test（纯模型 33 项 + 宿主 9 项 + 文案 5 项）
 node scripts/tsc.mjs -p tsconfig.json --noEmit
 ```
 
@@ -93,4 +131,8 @@ node scripts/tsc.mjs -p tsconfig.json --noEmit
 - `failures[]` 只有 TIA 给出的名字与原因，**没有类型/编号/语言**：被拒对象的类型一律按「未知」归类，
   它们也因此排在列表末尾（类型序最后）。
 - 选中一行后**暂时没有后续动作**（这是刻意的：选中态先落地，动作后续加）。
-- 右键菜单只有一项；键盘可用 `Shift+F10` / 菜单键打开同一个菜单，`Esc` 关闭。
+- 右键菜单只有两项；键盘可用 `Shift+F10` / 菜单键打开同一个菜单，`Esc` 关闭。
+- 提及只在**有 `source/` 的工作区**里解析得到；宿主缓存的是"这个 `source/` 目录"的清单，
+  换了工程（同名不同内容）要重开 App 或重启会话进程才会重新读。
+- 提及插入要求该会话的输入框在（会话已打开）；输入机正在发送时插入会被拒绝，
+  面板会显示一条错误提示，而不是悄悄改掉草稿。

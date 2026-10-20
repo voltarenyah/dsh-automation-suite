@@ -19,10 +19,12 @@
  */
 
 import { Panel } from './Panel.jsx'
+import { BlockMention } from './Mention.jsx'
 import { Title } from './Title.jsx'
 import { createPlcStore } from './store.js'
 import { ensureStyle } from './style.js'
 import { NS, en, zh } from './locales.js'
+import { nextMention } from '../model'
 
 /** Package name. Also the tab-type id and the body seat's key — they must agree. */
 export const ID = 'dsh-ui-plc-source'
@@ -32,6 +34,79 @@ const KIND = 'plc-source'
 
 /** Cordis services this plugin waits for before its body runs. */
 export const inject = ['slots', 'sessions', 'locale', 'remote', 'remote.workspaceFiles']
+
+/**
+ * The user-text rule that gives `@'NAME'` a chip in the transcript.
+ *
+ * `order: 5` outranks the file grammar (30) and the session grammar (10): all
+ * three would match this spelling, and only the lowest order may claim a span.
+ * Without it the file rule wins and a mention renders as a file that cannot be
+ * opened. The grammar itself lives in the pure core, where the host half reads
+ * the same tokens.
+ */
+const BLOCK_MENTION_RULE = {
+  id: 'plc-block',
+  order: 5,
+  match(text, from) {
+    const hit = nextMention(text, from)
+    if (hit === undefined) return undefined
+    return { id: 'plc-block', start: hit.start, end: hit.end, data: { name: hit.name } }
+  },
+}
+
+/**
+ * Drop a mention into one session's composer.
+ *
+ * The composer is owned by `ui-conversation`, reachable from the session scope as
+ * `conversation`; its input face is the only supported writer, and `insertText`
+ * is preferred over `setDraft` because the latter replaces the whole document
+ * (and with it any reference chips already in it). When the machine is mid-submit
+ * the insert is refused, and saying so beats silently rewriting the draft.
+ *
+ * @param ctx - client root context.
+ * @param sessionId - the session the tab belongs to.
+ * @param text - the mention token to insert.
+ * @param translate - the bound translator, for the failure notice.
+ * @returns whether the composer took the text.
+ */
+function insertMention(ctx, sessionId, text, translate) {
+  let shell
+  try {
+    const actx = ctx.sessions.scope(sessionId)
+    if (actx === undefined || actx === null) throw new Error('no session scope')
+    const conversation = actx.get('conversation')
+    if (conversation === undefined || conversation === null) throw new Error('no conversation service')
+    shell = conversation.input.for(actx)
+  } catch (error) {
+    ctx.logger?.warn?.(`${ID}: the composer is unavailable: ${String(error)}`)
+    return { ok: false, code: 'unavailable' }
+  }
+  try {
+    // The insertion verbs live on the shell's action face; `notify`/`focus` are
+    // the shell's own. `insertText` is preferred over `setDraft` because the
+    // latter replaces the whole document, and with it any reference chips.
+    const actions = shell?.actions ?? {}
+    const draft = typeof shell?.projection?.clipboardText === 'string' ? shell.projection.clipboardText : ''
+    // A mention is its own paragraph: appending it to a half-typed sentence would
+    // put it inside that sentence, and the host grammar requires a word boundary.
+    const separator = draft.length === 0 || draft.endsWith('\n') ? '' : '\n'
+    const span = typeof actions.captureInsertion === 'function' ? actions.captureInsertion() : undefined
+    const inserted =
+      span !== undefined &&
+      typeof actions.insertText === 'function' &&
+      actions.insertText(`${separator}${text}`, span) === true
+    if (!inserted) {
+      shell.notify?.('error', translate('mention.failed'))
+      return { ok: false, code: 'refused' }
+    }
+    if (typeof shell.focus === 'function') shell.focus()
+    return { ok: true }
+  } catch (error) {
+    ctx.logger?.warn?.(`${ID}: the mention could not be inserted: ${String(error)}`)
+    return { ok: false, code: 'failed' }
+  }
+}
+
 
 /**
  * Normalize one `workspaceFiles.list` answer for the panel.
@@ -153,6 +228,7 @@ export function apply(ctx) {
             locale: NS,
             inject: (sessionId) => ({
               t,
+              mention: (text) => insertMention(ctx, sessionId, text, t),
               listDirectory: (path, signal) => listDirectory(ctx, sessionId, path, signal),
               readTextFile: (path, signal) => readTextFile(ctx, sessionId, path, signal),
             }),
@@ -179,5 +255,29 @@ export function apply(ctx) {
         ),
       ),
     `${ID}: tab title`,
+  )
+
+  // A mention is plain prompt text, but the transcript still has to render it:
+  // the file grammar matches the same `@…` shape, so without this rule the chip
+  // would be a file path that no viewer can open.
+  ctx.effect(
+    () =>
+      ctx.inject(['uiConversation'], (injected) => {
+        const conversation = typeof injected?.get === 'function' ? injected.get('uiConversation') : undefined
+        if (conversation?.userText === undefined) return () => {}
+        return conversation.userText.register(BLOCK_MENTION_RULE)
+      }),
+    `${ID}: block mention rule`,
+  )
+
+  ctx.effect(
+    () =>
+      ctx.slots.inject('conversation.user.text.node', () =>
+        ctx.slots.register(
+          { name: 'conversation.user.text.node', key: 'plc-block', priority: 100, locale: NS },
+          BlockMention,
+        ),
+      ),
+    `${ID}: block mention chip`,
   )
 }

@@ -176,6 +176,28 @@ body[data-ds-dark-theme] .plps-select {
   color: var(--dsw-alias-label-tertiary, #6b7280);
   font-size: 11px;
 }
+/* Inline chip for a cited block in the transcript. Same shape as the product's
+   own reference chips, but a quieter fill: it carries no navigation. */
+.plps-mention {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 2px;
+  max-width: 100%;
+  padding: 0 4px;
+  border-radius: var(--dsw-radius-sm, 4px);
+  background: var(--dsw-alias-fill-l2, rgba(128, 128, 128, 0.18));
+  color: var(--dsw-alias-label-primary, CanvasText);
+  font-size: 12px;
+  line-height: 18px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  vertical-align: baseline;
+}
+.plps-mention::before {
+  content: '@';
+  color: var(--dsw-alias-label-tertiary, #6b7280);
+}
 .plps-badge {
   flex: none;
   min-width: 34px;

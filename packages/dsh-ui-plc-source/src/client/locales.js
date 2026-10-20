@@ -64,6 +64,10 @@ export const zh = {
   'menu.openTitle': '这个对象没有导出文件',
   'menu.noFileRefused': 'TIA 拒绝导出，没有文件',
   'menu.noFile': '没有文件路径',
+  'menu.mention': '在对话里提及',
+  'menu.mentionTitle': '把 {token} 插入输入框，模型会收到这个块的引用信息',
+  'menu.mentionUnrepresentable': '这个名字里有引号，无法写成提及记号',
+  'mention.failed': '没能插入输入框：输入框正在发送消息，稍后再试。',
 
   'error.notFound': 'source/ 不存在：这个工作区还没有工程源树，先运行 create_engineering_project。',
   'error.outsideWorkspace': '这个目录在工作区之外，宿主拒绝列举。',
@@ -124,6 +128,10 @@ export const en = {
   'menu.openTitle': 'This object has no exported file',
   'menu.noFileRefused': 'TIA refused to export it; there is no file',
   'menu.noFile': 'No file path',
+  'menu.mention': 'Mention in chat',
+  'menu.mentionTitle': 'Insert {token} into the composer; the model receives this block’s reference',
+  'menu.mentionUnrepresentable': 'This name contains a quote, so it cannot be spelled as a mention',
+  'mention.failed': 'Could not insert it: the composer is sending a message. Try again in a moment.',
 
   'error.notFound': 'source/ does not exist: this workspace has no rebuilt source tree yet — run create_engineering_project first.',
   'error.outsideWorkspace': 'That directory is outside the workspace, so the host refuses to list it.',

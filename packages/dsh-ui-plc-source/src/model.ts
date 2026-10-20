@@ -472,3 +472,144 @@ export function sizeLabel(bytes: number | undefined): string {
   if (bytes < 1024 * 1024) return `${Math.round(bytes / 102.4) / 10} KB`
   return `${Math.round((bytes / (1024 * 1024)) * 10) / 10} MB`
 }
+
+/**
+ * The word that starts the context section the host adds for mentioned blocks.
+ * Model-facing text: English, and stable enough to grep for in a session log.
+ */
+export const MENTION_HEADER =
+  '## PLC blocks cited in this message\n' +
+  "The user's message mentions the exported PLC objects listed below. " +
+  "Read the listed source file before answering questions about a block's logic."
+
+/**
+ * The spelling a mention takes in prompt text: `@'SCP_IN'`.
+ *
+ * Single quotes are what separates it from the `@path` / `@"path with spaces"`
+ * file grammar the reference source already owns, so the two never claim the
+ * same span. A name that itself contains a quote cannot be spelled this way, and
+ * the menu item is disabled rather than inserting a token nothing will parse.
+ *
+ * @param row - the row the user right-clicked.
+ * @returns the token, or null when the name cannot be represented.
+ */
+export function mentionOf(row: SourceRow): string | null {
+  const name = row.name.replace(/[\r\n\t]+/g, ' ').trim()
+  if (name.length === 0) return null
+  if (name.includes("'")) return null
+  return `@'${name}'`
+}
+
+/**
+ * Every name cited by an `@'…'` token in one message, in first-mention order.
+ *
+ * The token must start a word, exactly like the file grammar, so an address such
+ * as `a@'b'` neither triggers nor breaks anything.
+ *
+ * @param text - one message's text.
+ * @returns distinct names, in citation order.
+ */
+export function mentionNames(text: string): string[] {
+  const names: string[] = []
+  const seen = new Set<string>()
+  for (let hit = nextMention(text, 0); hit !== undefined; hit = nextMention(text, hit.end)) {
+    if (seen.has(hit.name)) continue
+    seen.add(hit.name)
+    names.push(hit.name)
+  }
+  return names
+}
+
+/** One `@'NAME'` token found in text. */
+export interface MentionHit {
+  /** Offset of the `@`. */
+  readonly start: number
+  /** Offset just past the closing quote. */
+  readonly end: number
+  readonly name: string
+}
+
+/**
+ * The next `@'NAME'` token at or after `from`.
+ *
+ * The transcript's user-text evaluator asks the same question the host does —
+ * "which token is next?" — so both go through this one grammar. Keeping it here
+ * is also what lets the rule be unit-tested without a browser.
+ *
+ * @param text - any text.
+ * @param from - offset to start looking at.
+ * @returns the hit, or undefined when there is no further token.
+ */
+export function nextMention(text: string, from: number): MentionHit | undefined {
+  const token = /(?<!\S)@'([^'\r\n]+)'/gu
+  token.lastIndex = from
+  const hit = token.exec(text)
+  if (hit === null) return undefined
+  const name = (hit[1] ?? '').trim()
+  if (name.length === 0) return nextMention(text, hit.index + hit[0].length)
+  return { start: hit.index, end: hit.index + hit[0].length, name }
+}
+
+
+/** Quote one value so an embedded quote cannot end the field early. */
+function quoted(value: string): string {
+  return `"${value.replace(/"/g, "'").replace(/[\r\n]+/g, ' ')}"`
+}
+
+/**
+ * One line of machine-readable context for a mentioned object.
+ *
+ * `key="value"` rather than prose: the model has to be able to pick the device,
+ * the number and the file apart, and a sentence would make that guesswork.
+ *
+ * @param row - the matched row.
+ * @param relativeFile - its file relative to the session workspace, when known.
+ * @returns one line, starting with the `[plc-block]` tag.
+ */
+export function referenceLine(row: SourceRow, relativeFile: string | null): string {
+  const fields = [`[plc-block]`, `name=${quoted(row.name)}`, `device=${quoted(row.device)}`]
+  if (row.simaticType !== UNKNOWN_TYPE) fields.push(`type=${quoted(row.simaticType)}`)
+  if (row.number !== undefined) fields.push(`number=${quoted(row.number)}`)
+  if (row.language !== undefined) fields.push(`language=${quoted(row.language)}`)
+  if (row.kind !== 'block') fields.push(`kind=${quoted(row.kind)}`)
+  if (row.refused === true) {
+    fields.push('export="refused"')
+    if (row.reason !== undefined) fields.push(`reason=${quoted(row.reason)}`)
+  } else if (relativeFile !== null) {
+    fields.push(`file=${quoted(relativeFile)}`)
+  }
+  return fields.join(' ')
+}
+
+/**
+ * The context block the host appends for the blocks one message cited.
+ *
+ * Resolving here, from rows the caller already read, keeps the host half down to
+ * I/O: everything about *what* a mention means — name matching, the line format,
+ * what a miss says — is pure and covered by unit tests.
+ *
+ * @param names - names cited by the message, in citation order.
+ * @param rows - every exported object known for the workspace.
+ * @param cwd - the session workspace root, used to spell files relatively.
+ * @returns the context text, or null when the message cited nothing.
+ */
+export function mentionContext(
+  names: readonly string[],
+  rows: readonly SourceRow[],
+  cwd: string,
+): string | null {
+  if (names.length === 0) return null
+  const lines: string[] = []
+  for (const name of names) {
+    const exact = rows.filter((row) => row.name === name)
+    const matches = exact.length > 0 ? exact : rows.filter((row) => row.name.toLowerCase() === name.toLowerCase())
+    if (matches.length === 0) {
+      lines.push(`[plc-block] name=${quoted(name)} found="false" — source/ has no exported object by that name`)
+      continue
+    }
+    for (const row of matches) {
+      lines.push(referenceLine(row, row.refused === true ? null : relativeUnder(cwd, row.file)))
+    }
+  }
+  return [MENTION_HEADER, ...lines].join('\n')
+}

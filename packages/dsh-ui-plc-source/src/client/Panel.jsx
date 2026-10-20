@@ -35,6 +35,7 @@ import {
   errorCopy,
   filterRows,
   joinPath,
+  mentionOf,
   parseManifest,
   relativeUnder,
   resourceAddress,
@@ -278,7 +279,7 @@ export function Panel(props) {
     event.preventDefault()
     select(row)
     const width = 220
-    const height = 88
+    const height = 124
     setMenu({
       row,
       x: Math.max(8, Math.min(event.clientX, window.innerWidth - width - 8)),
@@ -288,6 +289,11 @@ export function Panel(props) {
 
   const menuRow = menu?.row ?? null
   const menuCanOpen = menuRow !== null && menuRow.refused !== true && menuRow.file.length > 0
+  // A refused object has no file, so it cannot be cited either: the host resolves
+  // mentions against the exported objects, and a name it cannot spell would send
+  // the model looking for something that does not exist.
+  const menuToken = menuRow === null || menuRow.refused === true ? null : mentionOf(menuRow)
+  const menuCanMention = menuToken !== null && typeof props.mention === 'function'
 
   const head = (
     <div className="plps-head">
@@ -463,7 +469,28 @@ export function Panel(props) {
           >
             {t('menu.openFile')}
           </button>
-          {menuCanOpen ? null : (
+          <button
+            type="button"
+            role="menuitem"
+            className="plps-menu-item"
+            disabled={!menuCanMention}
+            title={
+              menuRow?.refused === true
+                ? t('menu.noFileRefused')
+                : menuToken === null
+                  ? t('menu.mentionUnrepresentable')
+                  : t('menu.mentionTitle', { token: menuToken })
+            }
+            onClick={() => {
+              const token = menuToken
+              setMenu(null)
+              if (token === null) return
+              props.mention(token)
+            }}
+          >
+            {t('menu.mention')}
+          </button>
+          {menuCanOpen || menuCanMention ? null : (
             <div className="plps-menu-note">
               {menuRow.refused === true ? t('menu.noFileRefused') : t('menu.noFile')}
             </div>

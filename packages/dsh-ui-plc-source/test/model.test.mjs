@@ -15,6 +15,7 @@ import { describe, it } from 'node:test'
 import {
   ALL,
   MANIFEST_FILE,
+  MENTION_HEADER,
   SOURCE_DIRECTORY,
   UNKNOWN_TYPE,
   compareNatural,
@@ -25,7 +26,12 @@ import {
   joinPath,
   kindOf,
   matchesQuery,
+  mentionContext,
+  mentionNames,
+  mentionOf,
+  nextMention,
   parseManifest,
+  referenceLine,
   relativeUnder,
   resourceAddress,
   rowKey,
@@ -382,5 +388,77 @@ describe('copy', () => {
     assert.equal(SOURCE_DIRECTORY, 'source')
     assert.equal(MANIFEST_FILE, '_tia-openness-manifest.json')
     assert.equal(ALL, 'all')
+  })
+})
+
+describe('mentions', () => {
+  const rows = parseManifest(manifestText(), 'Sino_PEI').rows
+  const [fb, , , , refused] = rows
+
+  it('spells a citation the way the composer shows it', () => {
+    assert.equal(mentionOf(fb), "@'SCP_IN'")
+    // Names with whitespace are fine inside the quotes; the grammar only needs
+    // the token to start a word.
+    assert.equal(mentionOf({ ...fb, name: 'Deux axes' }), "@'Deux axes'")
+  })
+
+  it('refuses a name it cannot spell rather than inserting a broken token', () => {
+    assert.equal(mentionOf({ ...fb, name: "O'Brien" }), null)
+    assert.equal(mentionOf({ ...fb, name: '   ' }), null)
+    assert.equal(mentionOf({ ...fb, name: 'two\nlines' }), "@'two lines'")
+  })
+
+  it('reads citations back in order, once each', () => {
+    assert.deepEqual(mentionNames("@'SCP_IN' then @'00_Main' and @'SCP_IN' again"), ['SCP_IN', '00_Main'])
+    assert.deepEqual(mentionNames("@'Deux axes'"), ['Deux axes'])
+    // Not word-initial, other quote styles, and empty text are all ordinary prose.
+    assert.deepEqual(mentionNames("mail a@'SCP_IN'"), [])
+    assert.deepEqual(mentionNames('@"SCP_IN"'), [])
+    assert.deepEqual(mentionNames(''), [])
+  })
+
+  it('answers the transcript rule with one span per token', () => {
+    // The conversation's user-text evaluator walks the text through this call, so
+    // its offsets have to be exact and its walk has to terminate.
+    assert.deepEqual(nextMention("hi @'SCP_IN' and @'00_Main'", 0), { start: 3, end: 12, name: 'SCP_IN' })
+    assert.deepEqual(nextMention("hi @'SCP_IN' and @'00_Main'", 12), { start: 17, end: 27, name: '00_Main' })
+    assert.equal(nextMention("hi @'SCP_IN'", 12), undefined)
+    // An empty pair of quotes is skipped instead of being claimed as a chip.
+    assert.equal(nextMention("@''", 0), undefined)
+    assert.equal(nextMention("@'a'", 1), undefined)
+  })
+
+  it('writes one machine-readable line per object', () => {
+    assert.equal(
+      referenceLine(fb, 'source/Sino_PEI/blocks/1001_SCP_IN/SCP_IN.xml'),
+      '[plc-block] name="SCP_IN" device="Sino_PEI" type="FB" number="1001" language="SCL" file="source/Sino_PEI/blocks/1001_SCP_IN/SCP_IN.xml"',
+    )
+  })
+
+  it('marks a refused object instead of inventing a file for it', () => {
+    const line = referenceLine(refused, null)
+    assert.match(line, /export="refused"/)
+    assert.match(line, /reason="The export of block 'FOB_SAFETY' is not permitted\."/)
+    assert.equal(line.includes('file='), false)
+  })
+
+  it('builds the context block, and says so when a name resolves to nothing', () => {
+    const context = mentionContext(['SCP_IN', 'NO_SUCH_BLOCK'], rows, 'C:\\ws')
+    assert.ok(context !== null)
+    const lines = context.split('\n')
+    // The header is two lines; the objects follow it one per line.
+    assert.equal(lines[0], '## PLC blocks cited in this message')
+    assert.match(lines[1], /^The user's message mentions the exported PLC objects/)
+    assert.match(lines[2], /name="SCP_IN"/)
+    assert.match(lines[2], /file="source\/Sino_PEI\/blocks\/999_Bibliotheque\/Fonctions méthode\/1001_SCP_IN\/SCP_IN\.xml"/)
+    assert.match(lines[3], /name="NO_SUCH_BLOCK" found="false"/)
+    assert.equal(lines.length, 4)
+    assert.equal(mentionContext([], rows, 'C:\\ws'), null)
+    assert.equal(context.startsWith(MENTION_HEADER), true)
+  })
+
+  it('matches a cited name case-insensitively when the exact spelling misses', () => {
+    const context = mentionContext(['scp_in'], rows, 'C:\\ws')
+    assert.match(context, /name="SCP_IN"/)
   })
 })
