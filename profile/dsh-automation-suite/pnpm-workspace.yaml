@@ -3,3 +3,11 @@ packages:
 
 nodeLinker: hoisted
 autoInstallPeers: false
+
+# pnpm 11 安装 dsh-opencode-go 时会把它自带的两个传递依赖的构建脚本记成
+# "ignored builds"，并让整次 `dsh plugin install` 以 ERR_PNPM_IGNORED_BUILDS 失败。
+# 这两个脚本只是可选的下载/生成步骤，不跑也能正常使用（桌面 profile 同样显式拒绝）。
+# 写 false 就是「明确决定不跑」；新增公共插件若再引入别的构建脚本，在这里补一行。
+allowBuilds:
+  '@google/genai': false
+  protobufjs: false

@@ -16,9 +16,32 @@
 | `@voltarenyah/dsh-engineering-graph` | 工程知识图谱插件：C# 引擎子进程 + `knowledgeGraph` 服务（**模型面工具同样拆到 `/tools`**） |
 | `dsh-tool-git` | 结构化 Git 工具族 + 破坏性命令闸门（vendor 自上游 `lxj808624/dsh-tool-git` v0.1.3）。**仍是宿主面全局行**，所以每个 preset 的 agent 都看得到它 |
 | `dsh-ui-plc-source` | **纯 UI 插件**：右侧栏多一个 **PLC Blocks** 标签页（读 `source/<device>/_tia-openness-manifest.json`，按 device 与 simaticType 筛选，点行打开既有文档预览）。宿主半侧是空 `apply()`，**不注册任何模型可见的东西**；必须在 `dsh-web-app` 之后，浏览器半侧才拿得到客户端座位 |
+| `dsh-ui-tia-console` | **仅浏览器半侧**：会话输入框上方的 **TIA 控制台**（状态 + 打开/保存/编译/关闭/刷新五个按钮，dispatch 现有 `/tia-*` 指令）。同样不注册任何模型可见的东西 |
+| `dsh-opencode-go` | **公共插件**（npm 上的第三方 bundle，不是本仓代码）：OpenCode Go 模型提供方 + 设置页。见下面的「公共插件」一节 |
 
 `dsh-web-app` 是**超出最初清单额外加的**：只列 `dsh-base` 的话 profile 能 `--dump-config`，
 但没有任何 app 可启动。官方 `web` 模板就是 `dsh-base` + `dsh-web-app`。
+
+### 公共插件：`dsh-opencode-go`
+
+这是本蓝图里**唯一一行不来自本仓 `packages/` 的依赖**，直接取自 npm（`publishConfig.access: public`），
+和日常桌面 profile 用的是同一份东西、**同一个版本 `0.1.15`**（精确钉死，不是 `^`）。
+
+- 它是个**标准 bundle**（manifest 里有 `dsh.bundle.patch`），所以只需 `dependencies` + `dsh.profile.bundles`
+  两处；它的 `cordis.patch.yml` 自己 `insert` 一行 `id: opencode-go`。
+- **固定 `0.1.15` 是有意的**：从 `0.1.16` 起上游把模型提供方 ID 从 `opencode-go` 改成了
+  `dsh-opencode-go`（旧会话/旧配置里的 `provider: opencode-go` 会失效）；而上游的宿主兼容矩阵
+  只验证到 `0.2.1-alpha.1`，本机宿主是 `0.2.1-rc.2` —— `0.1.15` 是桌面 profile 在这台机器上
+  **实际跑通**的版本。要升级，先在一个环境里验过，再连同 `cordis.patch.yml` 里任何 `provider:` 引用一起改。
+- **pnpm 11 会因为它失败一次**：它的传递依赖 `@google/genai` / `protobufjs` 带构建脚本，
+  pnpm 11 把它们记成 "ignored builds" 并以 `ERR_PNPM_IGNORED_BUILDS` 让整次
+  `dsh plugin install` 退出 1。`pnpm-workspace.yaml` 里的 `allowBuilds`（两项都 `false`）就是
+  为它加的 —— 这两个脚本只是可选下载/生成步骤，不跑也能用。
+- 它是**客户端 bundle**：Loader 行启用后宿主才会提供 `/plugins/??dsh-opencode-go/client.js`，
+  页面上的设置页与用量胶囊才出现；只装依赖、不加 bundles 时**不报错但什么都不会发生**。
+- 想改模型可见性/默认模型，照桌面 profile 的写法在 `cordis.patch.yml` 里加 `- id: opencode-go`
+  的 `modelVisibility`、或 `- id: agent-default-model` 的 `provider/model`（本蓝图**没有**带这两项，
+  默认保持「全部模型可见、默认模型不动」）。
 
 ## 三个文件
 
@@ -26,7 +49,7 @@
 |---|---|
 | `package.json` | profile 清单。`dsh.profile.bundles` 是**按包名**解析 bundle 目录的依据 |
 | `cordis.patch.yml` | 用户 patch 层，在所有 bundle 层之后应用。环境相关设置（`opennessDir`、超时）写这里；发行版的行为政策也在这里（见下节） |
-| `pnpm-workspace.yaml` | 与 DSH `initProfile()` 生成的模板逐字一致，`nodeLinker: hoisted` 是树外插件需要的 |
+| `pnpm-workspace.yaml` | 由 DSH `initProfile()` 的模板改出来：`nodeLinker: hoisted` 是树外插件需要的，`allowBuilds` 是安装 `dsh-opencode-go` 的必要项（见上节） |
 
 `dsh` 首次启动一个 profile 目录时会额外生成 `cordis.yml`（空的根 include 存根，内容写着
 "Edit cordis.patch.yml, not this file"）与 `.plugin-manager/`。两者都已 gitignore，不要手改。
@@ -81,7 +104,7 @@ DSH 的工具可见性是**按声明作用域**解析的（`dsh-tools` 的 `view
 |---|---|
 | `package.json` | profile 清单。`dsh.profile.bundles` 是**按包名**解析 bundle 目录的依据 |
 | `cordis.patch.yml` | 用户 patch 层，在所有 bundle 层之后应用。环境相关设置（`opennessDir`、超时）写这里；发行版的行为政策也在这里（见下节） |
-| `pnpm-workspace.yaml` | 与 DSH `initProfile()` 生成的模板逐字一致，`nodeLinker: hoisted` 是树外插件需要的 |
+| `pnpm-workspace.yaml` | 由 DSH `initProfile()` 的模板改出来：`nodeLinker: hoisted` 是树外插件需要的，`allowBuilds` 是安装 `dsh-opencode-go` 的必要项（见上节） |
 
 `dsh` 首次启动一个 profile 目录时会额外生成 `cordis.yml`（空的根 include 存根，内容写着
 "Edit cordis.patch.yml, not this file"）与 `.plugin-manager/`。两者都已 gitignore，不要手改。
@@ -165,7 +188,8 @@ dsh --profile dsh-automation-suite --dump-config | Select-String "engineering-co
 dsh --profile dsh-automation-suite --dump-config
 ```
 
-输出以**四个插件行**结尾。行数基线见根 `AGENTS.md` §4 的权威表（本蓝图改成两个 preset 后已重测）。
+输出以 **7 个插件行**结尾（6 个本地插件 + 公共的 `dsh-opencode-go`）。行数基线见根 `AGENTS.md` §4 的权威表
+（本蓝图加上两个 preset 与 `dsh-opencode-go` 后已重测）。
 
 > ⚠️ `start-env.ps1` 只在 profile 目录**尚不存在**时从蓝图拷贝 `cordis.patch.yml`
 > （`if (-not (Test-Path $manifest))`）。所以改完蓝图后要让它生效，得 `-Reset` 重建，
@@ -229,7 +253,8 @@ dsh --profile dsh-automation-suite --dump-config
 ```
 
 这条流程已实测通过：`dsh plugin --profile dsh-automation-suite install` 由自带 pnpm（0.2.1-rc.2 上是
-v11.28.5）装完，`--dump-config` exit 0 且以四个插件行结尾（行数基线见根 `AGENTS.md` §4）。
+v11.28.5）装完，`--dump-config` exit 0 且以 7 个插件行结尾（行数基线见根 `AGENTS.md` §4）。
+`dsh-opencode-go` 不用换成 tarball —— 它是公共包，保持 `"0.1.15"` 就会从 npm 解析。
 
 > ⚠️ 第 2 步的 tarball 文件名不要硬编码 `@scope-` 前缀：`pnpm pack` 对 `@scope/name` 产出的是
 > `scope-name-<version>.tgz`（剥掉 `@`、`/`→`-`），对不带 scope 的包就是 `dsh-tool-git-0.1.3.tgz`。
@@ -262,12 +287,20 @@ dsh --profile dsh-automation-suite --dump-config
 # == dsh-tool-git
 - id: tool-git
   name: dsh-tool-git
+# == dsh-ui-plc-source
+- id: ui-plc-source
+  name: dsh-ui-plc-source
+# == dsh-ui-tia-console
+- id: ui-tia-console
+  name: dsh-ui-tia-console
+# == dsh-opencode-go
+- id: opencode-go
+  name: dsh-opencode-go
 ```
 
-行数（**DSH 0.2.1-rc.2**）：官方 web 组合 **1183 行**（本机当前；旧基线 1235 已作废）；
-叠加本蓝图政策层、以及按蓝图物化出四个本地插件的 profile 行数，见根 `AGENTS.md` §4 的权威表
-（本蓝图改成两个 preset 后已重测，旧值 1471 / 1477 作废）。
-这三个数会随宿主升级与上游 preset 改动而变（0.2.0-rc.2 时是 1259 / 1268 / 1520），换版本后要重测。
+行数（**DSH 0.2.1-rc.2，2026-10-20 重测**）：官方 web 组合 **1183 行**；叠加本蓝图政策层 **1601 行**；
+当前物化的套件 profile **1634 行**（权威表与口径见根 `AGENTS.md` §4）。
+这三个数会随宿主升级、上游 preset 改动、以及增减插件而变，换版本或改蓝图后要重测。
 
 > 注意这两条命令都是对**已物化的 profile**生效的：`--profile` 读的是
 > `$DSH_HOME/profiles/dsh-automation-suite/`，不是本蓝图目录。想在不改动任何环境的前提下

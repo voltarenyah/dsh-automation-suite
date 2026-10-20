@@ -449,3 +449,29 @@
                   tailChars: 1024
           - id: expert-subagent-control
             name: '@deepseek-ai/dsh-tool-subagent-control'
+
+# ── 公共插件 dsh-opencode-go：模型可见性与默认模型（照搬桌面 profile）──────────
+# 桌面 profile 拿它当日常提供方，这里保持同一套策略：
+#   • 隐藏暂时不用的模型，模型选择器里不出现陌生项；
+#   • 新会话默认模型指向 OpenCode Go 的 deepseek-v4.1-flash。
+# ⚠️ provider ID `opencode-go` 是插件 0.1.15 的 ID；升到 0.1.16+ 时上游把它改名为
+#    `dsh-opencode-go`，这两处的 provider 引用要一起改（见本目录 README「公共插件」）。
+# ⚠️ 物化目录里这两行会随应用设置回写而变化；同步时改块内容，不要整文件覆盖。
+- id: opencode-go
+  name: dsh-opencode-go
+  config:
+    modelVisibility:
+      deepseek-v4-pro: false
+      glm-5.1: false
+      glm-5.2: false
+      glm-5.3: false
+      grok-4.6: false
+      grok-4.7: false
+      muse-spark-1.2-contributor: false
+      muse-spark-1.3-contributor: false
+      glm-5.3-flash: false
+- id: agent-default-model
+  name: '@deepseek-ai/dsh-agent-default-model'
+  config:
+    provider: opencode-go
+    model: deepseek-v4.1-flash

@@ -207,8 +207,8 @@ profile 组合的端到端验收：
 dsh --profile dsh-automation-suite --dump-config
 ```
 
-预期结尾出现 **6 个本地插件行**，顺序与蓝图的 `dsh.profile.bundles` 一致；其中
-`engineering-context` 带 `disabled: true`（它整行搬进了 `leader` preset）：
+预期结尾出现 **7 个插件行**（6 个本地插件 + 公共的 `dsh-opencode-go`），顺序与蓝图的
+`dsh.profile.bundles` 一致；其中 `engineering-context` 带 `disabled: true`（它整行搬进了 `leader` preset）：
 
 ```yaml
 # == @voltarenyah/dsh-tia-openness-v17-min
@@ -230,15 +230,18 @@ dsh --profile dsh-automation-suite --dump-config
 # == dsh-ui-tia-console
 - id: ui-tia-console
   name: dsh-ui-tia-console
+# == dsh-opencode-go
+- id: opencode-go
+  name: dsh-opencode-go
 ```
 
-行数基线（**DSH 0.2.1-rc.2 实测，2026-10-19（两个 preset 之后）**；换宿主版本、改蓝图或增减插件后必须重测）：
+行数基线（**DSH 0.2.1-rc.2 实测，2026-10-20（加上 `dsh-opencode-go` 之后）**；换宿主版本、改蓝图或增减插件后必须重测）：
 
 | 命令 | 行数 |
 |---|---|
 | `dsh --profile web --dump-config`（官方组合，本机当前） | **1183** |
-| `dsh --profile web --patch profile/dsh-automation-suite/cordis.patch.yml --dump-config` | **1508** |
-| 按蓝图物化的 profile：`dsh --profile dsh-automation-suite --dump-config` | **1522** |
+| `dsh --profile web --patch profile/dsh-automation-suite/cordis.patch.yml --dump-config` | **1601** |
+| 按蓝图物化的 profile：`dsh --profile dsh-automation-suite --dump-config` | **1634** |
 
 > ⚠️ 旧基线 **1235 / 1471 / 1477** 已作废：同一天重测时官方 `web` 组合本身就少了几十行
 > （不是本仓改动 —— 那三条命令的第一条不含本仓任何文件）。别拿新旧数值互相解释，用自己那次跑出来的三个数
@@ -287,6 +290,18 @@ Config 字段（如 `opennessDir`，或 git 插件的 `destructivePolicy`），�
   `profiles/<profile>/node_modules`，或转义成 `*\/`。
 - 从 `cmd.exe` / `Start-Process` 调 `dsh.cmd` 时，安装路径里的空格会被 cmd 剥掉引号
   （`'…\DeepSeek' is not recognized`）。用 PowerShell 的调用运算符 `& $dsh`。
+- **在 profile 里装带构建脚本的公共插件会被 pnpm 11 拒一次**：`dsh plugin --profile <p> install`
+  跑的是自带 pnpm 11.28.5，只要依赖树里有未声明决定的构建脚本就整体退出 1
+  （`ERR_PNPM_IGNORED_BUILDS`，包其实已经装上了）。实测触发者：`dsh-opencode-go` 的传递依赖
+  `@google/genai`、`protobufjs`。解法是在该 profile 的 `pnpm-workspace.yaml` 里写
+  `allowBuilds: { '<包>': false }`（本蓝图已写；桌面 profile 也是这么做的）。
+  注意这条只在 **profile** 里成立 —— 仓库根跑的是 pnpm 9.12，这个键无效（见下条）。
+- **`profile/*` 是 pnpm workspace 成员，给蓝图加公共依赖会进根 lockfile**：根 `.npmrc` 写了
+  `auto-install-peers=false`，因为 pnpm 9 默认会给新依赖自动装一套 `@deepseek-ai/* 0.1.5-rc.3`
+  到 node_modules 与 `pnpm-lock.yaml` —— 那正是 D19 的「验到旧宿主版本」陷阱，还会在解析时
+  抢在宿主运行时前面。改完蓝图的依赖后跑一次
+  `pnpm install --lockfile-only`（本机 `pnpm` 不在 PATH，用自带那份）并确认 diff 里**没有**
+  `+  '@deepseek-ai/dsh-llm@…` 这类运行时包的整棵子树；`--frozen-lockfile --lockfile-only` 应 exit 0。
 - **`tsdown` 会把能解析到的包打进产物**。插件对 `@deepseek-ai/*` 的 import 必须在构建期保持外部，
   否则产物里会塞进一份私有的宿主运行时。`dsh-tool-git` 用 `deps: { neverBundle: true }` 钉住这一点；
   详细机理与验收口径见 `packages/dsh-tool-git/AGENTS.md`。新增插件时同样要显式声明。

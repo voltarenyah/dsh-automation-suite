@@ -7,6 +7,7 @@
     "@voltarenyah/dsh-engineering-context": "workspace:^",
     "@voltarenyah/dsh-engineering-graph": "workspace:^",
     "@voltarenyah/dsh-tia-openness-v17-min": "workspace:^",
+    "dsh-opencode-go": "0.1.15",
     "dsh-tool-git": "workspace:^",
     "dsh-ui-plc-source": "workspace:^",
     "dsh-ui-tia-console": "workspace:^"
@@ -21,7 +22,8 @@
         "@voltarenyah/dsh-engineering-graph",
         "dsh-tool-git",
         "dsh-ui-plc-source",
-        "dsh-ui-tia-console"
+        "dsh-ui-tia-console",
+        "dsh-opencode-go"
       ]
     }
   }
