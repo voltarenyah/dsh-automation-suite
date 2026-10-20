@@ -175,7 +175,7 @@ test('the declared parameters require exactly what the engine requires; discover
 
   assert.deepEqual(Object.keys(byName['knowledge_schema'].parameters.properties), ['known_version'])
   assert.deepEqual(Object.keys(byName['knowledge_ingest'].parameters.properties).sort(), ['db_path', 'device_dir'])
-  assert.deepEqual(Object.keys(byName['knowledge_query'].parameters.properties).sort(), ['db_path', 'max_rows', 'sql'])
+  assert.deepEqual(Object.keys(byName['knowledge_query'].parameters.properties).sort(), ['db_path', 'max_field_chars', 'max_rows', 'sql'])
   assert.equal(byName['knowledge_query'].parameters.properties.max_rows.type, 'integer')
 })
 

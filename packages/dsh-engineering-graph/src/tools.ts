@@ -94,8 +94,27 @@ function tableNames(ddl: string): string[] {
   return names
 }
 
-/** Characters kept from one long field value before it is cut. */
+/** Characters kept from one long field value before it is cut (the default). */
 const MAX_FIELD_CHARS = 200
+
+/** The largest a caller may raise {@link MAX_FIELD_CHARS} to, still well under the Pruner's 8192. */
+const HARD_FIELD_CHARS = 3500
+
+/**
+ * Clamps a requested per-field character budget.
+ *
+ * The cap exists so a wide result stays readable; it is not a claim about how long
+ * a value may be. A caller that needs one long text (a network's translated logic,
+ * a stored excerpt) raises it deliberately instead of slicing the value with SQL
+ * `substr` across a dozen queries.
+ *
+ * @param value - the caller's `max_field_chars`, if it supplied one.
+ * @returns the effective budget, between 40 and {@link HARD_FIELD_CHARS}.
+ */
+function clampFieldChars(value: number | undefined): number {
+  if (value === undefined || !Number.isFinite(value)) return MAX_FIELD_CHARS
+  return Math.min(Math.max(Math.trunc(value), 40), HARD_FIELD_CHARS)
+}
 
 /**
  * Characters the rendered `knowledge_query` rows may occupy.
@@ -119,7 +138,11 @@ const QUERY_RENDER_BUDGET = 3500
  * @param columns - the column names the engine reported, in order.
  * @returns the lines that fit, how many rows did not, and how many fields were cut.
  */
-function renderQueryRows(rows: readonly unknown[], columns: readonly string[]): { lines: string[]; omitted: number; clipped: number } {
+function renderQueryRows(
+  rows: readonly unknown[],
+  columns: readonly string[],
+  fieldChars: number,
+): { lines: string[]; omitted: number; clipped: number } {
   const lines: string[] = []
   let used = 0
   let clipped = 0
@@ -129,9 +152,9 @@ function renderQueryRows(rows: readonly unknown[], columns: readonly string[]): 
     const entry: Record<string, unknown> = {}
     values.forEach((value, index) => {
       const key = columns[index] ?? `column${index + 1}`
-      if (typeof value === 'string' && value.length > MAX_FIELD_CHARS) {
+      if (typeof value === 'string' && value.length > fieldChars) {
         clipped += 1
-        entry[key] = `${value.slice(0, MAX_FIELD_CHARS)}…[${value.length} chars]`
+        entry[key] = `${value.slice(0, fieldChars)}…[${value.length} chars]`
       } else {
         entry[key] = value
       }
@@ -169,7 +192,7 @@ function renderError(error: ToolError | null): string {
  * spelling of it; the three the engine can return are exactly the three cases
  * below.
  */
-function renderData(operation: string, data: JsonRecord | null): string {
+function renderData(operation: string, data: JsonRecord | null, fieldChars = MAX_FIELD_CHARS): string {
   if (data === null) return ''
   const lines: string[] = []
 
@@ -226,7 +249,7 @@ function renderData(operation: string, data: JsonRecord | null): string {
       lines.push(`Database: ${text(data['dbPath']) ?? '?'}`)
       lines.push(`Columns: ${columns.join(', ') || 'none'}`)
       lines.push(`Rows: ${rowCount}${data['truncated'] === true ? ' — the engine stopped at max_rows' : ''}`)
-      const rendered = renderQueryRows(rows, columns)
+      const rendered = renderQueryRows(rows, columns, fieldChars)
       lines.push(...rendered.lines)
       if (rendered.omitted > 0) {
         lines.push(
@@ -236,8 +259,8 @@ function renderData(operation: string, data: JsonRecord | null): string {
       }
       if (rendered.clipped > 0) {
         lines.push(
-          `Long values were cut at ${MAX_FIELD_CHARS} characters (${rendered.clipped} field(s)); select one column to read ` +
-            'a value whole.',
+          `Long values were cut at ${fieldChars} characters (${rendered.clipped} field(s)); pass a larger ` +
+            `max_field_chars (up to ${HARD_FIELD_CHARS}) to read one whole, or select fewer columns.`,
         )
       }
       if (data['truncated'] === true) {
@@ -256,15 +279,21 @@ function renderData(operation: string, data: JsonRecord | null): string {
 type OutcomeValue = InferValue<typeof OUTCOME_SCHEMA>
 
 /** Bridges the inferred schema value back to the envelope the renderer reads. */
-function renderValue(value: OutcomeValue): string {
-  return renderOutcome(value as unknown as ToolOutcome)
+function renderValue(value: OutcomeValue, fieldChars = MAX_FIELD_CHARS): string {
+  return renderOutcome(value as unknown as ToolOutcome, fieldChars)
 }
 
-/** The single place that turns an engine frame into the model-facing text. */
-export function renderOutcome(outcome: ToolOutcome): string {
+/**
+ * The single place that turns an engine frame into the model-facing text.
+ *
+ * @param outcome - the canonical envelope.
+ * @param fieldChars - per-value character budget for a query's rows; the tool's
+ *   own `max_field_chars` argument, so a caller that asks for a long value gets it.
+ */
+export function renderOutcome(outcome: ToolOutcome, fieldChars = MAX_FIELD_CHARS): string {
   const header = outcome.ok ? `${outcome.operation} succeeded.` : `${outcome.operation} FAILED.`
   const parts = [header, outcome.summary]
-  const detail = renderData(outcome.operation, outcome.data)
+  const detail = renderData(outcome.operation, outcome.data, clampFieldChars(fieldChars))
   if (detail.length > 0) parts.push(detail)
   const error = renderError(outcome.error)
   if (error.length > 0) parts.push(error)
@@ -414,6 +443,16 @@ async function resolveQueryDatabase(explicitPath: string | undefined, cwd: strin
   return { ok: false, outcome: localFailure('Query', choice.code, choice.message, choice.remediation) }
 }
 
+/**
+ * How much of the reading surface a preset gets.
+ *
+ * `none` — orientation only (workspace, schema, ingest, raw query); `inspect` —
+ * add the two tools that answer "what is in this block / network"; `all` — add
+ * search and variable usage as well, which is the expert's full surface
+ * (docs/decisions.md D25).
+ */
+export type DrilldownSurface = 'none' | 'inspect' | 'all'
+
 /** Options that select which tools become visible, without changing any of them. */
 export interface RegisterToolsOptions {
   /**
@@ -428,16 +467,16 @@ export interface RegisterToolsOptions {
    */
   includeIngest?: boolean
   /**
-   * Whether the four drill-down tools are registered. Defaults to `false`.
+   * How much of the drill-down surface is registered. Defaults to `none`.
    *
-   * They are the "read the program" surface — search, one block, one network,
-   * one variable's usages — and they belong to the agent that does the reading:
-   * the `expert` subagent declares the row with `includeDrilldown: true`, while
-   * the `leader` keeps the workspace, schema, ingest and raw-query tools and
-   * delegates deep reading instead (docs/decisions.md **D24** §4). Same rule as
-   * `includeIngest`: only a literal `true` adds them.
+   * `inspect` is what a main agent needs to brief a delegation without reading
+   * SQL for twenty minutes: `knowledge_block` and `knowledge_network` answer
+   * "what is in this block / this network" in one bounded call. `all` adds the
+   * search and variable-usage tools and is the expert's surface. A literal
+   * `true` still means `all` and `false` still means `none`, so an older profile
+   * keeps working (docs/decisions.md D25).
    */
-  includeDrilldown?: boolean
+  includeDrilldown?: DrilldownSurface | boolean
 }
 
 /**
@@ -455,12 +494,12 @@ export interface RegisterToolsOptions {
  * @returns the registered tool names, in registration order.
  */
 export function registerTools(ctx: Context, dependencies: ToolDependencies, options: RegisterToolsOptions = {}): string[] {
-  // Only a literal `false` removes the ingest tool and only a literal `true` adds
-  // the drill-down ones: an omitted, `undefined` or non-boolean value keeps
-  // today's behaviour, so an untyped caller cannot silently change an agent's
-  // surface in either direction.
+  // Only a literal `false` removes the ingest tool, and `includeDrilldown` accepts
+  // the three surface names plus the older booleans: an omitted or untyped value
+  // keeps today's behaviour, so an untyped caller cannot silently change an
+  // agent's surface in either direction.
   const includeIngest = options.includeIngest !== false
-  const includeDrilldown = options.includeDrilldown === true
+  const drilldown = normalizeDrilldown(options.includeDrilldown)
   const registered: string[] = []
 
   const register = (definition: ToolDefinition): void => {
@@ -580,7 +619,8 @@ export function registerTools(ctx: Context, dependencies: ToolDependencies, opti
         '(knowledge_search, knowledge_block, knowledge_network, knowledge_variable_usage) when the question is about a ' +
         'block, a network or a variable: they run the fixed statements and shape the answer, while this tool is the ' +
         'escape hatch for everything else. The reply renders a bounded slice of the rows (long values are cut, and it ' +
-        'says how many rows it left out) — page with LIMIT and OFFSET rather than asking for a whole table. max_rows ' +
+        'says how many rows it left out) — page with LIMIT and OFFSET rather than asking for a whole table, and raise ' +
+        'max_field_chars when one long value (a network logic text, a stored excerpt) must be read whole. max_rows ' +
         'caps what the engine reads (default 200, hard maximum 1000) and a capped result says so.',
       parameters: {
         db_path: {
@@ -602,10 +642,16 @@ export function registerTools(ctx: Context, dependencies: ToolDependencies, opti
           type: 'integer',
           description: 'Maximum number of rows to return (default 200). The engine clamps it to the range 1..1000.',
         },
+        max_field_chars: {
+          type: 'integer',
+          description:
+            `Characters kept from one long value (default ${MAX_FIELD_CHARS}, maximum ${HARD_FIELD_CHARS}). Raise it to ` +
+            'read a single long value whole instead of slicing it with substr across several queries.',
+        },
       },
       output: {
         schema: OUTCOME_SCHEMA,
-        render: (_args, value) => [{ type: 'text', text: renderValue(value) }],
+        render: (args, value) => [{ type: 'text', text: renderValue(value, args.max_field_chars) }],
       },
       presentCall: (args) => ({
         card: 'generic',
@@ -626,11 +672,28 @@ export function registerTools(ctx: Context, dependencies: ToolDependencies, opti
 
   // The reading surface, off unless a preset asks for it. Registered last so the
   // first four names — the ones every preset shares — keep their order.
-  if (includeDrilldown) {
-    for (const definition of drilldownToolDefinitions(dependencies)) register(definition)
+  if (drilldown !== 'none') {
+    for (const definition of drilldownToolDefinitions(dependencies, drilldown)) register(definition)
   }
 
   return registered
+}
+
+/**
+ * Normalizes `includeDrilldown` from a profile, a test or a caller.
+ *
+ * Accepts the three surface names, and the two booleans the option used to take
+ * (`true` = `all`, `false` = `none`) so an existing profile keeps its meaning.
+ * Anything else is `none`: a typo must not quietly hand an agent a surface it was
+ * not meant to have.
+ *
+ * @param value - whatever the caller supplied.
+ * @returns the surface to register.
+ */
+export function normalizeDrilldown(value: DrilldownSurface | boolean | undefined): DrilldownSurface {
+  if (value === true) return 'all'
+  if (value === false || value === undefined) return 'none'
+  return value === 'all' || value === 'inspect' ? value : 'none'
 }
 
 /**

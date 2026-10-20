@@ -368,9 +368,11 @@ function blockTool(dependencies: DrilldownDependencies): ToolDefinition {
             language: textCell(row, 3),
             logicChars: intCell(row, 4) ?? 0,
             sourceFile: textCell(row, 5),
+            commented: (textCell(row, 6) ?? '').trim().toLowerCase() === 'true',
           }))
           const truncated = networks.length > limit
           const shown = truncated ? networks.slice(0, limit) : networks
+          const commentedCount = networks.filter((network) => network.commented).length
 
           const sourceFile = properties.find((property) => property.name === 'sourceFile')?.value ?? shown[0]?.sourceFile ?? null
           const details = [
@@ -380,13 +382,14 @@ function blockTool(dependencies: DrilldownDependencies): ToolDefinition {
             ...(properties.length === 0
               ? []
               : [`Properties: ${properties.map((property) => `${property.name}=${property.value}`).join('; ')}`]),
-            `Networks: ${shown.length}${truncated ? ' (more than shown)' : ''}`,
+            `Networks: ${shown.length}${truncated ? ' (more than shown)' : ''}` +
+              (commentedCount === 0 ? '' : `, of which ${commentedCount} are commented out (no executable logic)`),
           ]
           const fitted = fitDetails(
             shown.map(
               (network) =>
                 `- [${network.index ?? '?'}] ${network.title ?? '(untitled)'} (${network.language ?? 'unknown language'}), ` +
-                `${renderCount(network.logicChars)} logic char(s)`,
+                `${renderCount(network.logicChars)} logic char(s)${network.commented ? ', COMMENTED OUT' : ''}`,
             ),
             AUX_CHARS,
           )
@@ -497,6 +500,8 @@ function networkTool(dependencies: DrilldownDependencies): ToolDefinition {
           const compileUnitId = textCell(row, 3)
           const sourceFile = textCell(row, 4)
           const logic = textCell(row, 5)
+          const commentedLogic = textCell(row, 6)
+          const commentedOut = (textCell(row, 7) ?? '').trim().toLowerCase() === 'true'
 
           const accessResult = await runQuery(dependencies, dbPath, networkAccessStatement(networkId, HARD_ROWS + 1), HARD_ROWS + 1, exec.signal)
           if (refused(accessResult)) return localFailure(tool, accessResult.code, accessResult.message, accessResult.remediation)
@@ -518,6 +523,9 @@ function networkTool(dependencies: DrilldownDependencies): ToolDefinition {
             `Network: ${args.index}${title === null ? '' : ` — ${title}`} (${language ?? 'unknown language'})`,
             ...(sourceFile === null ? [] : [`Source file: ${sourceFile}`]),
             ...(compileUnitId === null ? [] : [`Compile unit: ${compileUnitId}`]),
+            ...(commentedOut
+              ? ['Executable logic: NONE — the whole network source is a comment; nothing in it runs.']
+              : []),
             `Writes (${writes.length}): ${writes.join(', ') || 'none'}`,
             `Reads (${reads.length}): ${reads.join(', ') || 'none'}`,
             `Logic: characters ${chunk.offset}–${chunk.offset + chunk.text.length} of ${renderCount(chunk.totalChars)}`,
@@ -529,10 +537,18 @@ function networkTool(dependencies: DrilldownDependencies): ToolDefinition {
           if (chunk.hasMore) {
             details.push(`More logic follows: call ${NETWORK_TOOL} again with offset=${chunk.nextOffset} until hasMore is false.`)
           }
+          if (commentedOut && commentedLogic !== null) {
+            const commented = fitDetails(commentedLogic.split('\n').map((line) => `  ${line}`), AUX_CHARS)
+            details.push('Commented-out source (kept for review, NOT executed):')
+            details.push(...commented.lines)
+            if (commented.omitted > 0) details.push(`  … ${commented.omitted} more commented line(s) in data.commentedSource`)
+          }
 
           return localSuccess(
             tool,
-            `${resolved.name}[${args.index}]: ${writes.length} write(s), ${reads.length} read(s), ${renderCount(chunk.totalChars)} logic char(s).`,
+            commentedOut
+              ? `${resolved.name}[${args.index}]: no executable logic — the source is commented out.`
+              : `${resolved.name}[${args.index}]: ${writes.length} write(s), ${reads.length} read(s), ${renderCount(chunk.totalChars)} logic char(s).`,
             details,
             {
               dbPath,
@@ -541,6 +557,8 @@ function networkTool(dependencies: DrilldownDependencies): ToolDefinition {
               writes,
               reads,
               accessesTruncated,
+              commentedOut,
+              commentedSource: commentedLogic,
               logic: {
                 text: chunk.text,
                 offset: chunk.offset,
@@ -753,7 +771,21 @@ function oneLine(value: string): string {
 /** The names these tools register, in order; the registry and the tests share it. */
 export const DRILLDOWN_TOOL_NAMES = [SEARCH_TOOL, BLOCK_TOOL, NETWORK_TOOL, VARIABLE_TOOL] as const
 
-/** Every drill-down tool, in registration order. */
-export function drilldownToolDefinitions(dependencies: DrilldownDependencies): ToolDefinition[] {
-  return [searchTool(dependencies), blockTool(dependencies), networkTool(dependencies), variableTool(dependencies)]
+/** The subset `includeDrilldown: 'inspect'` registers: the two "what is in here" tools. */
+export const INSPECT_TOOL_NAMES = [BLOCK_TOOL, NETWORK_TOOL] as const
+
+/**
+ * Every drill-down tool, in registration order, for the requested surface.
+ *
+ * `inspect` deliberately leaves `knowledge_search` and
+ * `knowledge_variable_usage` out: they are the expert's investigation tools, and
+ * the main agent's job with this surface is to read enough to brief a delegation
+ * (docs/decisions.md D25).
+ *
+ * @param dependencies - the engine seam.
+ * @param surface - `all` (default) or `inspect`.
+ */
+export function drilldownToolDefinitions(dependencies: DrilldownDependencies, surface: 'all' | 'inspect' = 'all'): ToolDefinition[] {
+  const all = [searchTool(dependencies), blockTool(dependencies), networkTool(dependencies), variableTool(dependencies)]
+  return surface === 'inspect' ? all.filter((tool) => (INSPECT_TOOL_NAMES as readonly string[]).includes(tool.name)) : all
 }

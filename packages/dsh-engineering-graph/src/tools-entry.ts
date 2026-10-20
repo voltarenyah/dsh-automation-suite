@@ -32,7 +32,7 @@
 import Schema from '@deepseek-ai/schemastery'
 import type { Context } from '@deepseek-ai/cordis'
 
-import { registerTools } from './tools.js'
+import { registerTools, normalizeDrilldown, type DrilldownSurface } from './tools.js'
 import { knowledgeEngineOf, KNOWLEDGE_ENGINE_SERVICE } from './runtime-service.js'
 
 /**
@@ -59,25 +59,26 @@ export interface ToolsEntryConfig {
    */
   includeIngest: boolean
   /**
-   * Whether the four drill-down tools are registered (`knowledge_search`,
-   * `knowledge_block`, `knowledge_network`, `knowledge_variable_usage`).
-   * `false` (the default) keeps the row to the orientation tools; the `expert`
-   * preset turns it on, because reading program logic is that agent's job
-   * (docs/decisions.md D24 §4).
+   * How much of the drill-down surface is registered: `none` (the default),
+   * `inspect` (`knowledge_block` + `knowledge_network`, enough for a main agent
+   * to brief a delegation) or `all` (also `knowledge_search` and
+   * `knowledge_variable_usage`, the expert's investigation tools). The old
+   * booleans still work: `true` = `all`, `false` = `none`
+   * (docs/decisions.md D25).
    */
-  includeDrilldown: boolean
+  includeDrilldown: DrilldownSurface
 }
 
 /** Default values, applied both by the schema and by {@link resolveToolsEntryConfig}. */
 export const toolsEntryConfigDefaults: ToolsEntryConfig = {
   includeIngest: true,
-  includeDrilldown: false,
+  includeDrilldown: 'none',
 }
 
 /** Schemastery configuration schema for this row. */
 export const Config = Schema.object({
   includeIngest: Schema.boolean().default(toolsEntryConfigDefaults.includeIngest),
-  includeDrilldown: Schema.boolean().default(toolsEntryConfigDefaults.includeDrilldown),
+  includeDrilldown: Schema.string().default(toolsEntryConfigDefaults.includeDrilldown),
 })
 
 /**
@@ -107,7 +108,7 @@ export function resolveToolsEntryConfig(config?: Partial<ToolsEntryConfig>): Too
   const source: Partial<ToolsEntryConfig> = config ?? {}
   return {
     includeIngest: flag(source.includeIngest, toolsEntryConfigDefaults.includeIngest),
-    includeDrilldown: flag(source.includeDrilldown, toolsEntryConfigDefaults.includeDrilldown),
+    includeDrilldown: normalizeDrilldown(source.includeDrilldown as DrilldownSurface | boolean | undefined),
   }
 }
 
@@ -133,10 +134,22 @@ export function apply(ctx: Context, config?: Partial<ToolsEntryConfig>): void {
     { includeIngest: settings.includeIngest, includeDrilldown: settings.includeDrilldown },
   )
 
+  // A value the schema accepted but the registry could not use (a typo'd surface
+  // name) would otherwise change an agent's tools without a trace anywhere.
+  const raw: unknown = config?.includeDrilldown
+  if (raw !== undefined && raw !== settings.includeDrilldown && raw !== true && raw !== false) {
+    log.warn(
+      `includeDrilldown ${JSON.stringify(raw)} is not one of 'none', 'inspect' or 'all'; ` +
+        `this row registered '${settings.includeDrilldown}' instead.`,
+    )
+  }
+
   log.info(
     `Registered ${registered.length} engineering-graph tools (${registered.join(', ')}); ` +
       `the engine subprocess and the knowledgeGraph service are owned by the host row.` +
       (settings.includeIngest ? '' : ' knowledge_ingest is disabled by this row\'s includeIngest config.') +
-      (settings.includeDrilldown ? '' : ' The drill-down tools are off: this row left includeDrilldown at its default.'),
+      (settings.includeDrilldown === 'none'
+        ? ' The drill-down tools are off: this row left includeDrilldown at its default.'
+        : ` Drill-down surface: ${settings.includeDrilldown}.`),
   )
 }

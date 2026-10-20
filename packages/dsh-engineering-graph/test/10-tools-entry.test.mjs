@@ -48,10 +48,10 @@ test('the row is a Loader entry in its own right, under its own name', () => {
 })
 
 test('resolveToolsEntryConfig defaults includeIngest to true', () => {
-  assert.deepEqual(entry.resolveToolsEntryConfig(), { includeIngest: true, includeDrilldown: false })
-  assert.deepEqual(entry.resolveToolsEntryConfig({}), { includeIngest: true, includeDrilldown: false })
+  assert.deepEqual(entry.resolveToolsEntryConfig(), { includeIngest: true, includeDrilldown: 'none' })
+  assert.deepEqual(entry.resolveToolsEntryConfig({}), { includeIngest: true, includeDrilldown: 'none' })
   assert.equal(entry.toolsEntryConfigDefaults.includeIngest, true)
-  assert.equal(entry.toolsEntryConfigDefaults.includeDrilldown, false, 'the reading surface is opt-in')
+  assert.equal(entry.toolsEntryConfigDefaults.includeDrilldown, 'none', 'the reading surface is opt-in')
 })
 
 test('resolveToolsEntryConfig trusts only a real boolean', () => {
@@ -71,9 +71,10 @@ test('resolveToolsEntryConfig trusts only a real boolean', () => {
 })
 
 test('the real schemastery schema applies the same default and rejects non-booleans', () => {
-  assert.deepEqual(entry.Config({}), { includeIngest: true, includeDrilldown: false })
-  assert.deepEqual(entry.Config({ includeIngest: false }), { includeIngest: false, includeDrilldown: false })
-  assert.deepEqual(entry.Config({ includeIngest: false, includeDrilldown: true }), { includeIngest: false, includeDrilldown: true })
+  assert.deepEqual(entry.Config({}), { includeIngest: true, includeDrilldown: 'none' })
+  assert.deepEqual(entry.Config({ includeIngest: false }), { includeIngest: false, includeDrilldown: 'none' })
+  assert.deepEqual(entry.Config({ includeIngest: false, includeDrilldown: 'all' }), { includeIngest: false, includeDrilldown: 'all' })
+  assert.deepEqual(entry.Config({ includeDrilldown: 'inspect' }), { includeIngest: true, includeDrilldown: 'inspect' })
   assert.throws(() => entry.Config({ includeIngest: 'yes' }), 'a non-boolean must not validate')
 })
 
@@ -149,4 +150,37 @@ test('applying the row without the host row fails loudly instead of registering 
     'a tools row without its host row must say so, not register tools whose calls cannot work',
   )
   assert.deepEqual(harness.registered(), [])
+})
+
+test('includeDrilldown accepts the three surface names and keeps the old booleans meaningful', () => {
+  assert.equal(entry.resolveToolsEntryConfig({ includeDrilldown: 'inspect' }).includeDrilldown, 'inspect')
+  assert.equal(entry.resolveToolsEntryConfig({ includeDrilldown: 'all' }).includeDrilldown, 'all')
+  assert.equal(entry.resolveToolsEntryConfig({ includeDrilldown: 'none' }).includeDrilldown, 'none')
+  assert.equal(entry.resolveToolsEntryConfig({ includeDrilldown: true }).includeDrilldown, 'all', 'an older profile keeps its meaning')
+  assert.equal(entry.resolveToolsEntryConfig({ includeDrilldown: false }).includeDrilldown, 'none')
+
+  // A typo must not quietly hand an agent a surface it was not meant to have.
+  for (const bad of ['ALL', 'Inspect', 'everything', ' inspect', 1, {}, []]) {
+    assert.equal(
+      entry.resolveToolsEntryConfig({ includeDrilldown: bad }).includeDrilldown,
+      'none',
+      `${String(bad)} must not be trusted`,
+    )
+  }
+})
+
+test('inspect registers the two reading tools after the shared four', () => {
+  const { registered } = applyBoth({ includeDrilldown: 'inspect' })
+  assert.deepEqual(registered(), [...ALL_TOOLS, 'knowledge_block', 'knowledge_network'])
+})
+
+test('all registers the whole reading surface, in registration order', () => {
+  const { registered } = applyBoth({ includeDrilldown: 'all' })
+  assert.deepEqual(registered(), [
+    ...ALL_TOOLS,
+    'knowledge_search',
+    'knowledge_block',
+    'knowledge_network',
+    'knowledge_variable_usage',
+  ])
 })

@@ -285,7 +285,7 @@ public static class TiaXmlSemanticGraphImporter
             }));
 
         var parsed = ProgramSemanticReferenceBuilder.Parse(xml, component, deviceName);
-        var logicStatementsByCompileUnitId = ProgramBlockLogicYamlWriter.GetNetworkStatementTextByCompileUnitId(xml, component);
+        var networkLogicByCompileUnitId = ProgramBlockLogicYamlWriter.GetNetworkLogicByCompileUnitId(xml, component);
         ProgramNetworkRecord? previousNetwork = null;
         foreach (var network in parsed.Networks)
         {
@@ -298,10 +298,21 @@ public static class TiaXmlSemanticGraphImporter
                 ["compileUnitId"] = network.CompileUnitId,
                 ["sourceFile"] = network.SourceFile
             };
-            if (logicStatementsByCompileUnitId.TryGetValue(network.CompileUnitId, out var logicStatements) &&
-                !string.IsNullOrWhiteSpace(logicStatements))
+            if (networkLogicByCompileUnitId.TryGetValue(network.CompileUnitId, out var logic))
             {
-                networkProperties["logicStatements"] = logicStatements;
+                if (!string.IsNullOrWhiteSpace(logic.Statements))
+                {
+                    networkProperties["logicStatements"] = logic.Statements;
+                }
+
+                // A network whose source is only comments has no executable logic.
+                // Storing the text separately keeps it available for a reviewer
+                // while making sure nothing downstream can mistake it for code.
+                if (!string.IsNullOrWhiteSpace(logic.CommentedSource))
+                {
+                    networkProperties["logicCommented"] = "true";
+                    networkProperties["commentedLogic"] = logic.CommentedSource;
+                }
             }
 
             graph.UpsertNode(new SemanticGraphNode(

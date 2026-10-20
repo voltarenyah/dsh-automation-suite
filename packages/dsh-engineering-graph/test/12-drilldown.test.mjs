@@ -211,15 +211,18 @@ test('knowledge_block reports the block, its properties and its networks compact
     if (sql.includes("FROM graph_nodes\nWHERE kind IN ('OB', 'FB', 'FC')")) {
       return frame(rowsPayload(['id', 'kind', 'name'], [['block:Main', 'FB', 'Main']]))
     }
-    if (sql.includes('FROM graph_node_properties')) {
-      return frame(rowsPayload(['name', 'value'], [['language', 'LAD'], ['sourceFile', 'Blocks/Main [OB1].xml']]))
+    if (sql.includes('FROM knowledge_networks')) {
+      return frame(
+        rowsPayload(
+          ['network_index', 'network_id', 'title', 'language', 'coalesce(length(logic_statements), 0)', 'source_file', 'commented'],
+          [
+            [1, 'network:Main:1', 'Start', 'LAD', 120, 'Blocks/Main [OB1].xml', null],
+            [2, 'network:Main:2', null, 'LAD', 40, 'Blocks/Main [OB1].xml', null],
+          ],
+        ),
+      )
     }
-    return frame(
-      rowsPayload(['network_index', 'network_id', 'title', 'language', 'coalesce(length(logic_statements), 0)', 'source_file'], [
-        [1, 'network:Main:1', 'Start', 'LAD', 120, 'Blocks/Main [OB1].xml'],
-        [2, 'network:Main:2', null, 'LAD', 40, 'Blocks/Main [OB1].xml'],
-      ]),
-    )
+    return frame(rowsPayload(['name', 'value'], [['language', 'LAD'], ['sourceFile', 'Blocks/Main [OB1].xml']]))
   })
 
   const outcome = await executeTool(byName['knowledge_block'], { block: 'Main', db_path: DB }, execIn('C:\\ws'))
@@ -447,4 +450,100 @@ test('knowledge_query renders a bounded slice, never pointing at data the model 
   assert.ok(!rendered.includes('data.rows'), 'the model cannot read data, so nothing may point there')
   assert.ok(rendered.length < 6000, `the render must stay under the Pruner threshold, was ${rendered.length} characters`)
   assert.match(rendered, /\{"n":0,"name":"Block0","logic":"L{200}/, 'rows render as column-named JSON objects')
+})
+
+// ------------------------------------------------ commented-out networks
+
+test('knowledge_network says a fully commented-out network has no executable logic', async () => {
+  const { byName } = await harness((sql) => {
+    if (sql.includes("FROM graph_nodes\nWHERE kind IN ('OB', 'FB', 'FC')")) {
+      return frame(rowsPayload(['id', 'kind', 'name'], [['block:Main', 'FB', 'Main']]))
+    }
+    if (sql.includes('AND network_index = 32')) {
+      return frame(
+        rowsPayload(
+          ['network_id', 'title', 'language', 'compile_unit_id', 'source_file', 'logic_statements', 'commented_logic', 'commented'],
+          [
+            [
+              'network:Main:32',
+              'Step[8] move data',
+              'SCL',
+              'cu:32',
+              null,
+              null,
+              '// IF #G.%X8 THEN\n// #statProductData[1] := #statProductData[0];',
+              'true',
+            ],
+          ],
+        ),
+      )
+    }
+    return frame(rowsPayload(['access', 'variable_name'], []))
+  })
+
+  const outcome = await executeTool(byName['knowledge_network'], { block: 'Main', index: 32, db_path: DB }, execIn('C:\\ws'))
+
+  assert.equal(outcome.ok, true)
+  assert.equal(outcome.data.commentedOut, true)
+  assert.equal(outcome.data.logic.text, '')
+  const details = outcome.details.join('\n')
+  assert.match(outcome.summary, /no executable logic — the source is commented out/)
+  assert.match(details, /Executable logic: NONE/)
+  assert.match(details, /Commented-out source \(kept for review, NOT executed\)/)
+  assert.match(details, /\/\/ #statProductData\[1\]/)
+})
+
+test('knowledge_block marks commented-out networks in its list', async () => {
+  const { byName } = await harness((sql) => {
+    if (sql.includes("FROM graph_nodes\nWHERE kind IN ('OB', 'FB', 'FC')")) {
+      return frame(rowsPayload(['id', 'kind', 'name'], [['block:Main', 'FB', 'Main']]))
+    }
+    if (sql.includes('FROM knowledge_networks')) {
+      return frame(
+        rowsPayload(
+          ['network_index', 'network_id', 'title', 'language', 'coalesce(length(logic_statements), 0)', 'source_file', 'commented'],
+          [
+            [31, 'network:Main:31', 'Normal', 'SCL', 120, null, null],
+            [32, 'network:Main:32', 'Step[8] move data', 'SCL', 0, null, 'true'],
+          ],
+        ),
+      )
+    }
+    return frame(rowsPayload(['name', 'value'], [['language', 'SCL']]))
+  })
+
+  const outcome = await executeTool(byName['knowledge_block'], { block: 'Main', db_path: DB }, execIn('C:\\ws'))
+  const details = outcome.details.join('\n')
+
+  assert.match(details, /of which 1 are commented out/)
+  assert.match(details, /- \[32\] Step\[8\] move data \(SCL\), 0 logic char\(s\), COMMENTED OUT/)
+  assert.equal(outcome.data.networks[1].commented, true)
+})
+
+// ------------------------------------------------------- the field budget
+
+test('knowledge_query can read one long value whole when max_field_chars asks for it', async () => {
+  const long = 'L'.repeat(900)
+  const context = createTestContext()
+  tools.registerTools(context.ctx, {
+    request: async (_operation, params) =>
+      frame({ dbPath: params.dbPath, columns: ['logic'], rows: [[long]], rowCount: 1, truncated: false }),
+    log: { debug() {}, info() {}, warn() {}, error() {} },
+  })
+  const definition = context.definitions.find((candidate) => candidate.name === 'knowledge_query')
+
+  const cut = await executeTool(definition, { sql: 'SELECT logic FROM x', db_path: DB }, execIn('C:\\ws'))
+  const cutText = renderedText(definition, { sql: 'SELECT logic FROM x', db_path: DB }, cut)
+  assert.match(cutText, /cut at 200 characters/)
+  assert.match(cutText, /max_field_chars \(up to 3500\)/)
+  assert.ok(!cutText.includes(long), 'the default budget must not deliver the whole value')
+
+  const whole = await executeTool(
+    definition,
+    { sql: 'SELECT logic FROM x', db_path: DB, max_field_chars: 3000 },
+    execIn('C:\\ws'),
+  )
+  const wholeText = renderedText(definition, { sql: 'SELECT logic FROM x', db_path: DB, max_field_chars: 3000 }, whole)
+  assert.ok(wholeText.includes(long), 'the raised budget must deliver the value whole')
+  assert.ok(!wholeText.includes('cut at 200 characters'))
 })

@@ -29,19 +29,49 @@ public static class ProgramBlockLogicYamlWriter
 {
     public static IReadOnlyDictionary<string, string> GetNetworkStatementTextByCompileUnitId(string xml, ProgramBlockComponent component)
     {
+        return GetNetworkLogicByCompileUnitId(xml, component)
+            .Where(pair => !string.IsNullOrWhiteSpace(pair.Value.Statements))
+            .ToDictionary(pair => pair.Key, pair => pair.Value.Statements, StringComparer.OrdinalIgnoreCase);
+    }
+
+    /// <summary>One network's translated logic: executable statements, and the text of a fully commented-out source.</summary>
+    /// <param name="Statements">The executable SCL-like statements, empty when the network has none.</param>
+    /// <param name="CommentedSource">The network's source when every line of it is a comment; otherwise null.</param>
+    public readonly record struct NetworkLogic(string Statements, string? CommentedSource);
+
+    /// <summary>
+    /// Translates every network once, keeping executable logic and commented-out
+    /// source apart.
+    /// </summary>
+    /// <remarks>
+    /// The distinction is the point: a network whose SCL body is entirely
+    /// commented out has **no** executable logic, and reporting its comment text as
+    /// statements made a reviewer conclude that removed code was still running
+    /// (docs/decisions.md D25). Both sides come from one parse so a block is not
+    /// read twice.
+    /// </remarks>
+    public static IReadOnlyDictionary<string, NetworkLogic> GetNetworkLogicByCompileUnitId(string xml, ProgramBlockComponent component)
+    {
         if (component == null)
         {
             throw new ArgumentNullException(nameof(component));
         }
 
         var block = ParseBlock(xml, component);
-        return block.Networks
-            .Where(network => !string.IsNullOrWhiteSpace(network.CompileUnitId) && network.Statements.Count > 0)
-            .GroupBy(network => network.CompileUnitId, StringComparer.OrdinalIgnoreCase)
-            .ToDictionary(
-                group => group.Key,
-                group => string.Join("\n", group.First().Statements),
-                StringComparer.OrdinalIgnoreCase);
+        var result = new Dictionary<string, NetworkLogic>(StringComparer.OrdinalIgnoreCase);
+        foreach (var network in block.Networks)
+        {
+            if (string.IsNullOrWhiteSpace(network.CompileUnitId) || network.Statements.Count == 0 && network.CommentedSource == null)
+            {
+                continue;
+            }
+
+            result[network.CompileUnitId] = new NetworkLogic(
+                string.Join("\n", network.Statements),
+                network.CommentedSource);
+        }
+
+        return result;
     }
 
     private static LogicBlock ParseBlock(string xml, ProgramBlockComponent component)
@@ -128,6 +158,26 @@ public static class ProgramBlockLogicYamlWriter
             var source = GetCompactSclSource(compileUnit);
             if (!string.IsNullOrWhiteSpace(source))
             {
+                var statements = SplitSclStatements(source);
+                if (statements.Count == 0)
+                {
+                    // The SCL body renders to comments only: keep the text for a
+                    // reviewer, but never report it as executable logic. Before
+                    // 2026-10-20 the comment text was emitted as statements, so a
+                    // fully commented-out network looked like live code (see
+                    // docs/decisions.md D25).
+                    return new LogicNetwork(
+                        networkIndex,
+                        compileUnitId,
+                        title,
+                        language,
+                        "scl",
+                        "exact",
+                        Array.Empty<string>(),
+                        Array.Empty<string>(),
+                        source.Trim());
+                }
+
                 return new LogicNetwork(
                     networkIndex,
                     compileUnitId,
@@ -135,7 +185,7 @@ public static class ProgramBlockLogicYamlWriter
                     language,
                     "scl",
                     "exact",
-                    SplitSclStatements(source),
+                    statements,
                     Array.Empty<string>());
             }
 
@@ -355,6 +405,21 @@ public static class ProgramBlockLogicYamlWriter
             case "Token":
                 builder.Append(((string?)element.Attribute("Text")) ?? element.Value);
                 return;
+            case "LineComment":
+                // Openness keeps a commented-out SCL line in a LineComment element
+                // whose <Text> is the raw line. The comment marker itself exists
+                // only as the element name, so emitting the text verbatim made the
+                // "comment stripper" (SplitSclStatements/StripSclComments) treat it
+                // as executable code. Restore the marker, then the stripper sees a
+                // comment exactly as it would in a real // line.
+                AppendCommentedLines(builder, element.Value);
+                return;
+            case "Comment":
+            case "BlockComment":
+                builder.AppendLine("/*");
+                AppendCommentedLines(builder, element.Value);
+                builder.AppendLine("*/");
+                return;
             case "Component":
                 builder.Append(FormatComponentName(element));
                 foreach (var child in element.Elements())
@@ -394,6 +459,26 @@ public static class ProgramBlockLogicYamlWriter
                 }
 
                 return;
+        }
+    }
+
+    /// <summary>
+    /// Appends a commented-out block line by line, prefixing each line with `//`.
+    /// </summary>
+    /// <remarks>
+    /// Openness stores a commented-out SCL statement as a `LineComment` element
+    /// whose `<Text>` can span several lines. Prefixing only the first one would
+    /// leave the rest looking like executable code, which is exactly the defect this
+    /// fixes (docs/decisions.md D25), so every line gets the marker.
+    /// </remarks>
+    private static void AppendCommentedLines(StringBuilder builder, string? text)
+    {
+        foreach (var line in (text ?? string.Empty)
+                     .Replace("\r\n", "\n", StringComparison.Ordinal)
+                     .Replace('\r', '\n')
+                     .Split('\n'))
+        {
+            builder.Append("// ").Append(line.Trim()).AppendLine();
         }
     }
 
@@ -2246,7 +2331,8 @@ public static class ProgramBlockLogicYamlWriter
             string translationLanguage,
             string confidence,
             IReadOnlyList<string> statements,
-            IReadOnlyList<string> notes)
+            IReadOnlyList<string> notes,
+            string? commentedSource = null)
         {
             NetworkIndex = networkIndex;
             CompileUnitId = compileUnitId;
@@ -2256,6 +2342,7 @@ public static class ProgramBlockLogicYamlWriter
             Confidence = confidence;
             Statements = statements;
             Notes = notes;
+            CommentedSource = commentedSource;
         }
 
         public int NetworkIndex { get; }
@@ -2273,6 +2360,9 @@ public static class ProgramBlockLogicYamlWriter
         public IReadOnlyList<string> Statements { get; }
 
         public IReadOnlyList<string> Notes { get; }
+
+        /// <summary>The network's source when all of it is commented out; null otherwise.</summary>
+        public string? CommentedSource { get; }
 
         public static LogicNetwork Untranslated(int networkIndex, string compileUnitId, string title, string language, string note)
         {

@@ -173,7 +173,9 @@ export function blockPropertiesStatement(nodeId: string, limit: number): string 
 /** The statement that lists a block's networks, compactly. */
 export function blockNetworksStatement(nodeId: string, limit: number): string {
   return (
-    'SELECT network_index, network_id, title, language, coalesce(length(logic_statements), 0), source_file\n' +
+    'SELECT network_index, network_id, title, language, coalesce(length(logic_statements), 0), source_file,\n' +
+    "  (SELECT value FROM graph_node_properties p WHERE p.node_id = knowledge_networks.network_id\n" +
+    "     AND p.name = 'logicCommented') AS commented\n" +
     `FROM knowledge_networks\nWHERE block_id = ${sqlText(nodeId)}\n` +
     `ORDER BY network_index\nLIMIT ${limit}`
   )
@@ -187,6 +189,8 @@ export interface NetworkSummary {
   language: string | null
   logicChars: number
   sourceFile: string | null
+  /** True when the network's whole source is commented out, so it has no executable logic. */
+  commented: boolean
 }
 
 // -------------------------------------------------------------------- network
@@ -194,7 +198,11 @@ export interface NetworkSummary {
 /** The statement that reads exactly one network, logic included. */
 export function networkStatement(blockId: string, networkIndex: number): string {
   return (
-    'SELECT network_id, title, language, compile_unit_id, source_file, logic_statements\n' +
+    'SELECT network_id, title, language, compile_unit_id, source_file, logic_statements,\n' +
+    "  (SELECT value FROM graph_node_properties p WHERE p.node_id = knowledge_networks.network_id\n" +
+    "     AND p.name = 'commentedLogic') AS commented_logic,\n" +
+    "  (SELECT value FROM graph_node_properties p WHERE p.node_id = knowledge_networks.network_id\n" +
+    "     AND p.name = 'logicCommented') AS commented\n" +
     `FROM knowledge_networks\nWHERE block_id = ${sqlText(blockId)} AND network_index = ${Math.trunc(networkIndex)}\n` +
     'LIMIT 1'
   )
