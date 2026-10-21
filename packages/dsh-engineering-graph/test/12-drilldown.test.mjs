@@ -278,7 +278,9 @@ test('knowledge_network splits reads from writes and chunks the logic', async ()
   const details = outcome.details.join('\n')
   assert.match(details, /Writes \(2\): Cavity\.fill, Cavity\.done/)
   assert.match(details, /Logic: characters 0–200 of 250/)
-  assert.match(details, /call knowledge_network again with offset=200/)
+  assert.match(details, /NEXT: knowledge_network\(block="Main", index=3, offset=200, max_chars=200\)/)
+  assert.match(outcome.summary, /PARTIAL 0–200 of 250/)
+  assert.equal(outcome.data.partial, true)
 })
 
 test('knowledge_network reads a later chunk and stops saying there is more', async () => {
@@ -515,7 +517,7 @@ test('knowledge_block marks commented-out networks in its list', async () => {
   const outcome = await executeTool(byName['knowledge_block'], { block: 'Main', db_path: DB }, execIn('C:\\ws'))
   const details = outcome.details.join('\n')
 
-  assert.match(details, /of which 1 are commented out/)
+  assert.match(details, /Networks: 2 of 2, 1 commented out/)
   assert.match(details, /- \[32\] Step\[8\] move data \(SCL\), 0 logic char\(s\), COMMENTED OUT/)
   assert.equal(outcome.data.networks[1].commented, true)
 })
@@ -546,4 +548,42 @@ test('knowledge_query can read one long value whole when max_field_chars asks fo
   const wholeText = renderedText(definition, { sql: 'SELECT logic FROM x', db_path: DB, max_field_chars: 3000 }, whole)
   assert.ok(wholeText.includes(long), 'the raised budget must deliver the value whole')
   assert.ok(!wholeText.includes('cut at 200 characters'))
+})
+test('knowledge_block reports the block total, not the page size', async () => {
+  const { byName } = await harness((sql) => {
+    if (sql.includes("FROM graph_nodes\nWHERE kind IN ('OB', 'FB', 'FC')")) {
+      return frame(rowsPayload(['id', 'kind', 'name'], [['block:Main', 'FB', 'Main']]))
+    }
+    if (sql.includes('FROM knowledge_networks')) {
+      return frame(
+        rowsPayload(
+          [
+            'network_index',
+            'network_id',
+            'title',
+            'language',
+            'coalesce(length(logic_statements), 0)',
+            'source_file',
+            'commented',
+            'total',
+            'commented_total',
+          ],
+          [
+            [1, 'network:Main:1', 'Start', 'LAD', 120, null, null, 72, 2],
+            [2, 'network:Main:2', null, 'LAD', 40, null, 'true', 72, 2],
+          ],
+        ),
+      )
+    }
+    return frame(rowsPayload(['name', 'value'], [['language', 'LAD']]))
+  })
+
+  const outcome = await executeTool(byName['knowledge_block'], { block: 'Main', max_networks: 2, db_path: DB }, execIn('C:\\ws'))
+
+  assert.equal(outcome.data.total, 72, 'the total must come from the statement, not from the two rows shown')
+  assert.equal(outcome.data.commentedTotal, 2)
+  assert.equal(outcome.data.returned, 2)
+  assert.equal(outcome.data.truncated, true)
+  assert.match(outcome.summary, /Main \(FB\): 72 network\(s\), first 2 listed, 2 commented out/)
+  assert.match(outcome.details.join('\n'), /Networks: 2 of 72 \(first page; raise max_networks to see the rest\), 2 commented out/)
 })

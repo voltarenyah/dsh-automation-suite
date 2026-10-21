@@ -370,9 +370,14 @@ function blockTool(dependencies: DrilldownDependencies): ToolDefinition {
             sourceFile: textCell(row, 5),
             commented: (textCell(row, 6) ?? '').trim().toLowerCase() === 'true',
           }))
-          const truncated = networks.length > limit
-          const shown = truncated ? networks.slice(0, limit) : networks
-          const commentedCount = networks.filter((network) => network.commented).length
+          // The totals come from the statement, never from the page size: reporting
+          // the page as the block's network count made a caller raise max_networks
+          // 50 -> 60 -> 70 while the block had 72 (docs/decisions.md D26).
+          const first = networkResult.rows[0]
+          const total = (first === undefined ? null : intCell(first, 7)) ?? networks.length
+          const commentedTotal = (first === undefined ? null : intCell(first, 8)) ?? networks.filter((network) => network.commented).length
+          const shown = networks.slice(0, limit)
+          const truncated = shown.length < total
 
           const sourceFile = properties.find((property) => property.name === 'sourceFile')?.value ?? shown[0]?.sourceFile ?? null
           const details = [
@@ -382,8 +387,8 @@ function blockTool(dependencies: DrilldownDependencies): ToolDefinition {
             ...(properties.length === 0
               ? []
               : [`Properties: ${properties.map((property) => `${property.name}=${property.value}`).join('; ')}`]),
-            `Networks: ${shown.length}${truncated ? ' (more than shown)' : ''}` +
-              (commentedCount === 0 ? '' : `, of which ${commentedCount} are commented out (no executable logic)`),
+            `Networks: ${shown.length} of ${total}${truncated ? ` (first page; raise max_networks to see the rest)` : ''}` +
+              (commentedTotal === 0 ? '' : `, ${commentedTotal} commented out (no executable logic)`),
           ]
           const fitted = fitDetails(
             shown.map(
@@ -401,13 +406,16 @@ function blockTool(dependencies: DrilldownDependencies): ToolDefinition {
 
           return localSuccess(
             tool,
-            `${resolved.name} (${resolved.kind}): ${shown.length} network(s).`,
+            `${resolved.name} (${resolved.kind}): ${total} network(s)` +
+              `${truncated ? `, first ${shown.length} listed` : ''}${commentedTotal === 0 ? '' : `, ${commentedTotal} commented out`}.`,
             details,
             {
               dbPath,
               block: { id: resolved.id, kind: resolved.kind, name: resolved.name },
               properties,
               networks: shown,
+              total,
+              commentedTotal,
               returned: shown.length,
               truncated,
             },
@@ -534,21 +542,29 @@ function networkTool(dependencies: DrilldownDependencies): ToolDefinition {
           const details = [...fitted.lines]
           if (fitted.omitted > 0) details.push(`… ${fitted.omitted} more line(s) not shown`)
           details.push(chunk.text.length === 0 ? 'Logic: (empty)' : chunk.text)
-          if (chunk.hasMore) {
-            details.push(`More logic follows: call ${NETWORK_TOOL} again with offset=${chunk.nextOffset} until hasMore is false.`)
-          }
           if (commentedOut && commentedLogic !== null) {
             const commented = fitDetails(commentedLogic.split('\n').map((line) => `  ${line}`), AUX_CHARS)
             details.push('Commented-out source (kept for review, NOT executed):')
             details.push(...commented.lines)
             if (commented.omitted > 0) details.push(`  … ${commented.omitted} more commented line(s) in data.commentedSource`)
           }
+          if (chunk.hasMore) {
+            // A machine-readable next action, so the reply is not "read the last
+            // line of the detail list" but an instruction the model can copy.
+            details.push(
+              `NEXT: knowledge_network(block=${JSON.stringify(resolved.name)}, index=${args.index}, ` +
+                `offset=${chunk.nextOffset}, max_chars=${maxChars})`,
+            )
+          }
 
           return localSuccess(
             tool,
             commentedOut
               ? `${resolved.name}[${args.index}]: no executable logic — the source is commented out.`
-              : `${resolved.name}[${args.index}]: ${writes.length} write(s), ${reads.length} read(s), ${renderCount(chunk.totalChars)} logic char(s).`,
+              : `${resolved.name}[${args.index}]: ${writes.length} write(s), ${reads.length} read(s)` +
+                (chunk.hasMore
+                  ? `, PARTIAL ${chunk.offset}–${chunk.offset + chunk.text.length} of ${renderCount(chunk.totalChars)} logic char(s).`
+                  : `, ${renderCount(chunk.totalChars)} logic char(s).`),
             details,
             {
               dbPath,
@@ -559,6 +575,7 @@ function networkTool(dependencies: DrilldownDependencies): ToolDefinition {
               accessesTruncated,
               commentedOut,
               commentedSource: commentedLogic,
+              partial: chunk.hasMore,
               logic: {
                 text: chunk.text,
                 offset: chunk.offset,

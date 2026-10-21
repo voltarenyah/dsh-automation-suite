@@ -169,7 +169,7 @@ PLC 对象增删改、监视表与软件单元、F 相关服务、编译与关�
 |---|---|---|
 | **工控软件接口插件族** | 把工控软件暴露的能力整体变成 LLM 的能力范围（含配套文档） | 🟡 **V17 × min**（块·UDT·标签表）；std/pro 能力层级与 V18+ 待补 |
 | **工程上下文插件** | 管住"现在谈的是哪个工程、它在 workspace 的哪里、里面是什么" | 🟡 **部分实现**：`create_engineering_project` 一个工具（56 项单测）—— 把 TIA 打开的工程另存进 workspace、把源文件树读出来、再经【缝 B】逐设备触发知识图谱建库（`knowledge/<device>/*.db`）；图谱缺席/引擎未构建只报"图谱未建成"，不让流程失败。指纹变更检测/变更台账未做。P0 的工程注册表与 P1 的内部 git 版本层**已删除**（该包 D22）。**已登记进蓝图**（`--dump-config` 行数见根 `AGENTS.md` §4，DSH 0.2.1-rc.2） |
-| **工程知识图谱插件** | 准确翻译 XML 中的 PLC 语法，XML → 图数据库 → 按需给出工程细节 | 🟡 **部分实现**：Simatic ML → 图 → SQLite 已通（7 个真实 fixture 出 72 节点 / 153 边，覆盖 15 种节点种类），引擎协议 + 8 个工具 + `knowledgeGraph` 服务（104 项单测，含经真实引擎的端到端）；**被族 2 的 `create_engineering_project` 调用**（该包 D25）。`knowledge_workspace` 让模型自己读到库路径、`knowledge_query` 的 `db_path` 因此可省略，四个下钻工具（search / block / network / variable usage，TS 侧固定 SQL，零 C# 改动）把程序逻辑读成有界答复（**D24** 两阶段）。**新鲜度/增量、兼容层未做**。**已登记进蓝图** |
+| **工程知识图谱插件** | 准确翻译 XML 中的 PLC 语法，XML → 图数据库 → 按需给出工程细节 | 🟡 **部分实现**：Simatic ML → 图 → SQLite 已通（7 个真实 fixture 出 72 节点 / 153 边，覆盖 15 种节点种类），引擎协议 + 8 个工具 + `knowledgeGraph` 服务（111 项单测，含经真实引擎的端到端）；**被族 2 的 `create_engineering_project` 调用**（该包 D25）。`knowledge_workspace` 让模型自己读到库路径、`knowledge_query` 的 `db_path` 因此可省略，四个下钻工具（search / block / network / variable usage，TS 侧固定 SQL，零 C# 改动）把程序逻辑读成有界答复（**D24** 两阶段）。**新鲜度/增量、兼容层未做**。**已登记进蓝图** |
 
 逐项进度、缺口与验收口径见 [`docs/roadmap.md`](docs/roadmap.md)；
 已定的取舍见 [`docs/decisions.md`](docs/decisions.md)，**34 条待决策问题在
@@ -635,7 +635,7 @@ packages/
     docs/                          ARCHITECTURE.md / PATH-RULES.md / decisions.md
   dsh-engineering-graph/           工程知识图谱插件：**引擎 + 协议 + 8 个工具 + knowledgeGraph 服务，已登记进蓝图**
     src/                           NDJSON 协议客户端、4 个知识工具（含本地发现工具）、knowledgeGraph 服务（tsc → lib/）
-    test/                          node:test 套件（110 项，含经真实引擎的端到端与传输层故障注入）
+    test/                          node:test 套件（111 项，含经真实引擎的端到端与传输层故障注入）
     engine/                        C# 引擎（net8 + Microsoft.Data.Sqlite）：Simatic ML → 图 → SQLite
                                    Graph/ Parsing/ Import/ 为 vendored（命名空间拍平，见 D17）；
                                    build.ps1 构建到 engine/bin（**进 git**：引擎缺席时插件仍加载但每次调用报
@@ -693,7 +693,7 @@ pnpm run clean:build      # 清构建产物（只碰 lib/ dist/）
 | `dsh-tia-openness-v17-min` | `node:test`（`node --test test/*.test.mjs`） | 97 项：96 通过 / 1 跳过（跳过项是"控制器未构建"的降级路径） |
 | `dsh-tool-git` | `vitest`（`vitest run`） | 33 项全通过 |
 | `@voltarenyah/dsh-engineering-context` | `node:test`（`node scripts/run-tests.mjs`，先构建再跑） | 56 项全通过（含经假 `engineeringAccess` / 假 `knowledgeGraph` 服务的契约用例） |
-| `@voltarenyah/dsh-engineering-graph` | `node:test`（`node scripts/run-tests.mjs`，先构建再跑） | 110 项全通过（含经真实引擎的端到端；引擎没构建时该项 skip 并打印构建命令） |
+| `@voltarenyah/dsh-engineering-graph` | `node:test`（`node scripts/run-tests.mjs`，先构建再跑） | 111 项全通过（含经真实引擎的端到端；引擎没构建时该项 skip 并打印构建命令） |
 | `dsh-ui-plc-source` | `node:test`（`node scripts/run-tests.mjs`，先构建再跑；浏览器半侧 `.jsx` 不进 `tsc`） | 47 项全通过（纯模型 33 + 宿主 9 + 字典 5） |
 | `dsh-ui-tia-console` | `node:test`（`node scripts/run-tests.mjs`，先构建再跑） | 22 项全通过（纯事件折叠 + 字典） |
 

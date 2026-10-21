@@ -75,7 +75,7 @@ spawn（`apply` 不预热，所以缺引擎时加载没有任何副作用），�
 四者的名字、顺序、参数、描述与渲染都是**冻结的**契约。`knowledge_workspace` 是唯一的本地工具，它声明**自己的信封**（`ok`/`tool`/`summary`/`details`/`data`/`warnings`/`error`）而不是引擎信封 —— 报一个引擎从没跑过的 `operation` 就是撒谎（`src/workspace-tool.ts` 的模块注释）。唯一可变的只有"`knowledge_ingest` 在不在"
 （工具行的 `includeIngest`，见 §2.2）：另外三个工具在任何配置下都完全一致。四个下钻工具由 `includeDrilldown` 控制：`none`（默认）/ `inspect`（只加 block + network）/ `all`（四个都加）。
 
-**四个下钻工具用 TypeScript 拼固定 SQL，走现有 `Query` 操作**（**D24** §5）：`knowledge_search`（FTS5 `knowledge_search` 索引，<3 字符退化 LIKE）、`knowledge_block`、`knowledge_network`（逻辑默认 3000 字符、硬顶 6000，给 `offset`/`nextOffset`）、`knowledge_variable_usage`（READS/WRITES 边 + 文本 mention 合并）。**没有一条改 C#、改协议白名单或重发 `engine/bin`**。每个工具都自己限界：长值截断、明细行按字符预算裁剪、超出给"下一页怎么取"的指引，**绝不把"其余在 data 里"当作答复**（框架只把 `render` 的文本交给模型）。
+**四个下钻工具用 TypeScript 拼固定 SQL，走现有 `Query` 操作**（**D24** §5）：`knowledge_search`（FTS5 `knowledge_search` 索引，<3 字符退化 LIKE）、`knowledge_block`、`knowledge_network`（逻辑默认 3000 字符、硬顶 6000，给 `offset`/`nextOffset`）、`knowledge_variable_usage`（READS/WRITES 边 + 文本 mention 合并）。**没有一条改 C#、改协议白名单或重发 `engine/bin`**。每个工具都自己限界：长值截断、明细行按字符预算裁剪、超出给"下一页怎么取"的指引，**绝不把"其余在 data 里"当作答复**（框架只把 `render` 的文本交给模型）。**D26** 又收紧了两处：`knowledge_block` 的总数来自同一条语句的 `COUNT`（`Networks: 50 of 72`，不再把分页大小当总数），`knowledge_network` 一旦只给出一段就在 summary 里写 `PARTIAL 0–6000 of 93742` 并附一条可复制的 `NEXT:` 续读指令。
 
 **`knowledge_query` 的渲染同样是预算化的**：逐字段默认截断到 200 字符（`max_field_chars` 可调到 3500，用来整段读一条长逻辑）、整段渲染有字符预算，超出的行数如实计数并提示用 `LIMIT`/`OFFSET` 翻页 —— 原先那句"其余在 `data.rows`"已删除，因为 `data` 到不了模型。**整网被注释掉的网络**（**D25**）在 `knowledge_network` 里直接说"no executable logic — the source is commented out"并附原文，在 `knowledge_block` 的列表里标 `COMMENTED OUT`。
 

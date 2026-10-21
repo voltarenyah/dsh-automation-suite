@@ -170,13 +170,26 @@ export function blockPropertiesStatement(nodeId: string, limit: number): string 
   )
 }
 
-/** The statement that lists a block's networks, compactly. */
+/**
+ * The statement that lists a block's networks, compactly.
+ *
+ * The last two columns are the **real totals**, independent of `limit`: without
+ * them the renderer could only report the page size, and a caller that raised
+ * `max_networks` from 50 to 60 to 70 never learned the block had 72
+ * (docs/decisions.md D26). Both come from the same statement, so the total costs
+ * no extra round trip.
+ */
 export function blockNetworksStatement(nodeId: string, limit: number): string {
+  const block = sqlText(nodeId)
   return (
     'SELECT network_index, network_id, title, language, coalesce(length(logic_statements), 0), source_file,\n' +
     "  (SELECT value FROM graph_node_properties p WHERE p.node_id = knowledge_networks.network_id\n" +
-    "     AND p.name = 'logicCommented') AS commented\n" +
-    `FROM knowledge_networks\nWHERE block_id = ${sqlText(nodeId)}\n` +
+    "     AND p.name = 'logicCommented') AS commented,\n" +
+    `  (SELECT COUNT(*) FROM knowledge_networks total WHERE total.block_id = ${block}) AS total,\n` +
+    '  (SELECT COUNT(*) FROM graph_node_properties cp\n' +
+    '     JOIN knowledge_networks cw ON cw.network_id = cp.node_id\n' +
+    `     WHERE cp.name = 'logicCommented' AND cw.block_id = ${block}) AS commented_total\n` +
+    `FROM knowledge_networks\nWHERE block_id = ${block}\n` +
     `ORDER BY network_index\nLIMIT ${limit}`
   )
 }

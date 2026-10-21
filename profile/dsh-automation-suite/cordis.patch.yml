@@ -97,6 +97,16 @@
   config:
     default: leader
 
+# 子 agent 的并发上限：同时最多 2 个（宿主默认 8）。
+#
+# 依据是两次真机复盘：3 个并发 expert 里 2 个被中断后只剩 1 份报告，而单次派发
+# 的净贡献（一次交叉核对、一条关键事实）已经够用；上限 2 = 一个主链 + 一个旁证。
+# 宿主行没有资源，只有这个 config，所以这里是**整体替换**：两个键都要写全。
+- id: subagent
+  config:
+    maxDepth: 1
+    maxActiveSubagents: 2
+
 # 工程上下文插件没有宿主面资源（既不开子进程也不提供服务），所以它整行搬进 leader preset。
 # 宿主面这一行必须显式禁用：留着启用状态会让它的 `create_engineering_project` 落在全局层，
 # 被包括子 agent 在内的每个 agent 继承 —— 那正是本方案要消除的形态。
@@ -167,9 +177,13 @@
                   (`knowledge_search`, `knowledge_block`, `knowledge_network`, `knowledge_variable_usage`) and you
                   have only the first two: delegate the rest instead of reconstructing it out of SQL.
                 - Before you report on delegated work — and always at the start of a turn that follows a restart, a
-                  long pause or an interruption — call `list_agents` and re-read the answer. A subagent that no
-                  longer appears is interrupted: say so, then re-dispatch or report what is missing. Never claim a
-                  delegated track is "still running" without a fresh check.
+                  long pause or an interruption — call `list_agents` exactly once and re-read the answer. A subagent
+                  that no longer appears is interrupted: say so, then re-dispatch or report what is missing. Never
+                  claim a delegated track is "still running" without that fresh check.
+                - Never poll `list_agents` while a subagent runs. A finished subagent reaches you as a message and
+                  starts a new turn, so waiting costs one request; each poll costs a whole one for the answer
+                  "running" (measured: eight polls were a quarter of one session's budget). When you have nothing
+                  left to do, say that you are waiting and end the turn.
 
                 Delegation policy. You own the project-level work and you keep doing it yourself:
 
@@ -185,8 +199,10 @@
                 - Write the delegation brief with the object (device / block / group / variable), the
                   exact question, and the form you want back: a consolidated answer plus, when a change
                   is warranted, a modification plan naming blocks and networks. Include the block id and
-                  the network ranges you already resolved, and require a coverage list back (which
-                  networks were read, which were not, and why) so a gap cannot hide.
+                  the network ranges you already resolved, list the networks you have already read with one
+                  line of fact each and say they are not to be re-read unless a conclusion depends on them,
+                  and require a coverage list back (which networks were read, which were not, and why) so a
+                  gap cannot hide.
                 - `expert` works in its own context; you only see its closing message. If it needs
                   something only you have, it will `send_message` you.
           - id: agent-instructions
@@ -387,8 +403,10 @@
                   `knowledge_block` for one block and its network list, `knowledge_network` for one network's logic,
                   reads and writes, `knowledge_variable_usage` for every place one variable is read, written or
                   mentioned. Use `knowledge_query` only when none of them fits.
-                - `knowledge_network` returns its logic in chunks: when the reply says more follows, call it again
-                  with the returned `nextOffset` until `hasMore` is false. Never treat one chunk as the whole network.
+                - `knowledge_network` returns its logic in chunks, and says `PARTIAL` in its summary when it did. When
+                  it does, either fetch the rest with the returned offset, or mark the claim as based on that
+                  character range. Never cite a partial chunk as the whole network — a 9,400-character network read
+                  to 6,000 is not the network.
                 - Every tool caps what it returns and says when it did; page with the returned offset (or LIMIT and
                   OFFSET in SQL) instead of asking for a whole table or block.
                 - Read only through the knowledge tools. Do not read the exported XML, and do not `grep`/`glob` over
@@ -404,6 +422,9 @@
                   value.
                 - The database is a derived snapshot: say what the graph shows, and when it was built, rather than
                   asserting that the program "changed" or "did not change".
+                - If the brief names a notes file or lists facts the delegating agent already verified, read that file
+                  once and reuse those facts. Re-read a network only when your conclusion depends on it, and say so;
+                  re-deriving a fact the brief already established spends a whole turn to learn nothing.
                 - Ground every conclusion in a tool result, and name the exact objects: device, block, network,
                   variable, plus the call that shows it.
                 - If you need something only the delegating agent has (a project open in TIA, a fresh

@@ -149,7 +149,7 @@ pnpm run clean:build      # 清构建产物（只碰 lib/ dist/）
 ## 4. 测试与验收
 
 ```powershell
-pnpm test          # 全仓：TIA 97 项（96 通过 / 1 跳过）+ dsh-tool-git 33 项 + engineering-context 56 项 + engineering-graph 110 项 + ui-plc-source 47 项 + ui-tia-console 22 项
+pnpm test          # 全仓：TIA 97 项（96 通过 / 1 跳过）+ dsh-tool-git 33 项 + engineering-context 56 项 + engineering-graph 111 项 + ui-plc-source 47 项 + ui-tia-console 22 项
 pnpm -r build
 pnpm -r typecheck
 ```
@@ -239,9 +239,9 @@ dsh --profile dsh-automation-suite --dump-config
 
 | 命令 | 行数 |
 |---|---|
-| `dsh --profile web --dump-config`（官方组合，本机当前） | **1183** |
-| `dsh --profile web --patch profile/dsh-automation-suite/cordis.patch.yml --dump-config` | **1601** |
-| 按蓝图物化的 profile：`dsh --profile dsh-automation-suite --dump-config` | **1634** |
+| `dsh --profile web --dump-config`（官方组合，本机当前） | **1229** |
+| `dsh --profile web --patch profile/dsh-automation-suite/cordis.patch.yml --dump-config` | **1712** |
+| 按蓝图物化的 profile：`dsh --profile dsh-automation-suite --dump-config` | **1751** |
 
 > ⚠️ 旧基线 **1235 / 1471 / 1477** 已作废：同一天重测时官方 `web` 组合本身就少了几十行
 > （不是本仓改动 —— 那三条命令的第一条不含本仓任何文件）。别拿新旧数值互相解释，用自己那次跑出来的三个数

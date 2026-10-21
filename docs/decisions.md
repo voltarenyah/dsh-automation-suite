@@ -740,6 +740,46 @@ stdio 通道实测：`ready` 帧列出三个操作，`GetSchema` 返回 34 字�
 
 ---
 
+## D26 · 第二次真机复盘：把数字说对、别轮询、别重复读 ✅
+
+**背景**：2026-10-20 晚用另一个问题（`CoolingCoupelleSWT2` N50 的 DTR 与 VOC 门时序）复测。
+结果比上一轮好一个量级（19.7 M → **6.06 M** token、258 → 103 步、XML 读取 88+31 → **0**、工具错误 4 → 0），
+但暴露出四个问题，其中两个是**工具在说谎**而不是模型犯懒。
+
+**决定**
+
+1. **`knowledge_block` 报真实网络总数，不报分页大小**。原实现把 `shown.length` 当总数，于是
+   模型看到 "50 network(s)"、加到 60、又加到 70（真实 72），并把 "60 networks" 写进给
+   expert 的 brief、把 "all 70 networks" 写进交付文件。现在总数由**同一条语句**的子查询给出
+   （`COUNT(*)` 与 `COUNT(commented)`），渲染成 `Networks: 50 of 72 (first page…)`，summary 用总数。
+   这也回答了"要不要写进 manifest"：**不写** —— 总数是派生事实，DB 已经是唯一副本；manifest 会变成
+   第二份、还要 TIA 插件去解析 XML 才能算。同语句 COUNT 是 0 额外往返、亚毫秒。
+2. **截断必须写在第一行**。`knowledge_network` 原来只在明细末尾说"还有后续"，两个 agent 都读到
+   6,000 字符就转去做别的（其中一个还在覆盖清单里自认 "first chunk"）。现在 summary 直接
+   `PARTIAL 0–6000 of 93742`，并给一条可复制的 `NEXT: knowledge_network(block=…, index=…, offset=…)`；
+   数据里另有 `partial: true`。**`max_chars=6000` 保持不变**：它是上限不是配额（短网络不会浪费），
+   覆盖 94.9% 的网络一次读完，且结果仍在 Pruner 的 8192 之下。
+3. **禁止轮询 `list_agents`**。8 次轮询全是 `[running]`，却花掉 **744 k token（leader 的 24.3%）** ——
+   计费按请求不按结果字符。完成通知本来就会把消息投回来并开新一轮，所以"等"的正确做法是
+   **结束本轮**（1 次请求），而不是轮询（N 次）。`list_agents` 只保留一个用途：重启/中断后确认
+   子会话是否还活着。**定时提醒（automation）不解决这个问题** —— 到点也是一次新 turn，成本相同。
+4. **并发子上限 = 2（硬限制，不是 persona）**。宿主的 `subagent` 行有 `maxActiveSubagents`（默认 8）
+   与 `maxDepth`（默认 1），蓝图一直没覆盖；现在写 `maxActiveSubagents: 2`（一个主链 + 一个旁证）。
+5. **brief 带"已读/禁读清单"，expert 先读 notes 工件**。本次 leader 读 29 个网络、expert 读 41 个，
+   并集 47 → **23 个被两边各读一遍**（约 20–35% 的 expert 预算）。brief 必须列出已读的
+   `(block, index)` 与一行结论，并说明"不要重读，除非你的结论依赖它"；expert 若被指向 notes 文件，
+   先读文件再补未验证项。
+
+**没做（有意）**：SCL 大块的结构级导航（REGION 偏移表）与"单网络分页熔断"留作后续。本轮把数据留下
+供其设计：4550 个网络里 94.9% ≤6,000 字符，但 31 个（0.7%）>6,000，最大 83,742（`LAxisCtrl_Axis` N1）
+—— 这类要靠导航，而不是整段分页。另：读 XML 的审批仍是 policy，不是硬闸门（见 D25 的后果）。
+
+**验证**：包内 **111 项**全绿（新增"总数来自语句"与"PARTIAL/NEXT"两族）；蓝图 `--dump-config`
+exit 0，`maxActiveSubagents: 2` 与三段新 persona 规则都在解析结果里。工具面没动，
+所以 leader/expert 的工具数仍是 D23 的 46 / 26。
+
+---
+
 ## 待办验证清单（由以上决策派生）
 
 | # | 待验证 | 来源 |
