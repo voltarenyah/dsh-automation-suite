@@ -12,7 +12,7 @@
 > （`_dsh-eng/projects.json` 注册表、内部 git 版本层），现行布局是 `tia/` + `source/` +
 > `knowledge/`，模型面只有 `create_engineering_project`。凡涉及那 4 个工具、注册表、`current` 指针、
 > 内部 git、`projects/<id>/…` 路径的条目**均已失效**；现行口径以
-> [`PATH-RULES.md`](PATH-RULES.md) 与 **D22 / D23 / D24 / D25** 为准。
+> [`PATH-RULES.md`](PATH-RULES.md) 与 **D22 / D23 / D24 / D25 / D26** 为准。
 
 ---
 
@@ -67,7 +67,7 @@
 | `ctx.spillStore.saveText()` | 按会话归属、工件由 backend 决定过期（`@deepseek-ai/dsh-spill` README）；只配当**临时工件**，当基线会在某天静默失效 |
 | `DSH_HOME` 下按路径哈希分目录 | 不污染工程目录，但**换机器就丢**，变更检测失去跨机器意义（与 [`docs/open-questions.md`](../../../docs/open-questions.md) A14 的倾向相反） |
 
-**后果**：工程目录里会多一个 `_dsh-eng/`（与接口插件族已经在导出目录写 `_tia-openness-manifest.json` 同类）。
+**后果**：工程目录里会多一个 `_dsh-eng/`（与接口插件族已经在导出目录写 `_manifest.json` 同类）。
 
 ---
 
@@ -580,7 +580,7 @@ P1 填值时不必让模型重新学。结果里同时给出 `phases.pending`，
 | 目录名 | TIA 的项目名，安全化后**原样**用（不做 slug） | 目录要能对上 TIA 里的名字；`SaveAs` 不能改名（接口插件 D20） |
 | `dry_run` 默认 | **true** | 与 P0-4 同源：另存把工程搬到 workspace 副本上，先给计划 |
 | `.gitignore` | 本插件维护，**只追加** | 这是本插件唯一自己写的文件：缺则创建、有则追加、已有该行则不动 |
-| git | **完全不碰** | 版本化交给用户自己的 git（D13 从"不自动 init"变成"不碰"） |
+| git | **完全不碰**（S2/D26 起：`project_sync` 会做一次**路径限定**的提交；仍不 `init`、不 `push`、不 `force`） | 版本化交给用户自己的 git（D13 从"不自动 init"变成"不碰"） |
 | 记账 | 不留注册表 | 宁可少一层账，也不要一层没人读的状态 |
 
 **它替换 / 废止了什么**：D3（`_dsh-eng` 状态层的注册表部分）、D5（`current` 指针）、D13（`init_vcs`）、
@@ -594,7 +594,7 @@ P0-4 / P0-5 / P0-6 / P0-10 / P0-11、P1-1…P1-6（版本层与 patch 工件）�
 **验证**：`test/02-create-project.test.mjs`（18 项）用一个假 `engineeringAccess` 服务断言：
 计划不写任何东西、真实运行先另存再导出、TIA 拒绝时停在哪一步、工程已在 workspace 内时跳过另存、
 被拒对象逐条回报、`.gitignore` 只追加不重写、无服务 / 控制器没跑 / 没开工程 / 没 cwd 各自的错误码。
-`test/03-plugin.test.mjs` 断言只注册这一个工具、描述里写明 dry-run 规则、真实 harness 运行时接受其 schema。
+`test/03-plugin.test.mjs` 断言只注册这一个工具（S2 起为 3 个，见 D26）、描述里写明 dry-run 规则、真实 harness 运行时接受其 schema。
 
 ---
 
@@ -728,3 +728,55 @@ cordis 服务 `knowledgeGraph`；`create_engineering_project` 写完源文件树
 计划不碰服务），`test/04-knowledge-graph.test.mjs` 新增 12 项（按名取与形状漂移、四种降级、
 规范化、上限、取消重抛）。本包 **37 → 56 项全通过、无跳过**。
 （D22/D23 里"37 项"是各自当时的数字，保留不改。）
+
+---
+
+## D26. 版本管理 = TIA 权威 + SOURCE 提交物：`project_status` / `project_sync`（S2）
+
+**背景**（使用者 2026-10 的取舍）：版本管理一开始被想成"五个 store"（TIA / SOURCE / REMOTE /
+STAGE / DRAFT）加一套自有版本号。核过之后收敛成一件更小的事：
+
+- **TIA 是权威**：工程只在 TIA 里改，任何"版本"都必须能回答"它对应哪一次编译后的 PLC 状态"；
+- **SOURCE 是 TIA 的 git 快照**：文本、可 diff、可提交；
+- **STAGE 只是磁盘暂存**：一次扫描把差异放这里，提升完就删；
+- **REMOTE 是块级交换**，没有 checksum 保证，**不参与相等性判断**；**DRAFT 是模型编辑沙盒**，
+  它的写入要由逐块指纹锁守住（S3，尚未实现）。
+
+**决定**（S0/S1 取证在接口插件侧，S2 消费在本包）：
+
+1. **断相等性用两个层级**：`PlcChecksumProvider.Software`（PLC 级，3.2 s）做快路径；
+   真的变了才进慢路径，用**分面指纹**（块/UDT）与**归一化 XML 哈希**（`xml-norm-v1`，标签表）逐对象比。
+   manifest 的 `sha256` 只是文件完整性佐证，**绝不作变更键**（D6 的结论没有变）。
+2. **三份文档、两种角色**（细节见 `PATH-RULES.md` §2.1 / §2.2）：
+   `source/<device>/_evidence.json` 是**权威账本**（指纹 / 哈希 / checksum / 墓碑 / `stateId`），
+   `_manifest.json` 是**派生清单**（bytes / sha256 / verified / 类型元数据，相对路径、无时间戳），
+   `.dsh/local/{lock.json,stage/}` 是**本机临时状态**（TTL 15 min，不进 git）。
+3. **两份文档由同一次 `SyncScan` 调用写出**，不拆成第二次 API：慢路径本来就已经知道"哪些对象变了、
+   哪些没变"，再让消费方拼一次清单就会产生两个真相。清单的合并语义是"未变对象沿用旧条目、
+   只重写真正变化的标签表"，所以它不会把整棵树的时间戳/哈希全部刷新一遍。
+4. **快路径必须同时满足**：checksum 与账本一致、账本可读、清单可用。**清单缺失/损坏只会强制一次
+   全量导出**（`manifestRebuilt: true`），不会让"没看见"变成"没有变化"。
+5. **删除用墓碑**：对象从 TIA 消失 → `tombstones` 记一条 → 同步时删它的旧 XML；对象只是
+   `unexportable` → 保留旧文件。**没有墓碑就不删**，所以一次导不出的块不会被误删。
+6. **两个工具、一个默认**：`project_status` 只读（`verify: true` 才读 checksum）；
+   `project_sync` 默认是计划（只读 checksum，约 3 s，报告 `wouldSync`），写盘必须 `dry_run: false`。
+7. **写盘在 workspace 锁内**，顺序固定：`ensureRepository` → `syncScan` → 提升差异 → 删墓碑文件 →
+   写两份文档 → `git add/commit -- source/<device>`；成功或失败都清 STAGE。**从不 `git init`**。
+8. **一个 workspace 一个 PLC**：`resolveDevice` 在 >1 个 PLC 时返回 `multiple_plc_unsupported`，
+   不猜"第一个"。多设备是后续工作，不是当前语义。
+9. **`create_engineering_project` 仍走 `rebuildSource`**（首次全量、写清单、不写账本）；
+   第一次 `project_sync` 会因"没有账本"做一次全量扫描并补上 `_evidence.json`。这是刻意的：
+   创建阶段的职责是"把工程接进来"，版本状态由同步工具负责。
+
+**为什么不是"五个 store 各一套版本号"**：那会让"哪个版本对应哪次编译"变成需要人工对齐的两份真相。
+现在只有一条链：`Tia-Checksum` + `Tia-State` trailer → 账本 → 一次提交；REMOTE 只是交换，
+DRAFT 只是编辑沙盒，两者都不能回答"PLC 现在是什么"。
+
+**代价（必须承认）**：① 慢路径仍要遍历全部对象（实测 1155 块 / 215 类型 / 7 标签表，121–231 s；
+只改 1 块也要 48.3 s，因为标签表要重新确认）；② 清单是派生品，损坏时只能全量重建；
+③ STAGE 在崩溃后可能残留（`.dsh/local/` 不进 git，删掉即可，下一次同步不读它）。
+
+**验证**：`test/09-status-sync.test.mjs` 17 项 —— 状态六种（无服务 / 无账本 / 漂移 / 未编译 /
+损坏账本 / 锁被占）、计划三种（需要同步 / 已同步 / 未编译）、真实同步八种（首次提交与四个 trailer、
+unchanged 不提交、损坏账本重建、迁移后目录回退、删除 + 不可导出保留、非仓库拒绝、锁被占、扫描失败清 STAGE）。
+本包 **56 → 73 项全通过、无跳过**。

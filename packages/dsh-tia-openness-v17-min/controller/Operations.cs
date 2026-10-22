@@ -104,6 +104,10 @@ namespace TiaOpennessV17Min.Controller
                     return ImportBlocks(parameters, log, changes, progress);
                 case OperationCatalog.CompilePlc:
                     return CompilePlc(parameters, log, changes, progress);
+                case OperationCatalog.PlcChecksum:
+                    return PlcChecksum(parameters, log, changes, progress);
+                case OperationCatalog.SyncScan:
+                    return SyncScan(parameters, log, changes, progress);
                 case OperationCatalog.CloseProject:
                     return CloseProject(parameters, log, changes, progress);
 
@@ -266,66 +270,13 @@ namespace TiaOpennessV17Min.Controller
             data.Add("dryRun", false);
 
 
-            List<JsonObject> files = new List<JsonObject>();
-            List<JsonObject> exportFailures = new List<JsonObject>();
-            List<string> exportFailureNames = new List<string>();
-            List<string> verificationFailures = new List<string>();
-            int exported = 0;
-            int skipped = 0;
-
-            foreach (ExportPlanItem item in plan)
-            {
-                if (File.Exists(item.File) && !overwrite)
-                {
-                    skipped++;
-                    changes.Add("file", item.File, "skipped", "The file exists and overwrite is off.");
-                    log.Warning("Skipped " + Text.Quote(item.Name) + ": " + item.File + " already exists (pass overwrite to replace it).");
-                    continue;
-                }
-
-                bool existed = File.Exists(item.File);
-                progress.Report("export", "Exporting " + item.Name + " to " + item.File);
-                try
-                {
-                    if (string.Equals(item.Category, CategoryTypes, StringComparison.Ordinal))
-                    {
-                        _host.ExportType(item.Type, item.File, exportOptions);
-                    }
-                    else if (string.Equals(item.Category, CategoryTagTables, StringComparison.Ordinal))
-                    {
-                        _host.ExportTagTable(item.TagTable, item.File, exportOptions);
-                    }
-                    else
-                    {
-                        _host.ExportBlock(item.Block, item.File, exportOptions);
-                    }
-                }
-                catch (ControllerException ex)
-                {
-                    // Openness refuses some objects outright: a real V17 project with
-                    // ProDiag blocks fails with "The programming language 'ProDiag_OB'
-                    // is not supported during import and export", and Safety F-OBs with
-                    // "The export of block 'FOB_SAFETY' is not permitted". One such
-                    // object must not abort the export of the whole project, so the
-                    // failure is recorded per object and the loop continues.
-                    exportFailures.Add(JsonObject.Of(
-                        "category", item.Category,
-                        "name", item.Name,
-                        "group", item.GroupPath,
-                        "file", item.File,
-                        "code", ex.Code,
-                        "message", ex.Message));
-                    exportFailureNames.Add(item.Name);
-                    changes.Add(item.Category, item.Name, "export_failed", ex.Message);
-                    log.Warning("Openness could not export " + Text.Quote(item.Name) + ": " + ex.Message);
-                    continue;
-                }
-                exported++;
-
-                JsonObject verification = VerifyExportedFile(item, verificationFailures);
-                files.Add(verification);
-                changes.Add("file", item.File, existed ? "overwritten" : "created", item.Name);
-            }
+            ExportRun run = RunExportPlan(plan, exportOptions, overwrite, log, changes, progress);
+            List<JsonObject> files = run.Files;
+            List<JsonObject> exportFailures = run.Failures;
+            List<string> exportFailureNames = run.FailureNames;
+            List<string> verificationFailures = run.VerificationFailures;
+            int exported = run.Exported;
+            int skipped = run.Skipped;
 
             JsonObject summary = new JsonObject();
             summary.Add("exported", exported);
@@ -339,7 +290,7 @@ namespace TiaOpennessV17Min.Controller
 
             if (writeManifest)
             {
-                string manifestPath = Path.Combine(outputDir, "_tia-openness-manifest.json");
+                string manifestPath = Path.Combine(outputDir, "_manifest.json");
                 WriteManifest(manifestPath, software, outputDir, exportOptionName, categories, categoryCounts, files, exportFailures, log);
                 data.Add("manifest", manifestPath);
                 changes.Add("file", manifestPath, File.Exists(manifestPath) ? "written" : "created", "export manifest");
@@ -382,6 +333,85 @@ namespace TiaOpennessV17Min.Controller
                     + "per object instead of aborting the export: " + string.Join(", ", exportFailureNames) + ".");
             }
             return data;
+        }
+
+        /// <summary>The outcome of writing one export plan.</summary>
+        private sealed class ExportRun
+        {
+            public int Exported;
+            public int Skipped;
+            public readonly List<JsonObject> Files = new List<JsonObject>();
+            public readonly List<JsonObject> Failures = new List<JsonObject>();
+            public readonly List<string> FailureNames = new List<string>();
+            public readonly List<string> VerificationFailures = new List<string>();
+        }
+
+        /// <summary>
+        /// Write every item of an export plan, recording per-object refusals instead
+        /// of aborting the batch.
+        ///
+        /// This is shared by <c>ExportBlocks</c> (which keeps its fatal precedence
+        /// rules) and <c>SyncScan</c> (which treats a refusal as data, because one
+        /// ProDiag or Safety block must not stop the rest of a versioning scan).
+        /// </summary>
+        private ExportRun RunExportPlan(List<ExportPlanItem> plan, ExportOptions exportOptions, bool overwrite,
+            DiagnosticLog log, ChangeLog changes, IProgressSink progress)
+        {
+            ExportRun run = new ExportRun();
+            foreach (ExportPlanItem item in plan)
+            {
+                if (File.Exists(item.File) && !overwrite)
+                {
+                    run.Skipped++;
+                    changes.Add("file", item.File, "skipped", "The file exists and overwrite is off.");
+                    log.Warning("Skipped " + Text.Quote(item.Name) + ": " + item.File + " already exists (pass overwrite to replace it).");
+                    continue;
+                }
+
+                bool existed = File.Exists(item.File);
+                progress.Report("export", "Exporting " + item.Name + " to " + item.File);
+                try
+                {
+                    if (string.Equals(item.Category, CategoryTypes, StringComparison.Ordinal))
+                    {
+                        _host.ExportType(item.Type, item.File, exportOptions);
+                    }
+                    else if (string.Equals(item.Category, CategoryTagTables, StringComparison.Ordinal))
+                    {
+                        _host.ExportTagTable(item.TagTable, item.File, exportOptions);
+                    }
+                    else
+                    {
+                        _host.ExportBlock(item.Block, item.File, exportOptions);
+                    }
+                }
+                catch (ControllerException ex)
+                {
+                    // Openness refuses some objects outright: a real V17 project with
+                    // ProDiag blocks fails with "The programming language 'ProDiag_OB'
+                    // is not supported during import and export", and Safety F-OBs with
+                    // "The export of block 'FOB_SAFETY' is not permitted". One such
+                    // object must not abort the export of the whole project, so the
+                    // failure is recorded per object and the loop continues.
+                    run.Failures.Add(JsonObject.Of(
+                        "category", item.Category,
+                        "name", item.Name,
+                        "group", item.GroupPath,
+                        "file", item.File,
+                        "code", ex.Code,
+                        "message", ex.Message));
+                    run.FailureNames.Add(item.Name);
+                    changes.Add(item.Category, item.Name, "export_failed", ex.Message);
+                    log.Warning("Openness could not export " + Text.Quote(item.Name) + ": " + ex.Message);
+                    continue;
+                }
+                run.Exported++;
+
+                JsonObject verification = VerifyExportedFile(item, run.VerificationFailures);
+                run.Files.Add(verification);
+                changes.Add("file", item.File, existed ? "overwritten" : "created", item.Name);
+            }
+            return run;
         }
 
         private sealed class ExportPlanItem
@@ -607,19 +637,22 @@ namespace TiaOpennessV17Min.Controller
             manifest.Add("schemaVersion", 1);
             manifest.Add("protocol", Protocol.Version);
             manifest.Add("generatedBy", Protocol.ControllerName);
-            manifest.Add("generatedAt", DateTime.UtcNow);
             manifest.Add("device", software.DeviceName);
             manifest.Add("software", software.SoftwareName);
-            manifest.Add("outputDir", outputDir);
             manifest.Add("exportOptions", exportOptionName);
             manifest.Add("categories", categories);
             manifest.Add("failureCount", exportFailures.Count);
-            manifest.Add("blocks", files);
+
+            List<JsonObject> relativeFiles = new List<JsonObject>();
+            foreach (JsonObject file in files) relativeFiles.Add(RelativizeManifestEntry(file, outputDir));
+            manifest.Add("blocks", relativeFiles);
             if (exportFailures.Count > 0)
             {
                 // Recorded so a later import knows which blocks have no Simatic ML
                 // representation at all (TIA's own ProDiag blocks, for example).
-                manifest.Add("failures", exportFailures);
+                List<JsonObject> relativeFailures = new List<JsonObject>();
+                foreach (JsonObject failure in exportFailures) relativeFailures.Add(RelativizeManifestEntry(failure, outputDir));
+                manifest.Add("failures", relativeFailures);
             }
 
             try
@@ -630,6 +663,29 @@ namespace TiaOpennessV17Min.Controller
             {
                 log.Warning("The export manifest could not be written to " + Text.Quote(manifestPath) + ": " + ex.Message);
             }
+        }
+
+        /// <summary>
+        /// Copy one manifest entry with its <c>file</c> made relative to the export
+        /// root. A committed manifest must not carry absolute paths: the tree is
+        /// copied between machines, and a checkout directory is not part of the
+        /// project's identity.
+        /// </summary>
+        private static JsonObject RelativizeManifestEntry(JsonObject entry, string root)
+        {
+            JsonObject copy = new JsonObject();
+            foreach (KeyValuePair<string, object> pair in entry)
+            {
+                if (string.Equals(pair.Key, "file", StringComparison.Ordinal) && pair.Value is string absolute)
+                {
+                    copy.Add("file", RelativePath(root, absolute));
+                }
+                else
+                {
+                    copy.Add(pair.Key, pair.Value);
+                }
+            }
+            return copy;
         }
 
         private static ExportOptions ParseExportOptions(string name)
@@ -1581,7 +1637,7 @@ List<string> categoryFilter = p.EnumList("categories", CategoryNames);
         }
     }
 
-    /// <summary>File hashing used by the export verification and the manifest.</summary>
+    /// <summary>File and text hashing used by the export verification, the manifest and the evidence ledger.</summary>
     internal static class Hashing
     {
         public static string Sha256OfFile(string path)
@@ -1590,12 +1646,30 @@ List<string> categoryFilter = p.EnumList("categories", CategoryNames);
             {
                 using (FileStream stream = File.Open(path, FileMode.Open, FileAccess.Read, FileShare.Read))
                 {
-                    byte[] hash = sha.ComputeHash(stream);
-                    System.Text.StringBuilder builder = new System.Text.StringBuilder(hash.Length * 2);
-                    foreach (byte b in hash) builder.Append(b.ToString("x2", CultureInfo.InvariantCulture));
-                    return builder.ToString();
+                    return Hex(sha.ComputeHash(stream));
                 }
             }
+        }
+
+        /// <summary>SHA-256 of a UTF-8 string, without a byte-order mark.</summary>
+        public static string Sha256OfText(string text)
+        {
+            return Sha256OfBytes(new System.Text.UTF8Encoding(false).GetBytes(text ?? string.Empty));
+        }
+
+        public static string Sha256OfBytes(byte[] bytes)
+        {
+            using (SHA256 sha = SHA256.Create())
+            {
+                return Hex(sha.ComputeHash(bytes ?? new byte[0]));
+            }
+        }
+
+        private static string Hex(byte[] hash)
+        {
+            System.Text.StringBuilder builder = new System.Text.StringBuilder(hash.Length * 2);
+            foreach (byte b in hash) builder.Append(b.ToString("x2", CultureInfo.InvariantCulture));
+            return builder.ToString();
         }
     }
 }

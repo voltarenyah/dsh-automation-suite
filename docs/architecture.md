@@ -16,7 +16,7 @@
 | 名称 | 对应层 | 一句话职责 | 现状 |
 |---|---|---|---|
 | **工控软件接口插件族**<br>（以 TIA 为例即 `tia-openness`；**按软件版本 × 能力层级**切分：V17/V18… × **min/std/pro**） | ① 接入层 | 与工控软件对接，**读写工程对象**；为后续分析提供**素材**与**验证工具**；并**附带文档**说清何时调用、怎么调用、数据怎么用 | 🟡 已有第一个成员：`@voltarenyah/dsh-tia-openness-v17-min`（V17 × min，定位是**验证基础功能**） |
-| **工程上下文插件** | 横向（作用域） | 面对用户的**多个 TIA 项目 × 多个分支 × 多个历史版本**，管理工程上下文，在会话中就某个工程问题**暴露出恰当的工程上下文**；对**工程对象做优化适配**并用「待办清单」式载体承接工程变更上下文 | 🟡 部分实现：`@voltarenyah/dsh-engineering-context`（唯一工具 `create_engineering_project`；变更检测/台账未做） |
+| **工程上下文插件** | 横向（作用域） | 面对用户的**多个 TIA 项目 × 多个分支 × 多个历史版本**，管理工程上下文，在会话中就某个工程问题**暴露出恰当的工程上下文**；对**工程对象做优化适配**并用「待办清单」式载体承接工程变更上下文 | 🟡 部分实现：`@voltarenyah/dsh-engineering-context`（3 个工具：`create_engineering_project` / `project_status` / `project_sync`；DRAFT/REMOTE 与台账未做） |
 | **工程知识图谱插件** | ② 语义层 | **准确翻译 XML 中的 PLC 语法**（兼容性强），把工程源文件解析成 LLM 便于处理的信息：**解析 XML → 建立图数据库 → 暴露接口**提供所需工程细节 | 🟡 部分实现：`@voltarenyah/dsh-engineering-graph`（引擎 + 8 个工具 + `knowledgeGraph` 服务；库发现与下钻见 D24；新鲜度/增量未做） |
 
 > **只有接口插件族是"一族多成员"**（成员 = 软件版本 × 能力层级）；工程上下文插件与工程知识图谱插件
@@ -261,7 +261,7 @@ min 新增的能力必须能低成本流向 std / pro —— 否则改用"内核
 
 | 契约 | 从 → 到 | 形态 | 状态 |
 |---|---|---|---|
-| 导出的工程素材 | 接口插件族 → 工程知识图谱插件 | 导出目录 + manifest（现有插件已产出 `_tia-openness-manifest.json`，含逐文件 SHA-256） | 已在用 |
+| 导出的工程素材 | 接口插件族 → 工程知识图谱插件 | 导出目录 + manifest（现有插件已产出 `_manifest.json`，含逐文件 SHA-256） | 已在用 |
 | **图谱建库** | 工程上下文插件 → 工程知识图谱插件 | `knowledgeGraph.ingestDevice(device_dir)`（`device_dir` = 接口插件族 `rebuildSource` 返回的 `devices[].directory`；库落 `knowledge/<device>/`） | ✅ 已接通（族 2 D25） |
 | **变更检测** | 工程上下文插件 → 接口插件族 | TIA 指纹（`FingerprintProvider`，分面：Code / Interface / Comments / Properties…） | 已定（D6），V17 待实测 |
 | **对象身份** | 接口插件族 → 工程上下文插件 / 工程知识图谱插件 | 导出物携带的 TIA 唯一 id | 已定（D7），稳定性待验证 |

@@ -85,7 +85,7 @@
 
 ```
 <output_dir>/
-├── _tia-openness-manifest.json          # 清单（§3）：一次调用一份，含全部三类
+├── _manifest.json          # 清单（§3）：一次调用一份，含全部三类
 ├── blocks/                             # categories 含 blocks（默认）
 │   └── <用户组路径>/<块名>.xml
 ├── types/                              # categories 含 types
@@ -113,7 +113,7 @@
 ```
 导出 1151 / 1152 个块（1 个 Safety F-OB 被 TIA 拒绝，逐块记录），1152 文件 / 70.6 MB
 UserFiles/
-├── _tia-openness-manifest.json
+├── _manifest.json
 ├── 000_SAFETY_TASK/…            ├── 010_Cell/…            ├── 20_Press/…
 ├── 999_Bibliotheque/Fonctions méthode/1001_SCP_IN/SCP_IN.xml
 └── LAxisCtrl_Blocks/…
@@ -125,7 +125,7 @@ tag_tables/     7 个 XML   （如 tag_tables/Table de variables standard.xml、
 
 ---
 
-## 3. 清单：`_tia-openness-manifest.json`
+## 3. 清单：`_manifest.json`
 
 有，就在 `output_dir` 根下，`write_manifest` 默认开启。逐字段：
 
@@ -134,26 +134,20 @@ tag_tables/     7 个 XML   （如 tag_tables/Table de variables standard.xml、
   "schemaVersion": 1,
   "protocol": 1,
   "generatedBy": "TiaOpennessV17Min.Controller",
-  "generatedAt": "2026-10-13T03:35:39Z",
   "device": "Sino_PEI",                  // 设备名
   "software": "Sino_PEI",                // PLC 软件名
-  "outputDir": "C:\\…\\UserFiles",
   "exportOptions": "with_defaults",
   "categories": ["blocks"],              // 本次请求的类别
-  "counts": { "blocks": 1151, "types": 0, "tagTables": 0 },
-  "objectCount": 1151,                   // 成功写出的对象数
-  "blockCount": 1151,                    // 同一数字（向后兼容旧字段）
   "failureCount": 1,                     // Openness 拒绝的数量
-  "blocks": [                            // 成功写出的每个对象
+  "blocks": [                            // 成功写出的每个对象（含 types / tag_tables）
     {
       "category": "blocks",              // blocks | types | tag_tables
       "name": "FB_Array_Handling",
       "group": "999_Kautex/",            // 用户组路径（空 = 根组）
-      "file": "C:\\…\\UserFiles\\999_Kautex\\FB_Array_Handling.xml",
+      "file": "blocks/999_Kautex/FB_Array_Handling.xml",  // 相对 output_dir
       "bytes": 19616,
       "sha256": "…",                     // 便于审计/比对
       "verified": true,                  // 写出后读回校验通过
-      "element": "SW.Blocks.FB",         // Simatic ML 对象元素
       "simaticType": "FB",
       "declaredName": "FB_Array_Handling",// 文件里声明的名字（与 name 一致才 verified）
       "declaredNumber": "34",
@@ -162,11 +156,15 @@ tag_tables/     7 个 XML   （如 tag_tables/Table de variables standard.xml、
   ],
   "failures": [                          // Openness 直接拒绝的对象（逐条，不影响其余）
     { "category": "blocks", "name": "FOB_SAFETY", "group": "000_SAFETY_TASK/",
-      "file": "…\\FOB_SAFETY.xml", "code": "export_failed",
+      "file": "blocks/000_SAFETY_TASK/FOB_SAFETY.xml", "code": "export_failed",
       "message": "The export of block 'FOB_SAFETY' is not permitted." }
   ]
 }
 ```
+
+清单**不含** `generatedAt` / `outputDir` / 绝对路径：它是可提交的清单，换机器/换目录不应产生 diff。
+一次导出调用一份；工程里**提交**的那份 `source/<device>/_manifest.json` 由 `SyncScan` 在同一调用里
+增量维护（见 `docs/PROTOCOL.md` 的 `SyncScan`）。
 
 **校验语义**：每个文件写出后立刻读回并解析——非空、能解析、`<Name>` 与预期对象名一致，
 再算 SHA-256 写进清单。任何一项不过 → `summary.verificationFailed > 0`，整个调用以
@@ -176,11 +174,12 @@ tag_tables/     7 个 XML   （如 tag_tables/Table de variables standard.xml、
 
 ```powershell
 $u = '<output_dir>'
-$m = Get-Content "$u\_tia-openness-manifest.json" -Raw | ConvertFrom-Json
+$m = Get-Content "$u\_manifest.json" -Raw | ConvertFrom-Json
 $bad = foreach ($o in $m.blocks) {
-  if ((Get-FileHash -LiteralPath $o.file -Algorithm SHA256).Hash.ToLower() -ne $o.sha256) { $o.name }
+  $p = Join-Path $u $o.file
+  if ((Get-FileHash -LiteralPath $p -Algorithm SHA256).Hash.ToLower() -ne $o.sha256) { $o.name }
 }
-if ($bad) { "哈希不一致: $($bad -join ', ')" } else { "全部 $($m.objectCount) 个文件与清单一致" }
+if ($bad) { "哈希不一致: $($bad -join ', ')" } else { "全部 $($m.blocks.Count) 个文件与清单一致" }
 ```
 
 ---
@@ -199,7 +198,7 @@ if ($bad) { "哈希不一致: $($bad -join ', ')" } else { "全部 $($m.objectCo
   "summary": { "exported": 1151, "skipped": 0, "failed": 1, "verificationFailed": 0 },
   "files": [ /* 与清单 blocks[] 同结构，便于模型直接读 */ ],
   "failures": [ /* 与清单 failures[] 同结构 */ ],
-  "manifest": "C:\\…\\UserFiles\\_tia-openness-manifest.json"
+  "manifest": "C:\\…\\UserFiles\\_manifest.json"
 }
 ```
 

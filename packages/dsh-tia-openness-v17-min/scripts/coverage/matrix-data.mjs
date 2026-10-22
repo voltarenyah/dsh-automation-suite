@@ -703,7 +703,9 @@ export const SECTIONS = [
         status: 'done',
         note:
           '已完成：list_plc_objects(include_fingerprints=true, block_names/type_names=…) 逐块/逐 UDT 调 ' +
-          'FingerprintProvider.GetFingerprints()，回报 {id, value}（Code/Comments/Interface/LibraryType/Texts/…）。' +
+          'FingerprintProvider.GetFingerprints()，回报 {id, value}（Code/Comments/Interface/LibraryType/Texts/…）；' +
+          'SyncScan 把整棵块/类型树的指纹与上一版 evidence 账本逐对象比对，只导出差异对象，' +
+          '比较在控制器内部完成，不经过 1000 条列表上限。' +
           '手册这一条只有读接口——"检测变化"靠调用方比对两次取到的 value，Openness 没有写入/改写指纹的 API；' +
           '标签表按手册不支持指纹。',
       },
@@ -806,7 +808,13 @@ export const SECTIONS = [
       'Handling PLC block binding passwords': { status: 'none', note: '未适配。' },
       'Access level setting': { status: 'none', note: '未适配。' },
       'Setting a display password': { status: 'none', note: '未适配。' },
-      'Functions for accessing PLC service': { status: 'none', note: '未适配：PlcChecksumProvider.Software 可用但未暴露。' },
+      'Functions for accessing PLC service': {
+        status: 'done',
+        note:
+          '已实现：PlcChecksum 经 PlcSoftware.GetService<PlcChecksumProvider>() 读编译后校验和；' +
+          'V17 程序集的属性名是 Software（不是新手册里的 Checksum），为空表示未编译或改动后未再编译，' +
+          '控制器以 checksum_unavailable 回报这个状态。',
+      },
       'Accessing OPC UA server interface': { status: 'none', note: '未适配。' },
       'Accessing web server and OPC UA user management': { status: 'none', note: '未适配。' },
       'Accessing domain settings': { status: 'none', note: '未适配。' },
@@ -815,7 +823,12 @@ export const SECTIONS = [
         status: 'none',
         note: '未适配：本条是"给 Web 服务器/面板指定监视表"的属性，不是监视表本身的增删（后者见 watch_and_force_tables）。',
       },
-      'Accessing Software Checksum': { status: 'none', note: '未适配。' },
+      'Accessing Software Checksum': {
+        status: 'done',
+        note:
+          '已实现：PlcChecksum（服务面 readPlcChecksum）读 PlcChecksumProvider.Software；' +
+          'SyncScan 的快速路径在 checksum 与账本一致时直接返回 unchanged，不遍历指纹、不导出文件。',
+      },
       'Assigning project language to PLC': { status: 'none', note: '未适配：工程语言已适配，PLC 侧语言未做。' },
       'Supporting IP Accessibility': { status: 'none', note: '未适配。' },
       'Updating module description': { status: 'none', note: '未适配。' },

@@ -34,6 +34,9 @@ namespace TiaOpennessV17Min.Controller
                 Check(checks, ref ok, "args_accessors", ArgsAccessors);
                 Check(checks, ref ok, "args_rejects_wrong_type", ArgsRejectsWrongType);
                 Check(checks, ref ok, "args_rejects_unknown_enum", ArgsRejectsUnknownEnum);
+                Check(checks, ref ok, "evidence_roundtrip", delegate { EvidenceRoundTrip(workDirectory); });
+                Check(checks, ref ok, "evidence_diff", EvidenceDiff);
+                Check(checks, ref ok, "evidence_xml_normalization", EvidenceXmlNormalization);
                 Check(checks, ref ok, "result_frame_shape", ResultFrameShape);
                 Check(checks, ref ok, "simatic_ml_header", delegate { SimaticMlHeaderCheck(workDirectory); });
                 Check(checks, ref ok, "simatic_ml_rejects_garbage", delegate { SimaticMlRejectsGarbage(workDirectory); });
@@ -147,6 +150,7 @@ namespace TiaOpennessV17Min.Controller
                 "ListPlcObjects", "CreatePlcObjects", "DeletePlcObjects", "WriteTags", "SetBlockAttributes",
                 "ProtectBlocks", "GenerateSource", "WatchAndForceTables", "SoftwareUnits",
                 "SafetyStatus", "SetSafetySettings", "SafetySignatures",
+                "PlcChecksum", "SyncScan",
             };
             RequireEqual(expected.Length.ToString(), all.Count.ToString(), "the whitelist size");
             for (int i = 0; i < expected.Length; i++)
@@ -248,6 +252,107 @@ namespace TiaOpennessV17Min.Controller
                 Require(ex.Message.IndexOf("simatic_ml", StringComparison.Ordinal) >= 0,
                     "the error message lists the allowed values");
             }
+        }
+
+        private static EvidenceObject EvidenceObjectFor(string category, string group, string name, string signature)
+        {
+            EvidenceObject entry = new EvidenceObject();
+            entry.Key = EvidenceDocument.KeyOf(category, group, name);
+            entry.Category = category;
+            entry.Name = name;
+            entry.GroupPath = group;
+            if (string.Equals(category, EvidenceDocument.CategoryTagTables, StringComparison.Ordinal))
+            {
+                entry.ContentHash = signature;
+            }
+            else
+            {
+                entry.Fingerprint = new Dictionary<string, string>(StringComparer.Ordinal);
+                entry.Fingerprint["Code"] = signature;
+            }
+            return entry;
+        }
+
+        private static void EvidenceRoundTrip(string workDirectory)
+        {
+            EvidenceDocument document = new EvidenceDocument();
+            document.Device = "PLC_1";
+            document.Software = "PLC_1";
+            document.PlcChecksum = "CHK-1";
+            EvidenceObject block = EvidenceObjectFor(EvidenceDocument.CategoryBlocks, "010_Cell", "FB_Motor", "code-a");
+            block.Path = "blocks/010_Cell/FB_Motor.xml";
+            document.Objects[block.Key] = block;
+            EvidenceObject table = EvidenceObjectFor(EvidenceDocument.CategoryTagTables, null, "Tags_1", "sha256:table-a");
+            table.Path = "tag_tables/Tags_1.xml";
+            document.Objects[table.Key] = table;
+            EvidenceTombstone tombstone = new EvidenceTombstone();
+            tombstone.Key = EvidenceDocument.KeyOf(EvidenceDocument.CategoryBlocks, null, "FB_Old");
+            tombstone.Category = EvidenceDocument.CategoryBlocks;
+            tombstone.Name = "FB_Old";
+            tombstone.RemovedAtChecksum = "CHK-0";
+            tombstone.Reason = "absent-from-complete-list";
+            document.Tombstones.Add(tombstone);
+            document.StateId = document.ComputeStateId();
+
+            string path = Path.Combine(workDirectory, "evidence.json");
+            File.WriteAllText(path, JsonWriter.Write(document.ToJson(), true), new UTF8Encoding(false));
+            EvidenceDocument loaded = EvidenceDocument.Load(path);
+
+            Require(loaded != null, "the ledger was read back");
+            RequireEqual("CHK-1", loaded.PlcChecksum, "the checksum survived the round trip");
+            RequireEqual("2", loaded.Objects.Count.ToString(), "both objects survived the round trip");
+            RequireEqual("code-a", loaded.Objects[block.Key].Fingerprint["Code"], "the fingerprint survived the round trip");
+            RequireEqual("sha256:table-a", loaded.Objects[table.Key].ContentHash, "the tag table hash survived the round trip");
+            RequireEqual("1", loaded.Tombstones.Count.ToString(), "the tombstone survived the round trip");
+            RequireEqual(document.StateId, loaded.StateId, "the state id survived the round trip");
+        }
+
+        private static void EvidenceDiff()
+        {
+            EvidenceDocument previous = new EvidenceDocument();
+            previous.PlcChecksum = "CHK-1";
+            EvidenceObject motor = EvidenceObjectFor(EvidenceDocument.CategoryBlocks, "010_Cell", "FB_Motor", "code-a");
+            EvidenceObject old = EvidenceObjectFor(EvidenceDocument.CategoryBlocks, null, "FB_Old", "code-old");
+            EvidenceObject table = EvidenceObjectFor(EvidenceDocument.CategoryTagTables, null, "Tags_1", "sha256:table-a");
+            previous.Objects[motor.Key] = motor;
+            previous.Objects[old.Key] = old;
+            previous.Objects[table.Key] = table;
+
+            Dictionary<string, EvidenceObject> current = new Dictionary<string, EvidenceObject>(StringComparer.Ordinal);
+            current[motor.Key] = EvidenceObjectFor(EvidenceDocument.CategoryBlocks, "010_Cell", "FB_Motor", "code-a");
+            EvidenceObject added = EvidenceObjectFor(EvidenceDocument.CategoryBlocks, null, "FC_New", "code-new");
+            current[added.Key] = added;
+            current[table.Key] = EvidenceObjectFor(EvidenceDocument.CategoryTagTables, null, "Tags_1", "sha256:table-b");
+
+            EvidenceDelta delta = EvidenceDocument.Compare(previous, current);
+            RequireEqual("1", delta.Changed.Count.ToString(), "one object changed");
+            RequireEqual(table.Key, delta.Changed[0], "the changed object is the tag table");
+            RequireEqual("1", delta.Added.Count.ToString(), "one object was added");
+            RequireEqual(added.Key, delta.Added[0], "the added object is FC_New");
+            RequireEqual("1", delta.Removed.Count.ToString(), "one object was removed");
+            RequireEqual(old.Key, delta.Removed[0], "the removed object is FB_Old");
+        }
+
+        private static void EvidenceXmlNormalization()
+        {
+            string first = "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n<DocumentInfo><Created>2026-10-20T10:00:00Z</Created></DocumentInfo>\n"
+                + "<SW.Blocks.FC><AttributeList><Name>FC_1</Name></AttributeList></SW.Blocks.FC>\n";
+            string second = "<?xml version=\"1.0\" encoding=\"utf-8\"?>\r\n<DocumentInfo><Created>2026-10-21T11:00:00Z</Created></DocumentInfo>\r\n"
+                + "<SW.Blocks.FC><AttributeList><Name>FC_1</Name></AttributeList></SW.Blocks.FC>\r\n";
+            RequireEqual(
+                EvidenceDocument.NormalizeXmlForHash(first),
+                EvidenceDocument.NormalizeXmlForHash(second),
+                "the document stamp and the line endings do not affect the hash");
+            RequireEqual(
+                Hashing.Sha256OfText(EvidenceDocument.NormalizeXmlForHash(first)),
+                Hashing.Sha256OfText(EvidenceDocument.NormalizeXmlForHash(second)),
+                "the normalized hashes are equal");
+
+            string changed = first.Replace("<Name>FC_1</Name>", "<Name>FC_2</Name>");
+            Require(
+                !string.Equals(EvidenceDocument.NormalizeXmlForHash(first), EvidenceDocument.NormalizeXmlForHash(changed),
+                    StringComparison.Ordinal),
+                "a real content change still changes the normalized text");
         }
 
         private static void ResultFrameShape()

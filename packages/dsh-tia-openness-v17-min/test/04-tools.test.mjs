@@ -197,11 +197,24 @@ test('only whitelisted operations ever reach the controller', async (t) => {
 test('every tool maps onto exactly one whitelisted controller operation', async (t) => {
   const { context } = await harness(t)
 
+  // These two operations exist for the engineering-context plugin's
+  // `engineeringAccess` seam and deliberately have no model-facing tool: the
+  // model must not drive a fingerprint comparison or a checksum read by hand.
+  const serviceOnly = ['PlcChecksum', 'SyncScan']
+
   const toolNames = context.definitions.map((definition) => definition.name)
   // `controller_status` is answered by the plugin itself and never reaches the
   // controller, so it is the one tool without a matching operation.
   assert.deepEqual(toolNames.filter((name) => name === 'controller_status'), ['controller_status'])
-  assert.equal(toolNames.length - 1, WHITELIST.length, 'one tool per whitelisted operation')
+  assert.equal(
+    toolNames.length - 1,
+    WHITELIST.length - serviceOnly.length,
+    'one tool per whitelisted operation, except the service-only operations',
+  )
+
+  for (const operation of serviceOnly) {
+    assert.ok(WHITELIST.includes(operation), `the service-only operation ${operation} must stay whitelisted`)
+  }
 
   for (const name of toolNames) {
     if (name === 'controller_status') continue
@@ -211,6 +224,7 @@ test('every tool maps onto exactly one whitelisted controller operation', async 
     )
   }
   for (const operation of WHITELIST) {
+    if (serviceOnly.includes(operation)) continue
     const expectedTool = operation.replace(/([a-z0-9])([A-Z])/g, '$1_$2').toLowerCase()
     assert.ok(toolNames.includes(expectedTool), `the operation ${operation} has no tool named ${expectedTool}`)
   }

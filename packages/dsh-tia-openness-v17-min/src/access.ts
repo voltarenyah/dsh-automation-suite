@@ -127,6 +127,103 @@ export interface AccessListResult extends AccessCallResult {
   missing: unknown
 }
 
+/** The outcome of reading the PLC's compiled-program checksum. */
+export interface AccessChecksumResult extends AccessCallResult {
+  /**
+   * The checksum TIA reports for the compiled software, or null when TIA has
+   * none (not compiled yet, or edited since the last compile). Null is a state:
+   * the caller must compile first, not retry.
+   */
+  checksum: string | null
+  device: string | null
+  software: string | null
+}
+
+/** Which PLC to read the checksum from; both default to the only PLC. */
+export interface AccessChecksumQuery {
+  deviceName?: string
+  softwareName?: string
+  signal?: AbortSignal
+}
+
+/** One object the scan reports in `changed` / `added` / `removed`. */
+export interface AccessSyncObject {
+  key: string
+  category: string
+  name: string
+  group: string | null
+  /** Fingerprint faces that differ, when the scan can attribute the change. */
+  faces?: string[]
+}
+
+/** One object TIA refused to export. It is never reported as removed. */
+export interface AccessSyncUnexportable {
+  key: string
+  category: string
+  name: string
+  group: string | null
+  reason: string
+}
+
+/** Where the scan wrote its files. `files` is how many XML files were written. */
+export interface AccessSyncStage {
+  root: string | null
+  evidence: string | null
+  manifest: string | null
+  files: number
+}
+
+/** Complete per-family and per-delta counts; the object rows are capped. */
+export interface AccessSyncCounts {
+  blocks: number
+  types: number
+  tagTables: number
+  changed: number
+  added: number
+  removed: number
+  unexportable: number
+}
+
+/** The outcome of one evidence-ledger scan. */
+export interface AccessSyncResult extends AccessCallResult {
+  device: string | null
+  software: string | null
+  checksum: string | null
+  /** True when the PLC checksum matched the ledger: nothing was listed or written. */
+  unchanged: boolean
+  counts: AccessSyncCounts
+  changed: AccessSyncObject[]
+  added: AccessSyncObject[]
+  removed: AccessSyncObject[]
+  unexportable: AccessSyncUnexportable[]
+  /** Null on the unchanged fast path. */
+  stage: AccessSyncStage | null
+  /** True when the scan had to rebuild the manifest, even if the state was unchanged. */
+  manifestRebuilt: boolean
+  /** Identity of the ledger this scan produced or confirmed. */
+  stateId: string | null
+}
+
+/** What to compare against the open project. Every path is absolute. */
+export interface SyncScanQuery {
+  /** The source-tree root the ledger describes (only echoed; the files go to stageDir). */
+  sourceRoot: string
+  /** Empty or per-operation directory the changed XML and the next ledger are written to. */
+  stageDir: string
+  /** The previous ledger, normally `<sourceRoot>/<device>/_evidence.json`. */
+  evidencePath: string
+  /**
+   * The previous inventory, normally `<sourceRoot>/<device>/_manifest.json`.
+   * Missing or unreadable means "rebuild it": the scan exports every object once
+   * and builds the manifest from the same export records.
+   */
+  manifestPath?: string
+  deviceName?: string
+  softwareName?: string
+  exportOptions?: 'none' | 'with_defaults' | 'with_read_only'
+  signal?: AbortSignal
+}
+
 /** The object families a listing or export may name. */
 export type AccessCategory =
   | 'blocks'
@@ -379,6 +476,72 @@ function fingerprintsOf(item: JsonRecord): AccessFingerprint[] | null {
   return result
 }
 
+/** Normalize the scan's complete counts; every missing number is a zero, never a guess. */
+function syncCounts(value: unknown): AccessSyncCounts {
+  const raw = record(value)
+  return {
+    blocks: numberOf(raw?.['blocks']) ?? 0,
+    types: numberOf(raw?.['types']) ?? 0,
+    tagTables: numberOf(raw?.['tagTables']) ?? 0,
+    changed: numberOf(raw?.['changed']) ?? 0,
+    added: numberOf(raw?.['added']) ?? 0,
+    removed: numberOf(raw?.['removed']) ?? 0,
+    unexportable: numberOf(raw?.['unexportable']) ?? 0,
+  }
+}
+
+function syncObjects(value: unknown): AccessSyncObject[] {
+  const result: AccessSyncObject[] = []
+  for (const entry of list(value)) {
+    const item = record(entry)
+    if (item === null) continue
+    const row: AccessSyncObject = {
+      key: text(item['key']) ?? '',
+      category: text(item['category']) ?? '',
+      name: text(item['name']) ?? '',
+      group: text(item['group']) ?? null,
+    }
+    const rawFaces = item['faces']
+    if (Array.isArray(rawFaces)) {
+      const faces: string[] = []
+      for (const face of rawFaces) {
+        const label = text(face)
+        if (label !== undefined) faces.push(label)
+      }
+      if (faces.length > 0) row.faces = faces
+    }
+    result.push(row)
+  }
+  return result
+}
+
+function syncUnexportable(value: unknown): AccessSyncUnexportable[] {
+  const result: AccessSyncUnexportable[] = []
+  for (const entry of list(value)) {
+    const item = record(entry)
+    if (item === null) continue
+    result.push({
+      key: text(item['key']) ?? '',
+      category: text(item['category']) ?? '',
+      name: text(item['name']) ?? '',
+      group: text(item['group']) ?? null,
+      reason: text(item['reason']) ?? 'TIA refused the export',
+    })
+  }
+  return result
+}
+
+function syncStage(value: unknown): AccessSyncStage | null {
+  const raw = record(value)
+  if (raw === null) return null
+  return {
+    root: text(raw['root']) ?? null,
+    evidence: text(raw['evidence']) ?? null,
+    manifest: text(raw['manifest']) ?? null,
+    files: numberOf(raw['files']) ?? 0,
+  }
+}
+
 /**
  * The `engineeringAccess` service.
  *
@@ -565,6 +728,86 @@ export class EngineeringAccess extends Service {
   }
 
   /**
+   * Read the compiled-program checksum of one PLC.
+   *
+   * This is the cheap gate the versioning workflow uses: a checksum that is
+   * unchanged since the last scan means no block, PLC type or tag table changed,
+   * and a checksum that is empty means the software has not been compiled since
+   * its last edit. The controller reports both as data (`ok:false` with
+   * `checksum_unavailable` for the empty case), so a caller can tell "compile
+   * first" apart from a transport failure.
+   *
+   * @param query - which PLC and a cancellation signal.
+   */
+  async readPlcChecksum(query: AccessChecksumQuery = {}): Promise<AccessChecksumResult> {
+    const params: JsonRecord = {}
+    if (query.deviceName !== undefined) params['device_name'] = query.deviceName
+    if (query.softwareName !== undefined) params['software_name'] = query.softwareName
+
+    const outcome = await runOperation(this.dependencies, 'PlcChecksum', params, query.signal)
+    const base = toCallResult(outcome)
+    const data = outcome.data
+    return {
+      ...base,
+      checksum: text(data?.['checksum']) ?? null,
+      device: text(data?.['device']) ?? null,
+      software: text(data?.['software']) ?? null,
+    }
+  }
+
+  /**
+   * Compare the open project with an evidence ledger and export the differences.
+   *
+   * The controller reads the checksum once, enumerates the whole composition
+   * itself (the 1000-item `listObjects` cap does not apply), compares fingerprints
+   * and tag-table content hashes with the previous ledger, writes only the
+   * changed XML plus the next `_evidence.json` into `stageDir`, and returns a
+   * bounded summary. It writes no project object and touches no git repository.
+   *
+   * @param query - the source root, the STAGE directory and the previous ledger.
+   */
+  async syncScan(query: SyncScanQuery): Promise<AccessSyncResult> {
+    if (typeof query.sourceRoot !== 'string' || query.sourceRoot.trim().length === 0) {
+      throw new TypeError('syncScan needs a non-empty sourceRoot')
+    }
+    if (typeof query.stageDir !== 'string' || query.stageDir.trim().length === 0) {
+      throw new TypeError('syncScan needs a non-empty stageDir')
+    }
+    if (typeof query.evidencePath !== 'string' || query.evidencePath.trim().length === 0) {
+      throw new TypeError('syncScan needs a non-empty evidencePath')
+    }
+
+    const params: JsonRecord = {
+      source_root: query.sourceRoot,
+      stage_dir: query.stageDir,
+      evidence_path: query.evidencePath,
+      export_options: query.exportOptions ?? 'with_defaults',
+    }
+    if (query.manifestPath !== undefined) params['manifest_path'] = query.manifestPath
+    if (query.deviceName !== undefined) params['device_name'] = query.deviceName
+    if (query.softwareName !== undefined) params['software_name'] = query.softwareName
+
+    const outcome = await runOperation(this.dependencies, 'SyncScan', params, query.signal)
+    const base = toCallResult(outcome)
+    const data = outcome.data
+    return {
+      ...base,
+      device: text(data?.['device']) ?? null,
+      software: text(data?.['software']) ?? null,
+      checksum: text(data?.['checksum']) ?? null,
+      unchanged: data?.['unchanged'] === true,
+      counts: syncCounts(data?.['counts']),
+      changed: syncObjects(data?.['changed']),
+      added: syncObjects(data?.['added']),
+      removed: syncObjects(data?.['removed']),
+      unexportable: syncUnexportable(data?.['unexportable']),
+      stage: syncStage(data?.['stage']),
+      manifestRebuilt: data?.['manifestRebuilt'] === true,
+      stateId: text(data?.['stateId']) ?? null,
+    }
+  }
+
+  /**
    * Save the open project into another directory ("save as").
    *
    * The directory is the caller's decision — this method knows nothing about
@@ -680,7 +923,7 @@ export class EngineeringAccess extends Service {
    *   <sourceRoot>/<device>/types/<group>/<name>.xml
    *   <sourceRoot>/<device>/tag_tables/<name>.xml
    *
-   * That call writes exactly one `_tia-openness-manifest.json` at
+   * That call writes exactly one `_manifest.json` at
    * `<sourceRoot>/<device>/`, and it covers all three families — which is what a
    * consumer should read instead of reconstructing paths.
    *

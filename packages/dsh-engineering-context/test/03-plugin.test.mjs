@@ -26,7 +26,7 @@ test('the plugin declares its identity and its one hard dependency', () => {
   assert.ok(plugin.Config !== undefined, 'the profile needs a Config schema to validate the config block')
 })
 
-test('apply registers the one tool in a stable order and reports it once', () => {
+test('apply registers the three tools in a stable order and reports them once', () => {
   const { ctx, definitions, logs } = createTestContext()
   plugin.apply(ctx, {})
 
@@ -36,7 +36,7 @@ test('apply registers the one tool in a stable order and reports it once', () =>
   )
   const info = logs.filter((entry) => entry.level === 'info')
   assert.equal(info.length, 1)
-  assert.match(info[0].message, /Registered 1 engineering-context tool/u)
+  assert.match(info[0].message, /Registered 3 engineering-context tools/u)
   assert.match(info[0].message, /<workspace>\/tia\//u)
 })
 
@@ -46,18 +46,12 @@ test('apply works with no config block at all', () => {
   assert.equal(definitions.length, TOOL_NAMES.length)
 })
 
-test('the tool answers the three questions a model needs', () => {
+test('the tools answer the questions a model needs', () => {
   const { ctx, definitions } = createTestContext()
   plugin.apply(ctx, {})
 
   for (const definition of definitions) {
     assert.ok(definition.description.length > 200, `${definition.name} needs a substantive description`)
-    assert.match(definition.description, /dry_run: true/u, 'the plan-by-default rule belongs in the description')
-    assert.match(
-      definition.description,
-      /knowledge database/u,
-      'the knowledge-graph step (and that it never fails the call) belongs in the description',
-    )
     assert.equal(typeof definition.output.render, 'function')
 
     const rendered = renderedText(definition, {}, {
@@ -74,6 +68,16 @@ test('the tool answers the three questions a model needs', () => {
     assert.match(rendered, new RegExp(`${definition.name}: x`, 'u'))
     assert.match(rendered, /Scope: workspace C:\\ws/u)
   }
+
+  // The create tool is the one that writes a project and then builds a graph;
+  // those two promises belong in its description and not in the others'.
+  const create = definitions.find((definition) => definition.name === 'create_engineering_project')
+  assert.match(create.description, /dry_run: true/u, 'the plan-by-default rule belongs in the create description')
+  assert.match(
+    create.description,
+    /knowledge database/u,
+    'the knowledge-graph step (and that it never fails the call) belongs in the create description',
+  )
 })
 
 test('configuration defaults are complete and unusable values fall back', () => {
@@ -126,20 +130,30 @@ test('the real harness runtime holds this schema and validates the result', () =
       `${definition.name}: an undeclared property must be rejected`,
     )
 
-    // Every parameter is optional (the plan is the default), so an empty call and
-    // a full one must both be accepted.
+    // Every parameter is optional, so an empty call must be a valid request. A
+    // full one uses each tool's own real-run argument set.
     assert.deepEqual(
       dshTools.validateJsonSchemaValue(parameters, {}),
       [],
-      `${definition.name}: calling it with no arguments must be a valid plan request`,
+      `${definition.name}: calling it with no arguments must be a valid request`,
     )
+    const realRun = {
+      create_engineering_project: { dry_run: false, overwrite: true },
+      project_status: { verify: true },
+      project_sync: { dry_run: false },
+    }[definition.name]
     assert.deepEqual(
-      dshTools.validateJsonSchemaValue(parameters, { dry_run: false, overwrite: true }),
+      dshTools.validateJsonSchemaValue(parameters, realRun),
       [],
       `${definition.name}: the real-run argument set must be accepted`,
     )
+    const mistyped = {
+      create_engineering_project: { dry_run: 'yes' },
+      project_status: { verify: 'yes' },
+      project_sync: { dry_run: 'yes' },
+    }[definition.name]
     assert.ok(
-      dshTools.validateJsonSchemaValue(parameters, { dry_run: 'yes' }).length > 0,
+      dshTools.validateJsonSchemaValue(parameters, mistyped).length > 0,
       `${definition.name}: a mistyped argument must be reported`,
     )
   }

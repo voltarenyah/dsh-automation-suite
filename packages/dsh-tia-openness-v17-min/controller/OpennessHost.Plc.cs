@@ -1152,6 +1152,44 @@ namespace TiaOpennessV17Min.Controller
             }
         }
 
+        // -------------------------------------------------------- checksum
+
+        /// <summary>
+        /// The compiled-program checksum of one PLC software, or <c>null</c> when
+        /// TIA reports none.
+        ///
+        /// V17 exposes it through <c>PlcChecksumProvider</c>, whose checksum property
+        /// is named <c>Software</c> (verified against the installed V17 assembly;
+        /// newer manuals show a <c>Checksum</c> property that V17 does not have).
+        /// The value is empty until the software has been fully compiled and becomes
+        /// empty again on the next edit, so an empty value is a state ("compile
+        /// first"), not a failure. A service that cannot be obtained at all is also
+        /// an empty checksum — the caller reports one coded
+        /// <c>checksum_unavailable</c> either way.
+        /// </summary>
+        public static string ChecksumOf(PlcSoftware software)
+        {
+            if (software == null) return null;
+            PlcChecksumProvider provider;
+            try
+            {
+                provider = software.GetService<PlcChecksumProvider>();
+            }
+            catch (Exception)
+            {
+                return null;
+            }
+            if (provider == null) return null;
+            try
+            {
+                return provider.Software;
+            }
+            catch (Exception)
+            {
+                return null;
+            }
+        }
+
         // -------------------------------------------------------- fingerprints
 
         public static List<JsonObject> FingerprintsOf(PlcBlock block, DiagnosticLog log)

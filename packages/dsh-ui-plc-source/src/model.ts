@@ -4,7 +4,7 @@
  * no DOM, no network — this is the part the test suite drives directly.
  *
  * Why the manifest and not the directory tree: `simaticType` (`FB` / `FC` / `OB` /
- * `InstanceDB` / …) exists only in `_tia-openness-manifest.json`. The export's
+ * `InstanceDB` / …) exists only in `_manifest.json`. The export's
  * folder layout says nothing about the type, so a type filter has to read the
  * manifest. The tree's folder hierarchy is deliberately dropped here: the tab
  * flattens every object into one list, which is what the user asked for.
@@ -20,7 +20,7 @@
 export const SOURCE_DIRECTORY = 'source'
 
 /** Per-device manifest file name, as the interface plugin writes it. */
-export const MANIFEST_FILE = '_tia-openness-manifest.json'
+export const MANIFEST_FILE = '_manifest.json'
 
 /** Filter value meaning "no constraint". */
 export const ALL = 'all'

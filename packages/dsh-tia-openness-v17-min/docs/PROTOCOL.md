@@ -74,8 +74,9 @@ report a precise reason — on a machine without TIA Portal.
 ```
 
 - `type` is optional and must be `"operation"` when present.
-- `operation` must be one of the 25 whitelisted names (`OperationCatalog` / `src/protocol.ts`); anything else is
-  `unsupported_operation` and is never dispatched.
+- `operation` must be one of the 27 whitelisted names (`OperationCatalog` / `src/protocol.ts`); anything else is
+  `unsupported_operation` and is never dispatched. Twenty-five of them back a model-facing tool; `PlcChecksum`
+  and `SyncScan` are **service-only** (they back `engineeringAccess` methods and deliberately have no tool).
 - `params` is an operation-specific object. Unknown keys are ignored; a key of the
   wrong type is `invalid_params`.
 
@@ -129,8 +130,10 @@ Controller-level notes that belong to no request (shutdown notes, warnings).
 ## Operations and their `params`
 
 The five operations below are the original block read/write surface. v0.2 added 20 more
-(8 project-data, 9 PLC-data, 3 F-related); their parameter and payload contract is frozen in
-[`EXTENDED-SURFACE.md`](EXTENDED-SURFACE.md) and is not repeated here.
+(8 project-data, 9 PLC-data, 3 F-related), and the versioning workflow added two
+service-only operations (`PlcChecksum`, `SyncScan`). Their parameter and payload
+contract is frozen in [`EXTENDED-SURFACE.md`](EXTENDED-SURFACE.md) and is not
+repeated here beyond the two new sections above.
 
 ### `OpenProject`
 
@@ -157,11 +160,56 @@ The five operations below are the original block read/write surface. v0.2 added 
 | `recursive` | bool | `true` | include user groups |
 | `overwrite` | bool | `false` | replace existing files |
 | `export_options` | enum | `with_defaults` | `none` \| `with_defaults` \| `with_read_only` |
-| `write_manifest` | bool | `true` | write `_tia-openness-manifest.json` |
+| `write_manifest` | bool | `true` | write `_manifest.json` |
 
 `data`: `device`, `software`, `outputDir`, `exportOptions`, `blockCount`,
 `summary{exported,skipped,failed}`, `files[]{name,group,file,bytes,sha256,verified,declaredName,…}`,
 `manifest` (path).
+
+### `PlcChecksum`
+
+Read-only. Reads `PlcChecksumProvider.Software` of one PLC — the checksum V17
+reports only for a fully compiled software (it is empty again after any edit).
+
+| param | type | default | meaning |
+|---|---|---|---|
+| `device_name` / `software_name` | string | auto | PLC selection |
+
+`data`: `device`, `software`, `checksum`. An empty checksum fails with
+`checksum_unavailable`; that is a state ("compile first"), not a transport error.
+
+### `SyncScan`
+
+Read-only against the project; writes files only. Compares the whole block /
+PLC-type / tag-table composition with the previous evidence ledger, exports only
+the changed objects (plus every tag table, which has no fingerprint) into
+`stage_dir`, and writes the next `_evidence.json` **and** `_manifest.json` there.
+
+| param | type | default | meaning |
+|---|---|---|---|
+| `source_root` | string | — | the source tree the ledger describes (echoed; files go to `stage_dir`) |
+| `stage_dir` | string | — | empty/per-operation directory that receives the changed XML and the next ledger |
+| `evidence_path` | string | — | previous ledger, normally `<source_root>/<device>/_evidence.json`; missing means a full scan |
+| `manifest_path` | string | — | previous inventory, normally `<source_root>/<device>/_manifest.json`; missing or unreadable means it is rebuilt from the same export run |
+| `device_name` / `software_name` | string | auto | PLC selection |
+| `export_options` | enum | `with_defaults` | `none` \| `with_defaults` \| `with_read_only` |
+
+`data`: `device`, `software`, `checksum`, `unchanged`, `counts{blocks,types,
+tagTables,changed,added,removed,unexportable}`, `changed[]`, `added[]`,
+`removed[]`, `unexportable[]{key,category,name,group,reason}`, `stage{root,
+evidence,manifest,files}`, `manifestRebuilt`, `stateId`. When the checksum matches
+the ledger the operation returns `unchanged: true` with `stage: null` and
+enumerates nothing.
+
+The manifest is the inventory the UI and the graph engine read: unchanged objects
+are carried forward from the previous manifest, only a tag table whose normalized
+content changed is promoted to STAGE, and the file has no timestamps or absolute
+paths (`file` is relative to the device root).
+
+Measured on `PEI_SinoARP_SWT2` (1155 blocks, 2026-10-22): unchanged **1.6–3.0 s**;
+one changed block **48.3 s** (8 files: the block plus all 7 tag tables); full scan
+**121–231 s** (1376 files / 74.8 MB). Enumeration plus all fingerprints is the
+fixed cost (about 30 s); only the changed blocks add export time.
 
 ### `ImportBlocks`
 
@@ -222,7 +270,7 @@ data, not a tool failure.
 
 | code | raised when | typical fix |
 |---|---|---|
-| `unsupported_operation` | the request named anything outside the whitelist | use one of the 25 operations (`details.allowed` lists them) |
+| `unsupported_operation` | the request named anything outside the whitelist | use one of the 27 operations (`details.allowed` lists them) |
 | `unsupported_frame` | `type` was not `operation` | send a request frame |
 | `invalid_params` | a parameter is missing or has the wrong type | read `error.message`, it names the parameter and the allowed values |
 | `invalid_file` | an import file is not well-formed Simatic ML / a supported source | check the file and `mode` |
@@ -237,6 +285,10 @@ data, not a tool failure.
 | `block_not_found` | a requested block does not exist | `error.details.available` lists every block |
 | `export_failed`, `import_failed`, `compile_failed` | the Openness call failed | see `error.details.hint` (access denied, licence, …) |
 | `verification_failed` | the write happened but the read-back did not confirm it | inspect `data.verification` / `data.files` |
+| `checksum_unavailable` | `PlcChecksum` / `SyncScan` found no compiled checksum | compile the PLC (`CompilePlc`); an edit clears it again |
+| `evidence_invalid` | the ledger file is not valid JSON | rebuild it with a full scan (omit `evidence_path` or delete the file) |
+| `evidence_version_mismatch` | the ledger's `schemaVersion` is not the one this controller writes | rebuild the ledger |
+| `evidence_device_mismatch` | the ledger belongs to another PLC | use that project's ledger, or start a new one |
 | `transaction_failed` | exclusive access could not be acquired | another Openness client holds the project |
 | `compile_provider_unavailable` | no `ICompilable` service | the project has no compilable PLC |
 | `internal_error` | unexpected exception | `error.details.exceptionType` |

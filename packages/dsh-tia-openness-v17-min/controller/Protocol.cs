@@ -45,6 +45,12 @@ namespace TiaOpennessV17Min.Controller
         public const string CompilePlc = "CompilePlc";
         public const string CloseProject = "CloseProject";
 
+        // Versioning evidence (OperationsSync.cs): the compiled-program checksum
+        // and the evidence-ledger scan. Both are read-only against the project;
+        // SyncScan only writes files into the caller's STAGE directory.
+        public const string PlcChecksum = "PlcChecksum";
+        public const string SyncScan = "SyncScan";
+
         // "Functions for projects and project data" (OperationsProject.cs).
         public const string CreateProject = "CreateProject";
         public const string SaveProject = "SaveProject";
@@ -79,6 +85,7 @@ namespace TiaOpennessV17Min.Controller
             ListPlcObjects, CreatePlcObjects, DeletePlcObjects, WriteTags, SetBlockAttributes, ProtectBlocks,
             GenerateSource, WatchAndForceTables, SoftwareUnits,
             SafetyStatus, SetSafetySettings, SafetySignatures,
+            PlcChecksum, SyncScan,
         };
 
         /// <summary>The whitelist in declaration order; used by diagnostics and the self test.</summary>

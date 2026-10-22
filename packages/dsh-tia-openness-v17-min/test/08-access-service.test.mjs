@@ -92,7 +92,7 @@ test('apply exposes engineeringAccess, and unloading takes it away', async () =>
   plugin.apply(harness.ctx, {})
   const service = harness.ctx.get(ENGINEERING_ACCESS_SERVICE)
   assert.notEqual(service, undefined, 'apply must register the service the engineering-context plugin looks up')
-  for (const method of ['status', 'openProject', 'closeProject', 'listObjects', 'exportObjects']) {
+  for (const method of ['status', 'openProject', 'closeProject', 'listObjects', 'exportObjects', 'readPlcChecksum', 'syncScan']) {
     assert.equal(typeof service[method], 'function', `${method} must be callable`)
   }
   assert.equal(harness.ctx.engineeringAccess, service)
@@ -270,6 +270,128 @@ test('exportObjects mirrors the tool defaults and writes nothing else', async ()
   await assert.rejects(() => service.exportObjects({}), TypeError)
 })
 
+test('readPlcChecksum sends PlcChecksum and reports the checksum', async () => {
+  const { service, calls } = serviceWith((operation, params) =>
+    frame(operation, params, { data: { device: 'PLC_1', software: 'PLC_1', checksum: 'CHK-1' } }),
+  )
+
+  const result = await service.readPlcChecksum({ deviceName: 'PLC_1' })
+
+  assert.equal(result.ok, true)
+  assert.equal(result.checksum, 'CHK-1')
+  assert.equal(result.device, 'PLC_1')
+  assert.equal(result.software, 'PLC_1')
+  assert.equal(calls[0].operation, 'PlcChecksum')
+  assert.deepEqual(calls[0].params, { device_name: 'PLC_1' })
+})
+
+test('readPlcChecksum keeps checksum_unavailable as data, not as a thrown failure', async () => {
+  const { service } = serviceWith((operation, params) =>
+    frame(operation, params, {
+      ok: false,
+      data: null,
+      error: { code: 'checksum_unavailable', message: 'compile the PLC first' },
+    }),
+  )
+
+  const result = await service.readPlcChecksum()
+
+  assert.equal(result.ok, false)
+  assert.equal(result.error.code, 'checksum_unavailable')
+  assert.equal(result.checksum, null)
+})
+
+test('syncScan sends the three paths and normalizes the evidence summary', async () => {
+  const payload = {
+    device: 'PLC_1',
+    software: 'PLC_1',
+    checksum: 'CHK-1',
+    unchanged: false,
+    counts: { blocks: 3, types: 1, tagTables: 2, changed: 1, added: 0, removed: 1, unexportable: 1 },
+    changed: [{ key: 'blocks|G|FB_Motor', category: 'blocks', name: 'FB_Motor', group: 'G', faces: ['Code', 'Comments'] }],
+    added: [],
+    removed: [{ key: 'blocks||FB_Old', category: 'blocks', name: 'FB_Old', group: null }],
+    unexportable: [{ key: 'blocks||OB_ProDiag', category: 'blocks', name: 'OB_ProDiag', group: null, reason: 'refused' }],
+    stage: {
+      root: 'C:\\stage',
+      evidence: 'C:\\stage\\_evidence.json',
+      manifest: 'C:\\stage\\_manifest.json',
+      files: 1,
+    },
+    manifestRebuilt: true,
+    stateId: 'sha256:abcdef',
+  }
+  const { service, calls } = serviceWith((operation, params) => frame(operation, params, { data: payload }))
+
+  const result = await service.syncScan({
+    sourceRoot: 'C:\\source',
+    stageDir: 'C:\\stage',
+    evidencePath: 'C:\\source\\PLC_1\\_evidence.json',
+    manifestPath: 'C:\\source\\PLC_1\\_manifest.json',
+  })
+
+  assert.equal(calls[0].operation, 'SyncScan')
+  assert.deepEqual(calls[0].params, {
+    source_root: 'C:\\source',
+    stage_dir: 'C:\\stage',
+    evidence_path: 'C:\\source\\PLC_1\\_evidence.json',
+    manifest_path: 'C:\\source\\PLC_1\\_manifest.json',
+    export_options: 'with_defaults',
+  })
+  assert.equal(result.ok, true)
+  assert.equal(result.checksum, 'CHK-1')
+  assert.equal(result.unchanged, false)
+  assert.deepEqual(result.counts, {
+    blocks: 3,
+    types: 1,
+    tagTables: 2,
+    changed: 1,
+    added: 0,
+    removed: 1,
+    unexportable: 1,
+  })
+  assert.deepEqual(result.changed, [
+    { key: 'blocks|G|FB_Motor', category: 'blocks', name: 'FB_Motor', group: 'G', faces: ['Code', 'Comments'] },
+  ])
+  assert.deepEqual(result.removed, [{ key: 'blocks||FB_Old', category: 'blocks', name: 'FB_Old', group: null }])
+  assert.equal(result.unexportable[0].reason, 'refused')
+  assert.deepEqual(result.stage, {
+    root: 'C:\\stage',
+    evidence: 'C:\\stage\\_evidence.json',
+    manifest: 'C:\\stage\\_manifest.json',
+    files: 1,
+  })
+  assert.equal(result.manifestRebuilt, true)
+  assert.equal(result.stateId, 'sha256:abcdef')
+})
+
+test('syncScan defaults to zero counts on an empty envelope and rejects missing paths', async () => {
+  const { service } = serviceWith((operation, params) =>
+    frame(operation, params, { data: { unchanged: true, stage: null } }),
+  )
+
+  const result = await service.syncScan({
+    sourceRoot: 'C:\\source',
+    stageDir: 'C:\\stage',
+    evidencePath: 'C:\\source\\_evidence.json',
+  })
+  assert.equal(result.unchanged, true)
+  assert.equal(result.stage, null)
+  assert.deepEqual(result.counts, {
+    blocks: 0,
+    types: 0,
+    tagTables: 0,
+    changed: 0,
+    added: 0,
+    removed: 0,
+    unexportable: 0,
+  })
+
+  await assert.rejects(() => service.syncScan({ sourceRoot: '', stageDir: 'C:\\s', evidencePath: 'C:\\e' }), TypeError)
+  await assert.rejects(() => service.syncScan({ sourceRoot: 'C:\\s', stageDir: '', evidencePath: 'C:\\e' }), TypeError)
+  await assert.rejects(() => service.syncScan({ sourceRoot: 'C:\\s', stageDir: 'C:\\t', evidencePath: '' }), TypeError)
+})
+
 test('status distinguishes missing, unprobed and unavailable Openness', () => {
   const missing = serviceWith(undefined, { state: 'stopped', exePath: 'C:\\nope.exe', exeExists: false, ready: null })
   const missingStatus = missing.service.status()
@@ -402,7 +524,7 @@ test('rebuildSource lays one device out by type in a single call, and reports ev
       return frame('ExportBlocks', params, {
         data: {
           counts: { blocks: 2, types: 3, tagTables: 1 },
-          manifest: `${params.output_dir}\\_tia-openness-manifest.json`,
+          manifest: `${params.output_dir}\\_manifest.json`,
           summary: { exported: 5, skipped: 1, failed: 1, verificationFailed: 0 },
           failures: [{ category: 'blocks', name: 'FOB_SAFETY', code: 'export_failed', message: 'not permitted' }],
         },
@@ -433,7 +555,7 @@ test('rebuildSource lays one device out by type in a single call, and reports ev
   assert.equal(device.skipped, 1, 'skipped comes from the call summary and is device-level')
   assert.equal(device.verificationFailed, 0)
   // One manifest per device, describing all three families: every family reports it.
-  assert.match(device.blocks.manifest, /S7-1500\\_tia-openness-manifest\.json$/u)
+  assert.match(device.blocks.manifest, /S7-1500\\_manifest\.json$/u)
   assert.equal(device.types.manifest, device.blocks.manifest)
   assert.equal(device.tagTables.manifest, device.blocks.manifest)
 

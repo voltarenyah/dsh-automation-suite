@@ -1,11 +1,13 @@
 # 核心架构：工程上下文插件
 
-> **状态：设计定稿；P0/P1 已按 D22 删除，现行实现是 `create_engineering_project` 一个工具。**
+> **状态：设计定稿；P0/P1 已按 D22 删除，现行实现是 `create_engineering_project` / `project_status` /
+> `project_sync` 三个工具（S2 见 D26）。**
 >
 > ⚠️ **2026-10 起本文有相当一部分是"目标态"而不是现状**：原先注册的
 > `eng_status` / `eng_project` / `eng_scope` / `eng_version`，以及它们下面的工程注册表与内部 git
-> 版本层，都已在 [`decisions.md`](decisions.md) **D22** 中删除。现行布局（`tia/` + `source/`）以
-> [`PATH-RULES.md`](PATH-RULES.md) 为准。下文凡标 ❌ 的段落是历史设计，保留是为了 P2/P3 的论证链。
+> 版本层，都已在 [`decisions.md`](decisions.md) **D22** 中删除。现行布局（`tia/` + `source/` +
+> `.dsh/local/`）以 [`PATH-RULES.md`](PATH-RULES.md) 为准。下文凡标 ❌ 或"P2"的段落是历史设计
+> （`eng_changes` / `eng_export` 已被 `project_sync` 取代），保留是为了 P3 的论证链。
 
 > 本文描述这个插件"要做成什么样"：定位与边界、核心架构、主要功能、实现方式、验收口径与风险。
 > 实现进度见 §10；做到哪了只在 [`docs/roadmap.md`](../../../docs/roadmap.md) §3 与
@@ -18,9 +20,8 @@
 >   职责与边界，[`docs/decisions.md`](../../../docs/decisions.md) D5–D7、D12 给出已定的取舍，
 >   本文把它们落成可实现的形态。
 >
-> 本包**尚未登记进 profile 蓝图**：这是刻意的（[`decisions.md`](decisions.md) N1 —— 蓝图里多一个
-> bundle 名，而 `packages/` 下找不到对应包时，`scripts/start-env.ps1` 会直接失败）。
-> 因此现在没有任何 profile 会加载它；用本包自己的 `check` 脚本验证。
+> 本包**已登记进 profile 蓝图**（`dsh.profile.bundles` 与 `preset-leader`），用
+> `scripts/start-env.ps1` 加载；本包自己的 `check` 脚本仍是最快的验证方式。
 
 ---
 
@@ -353,6 +354,26 @@ interface AccessListResult extends AccessCallResult {
 3. **`closeProject` 的 `dryRun` 是必填参数**：工程上下文插件目前**不调用**它（A16 的倾向是复用已开会话），
    真要调用时必须显式表态。
 
+**2026-10 的提供方新增（S0/S1）与消费方接入（S2）**：接口插件族在 `engineeringAccess` 上又加了两个方法，
+本包 `src/access.ts` 已经声明并归一化，`project_status` / `project_sync` 正在使用它们：
+
+```ts
+readPlcChecksum(query?: { deviceName?; softwareName?; signal? }): Promise<AccessChecksumResult>
+  // 读 PlcChecksumProvider.Software（V17 的属性名不是 Checksum）；空串 = 未编译/改动后未再编译，
+  // 返回 ok:false + error.code 'checksum_unavailable'
+syncScan(query: {
+  sourceRoot; stageDir; evidencePath; manifestPath?; deviceName?; softwareName?; exportOptions?; signal?
+}): Promise<AccessSyncResult>
+  // **一次调用**完成：遍历全部块/类型/标签表、逐对象比对上一版 evidence 的指纹/归一化哈希，
+  // 只把差异导出到 stageDir，并在同一次调用里写下 stageDir 的 _evidence.json 与 _manifest.json。
+  // **sourceRoot 传 device 目录**（清单里的 file 相对它）；checksum 与账本一致、且账本与清单
+  // 可用时返回 unchanged（不枚举、不导出，实测 1.6–3.0 s）。
+```
+
+路径契约：`source/<device>/_evidence.json`（权威、进 git）、`source/<device>/_manifest.json`
+（派生清单、进 git）、`<workspace>/.dsh/local/{lock.json,stage/}`（本机临时状态、不进 git）。
+`.dsh/local/` 由 `create_engineering_project` 追加进 `.gitignore`。
+
 **为什么不用另外两条路**（已评估）：
 
 | 方案 | 为什么不选 |
@@ -422,20 +443,44 @@ interface KnowledgeGraph {
 库约 450 MB）。这就是为什么"每次导出后调一次"是唯一的刷新方式，也是为什么这一步放在导出之后、
 **且不能拖垮工作流** —— 图谱插件那侧的 `requestTimeoutMs`（默认 300 s）必须覆盖单台设备的建库时间。
 
-### 5.4 版本层（A8）—— ❌ 已删除（D22）
+### 5.4 版本管理（A8 / S2）：`project_sync` —— SOURCE 是 TIA 的提交物
 
-原先的实现（`src/git.ts` + `eng_version`）已随 D22 删除。理由不是它做错了，而是它**没有存在的必要**：
-workspace 就是一个普通 git 仓库，"哪些文件该入库"由 `source/` 与 `tia/` 的布局加一行 `.gitignore`
-回答，用户自己的 git 就能做剩下的一切；插件再包一层只会多一个需要维护的接口。
+D22 删掉的是 P1 那套**内部 git 版本层**（`eng_version` + 自建提交语义）；版本管理本身并没有消失，
+而是换成了"TIA 是权威、SOURCE 是它的 git 快照"这一条更简单的形态（取舍见 [`decisions.md`](decisions.md) D26）：
 
-**保留下来仍然成立的两条口径**（写进现行设计）：
+```
+TIA（权威，二进制，不进 git）
+  └─ SyncScan ─→ STAGE（<workspace>/.dsh/local/stage/<id>/，本机临时，只放差异）
+                   └─ 提升 ─→ SOURCE（source/<device>/**，文本，进 git，含 _evidence.json + _manifest.json）
+                                  └─ project_sync 提交（路径限定在该 device 目录）
+```
+
+- **相等性有两个层级**：`PlcChecksumProvider.Software` 是 **PLC 级**的"有没有人动过"，一次读 3.2 s，
+  用作快路径；逐对象是否真的变了，用**分面指纹**（块/UDT）与**归一化 XML 哈希**（标签表）判断。
+  清单里的 `sha256` 只是文件完整性佐证，**绝不作变更键**（D6）。
+- **`_evidence.json` 是权威账本**：记录每个对象的 `key` / `category` / `name` / `group` / `path` /
+  `state`（`present` | `unexportable`）/ `fingerprint` / `contentHash`，加上 `plcChecksum`、`stateId`
+  与 `tombstones`。**删除用墓碑**，所以"对象消失"与"对象暂时导不出来"不会被混为一谈。
+- **`_manifest.json` 是派生清单**：`bytes` / `sha256` / `verified` / `simaticType` / `declaredName` /
+  `declaredNumber` / `programmingLanguage`，相对 `file` 路径，无时间戳、无绝对路径。它**只描述磁盘上
+  有什么**，从不参与相等性判断。同一次 `SyncScan` 调用内增量合并：未变对象沿用旧条目，只有真正变化的
+  标签表才被提升/重写。
+- **两条路径**：checksum 与账本一致、账本与清单都可用 → `unchanged`（不枚举、不导出）；
+  否则慢路径枚举全部对象、只导出差异，并重写两份文档。**清单缺失/损坏会强制一次全量导出**，
+  但账本仍然决定"哪些对象变了"，所以不会误删文件。
+- **计划默认**：`project_sync` 默认只读 checksum（约 3 s）并报告 `wouldSync`，写盘必须显式
+  `dry_run: false`。真实的同步在 workspace 锁内运行，成功/失败都会清掉 STAGE（`finally`）。
+- **提交**：路径限定为 `source/<device>`，提交信息带 `Tia-Op: sync` / `Tia-Checksum` / `Tia-State` /
+  `Tia-Manifest: rebuilt|updated` 四个 trailer。插件仍**从不 `git init`**：仓库不存在时
+  `repository_not_found` 并让用户自己建；也从不 `push`/`reset`/`--force`。
+
+**仍然成立的两条硬口径**：
 
 - **`.ap17` 永不进 git**：二进制工程文件进 VCS 只能得到"变了/没变"
-  （[`docs/vision.md`](../../../docs/vision.md) §3.3）。现在由 `create_engineering_project` 维护的
-  `.gitignore` 里的 `tia/` 强制（[`PATH-RULES.md`](PATH-RULES.md) §6）；同一份规则表里还有
-  `knowledge/**/*.db*`（§5.3.1 的图谱库及其 SQLite 旁挂文件，同样是二进制、且更大）。
-- **本插件完全不碰 git**：不 `init`、不 `commit`、不 `force`、不 `push`。D13 的"从不自动 `init`"
-  由此加强为"连 git 都不调用"。
+  （[`docs/vision.md`](../../../docs/vision.md) §3.3）。由 `create_engineering_project` 维护的
+  `.gitignore` 里的 `tia/` 强制（[`PATH-RULES.md`](PATH-RULES.md) §6）。
+- **不自己起 TIA、不改工程**：`project_sync` 只读 checksum 与指纹、只写 SOURCE 与 STAGE；
+  "编译"永远是用户在 TIA 里的动作（checksum 为空 → `needs_compile`）。
 
 ### 5.5 工程变更台账（期望二 / B8）
 
@@ -483,7 +528,7 @@ workspace 就是一个普通 git 仓库，"哪些文件该入库"由 `source/` �
 
 ---
 
-## 6. 工具面（1 个已实现 + 3 个待做）
+## 6. 工具面（3 个已实现 + 1 个待做）
 
 口径全部沿用 [`docs/tool-surface.md`](../../../docs/tool-surface.md) §4.3 的 R1–R8：
 结果 **≤4KB / ~40 行**、批量数据一律落盘成工件、结果里只给"计数 + 前 N + 工件路径 + 下钻方式"、
@@ -497,25 +542,28 @@ workspace 就是一个普通 git 仓库，"哪些文件该入库"由 `source/` �
 
 | # | 工具 | 回答什么问题 | 写？ | 依赖 | 状态 |
 |---|---|---|---|---|---|
-| 1 | `create_engineering_project` | 把工程接进 workspace：没打开就**打开**（`source_project`），另存进 `tia/`，把**源文件树**重建到 `source/<device>/`，再逐设备把图谱库重建到 `knowledge/<device>/`；默认只给计划 | 是（TIA 写工程、接口插件写源文件、图谱插件写 `.db`、本插件只维护 `.gitignore` 的两行） | ① + 缝 A + 缝 B | ✅ **已实现**（56 项测试） |
-| 2 | `eng_changes` | **自上次基线以来，哪些块/UDT 变了、改了哪一面**；可选更新基线 | 否（`update_baseline` 时写基线） | 缝 A + 基线 | ⬜ P2 |
-| 3 | `eng_export` | 把**变化的那批对象**导出/刷新进源文件树（D9 工作循环闭环），更新 manifest | 只写文件 | 缝 A + 基线 | ⬜ P2 |
+| 1 | `create_engineering_project` | 把工程接进 workspace：没打开就**打开**（`source_project`），另存进 `tia/`，把**源文件树**重建到 `source/<device>/`，再逐设备把图谱库重建到 `knowledge/<device>/`；默认只给计划 | 是（TIA 写工程、接口插件写源文件、图谱插件写 `.db`、本插件维护 `.gitignore` 的三行） | ① + 缝 A + 缝 B | ✅ **已实现** |
+| 2 | `project_status` | 这个 workspace 现在是什么状态：哪个 PLC、账本/清单在不在、git 看到什么、锁有没有被占、下一步该做什么（`open_project` / `compile` / `sync` / `commit` / `git_init` / `clean`） | 否（`verify: true` 时只读 checksum） | 缝 A | ✅ **已实现**（S2） |
+| 3 | `project_sync` | 让 SOURCE 与 TIA 对齐：checksum 快路径 → 需要时全量扫描、只导出差异到 STAGE → 提升进 SOURCE → 写账本/清单 → 提交该 device 目录；默认只给计划 | 是（SOURCE + `.dsh/local/stage` + 一次 git commit） | 缝 A（`syncScan`）+ git | ✅ **已实现**（S2） |
 | 4 | `eng_context` | 工程变更台账：`record` / `list` / `resolve` / `pending` | 状态 | 台账存储 | ⬜ P3 |
 
-**为什么只有 4 个**：26 个控制器操作的名字 + 描述 + 参数 schema 序列化后约 **14k tokens/会话**
+**为什么只有 4 行**：26 个控制器操作的名字 + 描述 + 参数 schema 序列化后约 **14k tokens/会话**
 （[`docs/tool-surface.md`](../../../docs/tool-surface.md) §2.7）。工作流工具面保持个位数，
 省下来的是每个会话都要付的常驻成本。
 
 > **2026-10 的变更（D22）**：原先注册的 `eng_status` / `eng_project` / `eng_scope` / `eng_version`
 > 已**删除** —— 它们维护的注册表全仓没有第二个消费者，内部 git 层用户自己的 git 就能替代。
-> 现在唯一实现的是 `create_engineering_project`：它把 D21 交付的三个服务方法
-> （另存 / 读会话 / 重建源）第一次连成一条**可审阅的编排**，也正是 A5 描述的流程。
-> 实现期的取舍见 [`decisions.md`](decisions.md) D22 与接口插件的 D20/D21。
+> `create_engineering_project` 把 D21 交付的三个服务方法（另存 / 读会话 / 重建源）第一次连成一条
+> **可审阅的编排**，也正是 A5 描述的流程。实现期的取舍见 [`decisions.md`](decisions.md) D22 与接口插件的 D20/D21。
 >
 > **2026-10 的追加（D25）**：这条编排不再止于源文件树 —— 导出完成后它会经**缝 B** 逐设备重建
 > 图谱库（`knowledge/<device>/<device>_knowledge.db`），并且**这一步是软的**：图谱插件缺席、引擎没
 > 构建或引擎不可达时只报"图谱未建成"，工作流照常成功。取舍与理由见 [`decisions.md`](decisions.md) D25、
 > 契约见 §5.3.1。
+>
+> **2026-10 的追加（S2 / D26）**：新增两个工具，但不新增"版本号"概念 —— `project_status` 只回答
+> "现在是什么状态"，`project_sync` 只做"把 TIA 的当前状态变成一次 SOURCE 提交"。三份文档
+> （`_evidence.json` / `_manifest.json` / `.dsh/local`）的分工见 §5.4 与 [`PATH-RULES.md`](PATH-RULES.md) §2。
 
 ### 6.1 返回契约示例（`eng_changes`）
 
@@ -553,10 +601,13 @@ workspace 就是一个普通 git 仓库，"哪些文件该入库"由 `source/` �
 | 层 | 放什么 | 现状 |
 |---|---|---|
 | **workspace 内 `tia/`** | TIA 的工程本体（二进制、不进 git） | ✅ `create_engineering_project` 经缝 A 的 `saveProjectAs` 写入 |
-| **workspace 内 `source/`（含 `_dsh-engineering-context.json` 索引）** | 重建的源文件树（文本、进 git） | ✅ 经缝 A 的 `rebuildSource` 写入 |
+| **workspace 内 `source/`（含 `_dsh-engineering-context.json` 索引）** | 重建的源文件树（文本、进 git） | ✅ 经缝 A 的 `rebuildSource`（创建）与 `syncScan`（增量同步）写入 |
+| **`source/<device>/_evidence.json`** | 权威账本：指纹 / 归一化哈希 / checksum / 墓碑（进 git） | ✅ `SyncScan` 写、`project_sync` 提交（S2） |
+| **`source/<device>/_manifest.json`** | 派生清单：文件字节数 / sha256 / 类型元数据，无时间戳、相对路径（进 git） | ✅ 同一次 `SyncScan` 调用生成（S2） |
 | **workspace 内 `knowledge/<device>/*.db`** | 图谱库（二进制、`*.db` 不进 git；图谱插件的地盘） | ✅ `create_engineering_project` 经缝 B 的 `ingestDevice` 触发重建（D25） |
-| **workspace 内 `_dsh-eng/**`** | P2 指纹基线、变更集、P3 台账 | ⬜ **路径待定**：注册表随 D22 删除后，这一层还没有落脚点 |
-| ❌ `_dsh-eng/projects.json` | 工程注册表 + 唯一的"当前工程"指针 | **已删除**（D22）：唯一读者是本插件自己的 4 个工具 |
+| **`<workspace>/.dsh/local/{lock.json,stage/}`** | 本机临时状态：workspace 锁（TTL 15 min）与 STAGE；**不进 git**（`.dsh/local/` 已在 `.gitignore`） | ✅ `project_sync` 使用并在成功/失败后清理（S2） |
+| **workspace 内 `_dsh-eng/**`** | P3 台账等 | ⬜ **路径待定**：注册表随 D22 删除后，这一层只剩 P3 的需求 |
+| ❌ `_dsh-eng/projects.json` | 工程注册表 + 唯一的"当前工程"指针 | **已删除**（D22）：唯一读者是本插件自己的 4 个旧工具 |
 | 宿主 `ctx.storageDomain`（可选、机器本地、可再生） | 目前**没有**用到 | ⬜ 作用域每次从 cwd 重新解析，不需要存 |
 
 **为什么基线不落在 `DSH_HOME` 或 spill 里**：变更检测**必须跨会话/跨机器**才有意义
@@ -580,31 +631,84 @@ workspace 就是一个普通 git 仓库，"哪些文件该入库"由 `source/` �
 现在 workspace 里"有哪些工程"由**目录布局本身**回答：`tia/` 下有什么、`source/` 下有什么。
 若要重新引入登记，必须同时给出**消费者**与**失效时的行为** —— 否则只是又一层没人读的状态。
 
-### 8.2 指纹基线（P2，**路径待定**）
+### 8.2 证据账本 `source/<device>/_evidence.json`（✅ 已实现，schemaVersion 1）
 
-原先定的路径是 `_dsh-eng/fingerprints.json`；注册表随 D22 删除后，这一层的路径要等 P2 开工时
-连同它的消费者一起重新定（见 §7）。记录内容的设计如下（**字段仍是设计值**，未经实现）：
+`SyncScan` 是唯一的写入方，`project_sync` 只负责把它提交；本插件读取它只为三件事：快路径判定、
+删除比对、状态展示。**没有时间戳、没有绝对路径**，所以跨机器 diff 不会因为环境不同而变脏。
 
 ```jsonc
 {
   "schemaVersion": 1,
-  "project": "pei-sinoarp",
-  "capturedAt": "2026-10-13T03:35:39Z",
-  "ap17": { "path": "…/work/tia.ap17", "sizeBytes": 0, "lastModified": "…" },  // 佐证，非依据
+  "hashAlgo": "xml-norm-v1",              // NormalizeXmlForHash 的标识，不含时间
+  "device": "Sino_PEI",
+  "software": "Sino_PEI",
+  "plcChecksum": "C0 01 C3 13 58 AC 0E 50",  // PlcChecksumProvider.Software
+  "stateId": "…",                          // 由对象 key + 指纹/哈希推出的稳定摘要
   "objects": {
-    "blocks|010_Cell/|FB_Motor": {
-      "category": "blocks", "name": "FB_Motor", "group": "010_Cell/",
-      "simaticType": "FB", "number": "34",
-      "tiaObjectId": null,                              // 目标态；现在为 null
-      "facets": { "Code": "<opaque>", "Interface": "<opaque>", "Comments": "<opaque>" }
+    "block||010_Cell||FB_Motor": {
+      "category": "block", "name": "FB_Motor", "group": "010_Cell",
+      "path": "blocks/010_Cell/FB_Motor.xml",   // 相对 device 目录
+      "fingerprint": { "Code": "…", "Comments": "…", "Interface": "…" }
+    },
+    "tag_table||||DB_Tags": {
+      "category": "tag_table", "name": "DB_Tags", "group": null,
+      "path": "tag_tables/DB_Tags.xml",
+      "contentHash": "…"                        // 标签表没有指纹，用归一化 XML 哈希
     }
-  }
+  },
+  "unexportable": [
+    { "key": "block||||FOB_SAFETY", "category": "block", "name": "FOB_SAFETY",
+      "group": null, "reason": "…" }             // 存在但导不出来：保留上一次的文件
+  ],
+  "tombstones": [
+    { "key": "block||010_Cell||FB_Old", "category": "block", "name": "FB_Old",
+      "group": "010_Cell", "removedAtChecksum": "…", "reason": "…" }
+  ]
 }
 ```
 
-> `ap17.lastModified` 只是**佐证**：`.ap17` 一存就变、TIA 打开也可能触碰，
-> 单独采信它会得到错误的变更结论（[`docs/decisions.md`](../../../docs/decisions.md) D6 的背景）。
-> 它与指纹**不一致**时，要在结果里报"三份东西版本不一致"，而不是挑一个用。
+> **为什么清单不能当变更键**：`_manifest.json` 的 `sha256` 是"写出文件的字节哈希"，而 TIA 导出的 XML
+> 自带 `<DocumentInfo><Created>`，重新导出就会变（[`MANIFEST-GAP-ANALYSIS.md`](../../dsh-tia-openness-v17-min/docs/MANIFEST-GAP-ANALYSIS.md) §3）。
+> 所以 `project_sync` 只把清单当**清单**：回答"磁盘上现在有什么、多大、是否可读"，
+> 从不回答"变没变"。相等性只来自 `_evidence.json`。
+
+### 8.3 清单 `source/<device>/_manifest.json`（✅ 已实现）
+
+```jsonc
+{
+  "schemaVersion": 1,
+  "protocol": "…",
+  "generatedBy": "TiaOpennessV17Min.Controller",
+  "device": "Sino_PEI",
+  "software": "Sino_PEI",
+  "exportOptions": "…",
+  "categories": ["blocks", "types", "tag_tables"],
+  "failureCount": 1,
+  "blocks": [
+    {
+      "category": "block",
+      "name": "FB_Motor",
+      "group": "010_Cell",
+      "file": "blocks/010_Cell/FB_Motor.xml",   // 相对 device 目录；无 outputDir、无生成时间
+      "bytes": 12345,
+      "sha256": "…",
+      "verified": true,
+      "simaticType": "FB",
+      "declaredName": "FB_Motor",
+      "declaredNumber": "34",
+      "programmingLanguage": "SCL"
+    }
+  ],
+  "failures": [
+    { "category": "block", "name": "FOB_SAFETY", "file": "blocks/FOB_SAFETY.xml",
+      "code": "export_failed", "message": "…" }
+  ]
+}
+```
+
+它由 `SyncScan` 在同一次调用里**增量合并**：未变对象沿用旧条目，只有变化的标签表会被重新导出并
+覆盖条目；新增对象插入，真正消失的对象由账本墓碑决定删除。清单损坏/缺失只会让下一次同步多做一次
+全量导出，**不会**被当成"没有变化"。
 
 ---
 
@@ -671,25 +775,27 @@ packages/dsh-engineering-context/
 | 期 | 做什么 | 依赖 | 独立交付的价值 | 状态 |
 |---|---|---|---|---|
 | ❌ **P0 / P1** | ~~作用域 + 工程注册表（`eng_status`/`eng_project`/`eng_scope`）+ 版本层（`eng_version`）~~ | — | — | **已删除**（D22） |
-| **create** | `create_engineering_project`：打开/另存进 `tia/`、重建源文件树到 `source/<device>/`、逐设备重建图谱库到 `knowledge/<device>/`，默认只给计划 | 缝 A ✅ 已就绪（接口插件族的 `engineeringAccess`）；缝 B ✅ 已就绪（图谱插件的 `knowledgeGraph`，缺席即降级） | **A5 的流程第一次能跑通**：工程进 workspace、源文件读出来、块逻辑进图谱库 | ✅ **已实现**（56 项测试） |
-| **P2** | 变更引擎（`eng_changes` / `eng_export`）+ 增量闭环 | 缝 A ✅ 已就绪；指纹可得性已由**用户在另一代码库**验证 | D6/D9 的工作循环 | ⬜ |
-| **P3** | 变更台账（`eng_context`）+ 项目级 skill | P2 | 期望二 | ⬜ |
+| **create** | `create_engineering_project`：打开/另存进 `tia/`、重建源文件树到 `source/<device>/`、逐设备重建图谱库到 `knowledge/<device>/`，默认只给计划 | 缝 A ✅ 已就绪（接口插件族的 `engineeringAccess`）；缝 B ✅ 已就绪（图谱插件的 `knowledgeGraph`，缺席即降级） | **A5 的流程第一次能跑通**：工程进 workspace、源文件读出来、块逻辑进图谱库 | ✅ **已实现** |
+| **S0 / S1** | 控制器取证：`PlcChecksum`（V17 属性是 `Software`）+ `SyncScan`（遍历 / 指纹与归一化哈希比对 / 只导出差异到 STAGE / 同一次调用写 `_evidence.json` 与 `_manifest.json`） | 接口插件控制器 | 变更检测不再依赖"每次全量导出一遍再比字节" | ✅ **已实现 + 真机通过**（见接口插件 docs） |
+| **S2** | 消费侧闭环：`project_status`（只读状态）+ `project_sync`（checksum 快路径 → 慢路径 → STAGE → SOURCE → 锁内提交） | S0/S1 + 缝 A + 用户自己的 git 仓库 | **D6/D9 的工作循环第一次落地**：TIA 改了 → 一次同步 → git 里有且只有差异 | ✅ **已实现**（单测 17 项；完整真机链路待跑） |
+| **P3** | 变更台账（`eng_context`）+ 项目级 skill | S2 | 期望二 | ⬜ |
 
-**当前的实际产出**：`src/` 下 9 个模块 + `src/tools/` 下 4 个文件、`test/` 4 个测试文件
-（56 项，全通过、无跳过）、`scripts/` 3 个脚本。**没有** `ctx.effect` —— 本插件不持有任何
-自有资源（不起子进程、不开句柄），所以 `apply` 注册完工具就返回（图谱引擎的子进程归图谱插件持有）。
-**没有** `skills/`：文档交付物（D4 三问）在 P3 与项目级 skill 一起做，现在的三问写在工具描述里。
+**当前的实际产出**：`src/` 下 13 个模块（另加手写的 `dsh-runtime.d.ts`）+ `src/tools/` 下 6 个文件、
+`test/` 5 个测试文件（**73 项**，全通过、无跳过）、`scripts/` 3 个脚本。**没有** `ctx.effect` ——
+本插件不持有任何自有资源（不起子进程、不开句柄），所以 `apply` 注册完工具就返回
+（图谱引擎的子进程归图谱插件持有）。**没有** `skills/`：文档交付物（D4 三问）在 P3 与项目级 skill
+一起做，现在的三问写在工具描述里。
 
 ### 验收口径（对齐 `docs/roadmap.md` §3）
 
 | 口径 | 怎么验 | 离线可测？ | 状态 |
 |---|---|---|---|
-| 可重复 | 给定「project/branch/version」两次物化，导出物逐字节一致 | ✅ | ⬜ P2 |
+| 可重复 | 给定「project/branch/version」两次物化，导出物逐字节一致 | ✅ | ⬜ 真机 |
 | **不串味** | 每次调用都从自己的 session cwd 重新解析 workspace；目标路径越界即拒 | ✅ | ✅ 已测（`path_outside_workspace`、配置兜底、无 cwd 拒绝） |
 | 作用域显式 | 每个工具结果都带 scope（workspace 路径 + 是否登记 + warnings） | ✅ | ✅ 已测 |
-| **变更不漏报不误报** | stub 控制器喂录制的指纹：未改动 → `changed = 0`；只改注释 → 只报 `Comments`；只改代码 → 只报 `Code` | ✅（fixture） | ⬜ P2 |
-| 增量可验证 | 改一个块后，导出集合 **==** 指纹报告的集合（D9 闭环） | ⚠️ 需真机 | ⬜ P2 |
-| 失效可感知 | TIA 拒绝另存 → `save_failed`；重建失败 → `rebuild_failed` 并说明"哪一半已经落盘"；被拒对象逐条回报 | ✅ | ✅ 已测 |
+| **变更不漏报不误报** | 未改动 → `unchanged`（不枚举）；只导出差异；消失的对象删文件、不可导出的对象保留旧文件 | ✅（假服务 + 真实 STAGE/git） | ✅ 工具级已测（`test/09`），真机待跑 |
+| 增量可验证 | 改一个块后，导出集合 **==** 账本报告的集合（D9 闭环） | ⚠️ 需真机 | 🟡 1 块慢路径 48.3 s 已验证；消费侧待真机 |
+| 失效可感知 | TIA 拒绝另存 → `save_failed`；重建失败 → `rebuild_failed` 并说明"哪一半已经落盘"；被拒对象逐条回报；checksum 为空 → `needs_compile` | ✅ | ✅ 已测 |
 | **图谱可缺席** | 无 `knowledgeGraph` 服务 / 引擎未构建 / 引擎超时 → 工作流仍 `ok:true`，只报"图谱未建成"并给出原因；引擎拒绝 → 逐设备 `error.code` + remediation | ✅ | ✅ 已测（`test/02` 工具级 + `test/04` 缝 B 级） |
 | 上下文预算 | 每个工具结果 ≤4KB；工具目录开销可复算 | ✅ | ✅ 列表封顶 20 行、细节封顶 40 行 |
 

@@ -46,6 +46,8 @@ export const OPERATIONS = [
   'SafetyStatus',
   'SetSafetySettings',
   'SafetySignatures',
+  'PlcChecksum',
+  'SyncScan',
 ] as const
 
 export type Operation = (typeof OPERATIONS)[number]

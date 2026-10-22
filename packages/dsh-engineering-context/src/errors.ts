@@ -37,6 +37,24 @@ export type EngineeringErrorCode =
   | 'save_failed'
   /** The source rebuild was attempted and failed; anything already written is kept. */
   | 'rebuild_failed'
+  /** The PLC has no compiled checksum: compile it before scanning. */
+  | 'needs_compile'
+  /** The checksum read failed; the project is not in a compiled state. */
+  | 'checksum_unavailable'
+  /** Another process holds the workspace lock. */
+  | 'lock_held'
+  /** The workspace is not a git repository (this plugin never creates one). */
+  | 'repository_not_found'
+  /** A git command failed for a reason other than "no repository". */
+  | 'git_failed'
+  /** The evidence ledger is present but cannot be read. */
+  | 'evidence_invalid'
+  /** No PLC software was found in the open project. */
+  | 'device_not_found'
+  /** More than one PLC is present; the first slice supports one device per workspace. */
+  | 'multiple_plc_unsupported'
+  /** The scan itself failed; the project and the existing source tree are unchanged. */
+  | 'sync_failed'
   /** An argument is missing or malformed. */
   | 'invalid_argument'
 

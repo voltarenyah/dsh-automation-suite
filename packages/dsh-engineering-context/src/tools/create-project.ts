@@ -42,6 +42,7 @@ import {
   projectDirectoryPath,
   sourceDirectoryPath,
   sourceIndexPath,
+  stateIgnoreRule,
   tiaIgnoreRule,
   type PluginConfig,
 } from '../config.js'
@@ -261,6 +262,10 @@ function ignoreRules(config: PluginConfig): IgnoreRuleSpec[] {
       rule: knowledgeIgnoreRule(),
       purpose: 'Generated knowledge databases: rebuilt from source/, binary, not versioned here.',
     },
+    {
+      rule: stateIgnoreRule(config),
+      purpose: 'Local sync state (lock and STAGE): temporary, per machine, never committed.',
+    },
   ]
 }
 
@@ -320,6 +325,8 @@ async function applyIgnoreRules(ignore: IgnoreFile): Promise<IgnoreAction> {
       '# knowledge/**/*.db* holds the knowledge databases the engineering-graph plugin',
       '# rebuilds from that source tree: binary, large and derived, so not versioned either',
       '# (the trailing * also covers SQLite -wal / -shm / -journal side files).',
+      '# .dsh/local/ holds this plugin\'s lock and STAGE directory: local runtime state that a',
+      '# sync writes and deletes, never a versioned artifact.',
       ...added,
       '',
     ].join('\n')
@@ -351,7 +358,7 @@ function describeIgnorePlan(ignore: IgnoreFile): string {
   if (!ignore.exists) {
     return (
       `Ignore rules: ${ignore.port} does not exist yet; it will be created with ${quoted(all)} ` +
-      '(generated binaries: the saved projects and the knowledge databases).'
+      '(generated binaries and local runtime state: the saved projects, the knowledge databases, and the sync stage).'
     )
   }
   const missing = ignore.rules.filter((rule) => rule.state === 'absent').map((rule) => rule.rule)

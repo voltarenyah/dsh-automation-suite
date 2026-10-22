@@ -59,13 +59,13 @@ function rebuildReport(sourceRoot, overrides = {}) {
       exported: counts.blocks,
       failed: 0,
       directory: join(sourceRoot, name, 'blocks'),
-      manifest: join(sourceRoot, name, 'blocks', '_tia-openness-manifest.json'),
+      manifest: join(sourceRoot, name, 'blocks', '_manifest.json'),
     },
     types: {
       exported: counts.types,
       failed: 0,
       directory: join(sourceRoot, name, 'types'),
-      manifest: join(sourceRoot, name, '_tia-openness-manifest.json'),
+      manifest: join(sourceRoot, name, '_manifest.json'),
     },
     tagTables: {
       exported: counts.tagTables,
@@ -218,8 +218,8 @@ function setup(options = {}, config = {}) {
 
 const operations = (calls) => calls.map((call) => call.operation)
 
-test('this build registers exactly one tool', () => {
-  assert.deepEqual([...TOOL_NAMES], [TOOL])
+test('this build registers the three workflow tools in a stable order', () => {
+  assert.deepEqual([...TOOL_NAMES], [TOOL, 'project_status', 'project_sync'])
 })
 
 test('a composition without the TIA service says so instead of half-creating a project', async (t) => {
@@ -441,7 +441,7 @@ test('dry_run=false saves into tia/ and then rebuilds into source/, in that orde
   assert.equal(index.project.sourceRoot, 'source')
   assert.equal(index.devices.length, 1)
   assert.equal(index.devices[0].device, 'S7-1500')
-  assert.match(index.devices[0].manifest, /_tia-openness-manifest\.json$/u)
+  assert.match(index.devices[0].manifest, /_manifest\.json$/u)
   assert.deepEqual(index.totals, { planned: 4, written: 4, skipped: 0, refused: 0, verificationFailed: 0 })
 })
 
@@ -626,21 +626,24 @@ test('an existing source tree is announced rather than silently skipped', async 
 })
 
 test('the ignore rules are created, appended or left alone — the file is never rewritten', async (t) => {
-  // Missing file: created with both rules (the project TIA owns and the databases
-  // the graph plugin derives from the source tree).
+  // Missing file: created with all three rules (the project TIA owns, the
+  // databases the graph plugin derives from the source tree, and the local sync
+  // state the sync tool writes and deletes).
   const fresh = await tempWorkspace(t)
   const freshOutcome = assertEnvelope(await executeTool(setup().tool, { dry_run: false }, fakeExec(fresh)))
   const created = await readFile(join(fresh, '.gitignore'), 'utf8')
   assert.match(created, /^tia\/$/mu)
   assert.match(created, /^knowledge\/\*\*\/\*\.db\*$/mu)
+  assert.match(created, /^\.dsh\/local\/$/mu)
   assert.equal(freshOutcome.data.ignore.action, 'created')
-  assert.deepEqual(freshOutcome.data.ignore.added, ['tia/', 'knowledge/**/*.db*'])
+  assert.deepEqual(freshOutcome.data.ignore.added, ['tia/', 'knowledge/**/*.db*', '.dsh/local/'])
   assert.deepEqual(freshOutcome.data.ignore.rules, [
     { rule: 'tia/', present: false },
     { rule: 'knowledge/**/*.db*', present: false },
+    { rule: '.dsh/local/', present: false },
   ])
 
-  // Existing file without the rules: the user's lines survive, both rules are appended.
+  // Existing file without the rules: the user's lines survive, all three rules are appended.
   const existing = await tempWorkspace(t)
   await makeFile(join(existing, '.gitignore'), 'node_modules/\n*.log\n')
   const appendedOutcome = assertEnvelope(await executeTool(setup().tool, { dry_run: false }, fakeExec(existing)))
@@ -649,19 +652,21 @@ test('the ignore rules are created, appended or left alone — the file is never
   assert.match(appended, /^\*\.log$/mu)
   assert.match(appended, /^tia\/$/mu)
   assert.match(appended, /^knowledge\/\*\*\/\*\.db\*$/mu)
+  assert.match(appended, /^\.dsh\/local\/$/mu)
   assert.equal(appendedOutcome.data.ignore.action, 'appended')
 
-  // Running twice must not append either rule twice, and the second run reports
+  // Running twice must not append any rule twice, and the second run reports
   // them as present rather than as a change.
   const twiceOutcome = assertEnvelope(await executeTool(setup().tool, { dry_run: false }, fakeExec(existing)))
   const twice = await readFile(join(existing, '.gitignore'), 'utf8')
   assert.equal(twice.match(/^tia\/$/gmu).length, 1)
   assert.equal(twice.match(/^knowledge\/\*\*\/\*\.db\*$/gmu).length, 1)
+  assert.equal(twice.match(/^\.dsh\/local\/$/gmu).length, 1)
   assert.equal(twiceOutcome.data.ignore.action, 'unchanged')
   assert.deepEqual(twiceOutcome.data.ignore.added, [])
 
   // The alternate spellings a user may have written count as present: only the
-  // missing rule is added, and the file is otherwise left alone. (A user who
+  // missing rules are added, and the file is otherwise left alone. (A user who
   // ignored the database without its SQLite side files is *not* "present": the
   // rule this plugin needs is the one that covers both.)
   const half = await tempWorkspace(t)
@@ -671,12 +676,13 @@ test('the ignore rules are created, appended or left alone — the file is never
   assert.match(repaired, /^# mine$/mu)
   assert.equal(repaired.match(/tia\//gmu).length, 1, 'the existing spelling is not duplicated')
   assert.match(repaired, /^knowledge\/\*\*\/\*\.db\*$/mu)
-  assert.deepEqual(halfOutcome.data.ignore.added, ['knowledge/**/*.db*'])
+  assert.match(repaired, /^\.dsh\/local\/$/mu)
+  assert.deepEqual(halfOutcome.data.ignore.added, ['knowledge/**/*.db*', '.dsh/local/'])
 
   // A workspace that already ignores the database but not its SQLite side files
   // gets the wider rule appended; the narrower line is left where the user put it.
   const narrower = await tempWorkspace(t)
-  await makeFile(join(narrower, '.gitignore'), 'tia/\nknowledge/**/*.db\n')
+  await makeFile(join(narrower, '.gitignore'), 'tia/\nknowledge/**/*.db\n.dsh/local/\n')
   const narrowerOutcome = assertEnvelope(await executeTool(setup().tool, { dry_run: false }, fakeExec(narrower)))
   const upgraded = await readFile(join(narrower, '.gitignore'), 'utf8')
   assert.match(upgraded, /^knowledge\/\*\*\/\*\.db\*$/mu)

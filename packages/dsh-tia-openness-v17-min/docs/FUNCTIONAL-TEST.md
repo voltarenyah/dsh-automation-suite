@@ -56,7 +56,7 @@ export_blocks({ "output_dir": "D:\\Demo\\export" })
 
 - `data.summary.exported` = 块数，`failed = 0`，每个文件 `verified: true`；
 - 目标目录里出现与导出前 `data.blockSummary.items[].name` 对应的 `.xml` 文件；
-- 出现 `_tia-openness-manifest.json`，其中每个块有 `sha256` 与 `bytes`；
+- 出现 `_manifest.json`，其中每个块有 `sha256` 与 `bytes`；
 - 用文本编辑器打开其中一个 XML：根元素 `<Document>`，内含 `<SW.Blocks.FC>` 之类元素，
   以及 `<AttributeList><Name>…</Name>`（这就是 Simatic ML）。
 

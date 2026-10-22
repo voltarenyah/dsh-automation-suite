@@ -44,6 +44,8 @@ export const OPERATIONS = [
     'SafetyStatus',
     'SetSafetySettings',
     'SafetySignatures',
+    'PlcChecksum',
+    'SyncScan',
 ];
 export const OPERATION_SET = new Set(OPERATIONS);
 export function isOperation(value) {

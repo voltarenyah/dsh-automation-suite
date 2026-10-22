@@ -1,0 +1,583 @@
+/**
+ * `project_status` and `project_sync`: the read-only state report, the plan
+ * (default) and the real TIA → STAGE → SOURCE → git run.
+ *
+ * The interface plugin is a fake, because the controller cannot run here; the
+ * workspace, the git repository and the STAGE files are real, because those are
+ * exactly what the two tools are responsible for writing.
+ */
+
+import assert from 'node:assert/strict'
+import { execFile } from 'node:child_process'
+import { readdir, readFile, rm, stat } from 'node:fs/promises'
+import { join } from 'node:path'
+import { test } from 'node:test'
+import { promisify } from 'node:util'
+
+import {
+  assertEnvelope,
+  createTestContext,
+  executeTool,
+  fakeExec,
+  findTool,
+  loadConfigModule,
+  loadToolsModule,
+  makeFile,
+  tempWorkspace,
+} from './helpers/harness.mjs'
+
+const { toolDefinitions } = await loadToolsModule()
+const { resolveConfig } = await loadConfigModule()
+const execFileAsync = promisify(execFile)
+
+const STATUS = 'project_status'
+const SYNC = 'project_sync'
+const DEVICE = 'PLC1'
+const SOFTWARE = 'SW1'
+
+async function git(root, args) {
+  return await execFileAsync('git', ['-C', root, ...args], { encoding: 'utf8', windowsHide: true })
+}
+
+async function gitWorkspace(t) {
+  const root = await tempWorkspace(t)
+  await git(root, ['init', '-q'])
+  await git(root, ['config', 'user.email', 'test@example.invalid'])
+  await git(root, ['config', 'user.name', 'Engineering Context Test'])
+  return root
+}
+
+async function exists(path) {
+  try {
+    await stat(path)
+    return true
+  } catch {
+    return false
+  }
+}
+
+function sessionReport(overrides = {}) {
+  return {
+    running: true,
+    projectOpen: true,
+    projectName: 'PEI_SinoARP',
+    projectPath: 'C:\\TIA\\PEI_SinoARP.ap17',
+    isModified: false,
+    software: [{ device: DEVICE, software: SOFTWARE, blockCount: 3 }],
+    reason: null,
+    ...overrides,
+  }
+}
+
+function checksumReport(checksum, options = {}) {
+  if (options.unavailable === true) {
+    return {
+      ok: false,
+      summary: 'the PLC has no compiled checksum',
+      error: { code: 'checksum_unavailable', message: 'compile the PLC first' },
+    }
+  }
+  return { ok: true, summary: 'checksum read', data: { checksum, device: DEVICE, software: SOFTWARE } }
+}
+
+function scanReport(query, overrides = {}) {
+  const counts = { blocks: 1, types: 0, tagTables: 0, changed: 1, added: 0, removed: 0, unexportable: 0 }
+  return {
+    ok: true,
+    summary: 'scan complete',
+    data: {
+      checksum: 'BB',
+      unchanged: false,
+      manifestRebuilt: true,
+      counts,
+      changed: [{ key: 'block||FB1', category: 'block', name: 'FB1', group: '010', faces: ['Code'] }],
+      added: [],
+      removed: [],
+      unexportable: [],
+      stage: {
+        root: query.stageDir,
+        evidence: join(query.stageDir, '_evidence.json'),
+        manifest: join(query.stageDir, '_manifest.json'),
+        files: 1,
+      },
+      stateId: 'state-2',
+      ...overrides,
+    },
+  }
+}
+
+function fakeAccess(options = {}) {
+  const calls = []
+  const session = options.session ?? sessionReport()
+  const service = {
+    async readTiaSession() {
+      calls.push({ operation: 'readTiaSession' })
+      return session
+    },
+    async openProject() {
+      throw new Error('project_sync/status must never open a project')
+    },
+    async saveProjectAs() {
+      throw new Error('project_sync/status must never save a project')
+    },
+    async rebuildSource() {
+      throw new Error('project_sync must use syncScan, not rebuildSource')
+    },
+  }
+  if (options.checksum !== undefined) {
+    service.readPlcChecksum = async (query) => {
+      calls.push({ operation: 'readPlcChecksum', query })
+      return typeof options.checksum === 'function' ? options.checksum(query) : options.checksum
+    }
+  }
+  if (options.scan !== undefined) {
+    service.syncScan = async (query) => {
+      calls.push({ operation: 'syncScan', query })
+      return typeof options.scan === 'function' ? options.scan(query) : options.scan
+    }
+  }
+  return { service, calls }
+}
+
+function tools(service, config = {}) {
+  const { ctx } = createTestContext({ services: service === undefined ? {} : { engineeringAccess: service } })
+  const definitions = toolDefinitions({ ctx, config: resolveConfig(config), log: ctx.logger })
+  return {
+    definitions,
+    status: findTool(definitions, STATUS),
+    sync: findTool(definitions, SYNC),
+  }
+}
+
+function evidenceDocument(overrides = {}) {
+  return {
+    schemaVersion: 1,
+    hashAlgo: 'sha256',
+    device: DEVICE,
+    software: SOFTWARE,
+    plcChecksum: 'AA',
+    stateId: 'state-1',
+    objects: {},
+    unexportable: [],
+    tombstones: [],
+    ...overrides,
+  }
+}
+
+function objectEntry(overrides = {}) {
+  return {
+    category: 'block',
+    name: 'FB1',
+    group: '010',
+    path: 'blocks/010/FB1.xml',
+    fingerprint: { Code: 'fingerprint-1' },
+    ...overrides,
+  }
+}
+
+async function writeEvidence(deviceDirectory, overrides = {}) {
+  await makeFile(join(deviceDirectory, '_evidence.json'), `${JSON.stringify(evidenceDocument(overrides), null, 2)}\n`)
+}
+
+async function writeManifest(deviceDirectory, content = '{"files":{}}') {
+  await makeFile(join(deviceDirectory, '_manifest.json'), content)
+}
+
+function deviceDirectory(root) {
+  return join(root, 'source', DEVICE)
+}
+
+function operations(calls) {
+  return calls.map((call) => call.operation)
+}
+
+// ---------------------------------------------------------------------------
+// project_status
+// ---------------------------------------------------------------------------
+
+test('status without the TIA service fails closed, naming the service', async (t) => {
+  const root = await tempWorkspace(t)
+  const outcome = assertEnvelope(await executeTool(tools(undefined).status, {}, fakeExec(root)))
+
+  assert.equal(outcome.ok, false)
+  assert.equal(outcome.error.code, 'tia_access_unavailable')
+  assert.match(outcome.error.message, /engineeringAccess/u)
+})
+
+test('status reports an open project, the missing ledger/manifest and the next action', async (t) => {
+  const root = await tempWorkspace(t)
+  const { service, calls } = fakeAccess()
+  const outcome = assertEnvelope(await executeTool(tools(service).status, {}, fakeExec(root)))
+
+  assert.equal(outcome.ok, true)
+  assert.equal(outcome.data.device.directory, deviceDirectory(root))
+  assert.equal(outcome.data.checksum.state, 'not-checked')
+  assert.equal(outcome.data.checksum.value, null)
+  assert.equal(outcome.data.evidence.present, false)
+  assert.equal(outcome.data.manifest.present, false)
+  assert.equal(outcome.data.nextAction, 'sync')
+  assert.equal(outcome.data.git.repository, false)
+  assert.equal(outcome.data.lock, null)
+  assert.deepEqual(operations(calls), ['readTiaSession'], 'verify=false must not read the checksum')
+  assert.match(outcome.summary, /NOT checked/u)
+})
+
+test('status verifies the checksum on request and reports drift, never "clean" by omission', async (t) => {
+  const root = await tempWorkspace(t)
+  const device = deviceDirectory(root)
+  await writeEvidence(device, { plcChecksum: 'AA' })
+  await writeManifest(device)
+  await makeFile(join(device, 'blocks', '010', 'FB1.xml'), '<xml/>')
+
+  const drifted = fakeAccess({ checksum: checksumReport('CC') })
+  const drift = assertEnvelope(await executeTool(tools(drifted.service).status, { verify: true }, fakeExec(root)))
+  assert.equal(drift.ok, true)
+  assert.equal(drift.data.checksum.state, 'available')
+  assert.equal(drift.data.checksum.value, 'CC')
+  assert.equal(drift.data.checksum.lastKnown, 'AA')
+  assert.equal(drift.data.checksum.drift, true)
+  assert.equal(drift.data.nextAction, 'sync')
+  assert.match(drift.details.join('\n'), /DIFFERS from the ledger/u)
+
+  const matching = fakeAccess({ checksum: checksumReport('AA') })
+  const equal = assertEnvelope(await executeTool(tools(matching.service).status, { verify: true }, fakeExec(root)))
+  assert.equal(equal.data.checksum.drift, false)
+  assert.equal(equal.data.nextAction, 'git_init', 'no repository yet')
+
+  await git(root, ['init', '-q'])
+  await git(root, ['config', 'user.email', 'test@example.invalid'])
+  await git(root, ['config', 'user.name', 'Engineering Context Test'])
+  const uncommitted = assertEnvelope(await executeTool(tools(matching.service).status, { verify: true }, fakeExec(root)))
+  assert.equal(uncommitted.data.git.repository, true)
+  assert.ok(uncommitted.data.git.dirty.length > 0)
+  assert.equal(uncommitted.data.nextAction, 'commit')
+
+  await git(root, ['add', '--', 'source/PLC1'])
+  await git(root, ['commit', '-q', '-m', 'import'])
+  const clean = assertEnvelope(await executeTool(tools(matching.service).status, { verify: true }, fakeExec(root)))
+  assert.deepEqual(clean.data.git.dirty, [])
+  assert.equal(clean.data.nextAction, 'clean')
+})
+
+test('status turns an uncompiled PLC into "compile", not a failure', async (t) => {
+  const root = await tempWorkspace(t)
+  const { service } = fakeAccess({ checksum: checksumReport(null, { unavailable: true }) })
+  const outcome = assertEnvelope(await executeTool(tools(service).status, { verify: true }, fakeExec(root)))
+
+  assert.equal(outcome.ok, true)
+  assert.equal(outcome.data.checksum.state, 'unavailable')
+  assert.equal(outcome.data.checksum.error.code, 'checksum_unavailable')
+  assert.equal(outcome.data.nextAction, 'compile')
+})
+
+test('status reports a corrupt ledger as data and asks for a sync, not a crash', async (t) => {
+  const root = await tempWorkspace(t)
+  await makeFile(join(deviceDirectory(root), '_evidence.json'), '{ not json')
+  const { service } = fakeAccess()
+  const outcome = assertEnvelope(await executeTool(tools(service).status, {}, fakeExec(root)))
+
+  assert.equal(outcome.ok, true)
+  assert.equal(outcome.data.evidence.present, false)
+  assert.equal(outcome.data.evidence.invalid, true)
+  assert.equal(outcome.data.nextAction, 'sync')
+})
+
+test('status surfaces a held lock and never waits on it', async (t) => {
+  const root = await tempWorkspace(t)
+  await makeFile(
+    join(root, '.dsh', 'local', 'lock.json'),
+    `${JSON.stringify({ pid: 4242, operation: 'sync', startedAt: new Date().toISOString() })}\n`,
+  )
+  const { service } = fakeAccess()
+  const outcome = assertEnvelope(await executeTool(tools(service).status, {}, fakeExec(root)))
+
+  assert.equal(outcome.ok, true)
+  assert.equal(outcome.data.lock.held, true)
+  assert.equal(outcome.data.lock.operation, 'sync')
+  assert.equal(outcome.data.lock.pid, 4242)
+})
+
+// ---------------------------------------------------------------------------
+// project_sync: the plan (default)
+// ---------------------------------------------------------------------------
+
+test('sync is a plan by default: it reads the checksum and writes nothing', async (t) => {
+  const root = await tempWorkspace(t)
+  await writeEvidence(deviceDirectory(root), { plcChecksum: 'AA' })
+  const { service, calls } = fakeAccess({ checksum: checksumReport('BB') })
+
+  const outcome = assertEnvelope(await executeTool(tools(service).sync, {}, fakeExec(root)))
+
+  assert.equal(outcome.ok, true)
+  assert.equal(outcome.dryRun, true)
+  assert.equal(outcome.data.wouldSync, true)
+  assert.equal(outcome.data.checksum, 'BB')
+  assert.equal(outcome.data.lastKnownChecksum, 'AA')
+  assert.deepEqual(operations(calls), ['readTiaSession', 'readPlcChecksum'])
+  assert.equal(await exists(join(root, '.dsh', 'local')), false, 'a plan must not even create the state directory')
+  assert.equal(await exists(join(root, 'source', DEVICE, '_manifest.json')), false)
+})
+
+test('the plan says "already in sync" only when checksum, ledger and manifest all agree', async (t) => {
+  const root = await tempWorkspace(t)
+  await writeEvidence(deviceDirectory(root), { plcChecksum: 'AA' })
+  await writeManifest(deviceDirectory(root))
+  const { service, calls } = fakeAccess({ checksum: checksumReport('AA') })
+
+  const outcome = assertEnvelope(await executeTool(tools(service).sync, {}, fakeExec(root)))
+
+  assert.equal(outcome.ok, true)
+  assert.equal(outcome.data.wouldSync, false)
+  assert.match(outcome.summary, /already matches/u)
+  assert.deepEqual(operations(calls), ['readTiaSession', 'readPlcChecksum'])
+
+  // A ledger with no manifest is not "in sync": the next sync must rebuild it.
+  await rm(join(deviceDirectory(root), '_manifest.json'))
+  const noManifest = assertEnvelope(await executeTool(tools(service).sync, {}, fakeExec(root)))
+  assert.equal(noManifest.data.wouldSync, true)
+  assert.match(noManifest.summary, /no manifest/u)
+})
+
+test('the plan turns "no compiled checksum" into needs_compile and scans nothing', async (t) => {
+  const root = await tempWorkspace(t)
+  const { service, calls } = fakeAccess({ checksum: checksumReport(null, { unavailable: true }) })
+
+  const outcome = assertEnvelope(await executeTool(tools(service).sync, {}, fakeExec(root)))
+
+  assert.equal(outcome.ok, false)
+  assert.equal(outcome.error.code, 'needs_compile')
+  assert.match(outcome.error.message, /Compile it in TIA Portal/u)
+  assert.deepEqual(operations(calls), ['readTiaSession', 'readPlcChecksum'])
+})
+
+// ---------------------------------------------------------------------------
+// project_sync: the real run
+// ---------------------------------------------------------------------------
+
+test('a real sync copies only the promoted XML, writes both documents and commits with trailers', async (t) => {
+  const root = await gitWorkspace(t)
+  const device = deviceDirectory(root)
+  const { service, calls } = fakeAccess({
+    scan: async (query) => {
+      await makeFile(join(query.stageDir, 'blocks', '010', 'FB1.xml'), '<xml>FB1</xml>')
+      await makeFile(
+        join(query.stageDir, '_evidence.json'),
+        `${JSON.stringify(
+          evidenceDocument({
+            plcChecksum: 'BB',
+            stateId: 'state-2',
+            objects: { 'block||FB1': objectEntry({ fingerprint: { Code: 'fingerprint-2' } }) },
+          }),
+          null,
+          2,
+        )}\n`,
+      )
+      await makeFile(join(query.stageDir, '_manifest.json'), '{"files":{"blocks/010/FB1.xml":{}}}')
+      return scanReport(query)
+    },
+  })
+
+  const outcome = assertEnvelope(await executeTool(tools(service).sync, { dry_run: false }, fakeExec(root)))
+
+  assert.equal(outcome.ok, true)
+  assert.equal(outcome.data.unchanged, false)
+  assert.equal(outcome.data.manifestRebuilt, true)
+  assert.equal(outcome.data.counts.changed, 1)
+  assert.equal(outcome.data.copied, 1)
+  assert.equal(outcome.data.commit.committed, true)
+  assert.equal(await readFile(join(device, 'blocks', '010', 'FB1.xml'), 'utf8'), '<xml>FB1</xml>')
+  assert.equal(
+    JSON.parse(await readFile(join(device, '_evidence.json'), 'utf8')).plcChecksum,
+    'BB',
+    'the ledger is committed beside the XML',
+  )
+  assert.match(await readFile(join(device, '_manifest.json'), 'utf8'), /FB1\.xml/u)
+
+  const message = (await git(root, ['log', '-1', '--format=%B'])).stdout
+  assert.match(message, /^sync: PLC1 — 1 changed, 0 added, 0 removed, manifest rebuilt$/mu)
+  assert.match(message, /^Tia-Op: sync$/mu)
+  assert.match(message, /^Tia-Checksum: BB$/mu)
+  assert.match(message, /^Tia-State: state-2$/mu)
+  assert.match(message, /^Tia-Manifest: rebuilt$/mu)
+
+  const status = (await git(root, ['status', '--porcelain', '--', 'source/PLC1'])).stdout.trim()
+  assert.equal(status, '', 'the commit must cover exactly the device directory')
+  assert.equal((await readdir(join(root, '.dsh', 'local', 'stage'))).length, 0, 'STAGE is scratch space and must be cleaned')
+  assert.equal(await exists(join(root, '.dsh', 'local', 'lock.json')), false, 'the lock is released')
+  assert.deepEqual(operations(calls), ['readTiaSession', 'syncScan'])
+  assert.equal(calls[1].query.sourceRoot, device, 'the scan resolves manifest paths against the device directory')
+  assert.equal(calls[1].query.evidencePath, join(device, '_evidence.json'))
+  assert.equal(calls[1].query.manifestPath, join(device, '_manifest.json'))
+})
+
+test('an unchanged scan is a no-op: no copy, no commit, STAGE removed', async (t) => {
+  const root = await gitWorkspace(t)
+  const device = deviceDirectory(root)
+  await writeEvidence(device, { plcChecksum: 'AA' })
+  await writeManifest(device)
+  await makeFile(join(device, 'blocks', '010', 'FB1.xml'), '<xml>old</xml>')
+  await git(root, ['add', '--', 'source/PLC1'])
+  await git(root, ['commit', '-q', '-m', 'import'])
+  const head = (await git(root, ['rev-parse', 'HEAD'])).stdout.trim()
+
+  const { service, calls } = fakeAccess({
+    scan: { ok: true, summary: 'unchanged', data: { checksum: 'AA', unchanged: true, manifestRebuilt: false, stateId: 'state-1' } },
+  })
+  const outcome = assertEnvelope(await executeTool(tools(service).sync, { dry_run: false }, fakeExec(root)))
+
+  assert.equal(outcome.ok, true)
+  assert.equal(outcome.data.unchanged, true)
+  assert.equal(outcome.data.copied, 0)
+  assert.equal(outcome.data.removedFiles, 0)
+  assert.equal(outcome.data.commit.committed, false)
+  assert.equal((await git(root, ['rev-parse', 'HEAD'])).stdout.trim(), head, 'an unchanged scan must not create a commit')
+  assert.equal(await readFile(join(device, 'blocks', '010', 'FB1.xml'), 'utf8'), '<xml>old</xml>')
+  assert.deepEqual(operations(calls), ['readTiaSession', 'syncScan'])
+  assert.equal((await readdir(join(root, '.dsh', 'local', 'stage'))).length, 0)
+})
+
+test('a disappeared object deletes its file; an unexportable one keeps its previous file', async (t) => {
+  const root = await gitWorkspace(t)
+  const device = deviceDirectory(root)
+  await writeEvidence(device, {
+    plcChecksum: 'AA',
+    objects: {
+      'block||FB1': objectEntry(),
+      'block||FB2': objectEntry({ name: 'FB2', path: 'blocks/010/FB2.xml' }),
+      'block||FB3': objectEntry({ name: 'FB3', path: 'blocks/010/FB3.xml' }),
+    },
+  })
+  await makeFile(join(device, 'blocks', '010', 'FB1.xml'), '<xml>old 1</xml>')
+  await makeFile(join(device, 'blocks', '010', 'FB2.xml'), '<xml>old 2</xml>')
+  await makeFile(join(device, 'blocks', '010', 'FB3.xml'), '<xml>old 3</xml>')
+  await writeManifest(device)
+  await git(root, ['add', '--', 'source/PLC1'])
+  await git(root, ['commit', '-q', '-m', 'import'])
+
+  const { service } = fakeAccess({
+    scan: async (query) => {
+      await makeFile(join(query.stageDir, 'blocks', '010', 'FB1.xml'), '<xml>new 1</xml>')
+      await makeFile(
+        join(query.stageDir, '_evidence.json'),
+        `${JSON.stringify(
+          evidenceDocument({
+            plcChecksum: 'BB',
+            stateId: 'state-2',
+            objects: {
+              'block||FB1': objectEntry({ fingerprint: { Code: 'fingerprint-2' } }),
+              'block||FB3': objectEntry({ name: 'FB3', path: 'blocks/010/FB3.xml', state: 'unexportable', reason: 'TIA refused' }),
+            },
+          }),
+          null,
+          2,
+        )}\n`,
+      )
+      await makeFile(join(query.stageDir, '_manifest.json'), '{"files":{}}')
+      return scanReport(query, {
+        counts: { blocks: 3, types: 0, tagTables: 0, changed: 1, added: 0, removed: 1, unexportable: 1 },
+        removed: [{ key: 'block||FB2', category: 'block', name: 'FB2', group: '010', faces: [] }],
+        unexportable: [{ key: 'block||FB3', category: 'block', name: 'FB3', group: '010', reason: 'TIA refused' }],
+      })
+    },
+  })
+
+  const outcome = assertEnvelope(await executeTool(tools(service).sync, { dry_run: false }, fakeExec(root)))
+
+  assert.equal(outcome.ok, true)
+  assert.equal(outcome.data.removedFiles, 1)
+  assert.equal(await readFile(join(device, 'blocks', '010', 'FB1.xml'), 'utf8'), '<xml>new 1</xml>')
+  assert.equal(await exists(join(device, 'blocks', '010', 'FB2.xml')), false, 'a vanished object leaves no stale file')
+  assert.equal(
+    await readFile(join(device, 'blocks', '010', 'FB3.xml'), 'utf8'),
+    '<xml>old 3</xml>',
+    'an unexportable object still exists in TIA, so its last good export is kept',
+  )
+})
+
+test('a corrupt ledger is rebuilt by the next sync instead of blocking it', async (t) => {
+  const root = await gitWorkspace(t)
+  const device = deviceDirectory(root)
+  await makeFile(join(device, '_evidence.json'), '{ not json')
+  await writeManifest(device)
+
+  const { service } = fakeAccess({
+    scan: async (query) => {
+      await makeFile(join(query.stageDir, 'blocks', '010', 'FB1.xml'), '<xml>FB1</xml>')
+      await makeFile(
+        join(query.stageDir, '_evidence.json'),
+        `${JSON.stringify(evidenceDocument({ objects: { 'block||FB1': objectEntry() } }), null, 2)}\n`,
+      )
+      await makeFile(join(query.stageDir, '_manifest.json'), '{"files":{}}')
+      return scanReport(query)
+    },
+  })
+  const outcome = assertEnvelope(await executeTool(tools(service).sync, { dry_run: false }, fakeExec(root)))
+
+  assert.equal(outcome.ok, true)
+  assert.equal(outcome.data.removedFiles, 0, 'without a readable previous ledger, nothing is deleted')
+  assert.equal(JSON.parse(await readFile(join(device, '_evidence.json'), 'utf8')).schemaVersion, 1)
+})
+
+test('a recorded device directory from a moved workspace is a hint, not authority', async (t) => {
+  const root = await tempWorkspace(t)
+  await makeFile(
+    join(root, 'source', '_dsh-engineering-context.json'),
+    JSON.stringify({
+      schemaVersion: 1,
+      project: { name: 'PEI_SinoARP', directory: 'tia/x', sourceRoot: 'source' },
+      devices: [{ device: DEVICE, software: SOFTWARE, directory: join(root, 'tia', DEVICE) }],
+    }),
+  )
+  const { service } = fakeAccess({ checksum: checksumReport('AA') })
+  const outcome = assertEnvelope(await executeTool(tools(service).sync, {}, fakeExec(root)))
+
+  assert.equal(outcome.ok, true)
+  assert.equal(outcome.data.device.directory, join(root, 'source', DEVICE))
+})
+
+test('a workspace that is not a repository is refused before anything is scanned', async (t) => {
+  const root = await tempWorkspace(t)
+  const { service, calls } = fakeAccess({ scan: () => scanReport({ stageDir: join(root, 'unused') }) })
+
+  const outcome = assertEnvelope(await executeTool(tools(service).sync, { dry_run: false }, fakeExec(root)))
+
+  assert.equal(outcome.ok, false)
+  assert.equal(outcome.error.code, 'repository_not_found')
+  assert.match(outcome.error.message, /never creates one/u)
+  assert.deepEqual(operations(calls), ['readTiaSession'], 'no scan is attempted without a repository')
+  assert.equal(await exists(join(root, 'source', DEVICE)), false)
+})
+
+test('a held lock stops a real sync before the scan', async (t) => {
+  const root = await gitWorkspace(t)
+  await makeFile(
+    join(root, '.dsh', 'local', 'lock.json'),
+    `${JSON.stringify({ pid: process.pid, operation: 'sync', startedAt: new Date().toISOString() })}\n`,
+  )
+  const { service, calls } = fakeAccess({ scan: () => scanReport({ stageDir: join(root, 'unused') }) })
+
+  const outcome = assertEnvelope(await executeTool(tools(service).sync, { dry_run: false }, fakeExec(root)))
+
+  assert.equal(outcome.ok, false)
+  assert.equal(outcome.error.code, 'lock_held')
+  assert.match(outcome.error.message, /held by another operation/u)
+  assert.deepEqual(operations(calls), ['readTiaSession'])
+})
+
+test('a scan that finds no compiled checksum leaves no STAGE and no source change', async (t) => {
+  const root = await gitWorkspace(t)
+  const { service } = fakeAccess({
+    scan: {
+      ok: false,
+      summary: 'cannot scan',
+      error: { code: 'checksum_unavailable', message: 'compile the PLC first' },
+    },
+  })
+
+  const outcome = assertEnvelope(await executeTool(tools(service).sync, { dry_run: false }, fakeExec(root)))
+
+  assert.equal(outcome.ok, false)
+  assert.equal(outcome.error.code, 'needs_compile')
+  assert.equal(await exists(join(root, 'source', DEVICE)), false)
+  assert.equal((await readdir(join(root, '.dsh', 'local', 'stage'))).length, 0, 'a failed scan must not leave scratch files')
+})

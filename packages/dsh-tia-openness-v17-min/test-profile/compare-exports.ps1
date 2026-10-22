@@ -4,7 +4,7 @@
 
 .DESCRIPTION
   输入两侧：
-    -Mine  本插件的导出目录（必须含 _tia-openness-manifest.json）
+    -Mine  本插件的导出目录（必须含 _manifest.json）
     -Other   另一个导出工具的 devices\<device>\source 目录（含 metadata.json + Blocks/ + DB/ + UDT/ + Tags/）
 
   输出：规模对比、按类别统计、B 侧导出失败清单、双向差集（我有它没有 / 它有我没有）、以及缺口归类。
@@ -30,7 +30,7 @@ function Say([string]$t) { Write-Host $t; $out.Add($t) }
 function Key([string]$n) { if ($null -eq $n) { return '' } return $n.Trim().ToLowerInvariant() }
 
 # ---------------------------------------------------------------- 我的导出（A）
-$mineManifest = Join-Path $Mine '_tia-openness-manifest.json'
+$mineManifest = Join-Path $Mine '_manifest.json'
 if (-not (Test-Path $mineManifest)) { throw "找不到我的 manifest: $mineManifest" }
 $M = Get-Content $mineManifest -Raw | ConvertFrom-Json
 $mineByName = @{}

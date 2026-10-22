@@ -7,19 +7,21 @@
  *   workspace layout      the session working directory IS the engineering scope
  *                         (`exec.agent.session.header.cwd`); the host's workspace
  *                         registry is read, never modified, for the display identity
- *   one workflow tool     `create_engineering_project` — save the project TIA has
- *                         open into `<workspace>/<tia dir>/<project>/` and rebuild
- *                         its source tree into `<workspace>/<source dir>/<project>/`
+ *   create                `create_engineering_project` — save the project TIA has open
+ *                         into `<workspace>/<tia dir>/<project>/` and rebuild its
+ *                         source tree into `<workspace>/<source dir>/<device>/`
+ *   status                `project_status` — read the evidence ledger, manifest, git
+ *                         status and lock; never writes
+ *   sync                  `project_sync` — TIA → STAGE → SOURCE → one path-limited git
+ *                         commit, with a plan (dry run) as the default
  *
  * What it deliberately does not do: talk to TIA Portal (the interface plugin's
- * `engineeringAccess` service owns that, docs/decisions.md D12), version anything
- * (the workspace is a plain git repository, and `tia/` is ignored by rule), or keep
- * a registry of projects — the directory layout **is** the record
- * (docs/decisions.md D22, which supersedes the registry and version layers of
- * P0/P1). Fingerprint change detection (P2) and the change ledger (P3) are still
- * unimplemented.
+ * `engineeringAccess` service owns that, docs/decisions.md D12), invent a version
+ * number (the evidence ledger + checksum + git commit are the version), or keep a
+ * registry of projects — the directory layout **is** the record (docs/decisions.md
+ * D22, D26). The change ledger (P3) is still unimplemented.
  *
- * The plugin holds no owned resource, so `apply` registers the tool and returns:
+ * The plugin holds no owned resource, so `apply` registers the tools and returns:
  * there is nothing for `ctx.effect` to dispose. A session working directory that
  * cannot be resolved is reported per call as `scope_unavailable` rather than
  * preventing the plugin from loading.
@@ -59,8 +61,9 @@ export function apply(ctx: Context, config?: Partial<PluginConfig>): void {
 
   const registered = registerTools(ctx, dependencies)
   log.info(
-    `Registered ${registered.length} engineering-context tool (${registered.join(', ')}); ` +
-      `projects are saved into <workspace>/${settings.tiaDirName}/ and their source trees into <workspace>/${settings.sourceDirName}/`,
+    `Registered ${registered.length} engineering-context tool${registered.length === 1 ? '' : 's'} (${registered.join(', ')}); ` +
+      `projects are saved into <workspace>/${settings.tiaDirName}/, their source trees into <workspace>/${settings.sourceDirName}/, ` +
+      `and local sync state into <workspace>/${settings.stateDirName}/local/`,
   )
 }
 

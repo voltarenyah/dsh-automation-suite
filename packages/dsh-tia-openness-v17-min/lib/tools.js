@@ -1017,7 +1017,7 @@ export function registerTools(ctx, dependencies) {
                 enum: ['none', 'with_defaults', 'with_read_only'],
                 description: "TIA's ExportOptions: 'with_defaults' (default) exports default values, 'with_read_only' adds read-only information.",
             },
-            write_manifest: { type: 'boolean', description: 'True (default) to write _tia-openness-manifest.json with sizes and SHA-256 hashes.' },
+            write_manifest: { type: 'boolean', description: 'True (default) to write _manifest.json with sizes and SHA-256 hashes.' },
         },
         output: {
             schema: OUTCOME_SCHEMA,

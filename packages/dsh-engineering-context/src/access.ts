@@ -133,6 +133,70 @@ export interface RebuildResult {
   totals: RebuildTotals
 }
 
+/** The outcome of reading the PLC's compiled-program checksum. */
+export interface ChecksumReport {
+  ok: boolean
+  checksum: string | null
+  device: string | null
+  software: string | null
+  error: AccessError | null
+  summary: string
+}
+
+/** One object reported by a scan. */
+export interface SyncScanObject {
+  key: string
+  category: string
+  name: string
+  group: string | null
+  faces: string[]
+}
+
+/** One object TIA refused to export. */
+export interface SyncScanUnexportable {
+  key: string
+  category: string
+  name: string
+  group: string | null
+  reason: string
+}
+
+/** Complete counts of one scan; the object rows are capped by the provider. */
+export interface SyncScanCounts {
+  blocks: number
+  types: number
+  tagTables: number
+  changed: number
+  added: number
+  removed: number
+  unexportable: number
+}
+
+/** Where a scan wrote its files. */
+export interface SyncScanStage {
+  root: string
+  evidence: string
+  manifest: string
+  files: number
+}
+
+/** The outcome of one evidence-ledger scan, normalized for this plugin. */
+export interface SyncScanReport {
+  ok: boolean
+  checksum: string | null
+  unchanged: boolean
+  manifestRebuilt: boolean
+  counts: SyncScanCounts
+  changed: SyncScanObject[]
+  added: SyncScanObject[]
+  removed: SyncScanObject[]
+  unexportable: SyncScanUnexportable[]
+  stage: SyncScanStage | null
+  stateId: string | null
+  error: AccessError | null
+  summary: string
+}
+
 /** The members of the service this plugin uses. */
 export interface EngineeringAccessLike {
   readTiaSession(options?: { signal?: AbortSignal }): Promise<unknown>
@@ -151,6 +215,21 @@ export interface EngineeringAccessLike {
     sourceRoot: string,
     options?: { overwrite?: boolean; deviceNames?: readonly string[]; signal?: AbortSignal },
   ): Promise<unknown>
+  /**
+   * Optional: an interface plugin built before the versioning workflow has no
+   * checksum/scan methods. A caller that needs them must check for the method
+   * and report a coded absence instead of assuming they exist.
+   */
+  readPlcChecksum?(options?: { deviceName?: string; softwareName?: string; signal?: AbortSignal }): Promise<unknown>
+  syncScan?(query: {
+    sourceRoot: string
+    stageDir: string
+    evidencePath: string
+    manifestPath?: string
+    deviceName?: string
+    softwareName?: string
+    signal?: AbortSignal
+  }): Promise<unknown>
 }
 
 function record(value: unknown): Record<string, unknown> | null {
@@ -393,5 +472,114 @@ export function normalizeRebuild(raw: unknown, sourceRoot: string): RebuildResul
     failures,
     missingDevices: list(source['missingDevices']).map((entry) => text(entry) ?? '?'),
     totals: { planned, written, skipped, refused, verificationFailed },
+  }
+}
+
+/**
+ * Normalize the interface plugin's `readPlcChecksum` result.
+ *
+ * An empty checksum is a state, not a transport failure: the provider returns
+ * `ok:false` with `checksum_unavailable`, which is exactly what the caller has to
+ * tell apart from "no controller".
+ *
+ * @param raw - the service's return value.
+ */
+export function normalizeChecksum(raw: unknown): ChecksumReport {
+  const source = record(raw) ?? {}
+  const data = record(source['data']) ?? {}
+  return {
+    ok: boolOr(source['ok'], false),
+    checksum: text(data['checksum']) ?? null,
+    device: text(data['device']) ?? null,
+    software: text(data['software']) ?? null,
+    error: errorOf(source['error']),
+    summary: text(source['summary']) ?? '',
+  }
+}
+
+function scanObject(value: unknown): SyncScanObject | null {
+  const item = record(value)
+  if (item === null) return null
+  const faces: string[] = []
+  for (const face of list(item['faces'])) {
+    const label = text(face)
+    if (label !== undefined) faces.push(label)
+  }
+  return {
+    key: text(item['key']) ?? '',
+    category: text(item['category']) ?? '',
+    name: text(item['name']) ?? '',
+    group: text(item['group']) ?? null,
+    faces,
+  }
+}
+
+function scanObjects(value: unknown): SyncScanObject[] {
+  const result: SyncScanObject[] = []
+  for (const entry of list(value)) {
+    const item = scanObject(entry)
+    if (item !== null) result.push(item)
+  }
+  return result
+}
+
+function scanUnexportable(value: unknown): SyncScanUnexportable[] {
+  const result: SyncScanUnexportable[] = []
+  for (const entry of list(value)) {
+    const item = record(entry)
+    if (item === null) continue
+    result.push({
+      key: text(item['key']) ?? '',
+      category: text(item['category']) ?? '',
+      name: text(item['name']) ?? '',
+      group: text(item['group']) ?? null,
+      reason: text(item['reason']) ?? 'TIA refused the export',
+    })
+  }
+  return result
+}
+
+/**
+ * Normalize the interface plugin's `syncScan` result.
+ *
+ * @param raw - the service's return value.
+ */
+export function normalizeSyncScan(raw: unknown): SyncScanReport {
+  const source = record(raw) ?? {}
+  const data = record(source['data']) ?? {}
+  const counts = record(data['counts']) ?? {}
+  const rawStage = record(data['stage'])
+  const stage: SyncScanStage | null =
+    rawStage === null
+      ? null
+      : {
+          root: text(rawStage['root']) ?? '',
+          evidence: text(rawStage['evidence']) ?? '',
+          manifest: text(rawStage['manifest']) ?? '',
+          files: numberOf(rawStage['files']),
+        }
+
+  return {
+    ok: boolOr(source['ok'], false),
+    checksum: text(data['checksum']) ?? null,
+    unchanged: data['unchanged'] === true,
+    manifestRebuilt: data['manifestRebuilt'] === true,
+    counts: {
+      blocks: numberOf(counts['blocks']),
+      types: numberOf(counts['types']),
+      tagTables: numberOf(counts['tagTables']),
+      changed: numberOf(counts['changed']),
+      added: numberOf(counts['added']),
+      removed: numberOf(counts['removed']),
+      unexportable: numberOf(counts['unexportable']),
+    },
+    changed: scanObjects(data['changed']),
+    added: scanObjects(data['added']),
+    removed: scanObjects(data['removed']),
+    unexportable: scanUnexportable(data['unexportable']),
+    stage,
+    stateId: text(data['stateId']) ?? null,
+    error: errorOf(source['error']),
+    summary: text(source['summary']) ?? '',
   }
 }

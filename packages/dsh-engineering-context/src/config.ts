@@ -1,11 +1,12 @@
 /**
  * Plugin configuration.
  *
- * Two directory names decide **where this plugin writes inside the user's
+ * Three directory names decide **where this plugin writes inside the user's
  * workspace** (docs/PATH-RULES.md §2):
  *
  *   <workspace>/<tia dir>/       the project TIA saved into the workspace
  *   <workspace>/<source dir>/    the rebuilt source tree of that project
+ *   <workspace>/<state dir>/local/   the lock and STAGE (never committed)
  *
  * Neither carries a project name: one workspace manages one project
  * (docs/decisions.md D23).
@@ -31,6 +32,11 @@ export interface PluginConfig {
   /** Directory holding the source trees rebuilt from those projects, relative to the workspace root. */
   sourceDirName: string
   /**
+   * Local state directory (lock, STAGE). It is never committed: a sync's evidence
+   * and manifest are committed with the XML, but the temporary stage is not.
+   */
+  stateDirName: string
+  /**
    * When true (the default) any path outside the workspace root is refused.
    * Only a test harness has a reason to set it to false.
    */
@@ -41,6 +47,7 @@ export interface PluginConfig {
 export const configDefaults: PluginConfig = {
   tiaDirName: 'tia',
   sourceDirName: 'source',
+  stateDirName: '.dsh',
   requireWorkspace: true,
 }
 
@@ -48,6 +55,7 @@ export const configDefaults: PluginConfig = {
 export const Config = Schema.object({
   tiaDirName: Schema.string().default(configDefaults.tiaDirName),
   sourceDirName: Schema.string().default(configDefaults.sourceDirName),
+  stateDirName: Schema.string().default(configDefaults.stateDirName),
   requireWorkspace: Schema.boolean().default(configDefaults.requireWorkspace),
 })
 
@@ -98,6 +106,7 @@ export function resolveConfig(config?: Partial<PluginConfig>): PluginConfig {
   return {
     tiaDirName: segment(source.tiaDirName, configDefaults.tiaDirName),
     sourceDirName: segment(source.sourceDirName, configDefaults.sourceDirName),
+    stateDirName: segment(source.stateDirName, configDefaults.stateDirName),
     requireWorkspace:
       typeof source.requireWorkspace === 'boolean' ? source.requireWorkspace : configDefaults.requireWorkspace,
   }
@@ -146,6 +155,35 @@ export function sourceIndexPath(config: PluginConfig, workspaceRoot: string): st
 /** File name of the tool's own index, inside the source directory. */
 export const SOURCE_INDEX_FILE = '_dsh-engineering-context.json'
 
+/** Name of the per-device evidence ledger and inventory, relative to the device directory. */
+export const EVIDENCE_FILE = '_evidence.json'
+export const MANIFEST_FILE = '_manifest.json'
+
+/**
+ * The local state root (lock, STAGE) of this workspace.
+ *
+ * It is deliberately outside `source/`: the stage is a temporary artefact and
+ * must never be committed, while the source tree is exactly what is committed.
+ */
+export function localStateDirectoryPath(config: PluginConfig, workspaceRoot: string): string {
+  return join(workspaceRoot, config.stateDirName, 'local')
+}
+
+/** The root below which one directory per sync operation is created. */
+export function stageRootPath(config: PluginConfig, workspaceRoot: string): string {
+  return join(localStateDirectoryPath(config, workspaceRoot), 'stage')
+}
+
+/** The evidence ledger of one device directory. */
+export function evidencePathForDevice(deviceDir: string): string {
+  return join(deviceDir, EVIDENCE_FILE)
+}
+
+/** The manifest of one device directory. */
+export function manifestPathForDevice(deviceDir: string): string {
+  return join(deviceDir, MANIFEST_FILE)
+}
+
 /**
  * The `.gitignore` line that keeps the saved projects out of version control.
  *
@@ -157,6 +195,19 @@ export const SOURCE_INDEX_FILE = '_dsh-engineering-context.json'
  */
 export function tiaIgnoreRule(config: PluginConfig): string {
   return `${config.tiaDirName}/`
+}
+
+/**
+ * The `.gitignore` line that keeps the temporary sync state out of version control.
+ *
+ * The lock and the STAGE directory (docs/PATH-RULES.md §2) are local runtime
+ * artifacts: the scan writes them, the sync deletes them, and a crash may leave
+ * one behind — none of that belongs in a commit.
+ *
+ * @param config - the resolved configuration.
+ */
+export function stateIgnoreRule(config: PluginConfig): string {
+  return `${config.stateDirName}/local/`
 }
 
 /**

@@ -341,7 +341,7 @@ The block name 'FB_Array_Handling' is invalid. An object with this name or this 
 默认 `categories: ["blocks"]` 保证旧调用行为不变。
 
 **目录约定**：块保持 `<out>/<组>/<名>.xml`（向后兼容已有导出），类型与标签表放
-`<out>/types/...`、`<out>/tag_tables/...`，三类永不撞名。清单 `_tia-openness-manifest.json`
+`<out>/types/...`、`<out>/tag_tables/...`，三类永不撞名。清单 `_manifest.json`
 增加 `categories`、`counts{blocks,types,tagTables}`、每个对象的 `category`。
 
 **导入侧不加参数也能用**：文件的对象族由 XML 元素自动判定（`SW.Blocks.*` / `SW.Types.*` /
@@ -489,7 +489,7 @@ The block name 'FB_Array_Handling' is invalid. An object with this name or this 
 
 **连带事实（消费方必须知道）**：
 
-- 每个 device 最多**两份** `_tia-openness-manifest.json`（blocks 那次一份、其余那次一份），
+- 每个 device 最多**两份** `_manifest.json`（blocks 那次一份、其余那次一份），
   *（D24 起：每 device 一份，含三个 family。）*
   各描述自己写出的文件。消费方**读 manifest / 读服务返回**，**不要自己拼路径** ——
   这是防"约定失效"的机制：路径是运行时返回的事实，不是两边各自维护的约定。
@@ -647,7 +647,7 @@ The block name 'FB_Array_Handling' is invalid. An object with this name or this 
 <sourceRoot>/<device>/blocks/<group>/<name>.xml
 <sourceRoot>/<device>/types/<group>/<name>.xml
 <sourceRoot>/<device>/tag_tables/<name>.xml
-<sourceRoot>/<device>/_tia-openness-manifest.json      ← 一份，counts 含三个 family
+<sourceRoot>/<device>/_manifest.json      ← 一份，counts 含三个 family
 ```
 
 **代价（破坏性）**：`export_blocks` 的**输出布局变了** —— 以前 blocks 落在调用方给的那个目录的根下，
@@ -721,3 +721,108 @@ Openness 用户组 `isMember: true`）；`npm run matrix:build` + `matrix:check`
 **未验证**：真实宿主里把 `./tools` 行写进 agent preset 后的实际可见性
 （需要在物化 profile 里声明两行并观察 leader / expert 的工具面）。本次只到包内单测与
 构建/矩阵/知识库校验。
+
+---
+
+## D26. 版本管理取证下沉到控制器：`PlcChecksum` 与 `SyncScan`（S0/S1）
+
+**背景**：版本管理方案（发行版侧）把五个库分成"证据产生"与"记账"两半：TIA 插件必须能读
+**PLC 级 checksum**、**逐块/逐 UDT 指纹**，并把"变了什么"算出来；工程上下文插件只做
+状态机、STAGE/DRAFT、git 与模型判断。真实项目有 1152 块，`listObjects` 又有 1000 条上限
+且没有 offset，所以"把全部指纹拉回 TS 再比"既慢又会被截断。
+
+**决定**：
+
+1. **新增两个服务专用操作**（`OperationCatalog` 与 `src/protocol.ts` 同步，追加在末尾）：
+   - `PlcChecksum`：读 `PlcSoftware.GetService<PlcChecksumProvider>().Software`。
+     **V17 的实际属性名是 `Software`，不是新手册/技能库里的 `Checksum`**（已用本机
+     `Siemens.Engineering.dll` 反射核对）。空字符串表示"未编译，或改动后未再编译"，
+     以 `checksum_unavailable` 回报——这是状态，不是传输错误。
+   - `SyncScan`：读一次 checksum；与上一版 evidence 的 `plcChecksum` 相同则直接返回
+     `unchanged`，**不枚举、不导出**；不同则自己遍历块/类型/标签表（因此不受 1000 条上限
+     影响），逐对象比对指纹，标签表全部导出后比对归一化内容哈希，只把差异写进
+     `stage_dir`，并在那里写下一版 `_evidence.json`。
+2. **evidence 是控制器写的**：`controller/Evidence.cs` 定义 schema v1（`schemaVersion` /
+   `hashAlgo` / `device` / `software` / `plcChecksum` / `stateId` / `objects` /
+   `unexportable` / `tombstones`）。块/类型按 `FingerprintProvider` 的全部面；标签表按
+   `xml-norm-v1`（剥 `<DocumentInfo>`、统一换行）；删除写墓碑；被 TIA 拒绝导出的对象只进
+   `unexportable`，**绝不当作删除**。文件里不写时间戳（时间进提交信息），保证同一组事实
+   产生同样字节。
+3. **不新增模型工具**：模型面仍是 26 个。逐块比对指纹是工作流的一步，由
+   `engineeringAccess.readPlcChecksum()` / `syncScan()` 暴露给工程上下文插件；
+   `test/04-tools.test.mjs` 因此把"工具数 = 操作数"改成"工具数 = 操作数 − 两个服务专用操作"。
+4. **C# 只做 TIA 侧事实**：它不知道 STAGE/SOURCE 的语义，也不碰 git；`source_root` 只回显，
+   文件写到调用方给的 `stage_dir`。账本最终提交进 `source/` 由上下文插件负责。
+
+**为什么 checksum 只读一次**：一次读取 5–8 秒（用户实测），两次不值得；导出期间 TIA 被
+独占，不存在"导出中途被改"的窗口。checksum 相等就说明编译后的软件一致（用户已在 V17
+实测：改注释也会让它消失），所以相等时连指纹都不拉。
+
+**验证**：
+
+- 控制器自测 17 项全过，新增 `evidence_roundtrip` / `evidence_diff` /
+  `evidence_xml_normalization`；
+- `npm test` 101 项（100 通过 / 1 跳过）：`08-access-service` 新增 4 项覆盖两个服务方法，
+  `04-tools` 改一项守住"服务专用操作没有工具"；
+- `npm run matrix:build` → 操作 27 / 工具 26，`matrix:check` 通过；
+  覆盖矩阵里 "Functions for accessing PLC service" 与 "Accessing Software Checksum"
+  从 `none` 改为 `done`。
+
+**真机验证（2026-10-22，`PEI_SinoARP_SWT2`）**：
+
+- `OpenProject` 可见窗口 68–79 s；`PlcChecksum` 返回 `C0 01 C3 13 58 AC 0E 50`（3.2 s）。
+- `SyncScan` 全量：1155 块 / 215 类型 / 7 标签表，1376 个文件 / 74.8 MB / **121–231 s**
+  （两次实测；TIA 缓存冷热差异明显）。evidence 671,737 字节，`unexportable` 1 个
+  （`FOB_SAFETY`，TIA 明确拒绝导出，未误判为删除）。
+- **慢路径（checksum 不一致）**：把上一版 evidence 的 `plcChecksum` 改成假值、并改一个块的
+  `Comments` 指纹，制造“1 块变化”：`SyncScan` 用时 **48.3 s**，导出 **8 个文件**
+  （1 个变化块 + 全部 7 个标签表），`changed=1`、`added=0`、`removed=0`。
+  其中枚举 + 全部指纹约 30 s，其余是 8 次导出、标签表哈希与 evidence 写入。
+- 同一账本第二次 `SyncScan`：`unchanged: true`，**1,635–2,993 ms**（checksum 快路径生效）。
+- `CloseProject` 7.9 s。
+- **headless 的坑**：2026-10-21 用 `with_window: false` 对同一工程，600 s 未返回；
+  可见窗口 68–79 s 成功。`create_engineering_project` 默认可见窗口是对的，S2 不要默认 headless。
+- 仍未由本仓实测：编辑后 checksum 变空、编译后恢复（用户已在 V17 上验证过）。
+
+**S3 还缺的服务方法**（本次未做）：`importObjects`、`compilePlc`、`saveProject`。
+`CompilePlc` / `SaveProject` 操作已存在，只差 `access.ts` 的方法；`ImportObjects`
+需要一个"每文件带目标组、单事务"的新操作。
+
+---
+
+## D27. 清单改名为 `_manifest.json`：evidence 记账，manifest 做派生清单（同一次 `SyncScan` 生成）
+
+**背景**：`_tia-openness-manifest.json` 之前是**每次导出调用一份**、随调用覆盖写；
+`SyncScan` 只导出变化块，如果继续沿用这个语义，UI 与图谱引擎会看到一份"局部清单"。
+同时它的字段（`bytes` / `sha256` / `simaticType` / `declaredName` / `declaredNumber` /
+`programmingLanguage` / `verified`）是 evidence 没有的，且必须保持最新；而
+`generatedAt` / `outputDir` / 绝对 `file` 是会制造无意义 diff 的字段。
+
+**决定**：
+
+1. **改名为 `_manifest.json`**，并同步所有消费方：图谱引擎 `DeviceManifest.FileName`
+   （重建 `engine/bin`）、UI 的 `MANIFEST_FILE` 常量与测试、上下文插件测试、文档。
+   不双写旧名——双写会多一份 ~0.77 MB 文件并掩盖漏改。
+2. **两个文件、一次 `SyncScan` 调用**：
+   - `_evidence.json`：状态账本（指纹 / 归一化哈希 / 墓碑 / `plcChecksum` / `stateId`），
+     是"是否同一状态、谁变了"的唯一权威；
+   - `_manifest.json`：清单/审计视图（文件事实 + 展示元数据），可由 evidence + 源文件重建，
+     **不参与等值判断**。
+3. **manifest 增量维护**，不再按调用覆盖：
+   - 变化/新增对象：从本次 `VerifyExportedFile` 的结果生成条目；
+   - 未变化对象：从上一版 manifest 原样带过来，不重读、不重导；
+   - 被删除对象：从清单消失；`unexportable` 进 `failures[]`；
+   - **标签表**：全部导出到 scratch 算归一化哈希，只有内容真的变了的才提升到 STAGE；
+     未变的从 scratch 删除，清单沿用上一版条目。这样 1 块变化的同步只产生 1 个文件，
+     不会因为 `<DocumentInfo><Created>` 让 7 张没变的表产生 diff。
+4. **manifest 不写 `generatedAt` / `outputDir`，`file` 用相对路径**。时间进提交信息；
+   图谱引擎本来就用 `deviceDir + category + group + name` 重算路径，不依赖绝对路径。
+5. **`SyncScan` 新增 `manifest_path` 输入**；缺失/不可读时视为"需要重建"，把全部对象导出一次
+   并从同一批导出记录生成清单，`data.manifestRebuilt = true`。checksum 快路径要求
+   evidence 与 manifest 都可用，避免"状态没变但清单缺失"被跳过。
+6. **`ExportBlocks` 的清单是 per-call 审计件**，仍写到它自己的 `output_dir/_manifest.json`；
+   工程里提交的那份 `source/<device>/_manifest.json` 只由 `SyncScan` 写。
+
+**验证**：全仓 `pnpm -r build` + `pnpm -r test` 全过（TIA 101 / context 56 / graph 115 /
+ui 47+22 / git 33）；控制器自测 17/17；图谱引擎重建后 `--self-test` 通过。
+真机对 `SyncScan` 的 manifest 生成与标签表 only-changed 提升，留到 S2 接上上下文插件后一起验。

@@ -11,9 +11,11 @@
 | TIA Portal Openness API → Functions for projects and project data | `CreateProject` `SaveProject` `ArchiveProject` `ProjectInfo` `ProjectLanguages` `ProjectTexts` `UpdateProject` `PortalSettings` |
 | TIA Portal Openness API → Functions for accessing the data of a PLC device | `ListPlcObjects` `CreatePlcObjects` `DeletePlcObjects` `WriteTags` `SetBlockAttributes` `ProtectBlocks` `GenerateSource` `WatchAndForceTables` `SoftwareUnits` |
 | TIA Portal Openness API → F-related Openness | `SafetyStatus` `SetSafetySettings` `SafetySignatures` |
+| 版本管理取证（服务专用，无模型工具） | `PlcChecksum` `SyncScan` |
 
 原本的五个操作（`OpenProject` `ExportBlocks` `ImportBlocks` `CompilePlc` `CloseProject`）
-不变。加上 `controller_status`（插件侧回答，不经过控制器），工具总数为 26。
+不变。加上 `controller_status`（插件侧回答，不经过控制器），工具总数为 26；
+操作总数为 27，其中 `PlcChecksum` 与 `SyncScan` 只通过 `engineeringAccess` 服务暴露。
 
 通用约定（与既有五个操作一致）：
 
@@ -384,3 +386,48 @@ import → `{action, imported:[{file, name}], committed, dryRun}`
 `block.GetService<SafetySignatureProvider>()` 返回 null 即非 F 块（手册 "SafetySignatureProvider"）；
 签名不存在或已失效时 `value` 为 0。
 错误码：`block_not_found` `signature_read_failed` `project_not_open`。
+
+## 21. PlcChecksum（服务专用，只读）
+
+读一个 PLC 软件编译后的校验和。V17 的实际属性名是 `PlcChecksumProvider.Software`
+（不是新手册里的 `Checksum`），空字符串表示"还没编译过，或改动后还没再编译"。
+
+| 参数 | 类型 | 默认 |
+|---|---|---|
+| `device_name` / `software_name` | string | 自动（工程里唯一的 PLC） |
+
+`data`：`{ device, software, checksum }`。
+空值以 `checksum_unavailable` 失败（这是**状态**，不是传输错误）；服务面
+`readPlcChecksum()` 把它原样作为 `ok:false` 返回，调用方据此提示"先编译"。
+
+## 22. SyncScan（服务专用，只写文件）
+
+用上一版 evidence 账本与当前工程逐对象比对，只把差异导出到 `stage_dir`，
+并在那里写下一版 `_evidence.json`。**不修改工程**。
+
+| 参数 | 类型 | 默认 |
+|---|---|---|
+| `source_root` | string | —（回显；文件写到 `stage_dir`） |
+| `stage_dir` | string | —（空目录/每次操作独立目录） |
+| `evidence_path` | string | —（不存在 = 全量扫描） |
+| `manifest_path` | string | —（不存在或不可读 = 用本次导出重建） |
+| `device_name` / `software_name` | string | 自动 |
+| `export_options` | `none` \| `with_defaults` \| `with_read_only` | `with_defaults` |
+
+比对口径：
+
+- 块 / PLC 类型：`FingerprintProvider` 的全部面，逐面比较；
+- 标签表：没有指纹，**每次都导出**后比较归一化内容哈希（去掉 `<DocumentInfo>`、统一换行，
+  `hashAlgo = xml-norm-v1`）；
+- 删除：当前枚举里不存在即写墓碑；被 TIA 拒绝导出的对象只进 `unexportable`，绝不当作删除。
+
+`data`：`{ device, software, checksum, unchanged, counts{blocks,types,tagTables,changed,added,removed,unexportable}, changed[], added[], removed[], unexportable[], stage{root,evidence,manifest,files}, manifestRebuilt, stateId }`。
+`checksum` 与账本一致时直接返回 `unchanged:true`、`stage:null`，**不枚举、不导出**。
+同一调用会在 `stage_dir` 写 `_evidence.json`（账本）与 `_manifest.json`（清单）：
+未变化对象从上一版清单原样带过来，只有归一化内容真的变了的标签表才进入 STAGE；
+清单不含时间戳、不含绝对路径（`file` 相对设备根）。
+真机实测（`PEI_SinoARP_SWT2`，1155 块，2026-10-22）：`unchanged` **1.6–3.0 s**；
+1 块变化 **48.3 s**（导出 1 块 + 7 个标签表 = 8 文件，清单优化前）；全量 **121–231 s / 1376 文件**。
+枚举 + 全部指纹约 30 s，是固定成本；变化块越多，导出时间越长。
+错误码：`checksum_unavailable` `evidence_invalid` `evidence_version_mismatch`
+`evidence_device_mismatch` `project_not_open`。

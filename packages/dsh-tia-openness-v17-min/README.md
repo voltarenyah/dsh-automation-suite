@@ -45,7 +45,7 @@
 │  .NET Framework 4.8)                           │
 │   • 先注册程序集解析器，再加载                  │
 │     Siemens.Engineering.dll（V17）              │
-│   • 只执行 25 个白名单操作                      │
+│   • 只执行 27 个白名单操作                      │
 │   • 写入 = ExclusiveAccess + Transaction        │
 │   • 写后读回验证                                │
 │   • 返回结构化 JSON                             │
@@ -320,7 +320,7 @@ TIA 工具），所以注册被拆成两行；**人**用的斜线指令是第三
 ### 4.3 写后验证
 
 - **导出**：写入的每个 XML 都被读回解析，校验非空、根元素、`<Name>` 与预期块名一致，
-  并记录 SHA-256；同时在输出目录写 `_tia-openness-manifest.json` 便于审计。任一文件校验失败
+  并记录 SHA-256；同时在输出目录写 `_manifest.json` 便于审计。任一文件校验失败
   → 整个调用返回 `verification_failed`，并在 `data` 中给出已写入的文件清单。
 - **导入**：事务提交后**重新读取项目块集合**，逐个确认目标块存在，并对比
   `ModifiedDate` / `Number` / `ProgrammingLanguage`；缺失块 → `verification_failed`
@@ -378,12 +378,16 @@ commit `b5c7041`）**逐字**打进包里，并注册成模型可见的**一个*
 | `saveProjectAs(dir)` | `SaveProject` + `save_as_dir` | 另存到指定目录；**回读** TIA 实际产出的路径（项目名改不了，只有目录是新的） |
 | `readTiaSession()` | `ProjectInfo` | 控制器在不在 + TIA 开着哪个项目 + 设备清单；**从不启动控制器** |
 | `rebuildSource(root, opts)` | `ProjectInfo` + 每 device 两次 `ExportBlocks` | **`<root>/<device>/{blocks,types,tag_tables}/…` 的布局由它定死**；被 TIA 拒绝的对象逐条回报 |
+| `readPlcChecksum()` | `PlcChecksum` | 读 `PlcChecksumProvider.Software`；空值以 `checksum_unavailable` 回报（未编译/改动后未再编译） |
+| `syncScan(query)` | `SyncScan` | 用上一版 evidence 账本逐对象比对指纹/标签表哈希，只把差异导出到 STAGE，**同一调用**写下 `_evidence.json` 与 `_manifest.json`；checksum 一致时直接返回 `unchanged` |
 
 - **与工具走同一条路径**：每个方法都构造与对应工具**相同**的操作与参数、复用 `runOperation`，
   所以模型面与服务面不会在默认值或错误形状上互相漂移。
 - **失败语义与 §8 一致**：操作级失败（TIA 拒绝、块不存在）返回 `ok:false` + 结构化 `error`；
   传输级失败（找不到 exe、超时、协议不匹配）**抛出**。
-- **不新增 C# 能力**：八个方法全部落在已有的白名单操作上，所以工具数（26）与操作数（25）不变。
+- **不新增模型工具**：新增的 `readPlcChecksum` / `syncScan` 落在两个**服务专用**操作上
+  （`PlcChecksum` / `SyncScan`），模型面仍是 26 个工具；操作数由 25 变为 27。
+  这两个操作刻意不注册成工具：逐块比对指纹是版本管理工作流的一步，不应由模型手工编排。
 - **它是可选的**：消费方按名取（`ctx.get('engineeringAccess')`），取不到就降级 ——
   读上一次的指纹工件并**明确报过期**，而不是装作数据是新的。
 - 为什么"翻页"在 V17 上不存在、为什么 `closeProject` 这样定、`source/` 布局为什么归本插件：

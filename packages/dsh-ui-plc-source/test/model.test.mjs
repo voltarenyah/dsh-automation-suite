@@ -386,7 +386,7 @@ describe('copy', () => {
 
   it('exports the constants the panel relies on', () => {
     assert.equal(SOURCE_DIRECTORY, 'source')
-    assert.equal(MANIFEST_FILE, '_tia-openness-manifest.json')
+    assert.equal(MANIFEST_FILE, '_manifest.json')
     assert.equal(ALL, 'all')
   })
 })
