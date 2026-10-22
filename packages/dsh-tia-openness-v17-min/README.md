@@ -379,7 +379,7 @@ commit `b5c7041`）**逐字**打进包里，并注册成模型可见的**一个*
 | `readTiaSession()` | `ProjectInfo` | 控制器在不在 + TIA 开着哪个项目 + 设备清单；**从不启动控制器** |
 | `rebuildSource(root, opts)` | `ProjectInfo` + 每 device 两次 `ExportBlocks` | **`<root>/<device>/{blocks,types,tag_tables}/…` 的布局由它定死**；被 TIA 拒绝的对象逐条回报 |
 | `readPlcChecksum()` | `PlcChecksum` | 读 `PlcChecksumProvider.Software`；空值以 `checksum_unavailable` 回报（未编译/改动后未再编译） |
-| `syncScan(query)` | `SyncScan` | 用上一版 evidence 账本逐对象比对指纹/标签表哈希，只把差异导出到 STAGE，**同一调用**写下 `_evidence.json` 与 `_manifest.json`；checksum 一致时直接返回 `unchanged` |
+| `syncScan(query)` | `SyncScan` | 用上一版 evidence 账本逐对象比对指纹/标签表哈希，只把差异导出到 STAGE，**同一调用**写下 `_evidence.json` 与 `_manifest.json`；checksum 一致时直接返回 `unchanged`。`adoptExisting: true` 是首次建账本的捷径：无上一版账本、清单可用时，逐条校验清单里的文件（相对路径在 `sourceRoot` 内、`verified`、sha256 一致），能对上的**直接采信为证据而不重导出**，数量回在 `adopted` |
 
 - **与工具走同一条路径**：每个方法都构造与对应工具**相同**的操作与参数、复用 `runOperation`，
   所以模型面与服务面不会在默认值或错误形状上互相漂移。

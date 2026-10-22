@@ -118,6 +118,94 @@ export function fakeExecWithoutCwd() {
 }
 
 /**
+ * A stand-in `gitContext` service, recording every call in order.
+ *
+ * The service is consumed through `ctx.get('gitContext')`, so the tests never
+ * import the git plugin; this fake answers the four discovery methods and the
+ * repository-bound context (`run` for `git log -1 --format=%B`, plus `commit`).
+ * It writes nothing to disk: the real repository is the git plugin's concern,
+ * and the assertions here are about the *contract* (which paths, which message,
+ * init or reuse), not about git's own behaviour.
+ *
+ * @param {{
+ *   repoRoot?: string | null | ((root: string) => string | null),
+ *   commitBody?: string | null,
+ *   commit?: { committed: boolean, hash: string | null },
+ *   commitThrows?: Error,
+ *   initThrows?: Error,
+ *   createThrows?: Error,
+ *   head?: string | null,
+ * }} [options]
+ * @returns {{ service: object, calls: object[], state: { repoRoot: string | null } }}
+ */
+export function fakeGitContext(options = {}) {
+  const calls = []
+  const state = {
+    repoRoot: typeof options.repoRoot === 'function' ? null : (options.repoRoot ?? null),
+  }
+  const resolveRoot = (root) =>
+    typeof options.repoRoot === 'function' ? options.repoRoot(root) : state.repoRoot
+
+  const contextFor = (repoDir) => ({
+    repoDir,
+    async run(args) {
+      calls.push({ operation: 'run', repoDir, args })
+      if (args[0] === 'log') {
+        const body = options.commitBody ?? null
+        return body === null
+          ? { code: 128, stdout: '', stderr: 'fatal: your current branch does not have any commits yet' }
+          : { code: 0, stdout: body, stderr: '' }
+      }
+      return { code: 0, stdout: '', stderr: '' }
+    },
+    async runChecked(args) {
+      const result = await this.run(args)
+      if (result.code !== 0) throw new Error(result.stderr)
+      return { stdout: result.stdout, stderr: result.stderr }
+    },
+    async status(paths) {
+      calls.push({ operation: 'status', repoDir, paths })
+      return options.status ?? []
+    },
+    async head() {
+      calls.push({ operation: 'head', repoDir })
+      return options.head ?? null
+    },
+    async commit(paths, message) {
+      calls.push({ operation: 'commit', repoDir, paths, message })
+      if (options.commitThrows !== undefined) throw options.commitThrows
+      return options.commit ?? { committed: true, hash: '0123456789abcdef' }
+    },
+  })
+
+  const service = {
+    async isRepository(root) {
+      calls.push({ operation: 'isRepository', root })
+      return resolveRoot(root) !== null
+    },
+    async repoRoot(root) {
+      calls.push({ operation: 'repoRoot', root })
+      return resolveRoot(root)
+    },
+    async create(root) {
+      calls.push({ operation: 'create', root })
+      if (options.createThrows !== undefined) throw options.createThrows
+      const found = resolveRoot(root)
+      if (found === null) throw new Error(`not inside a git repository: ${root}`)
+      return contextFor(found)
+    },
+    async init(root, initOptions) {
+      calls.push({ operation: 'init', root, options: initOptions })
+      if (options.initThrows !== undefined) throw options.initThrows
+      state.repoRoot = root
+      return contextFor(root)
+    },
+  }
+
+  return { service, calls, state }
+}
+
+/**
  * Find one registered definition by name.
  * @param {object[]} definitions
  * @param {string} name

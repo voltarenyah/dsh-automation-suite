@@ -16,13 +16,13 @@ import { dirname, join } from 'node:path'
 import type { ToolRunContext } from '@deepseek-ai/dsh-tools'
 
 import type { EngineeringAccessLike, SyncScanCounts, SyncScanReport } from './access.js'
-import { normalizeSyncScan } from './access.js'
 import { evidencePathForDevice, manifestPathForDevice, stageRootPath } from './config.js'
 import type { DeviceInfo } from './device.js'
 import { EngineeringContextError } from './errors.js'
 import { presentObjects, readEvidence, type EvidenceDocument, type EvidenceObject } from './evidence.js'
 import { commitPaths, ensureRepository, gitPath, statusPaths } from './git.js'
 import { withLock } from './lock.js'
+import { callSyncScan } from './scan.js'
 import type { ResolvedScope } from './scope.js'
 
 /** What one sync did. */
@@ -116,27 +116,27 @@ export async function runSync(
 
     let report: SyncScanReport
     try {
-      report = normalizeSyncScan(
-        await access.syncScan!({
-          // The controller resolves manifest entries (which are relative to the
-          // device directory) against this root, so it is the device directory,
-          // not the source tree above it.
-          sourceRoot: device.directory,
-          stageDir,
-          evidencePath: evidenceFile,
-          manifestPath: manifestFile,
-          deviceName: device.device,
-          softwareName: device.software,
-          signal: exec.signal,
-        }),
-      )
+      report = await callSyncScan(access, {
+        // The controller resolves manifest entries (which are relative to the
+        // device directory) against this root, so it is the device directory,
+        // not the source tree above it.
+        sourceRoot: device.directory,
+        stageDir,
+        evidencePath: evidenceFile,
+        manifestPath: manifestFile,
+        deviceName: device.device,
+        softwareName: device.software,
+        signal: exec.signal,
+      })
     } catch (error) {
       await rm(stageDir, { recursive: true, force: true }).catch(() => undefined)
-      throw new EngineeringContextError(
-        'sync_failed',
-        `The SyncScan call failed: ${error instanceof Error ? error.message : String(error)}`,
-        { stageDir },
-      )
+      // `callSyncScan` already mapped a transport failure to `sync_failed`; add
+      // the STAGE directory, because in a sync it is what the failure leaves
+      // behind and what the next attempt must not mistake for state.
+      if (error instanceof EngineeringContextError && error.code === 'sync_failed') {
+        throw new EngineeringContextError('sync_failed', error.message, { ...error.details, stageDir })
+      }
+      throw error
     }
 
     if (!report.ok) {

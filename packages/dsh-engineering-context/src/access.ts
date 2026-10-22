@@ -193,8 +193,45 @@ export interface SyncScanReport {
   unexportable: SyncScanUnexportable[]
   stage: SyncScanStage | null
   stateId: string | null
+  /**
+   * Objects the scan adopted from the existing source tree instead of exporting
+   * them again (bootstrap mode). 0 when the interface plugin does not report it,
+   * which is why callers compute a fallback rather than trusting it blindly.
+   */
+  adopted: number
   error: AccessError | null
   summary: string
+}
+
+/**
+ * What one `syncScan` call compares against, and where it may write.
+ *
+ * Every path is absolute: the controller resolves manifest entries against
+ * `sourceRoot` and never against the process working directory.
+ */
+export interface SyncScanQuery {
+  /**
+   * The source-tree root the ledger describes. It is the **device directory**,
+   * because manifest entries are relative to it, not to the source tree above it.
+   */
+  sourceRoot: string
+  /** Scratch directory the scan writes the changed XML, the ledger and the manifest into. */
+  stageDir: string
+  /** Where the previous ledger lives (also the ledger this plugin copies out of STAGE). */
+  evidencePath: string
+  /** Where the previous inventory lives (also the manifest this plugin copies out of STAGE). */
+  manifestPath?: string
+  deviceName?: string
+  softwareName?: string
+  /**
+   * Bootstrap mode (wire name `adopt_existing`): when there is no previous ledger
+   * but the source tree and its manifest exist, files that still hash to their
+   * manifest row are **adopted** as evidence instead of being exported again.
+   * `create_engineering_project` sets it so a tree it just exported is recorded
+   * without a second export; `project_sync` leaves it unset.
+   */
+  adoptExisting?: boolean
+  signal?: AbortSignal
 }
 
 /** The members of the service this plugin uses. */
@@ -221,15 +258,7 @@ export interface EngineeringAccessLike {
    * and report a coded absence instead of assuming they exist.
    */
   readPlcChecksum?(options?: { deviceName?: string; softwareName?: string; signal?: AbortSignal }): Promise<unknown>
-  syncScan?(query: {
-    sourceRoot: string
-    stageDir: string
-    evidencePath: string
-    manifestPath?: string
-    deviceName?: string
-    softwareName?: string
-    signal?: AbortSignal
-  }): Promise<unknown>
+  syncScan?(query: SyncScanQuery): Promise<unknown>
 }
 
 function record(value: unknown): Record<string, unknown> | null {
@@ -579,6 +608,7 @@ export function normalizeSyncScan(raw: unknown): SyncScanReport {
     unexportable: scanUnexportable(data['unexportable']),
     stage,
     stateId: text(data['stateId']) ?? null,
+    adopted: numberOf(data['adopted']),
     error: errorOf(source['error']),
     summary: text(source['summary']) ?? '',
   }

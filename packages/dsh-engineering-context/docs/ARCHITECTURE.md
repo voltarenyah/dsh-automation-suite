@@ -472,9 +472,13 @@ TIA（权威，二进制，不进 git）
   `dry_run: false`。`project_status(verify: true)` 读到 checksum 后写一份 TTL 30 s 的进程内缓存
   （workspace + device + software 键控），计划命中即复用并标 `checksumCached: true`；真实同步
   从不使用缓存做决定，永远重新扫描。真实的同步在 workspace 锁内运行，成功/失败都会清掉 STAGE（`finally`）。
-- **提交**：路径限定为 `source/<device>`，提交信息带 `Tia-Op: sync` / `Tia-Checksum` / `Tia-State` /
-  `Tia-Manifest: rebuilt|updated` 四个 trailer。插件仍**从不 `git init`**：仓库不存在时
-  `repository_not_found` 并让用户自己建；也从不 `push`/`reset`/`--force`。
+- **提交**：`project_sync` 的提交路径限定为 `source/<device>`，提交信息带 `Tia-Op: sync` / `Tia-Checksum` /
+  `Tia-State` / `Tia-Manifest: rebuilt|updated` 四个 trailer。`project_sync`/`project_status` 仍**从不
+  `git init`**：仓库不存在时 `repository_not_found` 并让用户自己建。`create_engineering_project` 相反：
+  它在 workspace 没有仓库时经 `gitContext` 服务 `init`（`git init -b main`），并提交一次包含
+  `.gitignore` / `.gitattributes` / `source` 的基线（`Tia-Op: create`）；workspace 位于别人的仓库里、
+  或根仓库无法归属（历史里没有 `Tia-Op: create`、也没有 `.dsh/local/repo.json` 标记）时以
+  `workspace_is_repository` 拒绝，绝不把基线写进别人的历史。任何工具都从不 `push`/`reset`/`--force`。
 
 **仍然成立的两条硬口径**：
 

@@ -200,6 +200,14 @@ export interface AccessSyncResult extends AccessCallResult {
   stage: AccessSyncStage | null
   /** True when the scan had to rebuild the manifest, even if the state was unchanged. */
   manifestRebuilt: boolean
+  /**
+   * How many objects were adopted from the source tree instead of exported.
+   *
+   * Only a scan asked for `adoptExisting` can adopt anything, and it can only do
+   * so on its first run (no previous ledger plus a usable manifest). The adopted
+   * files already exist, so they are **not** counted in `stage.files`.
+   */
+  adopted: number
   /** Identity of the ledger this scan produced or confirmed. */
   stateId: string | null
 }
@@ -218,6 +226,18 @@ export interface SyncScanQuery {
    * and builds the manifest from the same export records.
    */
   manifestPath?: string
+  /**
+   * Bootstrap the ledger from the tree that is already on disk.
+   *
+   * With no previous ledger and a usable manifest, the controller adopts every
+   * object whose file is still byte-identical to the manifest row (relative
+   * path, `verified: true`, matching SHA-256, inside `sourceRoot`) instead of
+   * exporting it again; a tag table additionally has to be readable so its
+   * normalized XML can be hashed. Anything unproven is exported as usual, and
+   * with a previous ledger or an unusable manifest the flag does nothing. The
+   * adopted count comes back as {@link AccessSyncResult.adopted}.
+   */
+  adoptExisting?: boolean
   deviceName?: string
   softwareName?: string
   exportOptions?: 'none' | 'with_defaults' | 'with_read_only'
@@ -764,6 +784,10 @@ export class EngineeringAccess extends Service {
    * changed XML plus the next `_evidence.json` into `stageDir`, and returns a
    * bounded summary. It writes no project object and touches no git repository.
    *
+   * `adoptExisting` is the first-run shortcut for a workspace that already owns
+   * the source tree: verified files are taken as evidence instead of exported
+   * again (see {@link SyncScanQuery.adoptExisting}).
+   *
    * @param query - the source root, the STAGE directory and the previous ledger.
    */
   async syncScan(query: SyncScanQuery): Promise<AccessSyncResult> {
@@ -784,6 +808,9 @@ export class EngineeringAccess extends Service {
       export_options: query.exportOptions ?? 'with_defaults',
     }
     if (query.manifestPath !== undefined) params['manifest_path'] = query.manifestPath
+    // Sent even when false: the caller's intent stays visible on the wire, and the
+    // controller then does not have to guess a default for a mode that skips exports.
+    params['adopt_existing'] = query.adoptExisting ?? false
     if (query.deviceName !== undefined) params['device_name'] = query.deviceName
     if (query.softwareName !== undefined) params['software_name'] = query.softwareName
 
@@ -803,6 +830,7 @@ export class EngineeringAccess extends Service {
       unexportable: syncUnexportable(data?.['unexportable']),
       stage: syncStage(data?.['stage']),
       manifestRebuilt: data?.['manifestRebuilt'] === true,
+      adopted: numberOf(data?.['adopted']) ?? 0,
       stateId: text(data?.['stateId']) ?? null,
     }
   }

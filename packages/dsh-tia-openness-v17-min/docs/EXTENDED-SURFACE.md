@@ -411,8 +411,21 @@ import → `{action, imported:[{file, name}], committed, dryRun}`
 | `stage_dir` | string | —（空目录/每次操作独立目录） |
 | `evidence_path` | string | —（不存在 = 全量扫描） |
 | `manifest_path` | string | —（不存在或不可读 = 用本次导出重建） |
+| `adopt_existing` | bool | `false`（首次建账本的捷径，见下） |
 | `device_name` / `software_name` | string | 自动 |
 | `export_options` | `none` \| `with_defaults` \| `with_read_only` | `with_defaults` |
+
+`adopt_existing`（首次建账本）：**没有上一版账本**、且 `_manifest.json` 可用时，不再把 1376 个文件
+重新导出，而是逐条校验清单行、把仍与磁盘文件一致的条目**直接采信为证据**：
+
+- 行必须有非空**相对** `file`、`verified: true`、非空 `sha256`；
+- 文件必须落在 `source_root` 内（`Path.GetFullPath` + 前缀校验，越界行一律不采信，绝对路径行也不采信）；
+- `Hashing.Sha256OfFile` 必须与清单 `sha256` 相同（大小写不敏感）；
+- 块 / 类型：只把 `entry.Path` 指向该文件；标签表：还要能读出来，把
+  `entry.ContentHash` 记成 `sha256:` + 归一化 XML 的哈希，读不出就留给导出。
+
+被采信的键从导出计划里移除（标签表计划也过滤），因此 `stage.files` 只计**本次真正写出的文件**，
+另有 `adopted` 报采信数量。上一版账本存在、或清单不可用时该参数**完全不生效**，退回原来的全量导出路径。
 
 比对口径：
 
@@ -421,7 +434,7 @@ import → `{action, imported:[{file, name}], committed, dryRun}`
   `hashAlgo = xml-norm-v1`）；
 - 删除：当前枚举里不存在即写墓碑；被 TIA 拒绝导出的对象只进 `unexportable`，绝不当作删除。
 
-`data`：`{ device, software, checksum, unchanged, counts{blocks,types,tagTables,changed,added,removed,unexportable}, changed[], added[], removed[], unexportable[], stage{root,evidence,manifest,files}, manifestRebuilt, stateId }`。
+`data`：`{ device, software, checksum, unchanged, counts{blocks,types,tagTables,changed,added,removed,unexportable}, changed[], added[], removed[], unexportable[], stage{root,evidence,manifest,files}, manifestRebuilt, adopted, stateId }`。
 `checksum` 与账本一致时直接返回 `unchanged:true`、`stage:null`，**不枚举、不导出**。
 同一调用会在 `stage_dir` 写 `_evidence.json`（账本）与 `_manifest.json`（清单）：
 未变化对象从上一版清单原样带过来，只有归一化内容真的变了的标签表才进入 STAGE；

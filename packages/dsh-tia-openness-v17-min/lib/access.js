@@ -414,6 +414,10 @@ export class EngineeringAccess extends Service {
      * changed XML plus the next `_evidence.json` into `stageDir`, and returns a
      * bounded summary. It writes no project object and touches no git repository.
      *
+     * `adoptExisting` is the first-run shortcut for a workspace that already owns
+     * the source tree: verified files are taken as evidence instead of exported
+     * again (see {@link SyncScanQuery.adoptExisting}).
+     *
      * @param query - the source root, the STAGE directory and the previous ledger.
      */
     async syncScan(query) {
@@ -434,6 +438,9 @@ export class EngineeringAccess extends Service {
         };
         if (query.manifestPath !== undefined)
             params['manifest_path'] = query.manifestPath;
+        // Sent even when false: the caller's intent stays visible on the wire, and the
+        // controller then does not have to guess a default for a mode that skips exports.
+        params['adopt_existing'] = query.adoptExisting ?? false;
         if (query.deviceName !== undefined)
             params['device_name'] = query.deviceName;
         if (query.softwareName !== undefined)
@@ -454,6 +461,7 @@ export class EngineeringAccess extends Service {
             unexportable: syncUnexportable(data?.['unexportable']),
             stage: syncStage(data?.['stage']),
             manifestRebuilt: data?.['manifestRebuilt'] === true,
+            adopted: numberOf(data?.['adopted']) ?? 0,
             stateId: text(data?.['stateId']) ?? null,
         };
     }

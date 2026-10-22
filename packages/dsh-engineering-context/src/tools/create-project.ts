@@ -22,33 +22,53 @@
  * @module dsh-engineering-context/tools/create-project
  */
 
-import { mkdir, readFile, writeFile } from 'node:fs/promises'
+import { copyFile, mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { basename, dirname, join } from 'node:path'
 
 import type { InferArgs, ToolDefinition } from '@deepseek-ai/dsh-tools'
 
 import {
   engineeringAccess,
+  normalizeChecksum,
   normalizeOpen,
   normalizeRebuild,
   normalizeSave,
   normalizeSession,
+  type EngineeringAccessLike,
+  type ChecksumReport,
   type OpenResult,
   type RebuildResult,
+  type RebuiltDevice,
+  type SyncScanCounts,
+  type TiaSoftware,
 } from '../access.js'
 import {
+  evidencePathForDevice,
   knowledgeIgnoreRule,
   KNOWLEDGE_DIR_NAME,
+  manifestPathForDevice,
   projectDirectoryPath,
   sourceDirectoryPath,
   sourceIndexPath,
+  stageRootPath,
   stateIgnoreRule,
   tiaIgnoreRule,
   type PluginConfig,
 } from '../config.js'
 import { EngineeringContextError } from '../errors.js'
+import {
+  gitContextService,
+  hasCreateTrailer,
+  lastCommitBody,
+  readRepoMarker,
+  repoMarkerPath,
+  writeRepoMarker,
+  type GitContextLike,
+  type GitContextServiceLike,
+} from '../git-context.js'
 import { ingestKnowledgeGraph, type KnowledgeIngestReport } from '../knowledge-graph.js'
 import { canonicalizeLoose, folderName, isInside, toPortable } from '../paths.js'
+import { callSyncScan } from '../scan.js'
 import { assertInsideWith, describePath, resolveScope, type ResolvedScope } from '../scope.js'
 import type { ToolDependencies } from './deps.js'
 import { cappedList, defineOutcomeTool, failedOutcome, okOutcome, type EngineeringOutcome } from './outcome.js'
@@ -434,6 +454,476 @@ async function callService<T>(what: string, body: () => Promise<T>): Promise<T> 
   }
 }
 
+// ---------------------------------------------------------------------------
+// git preflight: where may this call initialize a repository and commit?
+// ---------------------------------------------------------------------------
+
+/** The repository state found before anything is opened or written. */
+interface RepositoryPreflight {
+  /** `none`: no repository at the workspace; this call will initialize one. */
+  state: 'none' | 'reuse'
+  /** The repository root git reported, or null when there is none. */
+  repoRoot: string | null
+}
+
+/** Path comparison that treats the spellings Windows reports as the same directory. */
+function sameDirectory(left: string, right: string): boolean {
+  const normalize = (value: string): string => value.replace(/\//gu, '\\').replace(/\\+$/u, '').toLowerCase()
+  return normalize(left) === normalize(right)
+}
+
+/**
+ * Decide whether this workspace may be initialized and committed into.
+ *
+ * Three answers, and only one of them allows the call to proceed:
+ *
+ *   - **no repository** — allowed; the import initializes one afterwards.
+ *   - **a repository rooted here that this plugin created** — allowed; recognizable
+ *     by the local marker (written before the baseline commit) or by the
+ *     `Tia-Op: create` trailer in the history.
+ *   - **anything else** — refused with `workspace_is_repository`. That covers a
+ *     workspace nested inside somebody else's repository (the case that would
+ *     silently add 1000 files to their history) and a repository rooted here that
+ *     this plugin cannot attribute. The plugin never initializes inside a foreign
+ *     repository and never appends a baseline to history it did not create.
+ *
+ * @param service - the `gitContext` service.
+ * @param root - the canonical workspace root.
+ * @param config - the resolved configuration (for the marker's location).
+ * @returns what the repository state is.
+ * @throws {EngineeringContextError} `workspace_is_repository` when it is not ours.
+ */
+async function preflightRepository(
+  service: GitContextServiceLike,
+  root: string,
+  config: PluginConfig,
+): Promise<RepositoryPreflight> {
+  const repoRoot = await service.repoRoot(root)
+  if (repoRoot === null) return { state: 'none', repoRoot: null }
+  if (!sameDirectory(repoRoot, root)) {
+    throw new EngineeringContextError(
+      'workspace_is_repository',
+      `The workspace ${root} is inside the git repository at ${repoRoot}. Use a standalone directory: this plugin never ` +
+        'initializes inside a foreign repository, and it will not add a baseline commit to a history it did not create.',
+      { workspace: root, repoRoot },
+    )
+  }
+  if ((await readRepoMarker(config, root)) !== null) return { state: 'reuse', repoRoot }
+  if (hasCreateTrailer(await lastCommitBody(service, root))) return { state: 'reuse', repoRoot }
+  throw new EngineeringContextError(
+    'workspace_is_repository',
+    `The workspace ${root} is already a git repository, but this plugin cannot attribute it: its last commit carries no ` +
+      `"Tia-Op: create" trailer and there is no ${toPortable(root, repoMarkerPath(config, root))} marker. Use a standalone ` +
+      'directory: this plugin never initializes inside a foreign repository, and it will not append a baseline to a history ' +
+      'it did not create.',
+    { workspace: root, repoRoot, marker: toPortable(root, repoMarkerPath(config, root)) },
+  )
+}
+
+/** What the plan says about git, before anything is written. */
+function describeRepositoryPlan(root: string, config: PluginConfig, preflight: RepositoryPreflight): string {
+  const paths = `${config.sourceDirName}/, .gitignore and .gitattributes`
+  if (preflight.state === 'none') {
+    return (
+      `Git: ${root} is not a repository yet — it will be initialized (git init -b main) after the import, and a baseline ` +
+      `commit will be created for ${paths}.`
+    )
+  }
+  return `Git: reusing this plugin's repository at ${root} — a baseline commit will be created for ${paths}.`
+}
+
+// ---------------------------------------------------------------------------
+// compile preflight: an import without a compiled PLC has nothing to record
+// ---------------------------------------------------------------------------
+
+/** One PLC's compiled checksum, read before anything is saved or exported. */
+interface CompiledPlc {
+  device: string
+  software: string
+  checksum: string
+}
+
+/** The "compile it, then call again" failure, with the PLC named. */
+function needsCompileFailure(label: string, details: Record<string, unknown>): EngineeringContextError {
+  return new EngineeringContextError(
+    'needs_compile',
+    `The PLC ${label} has no compiled program: TIA reports no checksum, which means it was edited since the last compile. ` +
+      'Compile it in TIA Portal, then call create_engineering_project again — nothing was saved or exported.',
+    details,
+  )
+}
+
+/**
+ * Require a compiled PLC for every software the call would export.
+ *
+ * The ledger records the checksum, and the controller refuses to export an
+ * uncompiled software, so an uncompiled PLC is a precondition failure — not a
+ * half-done import. Checking **before** the save-as and the export is what keeps
+ * a refused call from writing anything.
+ *
+ * @param service - the interface plugin's service.
+ * @param software - the PLC software the call will export (`session.software` or `opened.software`).
+ * @param signal - cancellation.
+ * @returns one checksum per PLC, in TIA's order.
+ * @throws {EngineeringContextError} `tia_access_unavailable` (no method),
+ *   `tia_unreachable` (the read failed), `needs_compile` (no compiled program) or
+ *   `checksum_unavailable` (the checksum could not be read for another reason).
+ */
+async function readCompiledChecksums(
+  service: EngineeringAccessLike,
+  software: readonly TiaSoftware[],
+  signal?: AbortSignal,
+): Promise<CompiledPlc[]> {
+  if (typeof service.readPlcChecksum !== 'function') {
+    throw new EngineeringContextError(
+      'tia_access_unavailable',
+      'The installed TIA interface plugin has no readPlcChecksum method, so this tool cannot tell whether the PLC is compiled. ' +
+        'Update dsh-tia-openness-v17-min to a build that has PlcChecksum and SyncScan.',
+      { service: 'engineeringAccess', method: 'readPlcChecksum' },
+    )
+  }
+  const compiled: CompiledPlc[] = []
+  for (const entry of software) {
+    const label = `${entry.device} / ${entry.software}`
+    const details = {
+      device: entry.device,
+      software: entry.software,
+      devices: software.map((plc) => `${plc.device} / ${plc.software}`),
+    }
+    let report: ChecksumReport
+    try {
+      report = normalizeChecksum(
+        await service.readPlcChecksum({ deviceName: entry.device, softwareName: entry.software, signal }),
+      )
+    } catch (error) {
+      throw new EngineeringContextError(
+        'tia_unreachable',
+        `Reading the compiled checksum of ${label} failed: ${error instanceof Error ? error.message : String(error)}. ` +
+          'Nothing was saved or exported.',
+        details,
+      )
+    }
+    if (report.ok && report.checksum !== null) {
+      compiled.push({ device: entry.device, software: entry.software, checksum: report.checksum })
+      continue
+    }
+    if (report.ok || report.error?.code === 'checksum_unavailable') {
+      throw needsCompileFailure(label, {
+        ...details,
+        code: report.error?.code ?? null,
+        checksum: report.checksum,
+      })
+    }
+    throw new EngineeringContextError(
+      'checksum_unavailable',
+      `The compiled checksum of ${label} could not be read: ${report.summary || report.error?.message || 'no reason reported'}. ` +
+        'Nothing was saved or exported.',
+      { ...details, code: report.error?.code ?? null },
+    )
+  }
+  return compiled
+}
+
+// ---------------------------------------------------------------------------
+// evidence pass: the ledger and the manifest, written once, from one scan
+// ---------------------------------------------------------------------------
+
+/** What the evidence pass did for one device. */
+interface EvidenceEntry {
+  device: string
+  software: string
+  directory: string
+  evidence: string
+  manifest: string
+  counts: SyncScanCounts
+  checksum: string | null
+  stateId: string | null
+  /** Files the scan wrote into STAGE. */
+  exported: number
+  /** Objects it adopted from the source tree instead of exporting them again. */
+  adopted: number
+}
+
+/** One STAGE directory per device, distinct even within the same millisecond. */
+function stageDirectory(config: PluginConfig, root: string, index: number): string {
+  return join(stageRootPath(config, root), `${Date.now()}-${process.pid}-${index + 1}-create`)
+}
+
+/**
+ * Write `_evidence.json` and `_manifest.json` for every device the export reached.
+ *
+ * This is deliberately **one** pass over the tree the export already wrote: the
+ * scan is called with `adoptExisting`, so the controller verifies the existing
+ * files against the manifest and adopts them instead of exporting them a second
+ * time. Only the two documents it produced in STAGE are copied beside the XML.
+ *
+ * The STAGE directory is removed in `finally` in every outcome, including a
+ * refusal, so a failed import never leaves scratch files behind.
+ *
+ * @param service - the interface plugin's service.
+ * @param options - the workspace, the exported devices and cancellation.
+ * @returns one entry per device, for the payload and the detail lines.
+ * @throws {EngineeringContextError} `tia_access_unavailable`, `needs_compile` or
+ *   `sync_failed`; nothing is committed in those cases.
+ */
+async function writeEvidenceForDevices(
+  service: EngineeringAccessLike,
+  options: { config: PluginConfig; root: string; devices: readonly RebuiltDevice[]; signal?: AbortSignal },
+): Promise<EvidenceEntry[]> {
+  const { config, root, devices, signal } = options
+  const entries: EvidenceEntry[] = []
+  for (const [index, device] of devices.entries()) {
+    const stageDir = stageDirectory(config, root, index)
+    const evidenceFile = evidencePathForDevice(device.directory)
+    const manifestFile = manifestPathForDevice(device.directory)
+    await mkdir(stageDir, { recursive: true })
+    try {
+      const report = await callSyncScan(service, {
+        sourceRoot: device.directory,
+        stageDir,
+        evidencePath: evidenceFile,
+        manifestPath: manifestFile,
+        deviceName: device.device,
+        softwareName: device.software,
+        adoptExisting: true,
+        signal,
+      })
+      if (!report.ok) {
+        if (report.error?.code === 'checksum_unavailable') {
+          throw new EngineeringContextError(
+            'needs_compile',
+            `The PLC ${device.device} / ${device.software} has no compiled checksum, so its evidence ledger cannot be written. ` +
+              'Compile it in TIA Portal, then call create_engineering_project again — the exported tree is already on disk and ' +
+              'will be adopted instead of exported again.',
+            { device: device.device, software: device.software, code: report.error.code, stageDir },
+          )
+        }
+        throw new EngineeringContextError(
+          'sync_failed',
+          `Writing the evidence ledger for ${device.device} failed: ${report.summary || report.error?.message || 'no reason reported'}.`,
+          { device: device.device, code: report.error?.code ?? null, stageDir },
+        )
+      }
+      const stage = report.stage
+      if (stage === null || stage.evidence.length === 0 || stage.manifest.length === 0) {
+        throw new EngineeringContextError(
+          'sync_failed',
+          `The scan for ${device.device} reported success but wrote no fresh evidence ledger and manifest, so the tree has no ` +
+            'verifiable record. Nothing was committed.',
+          { device: device.device, stageDir },
+        )
+      }
+      // The scan already placed the objects (exported or adopted) in the device
+      // directory; only the two documents it wrote into STAGE are copied out.
+      await mkdir(dirname(evidenceFile), { recursive: true })
+      await copyFile(stage.evidence, evidenceFile)
+      await copyFile(stage.manifest, manifestFile)
+
+      const objects = report.counts.blocks + report.counts.types + report.counts.tagTables
+      const exported = stage.files
+      entries.push({
+        device: device.device,
+        software: device.software,
+        directory: device.directory,
+        evidence: evidenceFile,
+        manifest: manifestFile,
+        counts: report.counts,
+        checksum: report.checksum,
+        stateId: report.stateId,
+        exported,
+        // The controller reports `adopted` with the new wire parameter; a build
+        // that does not is still correct here, because every present object is
+        // either written to STAGE or adopted from the tree.
+        adopted: report.adopted > 0 ? report.adopted : Math.max(0, objects - exported),
+      })
+    } finally {
+      await rm(stageDir, { recursive: true, force: true }).catch(() => undefined)
+    }
+  }
+  return entries
+}
+
+// ---------------------------------------------------------------------------
+// `.gitattributes`: keep the exported XML byte-stable
+// ---------------------------------------------------------------------------
+
+/** What the workspace `.gitattributes` currently says about the source tree. */
+interface AttributesFile {
+  file: string
+  port: string
+  exists: boolean
+  /** The rule this plugin needs: `<source dir>/** -text`. */
+  rule: string
+  present: boolean
+  raw: string
+}
+
+/** The line that keeps git from rewriting the line endings TIA exported. */
+function lineEndingRule(sourceDirName: string): string {
+  return `${sourceDirName}/** -text`
+}
+
+/**
+ * Read `.gitattributes` and decide whether the rule is already there.
+ *
+ * Like the `.gitignore` handling, this module appends and never rewrites: a file
+ * the user authored keeps every line they wrote.
+ *
+ * @param root - the canonical workspace root.
+ * @param sourceDirName - the configured source directory name.
+ */
+async function readAttributesFile(root: string, sourceDirName: string): Promise<AttributesFile> {
+  const file = join(root, '.gitattributes')
+  const rule = lineEndingRule(sourceDirName)
+  let raw: string
+  let exists = true
+  try {
+    raw = await readFile(file, 'utf8')
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
+    raw = ''
+    exists = false
+  }
+  const lines = new Set(raw.split(/\r?\n/u).map((line) => line.trim()))
+  return { file, port: toPortable(root, file), exists, rule, present: lines.has(rule), raw }
+}
+
+/** Write the rule, creating the file or appending to it; never rewrite user content. */
+async function applyAttributesRule(attributes: AttributesFile): Promise<'created' | 'appended' | 'unchanged'> {
+  if (attributes.present) return 'unchanged'
+  const header = [
+    '# Written by @voltarenyah/dsh-engineering-context (create_engineering_project).',
+    '# TIA exports XML with the line endings of the machine that wrote it; -text keeps git',
+    '# from normalizing them, so re-exporting an unchanged object stays byte-identical.',
+  ]
+  if (!attributes.exists) {
+    await writeFile(attributes.file, `${header.join('\n')}\n${attributes.rule}\n`, 'utf8')
+    return 'created'
+  }
+  const prefix = attributes.raw.length === 0 || attributes.raw.endsWith('\n') ? attributes.raw : `${attributes.raw}\n`
+  const block = `# ${attributes.rule}: keep the exported XML byte-stable in git.\n${attributes.rule}`
+  await writeFile(attributes.file, `${prefix}${prefix.length === 0 ? '' : '\n'}${block}\n`, 'utf8')
+  return 'appended'
+}
+
+/** What happened to `.gitattributes`, in one line for the result. */
+function describeAttributesAction(
+  attributes: AttributesFile,
+  action: 'created' | 'appended' | 'unchanged',
+): string {
+  if (action === 'unchanged') {
+    return `Line endings: "${attributes.rule}" already in ${attributes.port} — left untouched.`
+  }
+  return (
+    `Line endings: ${action} ${attributes.port} with "${attributes.rule}" so the exported XML is ` +
+    'byte-stable in git (no line-ending normalization on commit).'
+  )
+}
+
+// ---------------------------------------------------------------------------
+// git baseline: the import becomes one commit
+// ---------------------------------------------------------------------------
+
+/** What the baseline commit did. */
+interface BaselineResult {
+  root: string
+  initialized: boolean
+  committed: boolean
+  hash: string | null
+}
+
+/** The commit message: one summary line plus the four trailers the workflow reads. */
+function baselineMessage(label: string, checksum: string, stateId: string): string {
+  return [
+    `create: ${label} — baseline import of the exported source tree`,
+    '',
+    'Tia-Op: create',
+    `Tia-Checksum: ${checksum}`,
+    `Tia-State: ${stateId}`,
+    'Tia-Manifest: rebuilt',
+  ].join('\n')
+}
+
+/** Distinct values joined for a trailer, or `unknown` when there are none. */
+function trailerValue(values: readonly (string | null)[]): string {
+  const unique = [...new Set(values.filter((value): value is string => value !== null && value.length > 0))]
+  return unique.length === 0 ? 'unknown' : unique.join(',')
+}
+
+/**
+ * Create the baseline commit of the import.
+ *
+ * Order matters: the ownership marker is written **before** `git init`/the
+ * commit, so a failure in the middle still leaves a repository the next call
+ * recognizes as this plugin's. Commit paths are exactly `.gitignore`,
+ * `.gitattributes` and the source directory — the index was written just before,
+ * so it is included; the marker itself is inside the ignored local state.
+ *
+ * @param service - the `gitContext` service.
+ * @param options - the workspace, the preflight result and what the trailers say.
+ * @returns what was committed.
+ * @throws {EngineeringContextError} `git_failed` when init or commit fails, with
+ *   the source and evidence paths already on disk in the details.
+ */
+async function createBaseline(
+  service: GitContextServiceLike,
+  options: {
+    root: string
+    config: PluginConfig
+    preflight: RepositoryPreflight
+    label: string
+    checksum: string
+    stateId: string
+    sourceRoot: string
+    evidence: readonly EvidenceEntry[]
+  },
+): Promise<BaselineResult> {
+  const { root, config, preflight } = options
+  const paths = ['.gitignore', '.gitattributes', config.sourceDirName]
+  const marker = toPortable(root, repoMarkerPath(config, root))
+  const ledgers = options.evidence.map((entry) => toPortable(root, entry.evidence))
+  const failure = (cause: unknown, initialized: boolean): EngineeringContextError => {
+    const message = cause instanceof Error ? cause.message : String(cause)
+    return new EngineeringContextError(
+      'git_failed',
+      `The project was imported, but the git baseline could not be created: ${message}. In this workspace the source tree ` +
+        `(${toPortable(root, options.sourceRoot)}/) and its evidence ledgers (${ledgers.join(', ') || 'none'}) are already ` +
+        `written. Fix the git problem and call this tool again — the marker ${marker} lets the retry recognize the ` +
+        "repository as this plugin's instead of refusing it as foreign.",
+      {
+        root,
+        paths,
+        sourceRoot: toPortable(root, options.sourceRoot),
+        evidence: ledgers,
+        marker,
+        initialized,
+        cause: message,
+      },
+    )
+  }
+
+  // First, on purpose: a half-finished commit must not make the repository look
+  // foreign to the next call.
+  await writeRepoMarker(config, root)
+
+  const initialized = preflight.state === 'none'
+  let git: GitContextLike
+  try {
+    git = initialized ? await service.init(root) : await service.create(root)
+  } catch (error) {
+    throw failure(error, initialized)
+  }
+
+  let commit: { committed: boolean; hash: string | null }
+  try {
+    commit = await git.commit(paths, baselineMessage(options.label, options.checksum, options.stateId))
+  } catch (error) {
+    throw failure(error, initialized)
+  }
+
+  return { root: git.repoDir, initialized, committed: commit.committed, hash: commit.hash }
+}
+
 /**
  * Build the `create_engineering_project` tool.
  * @param dependencies - the plugin dependencies.
@@ -457,7 +947,12 @@ export function createProjectTool(dependencies: ToolDependencies): ToolDefinitio
       'knowledge/<device>/<device>_knowledge.db) — that is the only way the graph is ever refreshed, it adds real time on a large ' +
       'project, and it never fails this call: when that plugin or its engine is absent (or the engine cannot be reached) the result ' +
       'says the knowledge graph was not built and the source tree is unaffected. TIA refusals are reported per object, ' +
-      'never dropped.',
+      'never dropped. The PLC must be COMPILED: an uncompiled (or edited-since-compile) PLC stops the call before anything is ' +
+      'saved or exported. When the import succeeds it also records the evidence ledger and the manifest for every device from the ' +
+      'tree it just exported (the existing files are adopted, not exported twice) and creates the git baseline: it initializes the ' +
+      'workspace repository (git init -b main) only when there is none, reuses one this plugin created, and REFUSES to run inside ' +
+      'a repository it did not create. The baseline commit contains the source tree, .gitignore and .gitattributes, and ' +
+      '.gitattributes marks the XML as -text so its line endings stay byte-stable.',
     parameters: CREATE_PARAMETERS,
     async execute(args: CreateArgs, exec): Promise<EngineeringOutcome> {
       let scope: ResolvedScope | null = null
@@ -476,6 +971,19 @@ export function createProjectTool(dependencies: ToolDependencies): ToolDefinitio
             { service: 'engineeringAccess' },
           )
         }
+
+        // Git before TIA, and in a plan too: a workspace inside somebody else's
+        // repository has to be refused before anything is opened, saved or written.
+        const gitService = gitContextService(dependencies.ctx)
+        if (gitService === undefined) {
+          throw new EngineeringContextError(
+            'git_access_unavailable',
+            'This composition has no gitContext service, so the workspace repository state cannot be established. Install the ' +
+              'dsh-tool-git plugin (its host row) in this profile — this tool initializes and commits the workspace only through it.',
+            { service: 'gitContext' },
+          )
+        }
+        const repository = await preflightRepository(gitService, root, config)
 
         const session = normalizeSession(
           await callService('readTiaSession', () => service.readTiaSession({ signal: exec.signal })),
@@ -671,7 +1179,9 @@ export function createProjectTool(dependencies: ToolDependencies): ToolDefinitio
           'Layout below the source root is written by the interface plugin: <device>/blocks|types|tag_tables/, one manifest per device covering all three.',
           `Knowledge graph: after the export, one full rebuild per device through the engineering-graph plugin ` +
             `(${KNOWLEDGE_DIR_NAME}/<device>/<device>_knowledge.db); skipped, and reported as not built, when that plugin or its engine is absent.`,
+          'Compile: every PLC must carry a compiled checksum; an uncompiled PLC stops the call before anything is saved or exported.',
           ignoreLine,
+          describeRepositoryPlan(root, config, repository),
         ]
 
         if (dryRun) {
@@ -690,6 +1200,12 @@ export function createProjectTool(dependencies: ToolDependencies): ToolDefinitio
                 skipSave,
                 projectPath,
                 devices: software,
+                git: {
+                  state: repository.state,
+                  initialize: repository.state === 'none',
+                  repoRoot: repository.repoRoot,
+                  baselineCommit: true,
+                },
               },
               ignore: ignorePayload(ignore, 'none (dry run)', []),
               rebuild: null,
@@ -700,6 +1216,12 @@ export function createProjectTool(dependencies: ToolDependencies): ToolDefinitio
         }
 
         // ---- the real run -------------------------------------------------
+
+        // A compiled PLC is the precondition for everything the import promises:
+        // the ledger records its checksum and the controller refuses to export an
+        // uncompiled software. Checking every PLC before the save-as is what keeps
+        // a refused call from writing anything at all.
+        const compiled = await readCompiledChecksums(service, software, exec.signal)
 
         let savedAs: string | null = null
         if (!skipSave) {
@@ -761,6 +1283,19 @@ export function createProjectTool(dependencies: ToolDependencies): ToolDefinitio
           )
         }
 
+        // Evidence + manifest in ONE pass per device, from the tree the export
+        // above already wrote. `adoptExisting` makes the controller verify the
+        // existing files against their manifest and adopt them instead of
+        // exporting them again — this is the "do not export twice" step. It also
+        // re-checks the compiled checksum, which is why a PLC edited between the
+        // preflight and here is refused instead of silently recorded.
+        const evidence = await writeEvidenceForDevices(service, {
+          config,
+          root,
+          devices: rebuilt.devices,
+          signal: exec.signal,
+        })
+
         // The knowledge graph step, deliberately last and deliberately soft: it is
         // a full rebuild of one database per device, it is minutes of work on a
         // real project, and nothing about the source tree depends on it. An absent
@@ -792,6 +1327,11 @@ export function createProjectTool(dependencies: ToolDependencies): ToolDefinitio
               `${rebuilt.devices[index]?.blocks.manifest === null ? '' : `, manifest ${rebuilt.devices[index]?.blocks.manifest}`}`,
           ),
           ...cappedList(rebuilt.failures, (failure) => `Refused: ${failure.device}/${failure.category}/${failure.name} — ${failure.code}: ${failure.message}`),
+          ...evidence.map(
+            (entry) =>
+              `Evidence ${entry.device}/${entry.software}: ${entry.exported} exported, ${entry.adopted} adopted — ` +
+              `ledger ${toPortable(root, entry.evidence)}.`,
+          ),
         ]
         if (rebuilt.missingDevices.length > 0) {
           details.push(`Devices that were asked for but not found: ${rebuilt.missingDevices.join(', ')}`)
@@ -858,6 +1398,41 @@ export function createProjectTool(dependencies: ToolDependencies): ToolDefinitio
           `Index: ${indexAction} ${toPortable(root, indexFile)} — which project this tree belongs to, and what the last export produced.`,
         )
 
+        // Leave the source tree byte-stable in git before it is committed: TIA
+        // writes XML with the line endings of the machine that exported it, and
+        // git's text normalization would rewrite them on checkout.
+        const attributes = await readAttributesFile(root, config.sourceDirName)
+        const attributesAction = await applyAttributesRule(attributes)
+        details.push(describeAttributesAction(attributes, attributesAction))
+
+        // The baseline is the version: one commit for the whole import, written
+        // after the index so the index is part of it. The commit paths are exactly
+        // .gitignore, .gitattributes and the source directory.
+        const baseline = await createBaseline(gitService, {
+          root,
+          config,
+          preflight: repository,
+          label: name ?? 'unknown',
+          checksum: trailerValue(compiled.map((entry) => entry.checksum)),
+          stateId: trailerValue(evidence.map((entry) => entry.stateId)),
+          sourceRoot,
+          evidence,
+        })
+        const gitAction = baseline.initialized
+          ? 'initialized a repository (git init -b main)'
+          : 'reused this plugin\'s repository'
+        details.push(
+          baseline.committed
+            ? `Git: ${gitAction} and committed the baseline ${baseline.hash ?? ''}`.trimEnd() + '.'
+            : `Git: ${gitAction}; there was nothing to commit (the tree already matched HEAD).`,
+        )
+        if (!baseline.committed) {
+          warnings.push(
+            'The baseline commit reported nothing to commit, so no commit was created — the tree already matched HEAD. ' +
+              'The import itself is complete.',
+          )
+        }
+
         return okOutcome(
           CREATE_PROJECT_TOOL,
           scope.view,
@@ -865,7 +1440,10 @@ export function createProjectTool(dependencies: ToolDependencies): ToolDefinitio
             ? `Nothing was written: all ${totals.skipped} file(s) the export reached were already present. ${name} is in ${toPortable(root, projectDir)}/; pass overwrite=true to refresh the source tree.`
             : `Saved ${name} into ${toPortable(root, projectDir)}/ and wrote ${totals.written} object(s) into ${toPortable(root, sourceRoot)}/` +
               `${totals.skipped === 0 ? '' : `, ${totals.skipped} already present`}${totals.refused === 0 ? '' : `, ${totals.refused} refused by TIA`}.`) +
-            describeKnowledgeSummary(knowledge),
+            describeKnowledgeSummary(knowledge) +
+            (baseline.committed
+              ? ' The import is committed as the git baseline.'
+              : ' The import is complete; the git baseline had nothing to commit.'),
           {
             project: {
               name,
@@ -878,6 +1456,30 @@ export function createProjectTool(dependencies: ToolDependencies): ToolDefinitio
             },
             index: { file: toPortable(root, indexFile), action: indexAction },
             ignore: ignorePayload(ignore, ignoreAction.action, ignoreAction.added),
+            gitAttributes: {
+              file: attributes.port,
+              rule: attributes.rule,
+              action: attributesAction,
+              added: attributesAction === 'unchanged' ? [] : [attributes.rule],
+            },
+            evidence: evidence.map((entry) => ({
+              device: entry.device,
+              software: entry.software,
+              directory: entry.directory,
+              evidence: toPortable(root, entry.evidence),
+              manifest: toPortable(root, entry.manifest),
+              counts: entry.counts,
+              checksum: entry.checksum,
+              stateId: entry.stateId,
+              exported: entry.exported,
+              adopted: entry.adopted,
+            })),
+            git: {
+              root: baseline.root,
+              initialized: baseline.initialized,
+              committed: baseline.committed,
+              hash: baseline.hash,
+            },
             rebuild: {
               sourceRoot: rebuilt.sourceRoot,
               devices: rebuilt.devices,

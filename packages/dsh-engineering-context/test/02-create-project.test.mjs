@@ -9,7 +9,7 @@
  */
 
 import assert from 'node:assert/strict'
-import { mkdir, readFile, stat } from 'node:fs/promises'
+import { mkdir, readFile, readdir, stat } from 'node:fs/promises'
 import { basename, dirname, join } from 'node:path'
 import { test } from 'node:test'
 
@@ -19,6 +19,7 @@ import {
   executeTool,
   fakeExec,
   fakeExecWithoutCwd,
+  fakeGitContext,
   findTool,
   loadConfigModule,
   loadToolsModule,
@@ -152,6 +153,61 @@ function fakeAccess(options = {}) {
       await mkdir(join(sourceRoot, 'S7-1500', 'blocks'), { recursive: true })
       return rebuildReport(sourceRoot)
     },
+    async readPlcChecksum(query = {}) {
+      calls.push({ operation: 'readPlcChecksum', query })
+      if (options.checksumThrows !== undefined) throw options.checksumThrows
+      if (options.checksum !== undefined) {
+        return typeof options.checksum === 'function' ? options.checksum(query) : options.checksum
+      }
+      return { ok: true, summary: 'checksum read', data: { checksum: 'CHECKSUM-1', device: query.deviceName, software: query.softwareName } }
+    },
+    async syncScan(query) {
+      calls.push({ operation: 'syncScan', query })
+      if (options.scanThrows !== undefined) throw options.scanThrows
+      if (options.scan !== undefined) {
+        return typeof options.scan === 'function' ? options.scan(query) : options.scan
+      }
+      // The bootstrap shape: the controller adopts the exported files and writes
+      // the ledger and the manifest into STAGE. No XML is exported again.
+      const evidence = join(query.stageDir, '_evidence.json')
+      const manifest = join(query.stageDir, '_manifest.json')
+      await makeFile(
+        evidence,
+        `${JSON.stringify(
+          {
+            schemaVersion: 1,
+            hashAlgo: 'sha256',
+            device: query.deviceName ?? null,
+            software: query.softwareName ?? null,
+            plcChecksum: 'CHECKSUM-1',
+            stateId: 'state-create',
+            objects: {},
+            unexportable: [],
+            tombstones: [],
+          },
+          null,
+          2,
+        )}\n`,
+      )
+      await makeFile(manifest, '{"files":{}}\n')
+      return {
+        ok: true,
+        summary: 'scan complete',
+        data: {
+          checksum: 'CHECKSUM-1',
+          unchanged: false,
+          manifestRebuilt: true,
+          counts: { blocks: 2, types: 1, tagTables: 1, changed: 0, added: 0, removed: 0, unexportable: 0 },
+          changed: [],
+          added: [],
+          removed: [],
+          unexportable: [],
+          stage: { root: query.stageDir, evidence, manifest, files: 0 },
+          stateId: 'state-create',
+          adopted: 4,
+        },
+      }
+    },
   }
   return { service, calls }
 }
@@ -211,9 +267,10 @@ function toolWith(config = {}, services = {}) {
 /** The tool in front of a fake service, plus its call log. */
 function setup(options = {}, config = {}) {
   const { service, calls } = fakeAccess(options)
-  const services = { engineeringAccess: service }
+  const git = options.gitContext ?? fakeGitContext()
+  const services = { engineeringAccess: service, gitContext: git.service }
   if (options.knowledgeGraph !== undefined) services.knowledgeGraph = options.knowledgeGraph.service
-  return { tool: toolWith(config, services), calls, graph: options.knowledgeGraph ?? null }
+  return { tool: toolWith(config, services), calls, graph: options.knowledgeGraph ?? null, git: git.calls, gitState: git.state }
 }
 
 const operations = (calls) => calls.map((call) => call.operation)
@@ -290,12 +347,19 @@ test('a named project is opened, then saved and exported', async (t) => {
   )
 
   assert.equal(outcome.ok, true)
-  assert.deepEqual(operations(calls), ['readTiaSession', 'openProject', 'saveProjectAs', 'rebuildSource'])
+  assert.deepEqual(operations(calls), [
+    'readTiaSession',
+    'openProject',
+    'readPlcChecksum',
+    'saveProjectAs',
+    'rebuildSource',
+    'syncScan',
+  ])
   assert.equal(calls[1].projectPath, source)
   assert.equal(calls[1].options.withWindow, true, 'a visible TIA window is the default')
   assert.equal(calls[1].options.allowUpgrade, false, 'upgrading rewrites the project, so it is never implied')
-  assert.equal(calls[2].directory, join(root, 'tia', basename(root)))
-  assert.equal(calls[3].sourceRoot, join(root, 'source'))
+  assert.equal(calls[3].directory, join(root, 'tia', basename(root)))
+  assert.equal(calls[4].sourceRoot, join(root, 'source'))
   assert.equal(outcome.data.project.name, 'PEI_SinoARP')
 })
 
@@ -399,6 +463,11 @@ test('the default is a plan: it names the layout and writes nothing at all', asy
   await assert.rejects(stat(join(root, 'tia', basename(root))), 'a dry run must not create the project directory')
   await assert.rejects(stat(join(root, 'source')), 'a dry run must not create the source tree')
   await assert.rejects(stat(join(root, '.gitignore')), 'a dry run must not touch the workspace .gitignore')
+  await assert.rejects(stat(join(root, '.gitattributes')), 'a dry run must not touch .gitattributes')
+  await assert.rejects(stat(join(root, '.dsh', 'local', 'repo.json')), 'a dry run must not write the ownership marker')
+  assert.equal(outcome.data.plan.git.initialize, true, 'the plan has to say the repository will be created')
+  assert.equal(outcome.data.plan.git.baselineCommit, true)
+  assert.match(outcome.details.join('\n'), /git init -b main/u)
   assert.match(renderedText(tool, {}, outcome), /Dry run/u)
 })
 
@@ -410,10 +479,10 @@ test('dry_run=false saves into tia/ and then rebuilds into source/, in that orde
 
   assert.equal(outcome.ok, true)
   assert.equal(outcome.dryRun, false)
-  assert.deepEqual(operations(calls), ['readTiaSession', 'saveProjectAs', 'rebuildSource'])
-  assert.equal(calls[1].directory, join(root, 'tia', basename(root)))
-  assert.equal(calls[2].sourceRoot, join(root, 'source'))
-  assert.equal(calls[2].options.overwrite, false)
+  assert.deepEqual(operations(calls), ['readTiaSession', 'readPlcChecksum', 'saveProjectAs', 'rebuildSource', 'syncScan'])
+  assert.equal(calls[2].directory, join(root, 'tia', basename(root)))
+  assert.equal(calls[3].sourceRoot, join(root, 'source'))
+  assert.equal(calls[3].options.overwrite, false)
 
   // TIA's own path is what the result carries, never the requested directory.
   assert.equal(outcome.data.project.savedAs, join(root, 'tia', basename(root), 'PEI_SinoARP.ap17'))
@@ -451,7 +520,7 @@ test('overwrite is passed through to the export', async (t) => {
 
   await executeTool(tool, { dry_run: false, overwrite: true }, fakeExec(root))
 
-  assert.equal(calls[2].options.overwrite, true)
+  assert.equal(calls[3].options.overwrite, true)
 })
 
 test('a refused save stops there: the source tree is not touched and no ignore rule is written', async (t) => {
@@ -471,7 +540,7 @@ test('a refused save stops there: the source tree is not touched and no ignore r
   assert.equal(outcome.error.code, 'save_failed')
   assert.match(outcome.error.message, /already exists/u)
   assert.equal(outcome.error.details.code, 'project_exists')
-  assert.deepEqual(operations(calls), ['readTiaSession', 'saveProjectAs'])
+  assert.deepEqual(operations(calls), ['readTiaSession', 'readPlcChecksum', 'saveProjectAs'])
   await assert.rejects(stat(join(root, '.gitignore')), 'the ignore rule belongs to a project that is really there')
 })
 
@@ -609,7 +678,11 @@ test('a project already inside the workspace skips the save-as and only refreshe
 
   assert.equal(outcome.ok, true)
   assert.equal(outcome.data.project.skipSave, true)
-  assert.deepEqual(operations(calls), ['readTiaSession', 'rebuildSource'], 're-running must not save the project again')
+  assert.deepEqual(
+    operations(calls),
+    ['readTiaSession', 'readPlcChecksum', 'rebuildSource', 'syncScan'],
+    're-running must not save the project again',
+  )
 })
 
 test('an existing source tree is announced rather than silently skipped', async (t) => {
@@ -853,7 +926,7 @@ test('a transport failure is reported as data, and the workspace is left alone',
   const unsaved = await executeTool(tool, { dry_run: false }, fakeExec(root))
   assert.equal(unsaved.ok, false)
   assert.equal(unsaved.error.code, 'tia_unreachable')
-  assert.deepEqual(operations(calls), ['readTiaSession', 'saveProjectAs'])
+  assert.deepEqual(operations(calls), ['readTiaSession', 'readPlcChecksum', 'saveProjectAs'])
   await assert.rejects(stat(join(root, '.gitignore')))
 })
 
@@ -876,8 +949,14 @@ test('the knowledge graph is rebuilt once per device, after the export', async (
   const outcome = assertEnvelope(await executeTool(tool, { dry_run: false }, fakeExec(root)))
 
   assert.equal(outcome.ok, true)
-  // The TIA half is unchanged and still ordered save → export.
-  assert.deepEqual(operations(calls), ['readTiaSession', 'saveProjectAs', 'rebuildSource'])
+  // The TIA half is unchanged and still ordered checksum → save → export → evidence.
+  assert.deepEqual(operations(calls), [
+    'readTiaSession',
+    'readPlcChecksum',
+    'saveProjectAs',
+    'rebuildSource',
+    'syncScan',
+  ])
   // The graph half runs per device, against the directory the export reported.
   assert.deepEqual(
     graph.calls.map((call) => (call.operation === 'status' ? 'status' : call.deviceDir)),
@@ -1012,3 +1091,344 @@ test('a plan names the graph step and asks the graph service for nothing', async
   assert.deepEqual(graph.calls, [], 'planning must not touch the graph service')
   assert.match(outcome.details.join('\n'), /Knowledge graph: after the export/u)
 })
+
+// ---------------------------------------------------------------------------
+// B2 — a true one-shot import: git preflight, compile preflight, evidence
+// adoption, one baseline commit
+// ---------------------------------------------------------------------------
+
+/** The four trailers a baseline commit must carry. */
+function assertBaselineTrailers(message, { checksum = 'CHECKSUM-1', stateId = 'state-create' } = {}) {
+  assert.match(message, /^Tia-Op: create$/mu)
+  assert.match(message, new RegExp(`^Tia-Checksum: ${checksum}$`, 'mu'))
+  assert.match(message, new RegExp(`^Tia-State: ${stateId}$`, 'mu'))
+  assert.match(message, /^Tia-Manifest: rebuilt$/mu)
+}
+
+/** Run one tool against a context carrying exactly these services. */
+function toolWithServices(services, config = {}) {
+  const { ctx } = createTestContext({ services })
+  return findTool(toolDefinitions({ ctx, config: resolveConfig(config), log: ctx.logger }), TOOL)
+}
+
+test('a composition without gitContext refuses with git_access_unavailable', async (t) => {
+  const root = await tempWorkspace(t)
+  const { service } = fakeAccess()
+  const tool = toolWithServices({ engineeringAccess: service })
+
+  const outcome = assertEnvelope(await executeTool(tool, { dry_run: false }, fakeExec(root)))
+
+  assert.equal(outcome.ok, false)
+  assert.equal(outcome.error.code, 'git_access_unavailable')
+  assert.match(outcome.error.message, /gitContext/u)
+})
+
+test('a fresh workspace is initialized and gets exactly one baseline commit', async (t) => {
+  const root = await tempWorkspace(t)
+
+  // The plan says what git will do, and writes nothing at all.
+  const planned = setup()
+  const plan = assertEnvelope(await executeTool(planned.tool, {}, fakeExec(root)))
+  assert.equal(plan.dryRun, true)
+  assert.deepEqual(plan.data.plan.git, { state: 'none', initialize: true, repoRoot: null, baselineCommit: true })
+  assert.match(plan.details.join('\n'), /not a repository yet/u)
+
+  const { tool, calls, git } = setup()
+  const outcome = assertEnvelope(await executeTool(tool, { dry_run: false }, fakeExec(root)))
+  assert.equal(outcome.ok, true)
+
+  const init = git.find((call) => call.operation === 'init')
+  assert.ok(init, 'a fresh workspace is initialized through the service, not by this plugin')
+  assert.equal(init.root, root)
+
+  const commits = git.filter((call) => call.operation === 'commit')
+  assert.equal(commits.length, 1, 'one baseline commit for the whole import')
+  assert.deepEqual(
+    commits[0].paths,
+    ['.gitignore', '.gitattributes', 'source'],
+    'exactly the three paths; source/ carries the index written before the commit',
+  )
+  assertBaselineTrailers(commits[0].message)
+  assert.match(commits[0].message, /^create: PEI_SinoARP/u)
+
+  assert.deepEqual(outcome.data.git, { root, initialized: true, committed: true, hash: '0123456789abcdef' })
+  assert.equal(outcome.data.gitAttributes.action, 'created')
+  assert.equal(outcome.data.gitAttributes.rule, 'source/** -text')
+  assert.match(await readFile(join(root, '.gitattributes'), 'utf8'), /^source\/\*\* -text$/mu)
+
+  const marker = JSON.parse(await readFile(join(root, '.dsh', 'local', 'repo.json'), 'utf8'))
+  assert.deepEqual(marker, { schemaVersion: 1, createdBy: 'engineering-context' })
+  assert.match(await readFile(join(root, 'source', '_dsh-engineering-context.json'), 'utf8'), /PEI_SinoARP/u)
+  assert.deepEqual(operations(calls), [
+    'readTiaSession',
+    'readPlcChecksum',
+    'saveProjectAs',
+    'rebuildSource',
+    'syncScan',
+  ])
+})
+
+test('a workspace inside a foreign repository is refused before TIA is asked anything', async (t) => {
+  const root = await tempWorkspace(t)
+  const parent = dirname(root)
+  const foreign = fakeGitContext({ repoRoot: parent })
+  const { tool, calls } = setup({ gitContext: foreign })
+
+  const outcome = assertEnvelope(await executeTool(tool, { dry_run: false }, fakeExec(root)))
+
+  assert.equal(outcome.ok, false)
+  assert.equal(outcome.error.code, 'workspace_is_repository')
+  assert.match(outcome.error.message, /foreign repository/u)
+  assert.match(outcome.error.message, /standalone directory/u)
+  assert.equal(outcome.error.details.repoRoot, parent)
+  assert.deepEqual(operations(calls), [], 'no readTiaSession, no open, no save')
+  assert.deepEqual(foreign.calls.map((call) => call.operation), ['repoRoot'], 'the repository is the only thing probed')
+  for (const file of ['.gitignore', '.gitattributes', join('source'), join('.dsh')]) {
+    await assert.rejects(stat(join(root, file)), `${file} must not be written`)
+  }
+
+  // The plan (default) refuses identically: the check runs before anything else.
+  const planned = assertEnvelope(await executeTool(tool, {}, fakeExec(root)))
+  assert.equal(planned.ok, false)
+  assert.equal(planned.error.code, 'workspace_is_repository')
+})
+
+test('a repository rooted here that this plugin cannot attribute is refused', async (t) => {
+  const root = await tempWorkspace(t)
+  const unowned = fakeGitContext({ repoRoot: root }) // no marker, no Tia-Op: create
+  const { tool, calls } = setup({ gitContext: unowned })
+
+  const outcome = assertEnvelope(await executeTool(tool, { dry_run: false }, fakeExec(root)))
+
+  assert.equal(outcome.ok, false)
+  assert.equal(outcome.error.code, 'workspace_is_repository')
+  assert.match(outcome.error.message, /cannot attribute/u)
+  assert.equal(outcome.error.details.marker, '.dsh/local/repo.json')
+  assert.deepEqual(operations(calls), [])
+  await assert.rejects(stat(join(root, '.gitattributes')))
+})
+
+test('a repository this plugin created is reused, and a refresh is allowed', async (t) => {
+  const root = await tempWorkspace(t)
+  const body =
+    'create: PEI_SinoARP — baseline import\n\nTia-Op: create\nTia-Checksum: OLD\nTia-State: old\nTia-Manifest: rebuilt\n'
+  const own = fakeGitContext({ repoRoot: root, commitBody: body })
+  const { tool } = setup({ gitContext: own })
+
+  const first = assertEnvelope(await executeTool(tool, { dry_run: false }, fakeExec(root)))
+  assert.equal(first.ok, true)
+  assert.equal(first.data.git.initialized, false, 'an existing repository is never re-initialized')
+  assert.equal(own.calls.filter((call) => call.operation === 'init').length, 0)
+  assert.equal(own.calls.filter((call) => call.operation === 'commit').length, 1)
+
+  // The second call is the refresh path: the marker the first one wrote (and the
+  // trailer in the history) keep the repository recognizable as this plugin's.
+  const second = assertEnvelope(await executeTool(tool, { dry_run: false }, fakeExec(root)))
+  assert.equal(second.ok, true)
+  assert.equal(second.data.git.initialized, false)
+  assert.equal(own.calls.filter((call) => call.operation === 'commit').length, 2)
+
+  // The trailer alone is enough: a fresh clone has no local marker, only history.
+  const markerless = fakeGitContext({ repoRoot: root, commitBody: body })
+  const third = assertEnvelope(await executeTool(setup({ gitContext: markerless }).tool, {}, fakeExec(root)))
+  assert.equal(third.ok, true, 'Tia-Op: create identifies the repository without the marker')
+  assert.equal(third.data.plan.git.initialize, false)
+})
+
+test('an uncompiled PLC refuses before the save-as and the export', async (t) => {
+  const root = await tempWorkspace(t)
+  const { tool, calls, git } = setup({
+    checksum: { ok: false, error: { code: 'checksum_unavailable', message: 'not compiled' }, summary: 'no checksum' },
+  })
+
+  const outcome = assertEnvelope(await executeTool(tool, { dry_run: false }, fakeExec(root)))
+
+  assert.equal(outcome.ok, false)
+  assert.equal(outcome.error.code, 'needs_compile')
+  assert.match(outcome.error.message, /Compile it in TIA Portal/u)
+  assert.match(outcome.error.message, /call create_engineering_project again/u)
+  assert.deepEqual(operations(calls), ['readTiaSession', 'readPlcChecksum'], 'nothing is saved or exported')
+  assert.equal(git.filter((call) => call.operation === 'commit').length, 0)
+  for (const file of ['.gitignore', '.gitattributes', join('source'), join('tia')]) {
+    await assert.rejects(stat(join(root, file)), `${file} must not be written`)
+  }
+
+  // `ok: true` with an empty checksum is the same state, not a success.
+  const empty = setup({ checksum: { ok: true, summary: 'read', data: { checksum: null } } })
+  const emptyOutcome = assertEnvelope(await executeTool(empty.tool, { dry_run: false }, fakeExec(root)))
+  assert.equal(emptyOutcome.error.code, 'needs_compile')
+
+  // A plugin without the method is a coded absence, not a compile failure.
+  const bare = fakeAccess().service
+  delete bare.readPlcChecksum
+  const noMethod = toolWithServices({
+    engineeringAccess: bare,
+    gitContext: fakeGitContext().service,
+  })
+  const unavailable = assertEnvelope(await executeTool(noMethod, { dry_run: false }, fakeExec(root)))
+  assert.equal(unavailable.error.code, 'tia_access_unavailable')
+  assert.match(unavailable.error.message, /readPlcChecksum/u)
+})
+
+test('the evidence pass adopts the exported tree, copies both documents and removes STAGE', async (t) => {
+  const root = await tempWorkspace(t)
+  const adopted = {
+    schemaVersion: 1,
+    hashAlgo: 'sha256',
+    device: 'S7-1500',
+    software: 'PLC_1',
+    plcChecksum: 'CHECKSUM-1',
+    stateId: 'state-adopt',
+    objects: {},
+    unexportable: [],
+    tombstones: [],
+  }
+  const { tool, calls, git } = setup({
+    scan: async (query) => {
+      await makeFile(join(query.stageDir, 'blocks', '010', 'FB1.xml'), '<xml>FB1</xml>')
+      await makeFile(join(query.stageDir, 'blocks', '010', 'FB2.xml'), '<xml>FB2</xml>')
+      const evidence = join(query.stageDir, '_evidence.json')
+      const manifest = join(query.stageDir, '_manifest.json')
+      await makeFile(evidence, `${JSON.stringify(adopted, null, 2)}\n`)
+      await makeFile(manifest, '{"files":{"blocks/010/FB1.xml":{}}}\n')
+      return {
+        ok: true,
+        summary: 'scan complete',
+        data: {
+          checksum: 'CHECKSUM-1',
+          unchanged: false,
+          manifestRebuilt: true,
+          counts: { blocks: 2, types: 1, tagTables: 1, changed: 0, added: 0, removed: 0, unexportable: 0 },
+          changed: [],
+          added: [],
+          removed: [],
+          unexportable: [],
+          stage: { root: query.stageDir, evidence, manifest, files: 2 },
+          stateId: 'state-adopt',
+          adopted: 2,
+        },
+      }
+    },
+  })
+
+  const outcome = assertEnvelope(await executeTool(tool, { dry_run: false }, fakeExec(root)))
+  assert.equal(outcome.ok, true)
+
+  const scan = calls.find((call) => call.operation === 'syncScan')
+  assert.equal(scan.query.adoptExisting, true, 'the controller must adopt, not export the tree twice')
+  assert.equal(scan.query.sourceRoot, join(root, 'source', 'S7-1500'), 'manifest entries are relative to the device directory')
+  assert.equal(scan.query.evidencePath, join(root, 'source', 'S7-1500', '_evidence.json'))
+  assert.equal(scan.query.manifestPath, join(root, 'source', 'S7-1500', '_manifest.json'))
+
+  const device = join(root, 'source', 'S7-1500')
+  assert.deepEqual(JSON.parse(await readFile(join(device, '_evidence.json'), 'utf8')), adopted)
+  assert.match(await readFile(join(device, '_manifest.json'), 'utf8'), /FB1\.xml/u)
+
+  assert.equal((await readdir(join(root, '.dsh', 'local', 'stage'))).length, 0, 'STAGE is scratch space')
+  assert.equal(outcome.data.evidence.length, 1)
+  assert.equal(outcome.data.evidence[0].exported, 2)
+  assert.equal(outcome.data.evidence[0].adopted, 2)
+  assert.equal(outcome.data.evidence[0].evidence, 'source/S7-1500/_evidence.json')
+  assert.match(outcome.details.join('\n'), /Evidence S7-1500\/PLC_1: 2 exported, 2 adopted/u)
+
+  const commit = git.find((call) => call.operation === 'commit')
+  assertBaselineTrailers(commit.message, { stateId: 'state-adopt' })
+})
+
+test('a scan that cannot produce a fresh ledger is a coded failure, not a silent commit', async (t) => {
+  // A PLC edited after the preflight: the scan itself reports no compiled checksum.
+  const uncompiled = await tempWorkspace(t)
+  const noChecksum = setup({
+    scan: { ok: false, error: { code: 'checksum_unavailable', message: 'not compiled' }, summary: 'no checksum' },
+  })
+  const compile = assertEnvelope(await executeTool(noChecksum.tool, { dry_run: false }, fakeExec(uncompiled)))
+  assert.equal(compile.error.code, 'needs_compile')
+  assert.match(compile.error.message, /will be adopted/u)
+  assert.equal(noChecksum.git.filter((call) => call.operation === 'commit').length, 0)
+  await assert.rejects(stat(join(uncompiled, 'source', 'S7-1500', '_evidence.json')))
+
+  // A success that wrote no STAGE has to be an error: there is no fresh ledger.
+  const noStage = await tempWorkspace(t)
+  const withoutStage = setup({
+    scan: { ok: true, summary: 'claimed success', data: { checksum: 'CHECKSUM-1', unchanged: true, stage: null } },
+  })
+  const missing = assertEnvelope(await executeTool(withoutStage.tool, { dry_run: false }, fakeExec(noStage)))
+  assert.equal(missing.error.code, 'sync_failed')
+  assert.match(missing.error.message, /no fresh evidence ledger/u)
+  assert.equal(withoutStage.git.filter((call) => call.operation === 'commit').length, 0)
+
+  // A scan that refuses for another reason is `sync_failed`, and STAGE is gone.
+  const refused = await tempWorkspace(t)
+  const failed = setup({
+    scan: { ok: false, error: { code: 'export_failed', message: 'boom' }, summary: 'scan refused' },
+  })
+  const refusedOutcome = assertEnvelope(await executeTool(failed.tool, { dry_run: false }, fakeExec(refused)))
+  assert.equal(refusedOutcome.error.code, 'sync_failed')
+  assert.match(refusedOutcome.error.message, /scan refused/u)
+  assert.equal((await readdir(join(refused, '.dsh', 'local', 'stage'))).length, 0)
+  assert.equal(failed.git.filter((call) => call.operation === 'commit').length, 0)
+
+  // A transport failure from the scan is data too, with the STAGE directory named.
+  const thrown = await tempWorkspace(t)
+  const broken = setup({ scanThrows: new Error('controller_timeout') })
+  const brokenOutcome = assertEnvelope(await executeTool(broken.tool, { dry_run: false }, fakeExec(thrown)))
+  assert.equal(brokenOutcome.error.code, 'sync_failed')
+  assert.match(brokenOutcome.error.message, /controller_timeout/u)
+  assert.equal((await readdir(join(thrown, '.dsh', 'local', 'stage'))).length, 0)
+})
+
+test('a git commit failure is surfaced as git_failed and never claims a baseline', async (t) => {
+  const root = await tempWorkspace(t)
+  const broken = fakeGitContext({ commitThrows: new Error('fatal: unable to write commit') })
+  const { tool, git } = setup({ gitContext: broken })
+
+  const outcome = assertEnvelope(await executeTool(tool, { dry_run: false }, fakeExec(root)))
+
+  assert.equal(outcome.ok, false)
+  assert.equal(outcome.error.code, 'git_failed')
+  assert.match(outcome.error.message, /unable to write commit/u)
+  assert.match(outcome.error.message, /already written/u)
+  assert.equal(outcome.error.details.sourceRoot, 'source')
+  assert.ok(
+    outcome.error.details.evidence.includes('source/S7-1500/_evidence.json'),
+    'the failure names the ledgers that ARE on disk',
+  )
+  assert.equal(outcome.data, null)
+  assert.match(outcome.summary, /^git_failed:/u)
+  assert.equal(git.filter((call) => call.operation === 'commit').length, 1)
+
+  // Everything the import wrote is still there, and the marker was written first,
+  // so a retry is allowed instead of being refused as a foreign repository.
+  assert.match(await readFile(join(root, 'source', '_dsh-engineering-context.json'), 'utf8'), /PEI_SinoARP/u)
+  assert.match(await readFile(join(root, 'source', 'S7-1500', '_evidence.json'), 'utf8'), /CHECKSUM-1/u)
+  assert.match(await readFile(join(root, '.gitattributes'), 'utf8'), /source\/\*\* -text/u)
+  assert.deepEqual(JSON.parse(await readFile(join(root, '.dsh', 'local', 'repo.json'), 'utf8')), {
+    schemaVersion: 1,
+    createdBy: 'engineering-context',
+  })
+
+  const retryGit = fakeGitContext({ repoRoot: root, commitBody: null })
+  const retry = assertEnvelope(await executeTool(setup({ gitContext: retryGit }).tool, { dry_run: false }, fakeExec(root)))
+  assert.equal(retry.ok, true, 'the marker makes the retry possible')
+  assert.equal(retry.data.git.initialized, false)
+})
+
+test('git init itself failing is git_failed, with the paths that were already written', async (t) => {
+  const root = await tempWorkspace(t)
+  const broken = fakeGitContext({ initThrows: new Error('fatal: cannot create repository') })
+  const { tool } = setup({ gitContext: broken })
+
+  const outcome = assertEnvelope(await executeTool(tool, { dry_run: false }, fakeExec(root)))
+
+  assert.equal(outcome.ok, false)
+  assert.equal(outcome.error.code, 'git_failed')
+  assert.match(outcome.error.message, /cannot create repository/u)
+  assert.equal(outcome.error.details.initialized, true)
+  assert.ok(outcome.error.details.evidence.length > 0)
+  // The marker is written before init, so even this failure is retryable.
+  assert.deepEqual(JSON.parse(await readFile(join(root, '.dsh', 'local', 'repo.json'), 'utf8')), {
+    schemaVersion: 1,
+    createdBy: 'engineering-context',
+  })
+})
+

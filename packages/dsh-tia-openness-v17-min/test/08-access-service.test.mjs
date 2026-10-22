@@ -319,6 +319,7 @@ test('syncScan sends the three paths and normalizes the evidence summary', async
       files: 1,
     },
     manifestRebuilt: true,
+    adopted: 2,
     stateId: 'sha256:abcdef',
   }
   const { service, calls } = serviceWith((operation, params) => frame(operation, params, { data: payload }))
@@ -337,6 +338,9 @@ test('syncScan sends the three paths and normalizes the evidence summary', async
     evidence_path: 'C:\\source\\PLC_1\\_evidence.json',
     manifest_path: 'C:\\source\\PLC_1\\_manifest.json',
     export_options: 'with_defaults',
+    // Always on the wire: the first-run mode must be an explicit false, not an
+    // omission the controller has to interpret.
+    adopt_existing: false,
   })
   assert.equal(result.ok, true)
   assert.equal(result.checksum, 'CHK-1')
@@ -362,7 +366,39 @@ test('syncScan sends the three paths and normalizes the evidence summary', async
     files: 1,
   })
   assert.equal(result.manifestRebuilt, true)
+  assert.equal(result.adopted, 2)
   assert.equal(result.stateId, 'sha256:abcdef')
+})
+
+test('syncScan forwards adoptExisting and normalizes the adopted count', async () => {
+  const { service, calls } = serviceWith((operation, params) =>
+    frame(operation, params, {
+      data: { unchanged: false, adopted: 1376, stage: { root: 'C:\\stage', files: 0 } },
+    }),
+  )
+
+  const result = await service.syncScan({
+    sourceRoot: 'C:\\source\\PLC_1',
+    stageDir: 'C:\\stage',
+    evidencePath: 'C:\\source\\PLC_1\\_evidence.json',
+    manifestPath: 'C:\\source\\PLC_1\\_manifest.json',
+    adoptExisting: true,
+  })
+
+  assert.equal(calls[0].operation, 'SyncScan')
+  assert.equal(calls[0].params.adopt_existing, true, 'the bootstrap mode reaches the controller as adopt_existing')
+  assert.equal(result.adopted, 1376)
+  // Adopted files already exist in the source tree: they are not stage output.
+  assert.equal(result.stage.files, 0)
+
+  const omitted = serviceWith((operation, params) => frame(operation, params, { data: { unchanged: false } }))
+  const zero = await omitted.service.syncScan({
+    sourceRoot: 'C:\\source',
+    stageDir: 'C:\\stage',
+    evidencePath: 'C:\\source\\_evidence.json',
+  })
+  assert.equal(omitted.calls[0].params.adopt_existing, false, 'omitting the flag must not enable it')
+  assert.equal(zero.adopted, 0, 'a controller that does not report adopted normalizes to zero')
 })
 
 test('syncScan defaults to zero counts on an empty envelope and rejects missing paths', async () => {
@@ -377,6 +413,7 @@ test('syncScan defaults to zero counts on an empty envelope and rejects missing 
   })
   assert.equal(result.unchanged, true)
   assert.equal(result.stage, null)
+  assert.equal(result.adopted, 0, 'the unchanged fast path never adopts')
   assert.deepEqual(result.counts, {
     blocks: 0,
     types: 0,

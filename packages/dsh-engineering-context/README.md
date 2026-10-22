@@ -36,7 +36,7 @@ DeepSeek Harness 插件（**工程上下文插件**）：把一个 **TIA Portal 
 
 | 工具 | 干什么 | 写？ |
 |---|---|---|
-| `create_engineering_project` | 把 TIA **当前打开**的工程另存进 `<workspace>/tia/<workspace 名>/`，把源文件树重建到 `<workspace>/source/<device>/`，最后逐设备重建知识图谱库；默认 `dry_run: true`（只给计划）。工程已经在 workspace 里时跳过另存，只刷新源文件树与图谱 | 是（TIA 写工程、接口插件写源文件、图谱插件写 `.db`、本插件维护 `.gitignore`） |
+| `create_engineering_project` | 把 TIA **当前打开**的工程另存进 `<workspace>/tia/<workspace 名>/`，把源文件树重建到 `<workspace>/source/<device>/`，逐设备写 `_evidence.json` + `_manifest.json`（`adoptExisting`：校验已有文件并收编，不再导出第二遍），逐设备重建知识图谱库，最后写入基线提交；默认 `dry_run: true`（只给计划）。工程已经在 workspace 里时跳过另存，只刷新源文件树与图谱 | 是（TIA 写工程、接口插件写源文件、图谱插件写 `.db`、本插件维护 `.gitignore`/`.gitattributes`、必要时的 `git init` 与基线提交） |
 | `project_status` | 只读报告：哪个 PLC、账本/清单在不在、git 看到什么、锁有没有被占，并给出 `nextAction`（`open_project` / `compile` / `sync` / `commit` / `git_init` / `clean`）。`verify: true` 才读 checksum（约 3 s），否则明确标 **NOT CHECKED**；`data.wouldSync` / `data.syncReason` 只在真的读到 checksum 时下结论（`no-evidence` / `no-manifest` / `checksum-differs` / `in-sync`，读不到时 `null` / `unavailable`，未验证时 `null` / `not-checked`），成功读到的 checksum 同时写入 30 s 进程内缓存 | 否 |
 | `project_sync` | 让 SOURCE 与 TIA 对齐：checksum 快路径 → 需要时慢路径扫描 → 只把差异提升进 SOURCE → 写账本/清单 → 提交该 device 目录。默认只读 checksum 并报告 `wouldSync`；计划命中上一个只读调用写入的缓存时不再读 TIA，并标 `checksumCached: true`；`dry_run: false` 永不用缓存做决定、总是重新扫描。写盘必须 `dry_run: false` | 是（SOURCE + `.dsh/local/stage` + 一次 git commit） |
 
@@ -50,9 +50,13 @@ DeepSeek Harness 插件（**工程上下文插件**）：把一个 **TIA Portal 
 4. 清单 `_manifest.json` 是**派生**：只描述磁盘上的文件（bytes / sha256 / 类型元数据），
    **绝不拿它的 sha256 当变更键**（TIA 导出的 XML 带 `<Created>`，重新导出就会变）。
 
-**提交**：路径限定 `source/<device>`，提交信息带 `Tia-Op: sync` / `Tia-Checksum` / `Tia-State` /
-`Tia-Manifest: rebuilt|updated` 四个 trailer。插件**从不 `git init`**：仓库不存在时 `repository_not_found`
-并让用户自己建；也从不 `push` / `reset` / `--force`。
+**提交**：`project_sync` 的提交路径限定 `source/<device>`，提交信息带 `Tia-Op: sync` / `Tia-Checksum` /
+`Tia-State` / `Tia-Manifest: rebuilt|updated` 四个 trailer。`project_sync` / `project_status` **从不
+`git init`**：仓库不存在时 `repository_not_found` 并让用户自己建。`create_engineering_project` 是唯一的
+例外：workspace 没有仓库时它初始化一个（`git init -b main`）并提交一次基线（`Tia-Op: create`，
+路径恰好 `.gitignore` / `.gitattributes` / `source`）；但 workspace 位于别人的仓库里、或根目录的仓库
+不是本插件建的（无 `Tia-Op: create` trailer 且无 `.dsh/local/repo.json` 标记）时，它以
+`workspace_is_repository` 拒绝。任何工具都从不 `push` / `reset` / `--force`。
 
 **dry-run 规则**：两个写工具都默认只给计划。`create_engineering_project` 的另存是本插件唯一难以撤销的
 动作；`project_sync` 会写文件并提交历史。要真做必须显式 `dry_run: false`。

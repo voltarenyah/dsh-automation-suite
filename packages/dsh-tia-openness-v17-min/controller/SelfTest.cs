@@ -37,6 +37,7 @@ namespace TiaOpennessV17Min.Controller
                 Check(checks, ref ok, "evidence_roundtrip", delegate { EvidenceRoundTrip(workDirectory); });
                 Check(checks, ref ok, "evidence_diff", EvidenceDiff);
                 Check(checks, ref ok, "evidence_xml_normalization", EvidenceXmlNormalization);
+                Check(checks, ref ok, "manifest_adoption", delegate { ManifestAdoptionCheck(workDirectory); });
                 Check(checks, ref ok, "result_frame_shape", ResultFrameShape);
                 Check(checks, ref ok, "simatic_ml_header", delegate { SimaticMlHeaderCheck(workDirectory); });
                 Check(checks, ref ok, "simatic_ml_rejects_garbage", delegate { SimaticMlRejectsGarbage(workDirectory); });
@@ -353,6 +354,146 @@ namespace TiaOpennessV17Min.Controller
                 !string.Equals(EvidenceDocument.NormalizeXmlForHash(first), EvidenceDocument.NormalizeXmlForHash(changed),
                     StringComparison.Ordinal),
                 "a real content change still changes the normalized text");
+        }
+
+        /// <summary>One manifest row, as the writer produces it (only the fields adoption reads).</summary>
+        private static JsonObject ManifestRow(string category, string group, string name, string file, bool verified, string sha256)
+        {
+            JsonObject row = new JsonObject();
+            row.Add("category", category);
+            if (!string.IsNullOrEmpty(group)) row.Add("group", group);
+            row.Add("name", name);
+            row.Add("file", file);
+            row.Add("verified", verified);
+            if (sha256 != null) row.Add("sha256", sha256);
+            return row;
+        }
+
+        /// <summary>
+        /// The `adopt_existing` decision table: a manifest row may replace an export
+        /// only when it is verified, carries a digest, names a file inside the source
+        /// root, and that file still hashes to the recorded digest. A tag table also
+        /// has to be readable, because its ledger evidence is a content hash.
+        /// </summary>
+        private static void ManifestAdoptionCheck(string workDirectory)
+        {
+            string root = Path.Combine(workDirectory, "adopt-source");
+            Directory.CreateDirectory(Path.Combine(root, "blocks", "010_Cell"));
+            Directory.CreateDirectory(Path.Combine(root, "tag_tables"));
+            string blockFile = Path.Combine(root, "blocks", "010_Cell", "FB_Motor.xml");
+            File.WriteAllText(blockFile,
+                "<?xml version=\"1.0\" encoding=\"utf-8\"?>\r\n"
+                + "<Document>\r\n  <SW.Blocks.FB ID=\"0\">\r\n    <AttributeList>\r\n      <Name>FB_Motor</Name>\r\n"
+                + "    </AttributeList>\r\n  </SW.Blocks.FB>\r\n</Document>\r\n", new UTF8Encoding(false));
+            string blockSha = Hashing.Sha256OfFile(blockFile);
+
+            string tableFile = Path.Combine(root, "tag_tables", "Tags_1.xml");
+            string tableFirst = "<?xml version=\"1.0\" encoding=\"utf-8\"?>\r\n"
+                + "<DocumentInfo><Created>2026-10-20T10:00:00Z</Created></DocumentInfo>\r\n"
+                + "<SW.Tags.PlcTagTable><AttributeList><Name>Tags_1</Name></AttributeList></SW.Tags.PlcTagTable>\r\n";
+            File.WriteAllText(tableFile, tableFirst, new UTF8Encoding(false));
+            string tableSha = Hashing.Sha256OfFile(tableFile);
+
+            // --- the manifest key and the file normalization
+            string manifestPath = Path.Combine(workDirectory, "adopt-manifest.json");
+            JsonObject manifest = new JsonObject();
+            manifest.Add("outputDir", root);
+            manifest.Add("blocks", new List<JsonObject>
+            {
+                ManifestRow(EvidenceDocument.CategoryBlocks, "010_Cell", "FB_Motor", Path.Combine(root, "blocks", "010_Cell", "FB_Motor.xml"), true, blockSha),
+                ManifestRow(EvidenceDocument.CategoryTagTables, null, "Tags_1", "tag_tables/Tags_1.xml", true, tableSha),
+            });
+            File.WriteAllText(manifestPath, JsonWriter.Write(manifest, true), new UTF8Encoding(false));
+
+            OpennessOperations.ManifestIndex index = OpennessOperations.ManifestIndex.Load(manifestPath);
+            Require(index.IsUsable, "a manifest with rows is usable");
+            string blockKey = EvidenceDocument.KeyOf(EvidenceDocument.CategoryBlocks, "010_Cell", "FB_Motor");
+            RequireEqual("blocks|010_Cell|FB_Motor", blockKey, "the ledger key shape");
+            Require(index.Entries.ContainsKey(blockKey), "a manifest row is keyed like the ledger: " + blockKey);
+            string tableKey = EvidenceDocument.KeyOf(EvidenceDocument.CategoryTagTables, null, "Tags_1");
+            Require(index.Entries.ContainsKey(tableKey), "the tag table row is keyed like its ledger entry");
+            RequireEqual("blocks/010_Cell/FB_Motor.xml",
+                JsonObject.ReadString(index.Entries[blockKey], "file", null),
+                "a rooted manifest file is normalized against outputDir");
+            RequireEqual("tag_tables/Tags_1.xml",
+                JsonObject.ReadString(index.Entries[tableKey], "file", null),
+                "a relative manifest file is kept as written");
+
+            // --- the positive case
+            string relative;
+            string contentHash;
+            string reason;
+            JsonObject row = index.Entries[blockKey];
+            Require(ManifestAdoption.TryAdopt(root, row, false, out relative, out contentHash, out reason),
+                "a verified, matching row is adoptable" + (reason == null ? string.Empty : ": " + reason));
+            RequireEqual("blocks/010_Cell/FB_Motor.xml", relative, "the adopted path is relative and slash-separated");
+            Require(contentHash == null, "a block carries no content hash");
+
+            // A digest spelled in upper case is the same digest.
+            JsonObject upper = ManifestRow(EvidenceDocument.CategoryBlocks, "010_Cell", "FB_Motor",
+                "blocks/010_Cell/FB_Motor.xml", true, blockSha.ToUpperInvariant());
+            Require(ManifestAdoption.TryAdopt(root, upper, false, out relative, out contentHash, out reason),
+                "the digest is compared case-insensitively");
+
+            // --- every condition is mandatory
+            JsonObject unverified = ManifestRow(EvidenceDocument.CategoryBlocks, "010_Cell", "FB_Motor",
+                "blocks/010_Cell/FB_Motor.xml", false, blockSha);
+            Require(!ManifestAdoption.TryAdopt(root, unverified, false, out relative, out contentHash, out reason),
+                "an unverified row is exported again");
+
+            JsonObject noSha = ManifestRow(EvidenceDocument.CategoryBlocks, "010_Cell", "FB_Motor",
+                "blocks/010_Cell/FB_Motor.xml", true, null);
+            Require(!ManifestAdoption.TryAdopt(root, noSha, false, out relative, out contentHash, out reason),
+                "a row without sha256 is exported again");
+
+            string changed = Hashing.Sha256OfText("something else");
+            JsonObject wrongSha = ManifestRow(EvidenceDocument.CategoryBlocks, "010_Cell", "FB_Motor",
+                "blocks/010_Cell/FB_Motor.xml", true, changed);
+            Require(!ManifestAdoption.TryAdopt(root, wrongSha, false, out relative, out contentHash, out reason),
+                "a file that no longer matches the digest is exported again");
+            Require(!string.IsNullOrEmpty(reason), "a digest mismatch is reported, not silent");
+
+            JsonObject missingFile = ManifestRow(EvidenceDocument.CategoryBlocks, null, "FB_Gone",
+                "blocks/FB_Gone.xml", true, blockSha);
+            Require(!ManifestAdoption.TryAdopt(root, missingFile, false, out relative, out contentHash, out reason),
+                "a row whose file is gone is exported again");
+
+            JsonObject noFile = ManifestRow(EvidenceDocument.CategoryBlocks, null, "FB_Motor", string.Empty, true, blockSha);
+            Require(!ManifestAdoption.TryAdopt(root, noFile, false, out relative, out contentHash, out reason),
+                "a row without a file is exported again");
+
+            // A row that walks out of the source root is never trusted, even when the
+            // outside file exists and its digest matches.
+            string outside = Path.Combine(workDirectory, "outside.xml");
+            File.WriteAllText(outside, tableFirst, new UTF8Encoding(false));
+            JsonObject escape = ManifestRow(EvidenceDocument.CategoryBlocks, null, "FB_Outside",
+                "../outside.xml", true, Hashing.Sha256OfFile(outside));
+            Require(!ManifestAdoption.TryAdopt(root, escape, false, out relative, out contentHash, out reason),
+                "a row that escapes the source root is refused");
+            Require(!string.IsNullOrEmpty(reason), "an escaping row is reported, not silent");
+
+            JsonObject rooted = ManifestRow(EvidenceDocument.CategoryTagTables, null, "Tags_1",
+                tableFile, true, tableSha);
+            Require(!ManifestAdoption.TryAdopt(root, rooted, true, out relative, out contentHash, out reason),
+                "a rooted manifest file is refused: rows are relative by contract");
+
+            // --- a tag table adopts with the normalized content hash a scan would compute
+            Require(ManifestAdoption.TryAdopt(root, index.Entries[tableKey], true, out relative, out contentHash, out reason),
+                "a readable tag table is adoptable" + (reason == null ? string.Empty : ": " + reason));
+            RequireEqual("tag_tables/Tags_1.xml", relative, "the adopted tag table path");
+            RequireEqual("sha256:" + Hashing.Sha256OfText(EvidenceDocument.NormalizeXmlForHash(tableFirst)),
+                contentHash,
+                "the adopted content hash is the normalized XML hash the ledger records");
+
+            string tableSecond = tableFirst.Replace("2026-10-20T10:00:00Z", "2026-10-22T18:30:00Z");
+            File.WriteAllText(tableFile, tableSecond, new UTF8Encoding(false));
+            JsonObject restamped = ManifestRow(EvidenceDocument.CategoryTagTables, null, "Tags_1",
+                "tag_tables/Tags_1.xml", true, Hashing.Sha256OfFile(tableFile));
+            Require(ManifestAdoption.TryAdopt(root, restamped, true, out relative, out contentHash, out reason),
+                "a re-stamped tag table is adoptable");
+            RequireEqual("sha256:" + Hashing.Sha256OfText(EvidenceDocument.NormalizeXmlForHash(tableFirst)),
+                contentHash,
+                "a new export stamp does not change the adopted content hash");
         }
 
         private static void ResultFrameShape()

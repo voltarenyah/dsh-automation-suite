@@ -43,8 +43,16 @@ export type EngineeringErrorCode =
   | 'checksum_unavailable'
   /** Another process holds the workspace lock. */
   | 'lock_held'
-  /** The workspace is not a git repository (this plugin never creates one). */
+  /** The workspace is not a git repository (the sync tool never creates one). */
   | 'repository_not_found'
+  /** No `gitContext` service in this composition, so the repository state cannot be established. */
+  | 'git_access_unavailable'
+  /**
+   * The workspace is inside a git repository this plugin may not initialize or
+   * commit into: either it is not the repository root, or it is a repository this
+   * plugin did not create.
+   */
+  | 'workspace_is_repository'
   /** A git command failed for a reason other than "no repository". */
   | 'git_failed'
   /** The evidence ledger is present but cannot be read. */

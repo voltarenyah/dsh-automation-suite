@@ -191,15 +191,22 @@ the changed objects (plus every tag table, which has no fingerprint) into
 | `stage_dir` | string | — | empty/per-operation directory that receives the changed XML and the next ledger |
 | `evidence_path` | string | — | previous ledger, normally `<source_root>/<device>/_evidence.json`; missing means a full scan |
 | `manifest_path` | string | — | previous inventory, normally `<source_root>/<device>/_manifest.json`; missing or unreadable means it is rebuilt from the same export run |
+| `adopt_existing` | bool | `false` | bootstrap the ledger from the existing tree: with **no** previous ledger and a usable manifest, a manifest row is adopted instead of exported when it names a relative `file` inside `source_root`, has `verified: true` and a `sha256` that still matches the file (tag tables also have to be readable, to hash their normalized XML). Anything unproven is exported. No-op with a previous ledger or an unusable manifest |
 | `device_name` / `software_name` | string | auto | PLC selection |
 | `export_options` | enum | `with_defaults` | `none` \| `with_defaults` \| `with_read_only` |
 
 `data`: `device`, `software`, `checksum`, `unchanged`, `counts{blocks,types,
 tagTables,changed,added,removed,unexportable}`, `changed[]`, `added[]`,
 `removed[]`, `unexportable[]{key,category,name,group,reason}`, `stage{root,
-evidence,manifest,files}`, `manifestRebuilt`, `stateId`. When the checksum matches
-the ledger the operation returns `unchanged: true` with `stage: null` and
-enumerates nothing.
+evidence,manifest,files}`, `manifestRebuilt`, `adopted`, `stateId`. When the
+checksum matches the ledger the operation returns `unchanged: true` with
+`stage: null` and enumerates nothing.
+
+`adopted` counts the objects taken from the source tree instead of exported; such
+files already exist, so they are not part of `stage.files` (which stays the
+number of files this scan wrote). A first run with `adopt_existing` still reports
+adopted objects under `added`, because there is no previous ledger to compare
+against — `adopted` is the field that separates them from real new exports.
 
 The manifest is the inventory the UI and the graph engine read: unchanged objects
 are carried forward from the previous manifest, only a tag table whose normalized

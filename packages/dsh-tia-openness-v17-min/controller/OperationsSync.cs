@@ -71,6 +71,15 @@ namespace TiaOpennessV17Min.Controller
         /// composition itself (so the 1000-item listing cap does not apply), writes
         /// only the changed objects, hashes every tag table, and writes the next
         /// ledger into STAGE.
+        ///
+        /// <c>adopt_existing</c> is the bootstrap mode: when there is no previous
+        /// ledger but there is a usable manifest and the source tree it describes,
+        /// the files that are still byte-identical to the manifest are adopted as
+        /// evidence instead of being exported again. That lets a workspace that
+        /// already owns a source tree build its ledger without re-exporting 1376
+        /// files. It only ever adopts; a row whose file is missing, whose SHA-256
+        /// does not match, or whose path escapes <c>source_root</c> is exported as
+        /// usual. With a previous ledger, or an unusable manifest, it is a no-op.
         /// </summary>
         private JsonObject SyncScan(JsonArgs p, DiagnosticLog log, ChangeLog changes, IProgressSink progress)
         {
@@ -81,6 +90,7 @@ namespace TiaOpennessV17Min.Controller
             if (!string.IsNullOrWhiteSpace(manifestPath)) manifestPath = Path.GetFullPath(manifestPath.Trim().Trim('"'));
             string exportOptionName = p.Enum("export_options", ExportOptionNames, "with_defaults");
             ExportOptions exportOptions = ParseExportOptions(exportOptionName);
+            bool adoptExisting = p.Bool("adopt_existing", false);
 
             PlcSoftwareRef software = _host.FindPlcSoftware(p.String("device_name", null), p.String("software_name", null));
             string checksum = OpennessHost.ChecksumOf(software.Software);
@@ -145,6 +155,21 @@ namespace TiaOpennessV17Min.Controller
                 current[entry.Key] = entry;
             }
 
+            // Bootstrap mode: a source tree and its manifest already exist, so the
+            // files that still hash to what the manifest recorded ARE the evidence
+            // for those objects. Without a previous ledger every object looks
+            // "added" and would be exported; adopting the verified rows keeps that
+            // first scan cheap and leaves the tree untouched.
+            //
+            // Two guards make this a no-op rather than a guess: a previous ledger
+            // means the normal diff decides, and an unusable manifest is a view that
+            // has to be rebuilt by a full export.
+            HashSet<string> adoptedKeys = new HashSet<string>(StringComparer.Ordinal);
+            if (adoptExisting && previous == null && previousManifest.IsUsable)
+            {
+                AdoptExistingObjects(sourceRoot, current, previousManifest, adoptedKeys, log);
+            }
+
             // An object that was unexportable and has not changed stays unexportable:
             // re-exporting a ProDiag / Safety block would fail on every scan. It is
             // retried as soon as its fingerprint changes (or, for a tag table, on
@@ -177,6 +202,10 @@ namespace TiaOpennessV17Min.Controller
             {
                 foreach (string key in current.Keys) AddIfNotTagTable(key, current, exportKeys);
             }
+            // An adopted object is already on disk and verified against the
+            // manifest: exporting it would rewrite a byte-identical file (and, for
+            // tag tables, churn DocumentInfo in the next commit).
+            foreach (string key in adoptedKeys) exportKeys.Remove(key);
 
             List<ExportPlanItem> exportPlan = new List<ExportPlanItem>();
             foreach (ExportPlanItem item in blockPlan)
@@ -187,7 +216,13 @@ namespace TiaOpennessV17Min.Controller
             {
                 if (exportKeys.Contains(KeyOf(item))) exportPlan.Add(item);
             }
-            exportPlan.AddRange(tablePlan);
+            foreach (ExportPlanItem item in tablePlan)
+            {
+                // Tag tables are always exported unless they were adopted: their
+                // normalized content hash is the only evidence they have.
+                if (adoptedKeys.Contains(KeyOf(item))) continue;
+                exportPlan.Add(item);
+            }
 
             ExportRun run = RunExportPlan(exportPlan, exportOptions, true, log, changes, progress);
 
@@ -220,6 +255,9 @@ namespace TiaOpennessV17Min.Controller
             foreach (ExportPlanItem item in tablePlan)
             {
                 string key = KeyOf(item);
+                // An adopted table has no file in STAGE on purpose: its path and
+                // content hash already point at the verified source file.
+                if (adoptedKeys.Contains(key)) continue;
                 EvidenceObject entry;
                 if (!current.TryGetValue(key, out entry)) continue;
                 if (entry.State == EvidenceDocument.StateUnexportable)
@@ -234,7 +272,9 @@ namespace TiaOpennessV17Min.Controller
                     continue;
                 }
                 string text = File.ReadAllText(item.File);
-                entry.ContentHash = "sha256:" + Hashing.Sha256OfText(EvidenceDocument.NormalizeXmlForHash(text));
+                // One definition, shared with the adoption path: an adopted table must
+                // produce exactly the hash a later export would.
+                entry.ContentHash = ManifestAdoption.TagTableContentHash(text);
                 entry.State = EvidenceDocument.StatePresent;
 
                 EvidenceObject before = null;
@@ -325,10 +365,61 @@ namespace TiaOpennessV17Min.Controller
             data.Add("manifestRebuilt", rebuildManifest);
             data.Add("sourceRoot", sourceRoot);
             data.Add("stateId", next.StateId);
+            // How many objects were taken from the source tree instead of exported.
+            // `stage.files` stays the number of files this scan actually wrote.
+            data.Add("adopted", adoptedKeys.Count);
 
             log.Info("SyncScan: " + delta.Changed.Count + " changed, " + delta.Added.Count + " added, "
-                + delta.Removed.Count + " removed; " + run.Exported + " file(s) written into " + stageDir + ".");
+                + delta.Removed.Count + " removed; " + run.Exported + " file(s) written into " + stageDir + "."
+                + (adoptedKeys.Count > 0 ? " " + adoptedKeys.Count + " object(s) adopted from the source tree." : ""));
             return data;
+        }
+
+        /// <summary>
+        /// Take every verified, byte-identical source file as the evidence for its
+        /// object instead of exporting it again.
+        ///
+        /// Only the manifest rows that describe an object the current listing also
+        /// holds are considered. The decision itself lives in
+        /// <see cref="ManifestAdoption"/>, where the self test can exercise it
+        /// without a TIA project.
+        /// </summary>
+        private static void AdoptExistingObjects(
+            string sourceRoot, Dictionary<string, EvidenceObject> current,
+            ManifestIndex manifest, HashSet<string> adoptedKeys, DiagnosticLog log)
+        {
+            List<string> keys = new List<string>(current.Keys);
+            keys.Sort(StringComparer.Ordinal);
+            foreach (string key in keys)
+            {
+                EvidenceObject entry = current[key];
+                if (entry.State != EvidenceDocument.StatePresent) continue;
+                JsonObject row;
+                if (!manifest.Entries.TryGetValue(key, out row)) continue;
+
+                bool isTagTable = string.Equals(entry.Category, EvidenceDocument.CategoryTagTables, StringComparison.Ordinal);
+                string relativePath;
+                string contentHash;
+                string reason;
+                if (!ManifestAdoption.TryAdopt(sourceRoot, row, isTagTable, out relativePath, out contentHash, out reason))
+                {
+                    // A plain "the row cannot prove this object" is normal and stays
+                    // quiet; a row that points outside the tree or disagrees with the
+                    // file is worth a warning, because the manifest is then lying.
+                    if (!string.IsNullOrEmpty(reason)) log.Warning(reason);
+                    continue;
+                }
+
+                entry.Path = relativePath;
+                if (!string.IsNullOrEmpty(contentHash)) entry.ContentHash = contentHash;
+                adoptedKeys.Add(key);
+            }
+
+            if (adoptedKeys.Count > 0)
+            {
+                log.Info(adoptedKeys.Count + " object(s) matched their manifest row byte for byte and were adopted "
+                    + "from the source tree instead of being exported.", "adopt_existing");
+            }
         }
 
         /// <summary>
@@ -521,8 +612,11 @@ namespace TiaOpennessV17Min.Controller
         /// <summary>
         /// The previous manifest, keyed like the ledger. A missing or unreadable
         /// manifest is not an error: it is a view that has to be rebuilt.
+        ///
+        /// Internal rather than private so the self test can verify the key shape and
+        /// the file normalization without a TIA project.
         /// </summary>
-        private sealed class ManifestIndex
+        internal sealed class ManifestIndex
         {
             public bool IsUsable;
             public readonly Dictionary<string, JsonObject> Entries =
@@ -620,6 +714,8 @@ namespace TiaOpennessV17Min.Controller
             data.Add("unexportable", new List<JsonObject>());
             data.Add("stage", null);
             data.Add("stateId", previous.StateId);
+            // The fast path requires a previous ledger, so nothing can be adopted here.
+            data.Add("adopted", 0);
             return data;
         }
 
@@ -817,6 +913,146 @@ namespace TiaOpennessV17Min.Controller
                 if (!string.Equals(left, right, StringComparison.Ordinal)) faces.Add(id);
             }
             return faces;
+        }
+    }
+
+    /// <summary>
+    /// The decision "can this source file stand in for an export?".
+    ///
+    /// It is a separate type so <see cref="SelfTest"/> can exercise the whole
+    /// condition set — relative path, containment, <c>verified</c>, SHA-256 match
+    /// and the tag-table content hash — without a TIA project. Every condition is
+    /// mandatory: a manifest row is a claim, and an unverified or unhashed claim
+    /// must fall back to a real export rather than become evidence.
+    /// </summary>
+    internal static class ManifestAdoption
+    {
+        /// <summary>Read one manifest row's `sha256`, tolerating a `sha256:` prefix.</summary>
+        public static string Sha256Of(JsonObject row)
+        {
+            string value = JsonObject.ReadString(row, "sha256", null);
+            if (value == null) return null;
+            value = value.Trim();
+            if (value.StartsWith("sha256:", StringComparison.OrdinalIgnoreCase)) value = value.Substring(7).Trim();
+            return value.Length == 0 ? null : value;
+        }
+
+        /// <summary>
+        /// The content hash the ledger records for a tag table: the normalized XML,
+        /// not the raw bytes. It must match what a later scan computes from a fresh
+        /// export, or the table would look changed forever.
+        /// </summary>
+        public static string TagTableContentHash(string text)
+        {
+            return "sha256:" + Hashing.Sha256OfText(EvidenceDocument.NormalizeXmlForHash(text));
+        }
+
+        /// <summary>
+        /// Resolve a manifest `file` against the source root, refusing anything that
+        /// escapes it. A rooted path is refused too: the manifest is defined to
+        /// carry paths relative to its own directory.
+        /// </summary>
+        public static bool TryResolveFile(string sourceRoot, string file, out string fullPath, out string reason)
+        {
+            fullPath = null;
+            reason = null;
+            if (string.IsNullOrWhiteSpace(file))
+            {
+                reason = "the manifest row has no file";
+                return false;
+            }
+            if (Path.IsPathRooted(file))
+            {
+                reason = "the manifest row names an absolute path; it must be relative to the source root";
+                return false;
+            }
+            string root = Path.GetFullPath(sourceRoot)
+                .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+            string candidate;
+            try
+            {
+                candidate = Path.GetFullPath(Path.Combine(root, file.Replace('/', Path.DirectorySeparatorChar)));
+            }
+            catch (Exception)
+            {
+                reason = "the manifest row names a path that cannot be resolved";
+                return false;
+            }
+            string prefix = root + Path.DirectorySeparatorChar;
+            if (!candidate.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+            {
+                reason = "the manifest row names a path outside the source root: " + Text.Quote(file);
+                return false;
+            }
+            fullPath = candidate;
+            return true;
+        }
+
+        /// <summary>
+        /// Decide whether one manifest row may be adopted, and produce the path and
+        /// (for a tag table) the content hash the evidence entry needs.
+        /// </summary>
+        /// <param name="sourceRoot">The tree the manifest describes; nothing outside it is trusted.</param>
+        /// <param name="row">The manifest row of the same object key.</param>
+        /// <param name="isTagTable">True for a tag table, whose evidence is a content hash.</param>
+        /// <param name="relativePath">The ledger path to record, with '/' separators.</param>
+        /// <param name="contentHash">The tag-table content hash, or null for a block / type.</param>
+        /// <param name="reason">Null when the row is simply unproven; set when it is unsound.</param>
+        public static bool TryAdopt(string sourceRoot, JsonObject row, bool isTagTable,
+            out string relativePath, out string contentHash, out string reason)
+        {
+            relativePath = null;
+            contentHash = null;
+            reason = null;
+            if (row == null) return false;
+
+            string file = JsonObject.ReadString(row, "file", null);
+            if (string.IsNullOrWhiteSpace(file)) return false;
+            if (!JsonObject.ReadBool(row, "verified", false)) return false;
+            string expected = Sha256Of(row);
+            if (expected == null) return false;
+
+            string fullPath;
+            if (!TryResolveFile(sourceRoot, file, out fullPath, out reason)) return false;
+            if (!File.Exists(fullPath)) return false;
+
+            string actual;
+            try
+            {
+                actual = Hashing.Sha256OfFile(fullPath);
+            }
+            catch (Exception)
+            {
+                return false;
+            }
+            if (!string.Equals(actual, expected, StringComparison.OrdinalIgnoreCase))
+            {
+                reason = "the file " + Text.Quote(file) + " no longer matches the manifest SHA-256; it will be exported again";
+                return false;
+            }
+
+            if (isTagTable)
+            {
+                string text;
+                try
+                {
+                    text = File.ReadAllText(fullPath);
+                }
+                catch (Exception)
+                {
+                    // Unreadable is not fatal: the object simply stays queued for export.
+                    return false;
+                }
+                contentHash = TagTableContentHash(text);
+            }
+
+            // Derive the ledger path from the resolved file, so a row written as
+            // "./blocks/FB.xml" and one written as "blocks/FB.xml" record the same
+            // path. TryResolveFile already proved the file is inside the root.
+            string root = Path.GetFullPath(sourceRoot)
+                .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar) + Path.DirectorySeparatorChar;
+            relativePath = fullPath.Substring(root.Length).Replace('\\', '/');
+            return true;
         }
     }
 }
