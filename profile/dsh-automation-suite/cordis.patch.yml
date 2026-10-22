@@ -115,7 +115,7 @@
 
 - insert:
     # ══ leader：主 agent 的 preset ════════════════════════════════════════════
-    # 工具面 = 内置 standard 的全部 + 本发行版的四个工程工具面（TIA 26 / 工程上下文 3 /
+    # 工具面 = 内置 standard 的全部 + 本发行版的四个工程工具面（TIA 26 / 工程上下文 3 + diff 1 /
     # 图谱 6 / git 12）。相对上游 standard 只多这几行 + persona 政策文本。
     - id: preset-leader
       name: '@deepseek-ai/dsh-agent-preset'
@@ -311,13 +311,15 @@
                 name: '@deepseek-ai/dsh-tool-workflow'
           # ── 本发行版的工程工具面（方案 A：宿主行留服务，工具行由 preset 声明）──
           # leader 拿全部操作工具 + 图谱的**检查面**（inspect：block + network），
-          # 以便写派发 brief 时不必手写 SQL：TIA 26 + 工程上下文 3 + 图谱 6。
+          # 以便写派发 brief 时不必手写 SQL：TIA 26 + 工程上下文 3 + diff 1 + 图谱 6。
           # 注意这几行的 name 必须与各包 package.json 的 exports 逐字对应。
           # `leader-tia-commands` 是**人**的斜线指令面（/tia-…），与 `leader-tia-tools`
           # 的模型工具面分开声明：它只 inject `commands` + `tiaOpennessRuntime`，
           # 不声明任何工具，所以没有 `/tools` 行的 preset 也能单独挂它。
           - id: leader-engineering-context
             name: '@voltarenyah/dsh-engineering-context'
+          - id: leader-project-diff
+            name: '@voltarenyah/dsh-engineering-context/diff'
           - id: leader-tia-tools
             name: '@voltarenyah/dsh-tia-openness-v17-min/tools'
           - id: leader-git-tools
@@ -450,10 +452,10 @@
     #   • 不给：任何 TIA 操作工具、工程上下文工作流、pwsh/bash、jobs、schedule、
     #     goal、plan、web、todo、ask_user（它没有面向用户的通道，问父 agent 就好）、
     #     skill（v1 有意省略，见 docs/decisions.md D23）。
-    #   ⇒ 它自己的 preset 只声明 13 个工具（图谱 7 + read/read_image + glob/grep +
-    #     send_message/interrupt_agent）。宿主面仍有 `dsh-tool-working-directory` 的
-    #     `working_directory`（上游本来就把这一行留在宿主面）；git 的 12 个工具已拆成
-    #     `dsh-tool-git/tools` 行，只挂在 Leader，所以 Expert 看不到它们。
+    #   ⇒ 它自己的 preset 只声明 14 个工具（图谱 7 + read/read_image + glob/grep +
+    #     send_message/interrupt_agent + project_diff（只读结构差异））。宿主面仍有
+    #     `dsh-tool-working-directory` 的 `working_directory`（上游本来就把这一行留在宿主面）；
+    #     git 的 12 个工具已拆成 `dsh-tool-git/tools` 行，只挂在 Leader，所以 Expert 看不到它们。
     # ⚠️ 沙箱与权限：子 agent 继承父会话的**显式**沙箱覆盖（本 profile 默认
     #   danger-full-access），审批策略被钉死 `never`（需要审批的操作自动拒绝、不弹给用户）。
     #   所以"只读"这件事**只由工具面保证**，不要以为沙箱会拦它。
@@ -543,6 +545,8 @@
             config:
               includeIngest: false
               includeDrilldown: all
+          - id: expert-project-diff
+            name: '@voltarenyah/dsh-engineering-context/diff'
           - id: expert-fs-readonly
             name: '@deepseek-ai/dsh-tool-fs'
             config:

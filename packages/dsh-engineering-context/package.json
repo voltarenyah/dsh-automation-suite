@@ -13,6 +13,9 @@
     ".": {
       "default": "./lib/index.js"
     },
+    "./diff": {
+      "default": "./lib/diff-entry.js"
+    },
     "./package.json": "./package.json"
   },
   "files": [
@@ -42,6 +45,9 @@
     "link:runtime": "node scripts/link-dsh-runtime.mjs",
     "test": "node scripts/run-tests.mjs",
     "check": "node scripts/run-tests.mjs"
+  },
+  "dependencies": {
+    "fast-xml-parser": "^5.11.2"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",

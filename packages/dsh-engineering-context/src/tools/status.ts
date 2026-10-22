@@ -11,11 +11,19 @@
  * @module dsh-engineering-context/tools/status
  */
 
+import { readFile } from 'node:fs/promises'
+import { basename, join } from 'node:path'
+
 import type { ToolDefinition } from '@deepseek-ai/dsh-tools'
 
 import { engineeringAccess, normalizeChecksum, type EngineeringAccessLike } from '../access.js'
 import { checksumCacheKey, writeCachedChecksum } from '../checksum-cache.js'
-import { evidencePathForDevice, manifestPathForDevice } from '../config.js'
+import {
+  evidencePathForDevice,
+  localStateDirectoryPath,
+  manifestPathForDevice,
+  type PluginConfig,
+} from '../config.js'
 import type { DeviceInfo } from '../device.js'
 import { resolveDevice } from '../device.js'
 import { EngineeringContextError } from '../errors.js'
@@ -93,6 +101,141 @@ async function readEvidenceOrInvalid(file: string): Promise<{ document: Evidence
   }
 }
 
+/** Directory, inside the local state root, where the graph plugin leaves one sidecar per device. */
+const GRAPH_SIDECAR_DIR = 'graph'
+
+/** The sidecar the engineering-graph plugin writes after a successful ingest. */
+interface GraphSidecar {
+  schemaVersion: number | null
+  device: string | null
+  plcChecksum: string | null
+  stateId: string | null
+  builtAt: string | null
+  sourceDir: string | null
+}
+
+/** The freshness verdict this status call can honestly give. */
+interface GraphKnowledge {
+  /** Absolute sidecar path, whether or not it exists (null when no device resolved). */
+  path: string | null
+  present: boolean
+  schemaVersion: number | null
+  /** The PLC checksum the graph was built from. */
+  graphChecksum: string | null
+  /** The checksum the source tree currently records (the evidence ledger). */
+  sourceChecksum: string | null
+  stateId: string | null
+  builtAt: string | null
+  /** true when both checksums exist and agree; false when they differ; null when either is missing. */
+  fresh: boolean | null
+}
+
+/** Absolute path of the graph-freshness sidecar of one device. */
+function graphSidecarPath(config: PluginConfig, root: string, deviceDirectory: string): string {
+  return join(localStateDirectoryPath(config, root), GRAPH_SIDECAR_DIR, `${basename(deviceDirectory)}.json`)
+}
+
+function textOf(value: unknown): string | null {
+  return typeof value === 'string' && value.length > 0 ? value : null
+}
+
+/**
+ * Read the graph plugin's freshness sidecar.
+ *
+ * The sidecar is **derived evidence**, not authority: a missing or corrupt file
+ * makes the verdict `unknown`, never `fresh` and never a failure. The comparison
+ * itself is between two checksums the caller can see in the result, so a model
+ * can explain a `STALE` verdict instead of asserting it.
+ *
+ * @param config - the resolved configuration.
+ * @param root - the canonical workspace root.
+ * @param deviceDirectory - the canonical device directory (its basename names the file).
+ * @param sourceChecksum - the checksum the evidence ledger records, or null.
+ * @returns the bounded freshness view.
+ */
+async function readGraphKnowledge(
+  config: PluginConfig,
+  root: string,
+  deviceDirectory: string | null,
+  sourceChecksum: string | null,
+): Promise<GraphKnowledge> {
+  const base: GraphKnowledge = {
+    path: null,
+    present: false,
+    schemaVersion: null,
+    graphChecksum: null,
+    sourceChecksum,
+    stateId: null,
+    builtAt: null,
+    fresh: null,
+  }
+  if (deviceDirectory === null) return base
+
+  const path = graphSidecarPath(config, root, deviceDirectory)
+  base.path = path
+
+  let raw: string
+  try {
+    raw = await readFile(path, 'utf8')
+  } catch {
+    return base
+  }
+
+  let sidecar: GraphSidecar | null = null
+  try {
+    const parsed = JSON.parse(raw) as Record<string, unknown>
+    if (parsed !== null && typeof parsed === 'object' && !Array.isArray(parsed)) {
+      sidecar = {
+        schemaVersion: typeof parsed['schemaVersion'] === 'number' ? parsed['schemaVersion'] : null,
+        device: textOf(parsed['device']),
+        plcChecksum: textOf(parsed['plcChecksum']),
+        stateId: textOf(parsed['stateId']),
+        builtAt: textOf(parsed['builtAt']),
+        sourceDir: textOf(parsed['sourceDir']),
+      }
+    }
+  } catch {
+    sidecar = null
+  }
+
+  if (sidecar === null) {
+    // The file is there but unusable: that is "present but unknown", not absent.
+    return { ...base, present: true }
+  }
+
+  const fresh =
+    sidecar.plcChecksum === null || sourceChecksum === null ? null : sidecar.plcChecksum === sourceChecksum
+  return {
+    path,
+    present: true,
+    schemaVersion: sidecar.schemaVersion,
+    graphChecksum: sidecar.plcChecksum,
+    sourceChecksum,
+    stateId: sidecar.stateId,
+    builtAt: sidecar.builtAt,
+    fresh,
+  }
+}
+
+/** One line describing the graph freshness verdict, without changing the next action. */
+function knowledgeLine(knowledge: GraphKnowledge): string {
+  if (knowledge.path === null) return 'Knowledge graph: unknown (no device resolved).'
+  if (!knowledge.present) return `Knowledge graph: unknown (no sidecar at ${knowledge.path}).`
+  if (knowledge.fresh === true) {
+    return `Knowledge graph: fresh (checksum ${knowledge.graphChecksum}${
+      knowledge.builtAt === null ? '' : `, built ${knowledge.builtAt}`
+    }).`
+  }
+  if (knowledge.fresh === false) {
+    return `Knowledge graph: STALE (graph ${knowledge.graphChecksum ?? 'unknown'}, source ${
+      knowledge.sourceChecksum ?? 'unknown'
+    }).`
+  }
+  return `Knowledge graph: unknown (sidecar present, but ${
+    knowledge.graphChecksum === null ? 'the graph checksum' : 'the source checksum'
+  } is missing).`
+}
+
 /**
  * Build the status tool.
  * @param dependencies - the plugin dependencies.
@@ -145,6 +288,14 @@ export function statusTool(dependencies: ToolDependencies): ToolDefinition {
         const evidence = evidenceRead.document
         const evidenceInvalid = evidenceRead.error !== null
         const manifestPresent = manifestFile !== null ? (await describePath(root, manifestFile)).kind === 'file' : false
+        // The graph plugin's sidecar is derived evidence: read it, but never let a
+        // missing or stale graph change what this tool says to do next.
+        const knowledge = await readGraphKnowledge(
+          scope.config,
+          root,
+          device === null ? null : device.directory,
+          evidence?.plcChecksum ?? null,
+        )
 
         let checksum: Record<string, unknown> = {
           state: 'not-checked',
@@ -244,6 +395,7 @@ export function statusTool(dependencies: ToolDependencies): ToolDefinition {
             ? `Evidence: ${evidenceFile === null ? 'no device' : `${evidenceFile} is missing`}.`
             : `Evidence: ${evidence.objects.size} object(s), state ${evidence.stateId ?? 'unknown'}.`,
           `Manifest: ${manifestPresent ? 'present' : 'missing'}.`,
+          knowledgeLine(knowledge),
           `Checksum: ${checksumState}${checksumValue === null ? '' : ` (${checksumValue})`}${drift === null ? '' : drift ? ' — DIFFERS from the ledger' : ' — matches the ledger'}.`,
           `Sync: ${syncReasonText(syncReason)}.`,
           `Git: ${repository ? `${dirty.length} change(s) in the device directory` : 'not a repository'}.`,
@@ -263,6 +415,7 @@ export function statusTool(dependencies: ToolDependencies): ToolDefinition {
               ? { path: evidenceFile, present: false, invalid: evidenceInvalid }
               : { path: evidenceFile, present: true, invalid: false, ...evidenceSummary(evidence) },
             manifest: { path: manifestFile, present: manifestPresent },
+            knowledge,
             git: { repository, dirty },
             lock: lock === null ? null : { held: true, operation: lock.operation, pid: lock.pid, startedAt: lock.startedAt },
             nextAction,

@@ -40,6 +40,11 @@ export async function loadToolsModule() {
   return await importBuilt('tools', 'index.js')
 }
 
+/** Load the separate diff entry point (`lib/diff-entry.js`). */
+export async function loadDiffEntryModule() {
+  return await importBuilt('diff-entry.js')
+}
+
 /** Load the built config module. */
 export async function loadConfigModule() {
   return await importBuilt('config.js')

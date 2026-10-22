@@ -337,6 +337,114 @@ test('status surfaces a held lock and never waits on it', async (t) => {
 })
 
 // ---------------------------------------------------------------------------
+// project_status: knowledge-graph freshness (the graph plugin's sidecar)
+// ---------------------------------------------------------------------------
+
+function graphSidecar(overrides = {}) {
+  return {
+    schemaVersion: 1,
+    device: DEVICE,
+    plcChecksum: 'AA',
+    stateId: 'state-1',
+    builtAt: '2026-10-22T00:00:00.000Z',
+    sourceDir: `source/${DEVICE}`,
+    ...overrides,
+  }
+}
+
+async function writeGraphSidecar(root, content = graphSidecar()) {
+  await makeFile(join(root, '.dsh', 'local', 'graph', `${DEVICE}.json`), `${JSON.stringify(content, null, 2)}\n`)
+}
+
+test('status reports the knowledge graph as fresh when its checksum matches the ledger', async (t) => {
+  const root = await tempWorkspace(t)
+  await writeEvidence(deviceDirectory(root), { plcChecksum: 'AA' })
+  await writeGraphSidecar(root, graphSidecar({ plcChecksum: 'AA' }))
+  const { service } = fakeAccess()
+
+  const outcome = assertEnvelope(await executeTool(tools(service).status, {}, fakeExec(root)))
+
+  assert.equal(outcome.ok, true)
+  assert.equal(outcome.data.knowledge.present, true)
+  assert.equal(outcome.data.knowledge.path, join(root, '.dsh', 'local', 'graph', `${DEVICE}.json`))
+  assert.equal(outcome.data.knowledge.schemaVersion, 1)
+  assert.equal(outcome.data.knowledge.graphChecksum, 'AA')
+  assert.equal(outcome.data.knowledge.sourceChecksum, 'AA')
+  assert.equal(outcome.data.knowledge.stateId, 'state-1')
+  assert.equal(outcome.data.knowledge.builtAt, '2026-10-22T00:00:00.000Z')
+  assert.equal(outcome.data.knowledge.fresh, true)
+  assert.match(outcome.details.join('\n'), /Knowledge graph: fresh/u)
+  assert.equal(outcome.data.nextAction, 'sync', 'the graph must not change the next action')
+})
+
+test('status reports a stale knowledge graph when the checksums differ, without changing the next action', async (t) => {
+  const root = await tempWorkspace(t)
+  await writeEvidence(deviceDirectory(root), { plcChecksum: 'AA' })
+  await writeGraphSidecar(root, graphSidecar({ plcChecksum: 'BB' }))
+  const { service } = fakeAccess()
+
+  const outcome = assertEnvelope(await executeTool(tools(service).status, {}, fakeExec(root)))
+
+  assert.equal(outcome.ok, true)
+  assert.equal(outcome.data.knowledge.present, true)
+  assert.equal(outcome.data.knowledge.graphChecksum, 'BB')
+  assert.equal(outcome.data.knowledge.sourceChecksum, 'AA')
+  assert.equal(outcome.data.knowledge.fresh, false)
+  assert.match(outcome.details.join('\n'), /Knowledge graph: STALE/u)
+  assert.equal(outcome.data.nextAction, 'sync', 'a stale graph is reported, never acted on')
+
+  // The verdict is data on a graph that is otherwise absent from the run: no
+  // service, no engine, no ingest — the status tool only reads the sidecar.
+  assert.equal(outcome.data.knowledge.builtAt, '2026-10-22T00:00:00.000Z')
+})
+
+test('a missing graph sidecar is unknown, and status still answers', async (t) => {
+  const root = await tempWorkspace(t)
+  await writeEvidence(deviceDirectory(root), { plcChecksum: 'AA' })
+  const { service } = fakeAccess()
+
+  const outcome = assertEnvelope(await executeTool(tools(service).status, {}, fakeExec(root)))
+
+  assert.equal(outcome.ok, true)
+  assert.equal(outcome.data.knowledge.present, false)
+  assert.equal(outcome.data.knowledge.fresh, null)
+  assert.equal(outcome.data.knowledge.graphChecksum, null)
+  assert.equal(outcome.data.knowledge.sourceChecksum, 'AA')
+  assert.match(outcome.details.join('\n'), /Knowledge graph: unknown \(no sidecar/u)
+  assert.equal(outcome.data.nextAction, 'sync')
+})
+
+test('a graph sidecar with no source checksum is unknown, never fresh', async (t) => {
+  const root = await tempWorkspace(t)
+  await writeGraphSidecar(root, graphSidecar({ plcChecksum: 'AA' }))
+  const { service } = fakeAccess()
+
+  const outcome = assertEnvelope(await executeTool(tools(service).status, {}, fakeExec(root)))
+
+  assert.equal(outcome.ok, true)
+  assert.equal(outcome.data.evidence.present, false)
+  assert.equal(outcome.data.knowledge.present, true)
+  assert.equal(outcome.data.knowledge.graphChecksum, 'AA')
+  assert.equal(outcome.data.knowledge.sourceChecksum, null)
+  assert.equal(outcome.data.knowledge.fresh, null)
+  assert.match(outcome.details.join('\n'), /source checksum is missing/u)
+})
+
+test('a corrupt graph sidecar is present but unknown, and never fails the status', async (t) => {
+  const root = await tempWorkspace(t)
+  await writeEvidence(deviceDirectory(root), { plcChecksum: 'AA' })
+  await makeFile(join(root, '.dsh', 'local', 'graph', `${DEVICE}.json`), '{ not json')
+  const { service } = fakeAccess()
+
+  const outcome = assertEnvelope(await executeTool(tools(service).status, {}, fakeExec(root)))
+
+  assert.equal(outcome.ok, true)
+  assert.equal(outcome.data.knowledge.present, true)
+  assert.equal(outcome.data.knowledge.fresh, null)
+  assert.match(outcome.details.join('\n'), /Knowledge graph: unknown/u)
+})
+
+// ---------------------------------------------------------------------------
 // project_sync: the plan (default)
 // ---------------------------------------------------------------------------
 

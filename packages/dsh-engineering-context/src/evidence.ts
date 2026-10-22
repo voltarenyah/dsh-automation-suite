@@ -107,6 +107,23 @@ export async function readEvidence(file: string): Promise<EvidenceDocument | nul
     })
   }
 
+  return parseEvidenceDocument(raw, file)
+}
+
+/**
+ * Parse one ledger that was already read into memory.
+ *
+ * The read-only `project_diff` tool reads a ledger with `git show` (a revision
+ * that only exists inside git, never as a working file), so parsing has to be
+ * separable from reading. The validation is exactly the same: a document with
+ * another schema version is refused rather than treated as empty.
+ *
+ * @param raw - the ledger's JSON text.
+ * @param file - the spelling to report in errors (a path, or `revision:path`).
+ * @returns the document.
+ * @throws {EngineeringContextError} `evidence_invalid` when it cannot be used.
+ */
+export function parseEvidenceDocument(raw: string, file: string): EvidenceDocument {
   let parsed: unknown
   try {
     parsed = JSON.parse(raw)
