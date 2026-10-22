@@ -285,7 +285,7 @@ public static class TiaXmlSemanticGraphImporter
             }));
 
         var parsed = ProgramSemanticReferenceBuilder.Parse(xml, component, deviceName);
-        var networkLogicByCompileUnitId = ProgramBlockLogicYamlWriter.GetNetworkLogicByCompileUnitId(xml, component);
+        var networkLogicBySegmentKey = ProgramBlockLogicYamlWriter.GetNetworkLogicBySegmentKey(xml, component);
         ProgramNetworkRecord? previousNetwork = null;
         foreach (var network in parsed.Networks)
         {
@@ -296,9 +296,27 @@ public static class TiaXmlSemanticGraphImporter
                 ["title"] = network.Title,
                 ["networkIndex"] = network.NetworkIndex.ToString(System.Globalization.CultureInfo.InvariantCulture),
                 ["compileUnitId"] = network.CompileUnitId,
-                ["sourceFile"] = network.SourceFile
+                ["sourceFile"] = network.SourceFile,
+                ["segmentKind"] = network.SegmentKind,
+                ["tiaNetworkIndex"] = network.TiaNetworkIndex.ToString(System.Globalization.CultureInfo.InvariantCulture)
             };
-            if (networkLogicByCompileUnitId.TryGetValue(network.CompileUnitId, out var logic))
+
+            // Region metadata is written as node properties, not as new derived-table
+            // columns: a database built before D27 then degrades to "no region
+            // information" instead of failing the tool SQL with a missing column.
+            if (!string.IsNullOrWhiteSpace(network.RegionPath))
+            {
+                networkProperties["regionPath"] = network.RegionPath;
+                networkProperties["regionName"] = network.RegionName;
+                networkProperties["regionDepth"] = network.RegionDepth.ToString(System.Globalization.CultureInfo.InvariantCulture);
+            }
+
+            if (!string.IsNullOrWhiteSpace(network.EnclosingControl))
+            {
+                networkProperties["enclosingControl"] = network.EnclosingControl;
+            }
+
+            if (networkLogicBySegmentKey.TryGetValue(network.LogicKey, out var logic))
             {
                 if (!string.IsNullOrWhiteSpace(logic.Statements))
                 {
@@ -318,7 +336,7 @@ public static class TiaXmlSemanticGraphImporter
             graph.UpsertNode(new SemanticGraphNode(
                 network.Id,
                 SemanticNodeKind.Network,
-                $"{component.Name} Network {network.NetworkIndex}",
+                NetworkNodeName(component.Name, network),
                 networkProperties));
             AddEdge(graph, blockId, network.Id, SemanticRelationshipType.Contains, new Dictionary<string, string>
             {
@@ -710,6 +728,30 @@ public static class TiaXmlSemanticGraphImporter
         return value.Length >= 2 && value[0] == '"' && value[value.Length - 1] == '"'
             ? value.Substring(1, value.Length - 2)
             : value;
+    }
+
+    /// <summary>
+    /// The display name of a network node: LAD keeps `Block Network N`; an SCL
+    /// segment names its region so `knowledge_search` can find it by name.
+    /// </summary>
+    private static string NetworkNodeName(string blockName, ProgramNetworkRecord network)
+    {
+        string name;
+        if (string.Equals(network.SegmentKind, "region", StringComparison.OrdinalIgnoreCase))
+        {
+            name = $"{blockName} Region {network.NetworkIndex}: {network.Title}";
+        }
+        else if (string.Equals(network.SegmentKind, "network", StringComparison.OrdinalIgnoreCase))
+        {
+            name = $"{blockName} Network {network.NetworkIndex}";
+        }
+        else
+        {
+            name = $"{blockName} Segment {network.NetworkIndex}: {network.Title}";
+        }
+
+        const int maxChars = 160;
+        return name.Length <= maxChars ? name : name.Substring(0, maxChars).TrimEnd();
     }
 
     private static IReadOnlyDictionary<string, string> BuildReferenceProperties(ProgramReferenceRecord reference)
@@ -1289,6 +1331,8 @@ public static class SemanticPlcGraphAgentGuide
         Folder paths are metadata only. Do not infer engineering semantics from folder structure. Prefer relationships in `graph_edges`.
 
         Network nodes may have a `logicStatements` property. This is newline-delimited translated network logic from `translate\program-blocks.yaml` statements only, stored as plain text for quick agent inspection. Empty networks do not have this property.
+
+        A pure SCL program block is one long text in TIA, so its Network nodes are not TIA networks: each one is an addressable SEGMENT of the block (docs/decisions.md D27). `segmentKind` says which: `region` (an SCL `REGION ... END_REGION`, the SCL equivalent of a network), `module` (code outside every region), or `part` (a slice of one region larger than 6,000 characters). `regionPath` carries the region name path (`OUTER / INNER` for a nested one), `regionDepth` its nesting, `tiaNetworkIndex` the TIA network the segment came from, and `enclosingControl` the IF/CASE/... structures open where the segment starts (41% of real regions open inside one, so a segment body is often a fragment). LAD/FBD blocks are unchanged: one Network node per TIA network, `segmentKind = 'network'`.
 
         ## Schema
 

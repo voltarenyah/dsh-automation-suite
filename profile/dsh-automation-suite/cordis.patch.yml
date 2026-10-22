@@ -162,8 +162,11 @@
                   when a result says it was truncated.
                 - Rebuild a device's database with `knowledge_ingest` only after that device's sources were exported
                   again: it is a full rebuild (minutes on a large project) and nothing else refreshes the graph.
-                - You have `knowledge_block` and `knowledge_network` for reading one block or one network. Use them to
-                  prepare a delegation brief — not `knowledge_query` with hand-written `substr()` paging.
+                - You have `knowledge_block` and `knowledge_network` for reading one block or one network. A pure SCL
+                  block is segmented by its REGIONs, and each REGION is one network to read, so use the same tools and
+                  the same 1-based index; the reply names the region path and the control structures the region opens
+                  inside. Use them to prepare a delegation brief — not `knowledge_query` with hand-written `substr()`
+                  paging.
                 - The graph is the reading surface. Do not read the exported XML, and do not `grep`/`glob` over
                   `source/`, to answer a program-logic question. Only when a fact genuinely is not in the graph may
                   you ask the user with `ask_user_question` first — name the file, the exact line range, the missing
@@ -403,6 +406,11 @@
                   `knowledge_block` for one block and its network list, `knowledge_network` for one network's logic,
                   reads and writes, `knowledge_variable_usage` for every place one variable is read, written or
                   mentioned. Use `knowledge_query` only when none of them fits.
+                - In a pure SCL block the unit is a REGION, not a TIA network: `knowledge_block` lists one row per
+                  REGION (titled with its region path, `module` for code outside every region, `part` for a slice of a
+                  region over 6,000 characters) and `knowledge_network` reads exactly that row. A region may open
+                  inside an `IF`/`CASE`, in which case the reply says `Context: inside …` and the body can be a
+                  fragment — do not treat such a fragment as a complete control structure.
                 - `knowledge_network` returns its logic in chunks, and says `PARTIAL` in its summary when it did. When
                   it does, either fetch the rest with the returned offset, or mark the claim as based on that
                   character range. Never cite a partial chunk as the whole network — a 9,400-character network read

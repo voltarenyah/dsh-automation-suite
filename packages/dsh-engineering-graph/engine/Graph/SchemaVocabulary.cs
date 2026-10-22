@@ -187,5 +187,21 @@ public static class SchemaVocabulary
         new SchemaExampleQuery(
             "Read one network access chain",
             "SELECT network.network_index, access.access, access.variable_name\nFROM knowledge_networks network\nJOIN knowledge_network_accesses access ON access.network_id = network.network_id\nWHERE network.block_id = 'block:Main' AND network.network_index = 1\nORDER BY access.access, access.variable_name;"),
+        new SchemaExampleQuery(
+            "List the SCL regions of a block",
+            """
+            SELECT
+              network.network_index AS segment_index,
+              region.value AS region_path,
+              kind.value AS segment_kind,
+              length(network.logic_statements) AS logic_chars
+            FROM knowledge_networks network
+            JOIN graph_node_properties region
+              ON region.node_id = network.network_id AND region.name = 'regionPath'
+            JOIN graph_node_properties kind
+              ON kind.node_id = network.network_id AND kind.name = 'segmentKind'
+            WHERE network.block_id = 'block:LAxisCtrl_Axis'
+            ORDER BY network.network_index;
+            """),
     };
 }

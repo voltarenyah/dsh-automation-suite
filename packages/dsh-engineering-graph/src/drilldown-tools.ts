@@ -63,6 +63,59 @@ export interface DrilldownDependencies {
 /** Characters of auxiliary detail lines, leaving room for the logic payload. */
 const AUX_CHARS = 900
 
+/**
+ * Characters of the network list in `knowledge_block`.
+ *
+ * Deliberately above the auxiliary budget: an SCL block is listed as one row per
+ * REGION (the largest has 89), and the fixed 900-character budget showed about
+ * twelve of them no matter how far `max_networks` was raised (docs/decisions.md
+ * D27). 3,500 keeps the whole reply under the framework's 8,192-character Pruner
+ * threshold, which cuts the MIDDLE of an oversized result.
+ */
+const NETWORK_DETAIL_CHARS = 3500
+
+/**
+ * Characters of a `knowledge_network` header.
+ *
+ * Above the auxiliary budget because the header carries the region path, the
+ * enclosing control structures, and both bounded variable lists: at 900 a region
+ * that writes 130 variables pushed `Reads`, `Logic:` and `TIA network:` off the
+ * list, so the model never learned which character range it was reading
+ * (docs/decisions.md D27). 1,400 + the 6,000-character logic cap + the NEXT line
+ * stays under the framework's 8,192-character Pruner threshold.
+ */
+const LEAD_CHARS = 1400
+
+/** The D27 segment kind; `network` for a LAD/FBD network or a database built before D27. */
+function segmentKindOf(network: NetworkSummary): string {
+  return (network.segmentKind ?? 'network').toLowerCase()
+}
+
+/** `LAD`, `SCL region`, `SCL part` — what the block listing shows in parentheses. */
+function segmentLabel(network: NetworkSummary): string {
+  const language = network.language ?? 'unknown language'
+  const kind = segmentKindOf(network)
+  return kind === 'network' ? language : `${language} ${kind}`
+}
+
+/**
+ * Names per direction in a `knowledge_network` header.
+ *
+ * A region can read 130 variables or write 350; joined whole, that one line
+ * overflowed the auxiliary budget and `fitDetails` dropped it — and every line
+ * after it, including `Logic:` — so the model saw the counts in the summary but
+ * no names at all (docs/decisions.md D27).
+ */
+const ACCESS_NAMES_SHOWN = 12
+
+/** A bounded, comma-joined name list: `a, b, c … (+118 more)`. */
+function summarizeNames(names: readonly string[]): string {
+  if (names.length === 0) return 'none'
+  const shown = names.slice(0, ACCESS_NAMES_SHOWN).join(', ')
+  if (names.length <= ACCESS_NAMES_SHOWN) return shown
+  return `${shown} … (+${names.length - ACCESS_NAMES_SHOWN} more)`
+}
+
 /** The result of one `Query` the drill-down layer issued. */
 interface QueryRows {
   rows: unknown[][]
@@ -308,8 +361,10 @@ function blockTool(dependencies: DrilldownDependencies): ToolDefinition {
   name: BLOCK_TOOL,
   description:
     'Describe one program block (OB/FB/FC): its graph node, its properties (source file, language, …) and a compact list ' +
-    'of its networks with each network index, title, language and logic size. Use it to decide which network to read, ' +
-    'then call knowledge_network for one of them. The block name is matched case-insensitively but exactly — use ' +
+    'of its networks with each network index, title, language and logic size. A pure SCL block is listed by REGION: each ' +
+    'row is one REGION (the SCL equivalent of a network), titled with its region path, and a row marked `part` is a slice ' +
+    'of one REGION bigger than 6,000 characters. Use it to decide which network or region to read, then call ' +
+    'knowledge_network for one of them. The block name is matched case-insensitively but exactly — use ' +
     'knowledge_search when you only have a fragment. Fails with BLOCK_NOT_FOUND when no such block exists.',
   parameters: {
     block: {
@@ -369,15 +424,18 @@ function blockTool(dependencies: DrilldownDependencies): ToolDefinition {
             logicChars: intCell(row, 4) ?? 0,
             sourceFile: textCell(row, 5),
             commented: (textCell(row, 6) ?? '').trim().toLowerCase() === 'true',
+            regionPath: textCell(row, 7),
+            segmentKind: textCell(row, 8),
           }))
           // The totals come from the statement, never from the page size: reporting
           // the page as the block's network count made a caller raise max_networks
           // 50 -> 60 -> 70 while the block had 72 (docs/decisions.md D26).
           const first = networkResult.rows[0]
-          const total = (first === undefined ? null : intCell(first, 7)) ?? networks.length
-          const commentedTotal = (first === undefined ? null : intCell(first, 8)) ?? networks.filter((network) => network.commented).length
+          const total = (first === undefined ? null : intCell(first, 9)) ?? networks.length
+          const commentedTotal = (first === undefined ? null : intCell(first, 10)) ?? networks.filter((network) => network.commented).length
           const shown = networks.slice(0, limit)
           const truncated = shown.length < total
+          const regions = shown.filter((network) => segmentKindOf(network) === 'region').length
 
           const sourceFile = properties.find((property) => property.name === 'sourceFile')?.value ?? shown[0]?.sourceFile ?? null
           const details = [
@@ -389,14 +447,19 @@ function blockTool(dependencies: DrilldownDependencies): ToolDefinition {
               : [`Properties: ${properties.map((property) => `${property.name}=${property.value}`).join('; ')}`]),
             `Networks: ${shown.length} of ${total}${truncated ? ` (first page; raise max_networks to see the rest)` : ''}` +
               (commentedTotal === 0 ? '' : `, ${commentedTotal} commented out (no executable logic)`),
+            ...(regions === 0
+              ? []
+              : [
+                  'SCL segmentation: each row is one REGION (or a module/part slice of one); read one with knowledge_network.',
+                ]),
           ]
           const fitted = fitDetails(
             shown.map(
               (network) =>
-                `- [${network.index ?? '?'}] ${network.title ?? '(untitled)'} (${network.language ?? 'unknown language'}), ` +
+                `- [${network.index ?? '?'}] ${network.title ?? '(untitled)'} (${segmentLabel(network)}), ` +
                 `${renderCount(network.logicChars)} logic char(s)${network.commented ? ', COMMENTED OUT' : ''}`,
             ),
-            AUX_CHARS,
+            NETWORK_DETAIL_CHARS,
           )
           details.push(...fitted.lines)
           if (fitted.omitted > 0) details.push(`… ${fitted.omitted} more network(s) not shown; raise max_networks.`)
@@ -437,20 +500,22 @@ function networkTool(dependencies: DrilldownDependencies): ToolDefinition {
   name: NETWORK_TOOL,
   description:
     'Read exactly one PLC network: its title, language and source file, the variables it reads and writes, and its ' +
-    'translated logic. Call it when the block and the 1-based network index are already known (knowledge_block lists ' +
-    'them); do not list a whole block first when the index is known. The logic is returned in chunks: when the reply ' +
-    'says it has more, call again with the returned nextOffset until hasMore is false — never treat a partial chunk as ' +
-    'the whole network. Fails with BLOCK_NOT_FOUND or NETWORK_NOT_FOUND.',
+    'translated logic. For an SCL block the unit is one REGION (a row of knowledge_block); the reply names the region ' +
+    'path, the TIA network it came from, and the enclosing control structures when the region opens inside an IF/CASE. ' +
+    'Call it when the block and the 1-based index are already known (knowledge_block lists them); do not list a whole ' +
+    'block first when the index is known. The logic is returned in chunks: when the reply says it has more, call again ' +
+    'with the returned nextOffset until hasMore is false — never treat a partial chunk as the whole network. Fails with ' +
+    'BLOCK_NOT_FOUND or NETWORK_NOT_FOUND.',
   parameters: {
     block: {
       type: 'string',
       required: true,
-      description: 'Exact block name, for example \'Main\'.',
+      description: "Exact block name, for example 'Main'.",
     },
     index: {
       type: 'integer',
       required: true,
-      description: '1-based network index inside that block.',
+      description: '1-based network index inside that block. For an SCL block: the REGION/segment index knowledge_block listed.',
     },
     offset: {
       type: 'integer',
@@ -510,6 +575,11 @@ function networkTool(dependencies: DrilldownDependencies): ToolDefinition {
           const logic = textCell(row, 5)
           const commentedLogic = textCell(row, 6)
           const commentedOut = (textCell(row, 7) ?? '').trim().toLowerCase() === 'true'
+          const regionPath = textCell(row, 8)
+          const segmentKind = textCell(row, 9)
+          const tiaNetworkIndex = intCell(row, 10)
+          const enclosingControl = textCell(row, 11)
+          const isRegion = (segmentKind ?? '').toLowerCase() === 'region'
 
           const accessResult = await runQuery(dependencies, dbPath, networkAccessStatement(networkId, HARD_ROWS + 1), HARD_ROWS + 1, exec.signal)
           if (refused(accessResult)) return localFailure(tool, accessResult.code, accessResult.message, accessResult.remediation)
@@ -529,16 +599,21 @@ function networkTool(dependencies: DrilldownDependencies): ToolDefinition {
             `Database: ${dbPath}`,
             `Block: ${resolved.name} (${resolved.kind}) — ${resolved.id}`,
             `Network: ${args.index}${title === null ? '' : ` — ${title}`} (${language ?? 'unknown language'})`,
+            ...(isRegion && regionPath !== null ? [`Region: ${regionPath}`] : []),
+            ...(enclosingControl === null || enclosingControl.length === 0
+              ? []
+              : [`Context: inside ${enclosingControl}`]),
             ...(sourceFile === null ? [] : [`Source file: ${sourceFile}`]),
             ...(compileUnitId === null ? [] : [`Compile unit: ${compileUnitId}`]),
+            ...(tiaNetworkIndex === null ? [] : [`TIA network: ${tiaNetworkIndex}`]),
             ...(commentedOut
               ? ['Executable logic: NONE — the whole network source is a comment; nothing in it runs.']
               : []),
-            `Writes (${writes.length}): ${writes.join(', ') || 'none'}`,
-            `Reads (${reads.length}): ${reads.join(', ') || 'none'}`,
+            `Writes (${writes.length}): ${summarizeNames(writes)}`,
+            `Reads (${reads.length}): ${summarizeNames(reads)}`,
             `Logic: characters ${chunk.offset}–${chunk.offset + chunk.text.length} of ${renderCount(chunk.totalChars)}`,
           ]
-          const fitted = fitDetails(lead, AUX_CHARS)
+          const fitted = fitDetails(lead, LEAD_CHARS)
           const details = [...fitted.lines]
           if (fitted.omitted > 0) details.push(`… ${fitted.omitted} more line(s) not shown`)
           details.push(chunk.text.length === 0 ? 'Logic: (empty)' : chunk.text)
@@ -557,11 +632,14 @@ function networkTool(dependencies: DrilldownDependencies): ToolDefinition {
             )
           }
 
+          const label =
+            isRegion && regionPath !== null ? `${resolved.name}[${args.index}] ${regionPath}` : `${resolved.name}[${args.index}]`
+
           return localSuccess(
             tool,
             commentedOut
-              ? `${resolved.name}[${args.index}]: no executable logic — the source is commented out.`
-              : `${resolved.name}[${args.index}]: ${writes.length} write(s), ${reads.length} read(s)` +
+              ? `${label}: no executable logic — the source is commented out.`
+              : `${label}: ${writes.length} write(s), ${reads.length} read(s)` +
                 (chunk.hasMore
                   ? `, PARTIAL ${chunk.offset}–${chunk.offset + chunk.text.length} of ${renderCount(chunk.totalChars)} logic char(s).`
                   : `, ${renderCount(chunk.totalChars)} logic char(s).`),
@@ -569,7 +647,18 @@ function networkTool(dependencies: DrilldownDependencies): ToolDefinition {
             {
               dbPath,
               block: { id: resolved.id, kind: resolved.kind, name: resolved.name },
-              network: { networkId, index: args.index, title, language, compileUnitId, sourceFile },
+              network: {
+                networkId,
+                index: args.index,
+                title,
+                language,
+                compileUnitId,
+                sourceFile,
+                regionPath,
+                segmentKind,
+                tiaNetworkIndex,
+                enclosingControl,
+              },
               writes,
               reads,
               accessesTruncated,

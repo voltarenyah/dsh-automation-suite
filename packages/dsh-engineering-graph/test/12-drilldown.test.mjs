@@ -240,6 +240,53 @@ test('knowledge_block reports the block, its properties and its networks compact
 
 // ------------------------------------------------------------------- network
 
+test('knowledge_block lists SCL regions and their kinds', async () => {
+  const { byName } = await harness((sql) => {
+    if (sql.includes("FROM graph_nodes\nWHERE kind IN ('OB', 'FB', 'FC')")) {
+      return frame(rowsPayload(['id', 'kind', 'name'], [['block:LAxisCtrl_Axis', 'FB', 'LAxisCtrl_Axis']]))
+    }
+    if (sql.includes('FROM knowledge_networks')) {
+      return frame(
+        rowsPayload(
+          [
+            'network_index',
+            'network_id',
+            'title',
+            'language',
+            'coalesce(length(logic_statements), 0)',
+            'source_file',
+            'commented',
+            'region_path',
+            'segment_kind',
+            'total',
+            'commented_total',
+          ],
+          [
+            [1, 'network:LAxisCtrl_Axis:1', 'HEADER', 'SCL', 0, 'Blocks/LAxisCtrl_Axis.xml', 'true', 'HEADER', 'region', 13, 2],
+            [2, 'network:LAxisCtrl_Axis:2', 'ENABLE_FB / FB_ENABLED', 'SCL', 6766, null, null, 'ENABLE_FB / FB_ENABLED', 'region', 13, 2],
+            [3, 'network:LAxisCtrl_Axis:3', 'ENABLE_FB / RUN (part 1/2)', 'SCL', 5999, null, null, 'ENABLE_FB / RUN', 'part', 13, 2],
+          ],
+        ),
+      )
+    }
+    return frame(rowsPayload(['name', 'value'], [['language', 'SCL']]))
+  })
+
+  const outcome = await executeTool(byName['knowledge_block'], { block: 'LAxisCtrl_Axis', db_path: DB }, execIn('C:\\ws'))
+
+  assert.equal(outcome.ok, true)
+  const details = outcome.details.join('\n')
+  assert.match(details, /- \[1\] HEADER \(SCL region\), 0 logic char\(s\), COMMENTED OUT/)
+  assert.match(details, /- \[2\] ENABLE_FB \/ FB_ENABLED \(SCL region\), 6,766 logic char\(s\)/)
+  assert.match(details, /- \[3\] ENABLE_FB \/ RUN \(part 1\/2\) \(SCL part\), 5,999 logic char\(s\)/)
+  assert.match(details, /SCL segmentation: each row is one REGION/)
+  assert.equal(outcome.data.networks[1].regionPath, 'ENABLE_FB / FB_ENABLED')
+  assert.equal(outcome.data.networks[1].segmentKind, 'region')
+  assert.equal(outcome.data.total, 13, 'the total still comes from the statement')
+})
+
+// ------------------------------------------------------------------- network
+
 test('knowledge_network splits reads from writes and chunks the logic', async () => {
   const logic = 'x'.repeat(250)
   const { byName } = await harness((sql) => {
@@ -283,6 +330,40 @@ test('knowledge_network splits reads from writes and chunks the logic', async ()
   assert.equal(outcome.data.partial, true)
 })
 
+test('knowledge_network bounds a long read/write list so the header lines survive', async () => {
+  const writes = Array.from({ length: 40 }, (_, index) => `out_${index}`)
+  const { byName } = await harness((sql) => {
+    if (sql.includes("FROM graph_nodes\nWHERE kind IN ('OB', 'FB', 'FC')")) {
+      return frame(rowsPayload(['id', 'kind', 'name'], [['block:Big', 'FB', 'Big']]))
+    }
+    if (sql.includes('AND network_index = 2')) {
+      return frame(
+        rowsPayload(['network_id', 'title', 'language', 'compile_unit_id', 'source_file', 'logic_statements'], [
+          ['network:Big:2', 'ENABLE_FB', 'SCL', 'cu:2', null, 'x'.repeat(120)],
+        ]),
+      )
+    }
+    return frame(
+      rowsPayload(
+        ['access', 'variable_name'],
+        [
+          ...writes.map((name) => ['WRITES', name]),
+          ['READS', 'a'], ['READS', 'b'], ['READS', 'c'],
+        ],
+      ),
+    )
+  })
+
+  const outcome = await executeTool(byName['knowledge_network'], { block: 'Big', index: 2, db_path: DB }, execIn('C:\\ws'))
+
+  const details = outcome.details.join('\n')
+  assert.match(details, /Writes \(40\): out_0, out_1, out_2, .*… \(\+28 more\)/)
+  assert.match(details, /Reads \(3\): a, b, c/)
+  // The regression this guards: an unbounded Writes line pushed `Logic:` out of the
+  // auxiliary budget, so the model never learned the character range it was reading.
+  assert.match(details, /Logic: characters 0–120 of 120/)
+})
+
 test('knowledge_network reads a later chunk and stops saying there is more', async () => {
   const { byName } = await harness((sql) => {
     if (sql.includes("FROM graph_nodes\nWHERE kind IN ('OB', 'FB', 'FC')")) {
@@ -305,6 +386,66 @@ test('knowledge_network reads a later chunk and stops saying there is more', asy
   assert.equal(outcome.data.logic.text, 'ij')
   assert.equal(outcome.data.logic.hasMore, false)
   assert.ok(!outcome.details.join('\n').includes('again with offset='), 'the last chunk must not ask for another')
+})
+
+test('knowledge_network names the SCL region, its TIA network and the enclosing control', async () => {
+  const { byName } = await harness((sql) => {
+    if (sql.includes("FROM graph_nodes\nWHERE kind IN ('OB', 'FB', 'FC')")) {
+      return frame(rowsPayload(['id', 'kind', 'name'], [['block:LAxisCtrl_Axis', 'FB', 'LAxisCtrl_Axis']]))
+    }
+    if (sql.includes('AND network_index = 7')) {
+      return frame(
+        rowsPayload(
+          [
+            'network_id',
+            'title',
+            'language',
+            'compile_unit_id',
+            'source_file',
+            'logic_statements',
+            'commented_logic',
+            'commented',
+            'region_path',
+            'segment_kind',
+            'tia_network_index',
+            'enclosing_control',
+          ],
+          [
+            [
+              'network:LAxisCtrl_Axis:7',
+              'ENABLE_FB / FB_ENABLED',
+              'SCL',
+              '45A',
+              'Blocks/LAxisCtrl_Axis.xml',
+              'tempEnable := enable;',
+              null,
+              null,
+              'ENABLE_FB / FB_ENABLED',
+              'region',
+              1,
+              'IF NOT tempEnable AND statEnableOld THEN',
+            ],
+          ],
+        ),
+      )
+    }
+    return frame(rowsPayload(['access', 'variable_name'], []))
+  })
+
+  const outcome = await executeTool(
+    byName['knowledge_network'],
+    { block: 'LAxisCtrl_Axis', index: 7, db_path: DB },
+    execIn('C:\\ws'),
+  )
+
+  assert.equal(outcome.ok, true)
+  const details = outcome.details.join('\n')
+  assert.match(details, /Region: ENABLE_FB \/ FB_ENABLED/)
+  assert.match(details, /Context: inside IF NOT tempEnable AND statEnableOld THEN/)
+  assert.match(details, /TIA network: 1/)
+  assert.match(outcome.summary, /LAxisCtrl_Axis\[7\] ENABLE_FB \/ FB_ENABLED: 0 write\(s\), 0 read\(s\)/)
+  assert.equal(outcome.data.network.segmentKind, 'region')
+  assert.equal(outcome.data.network.tiaNetworkIndex, 1)
 })
 
 test('knowledge_network rejects a missing network and a nonsensical index', async () => {
@@ -565,12 +706,14 @@ test('knowledge_block reports the block total, not the page size', async () => {
             'coalesce(length(logic_statements), 0)',
             'source_file',
             'commented',
+            'region_path',
+            'segment_kind',
             'total',
             'commented_total',
           ],
           [
-            [1, 'network:Main:1', 'Start', 'LAD', 120, null, null, 72, 2],
-            [2, 'network:Main:2', null, 'LAD', 40, null, 'true', 72, 2],
+            [1, 'network:Main:1', 'Start', 'LAD', 120, null, null, null, 'network', 72, 2],
+            [2, 'network:Main:2', null, 'LAD', 40, null, 'true', null, 'network', 72, 2],
           ],
         ),
       )

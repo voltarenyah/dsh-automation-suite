@@ -27,9 +27,9 @@ namespace EngineeringGraph.Engine;
 
 public static class ProgramBlockLogicYamlWriter
 {
-    public static IReadOnlyDictionary<string, string> GetNetworkStatementTextByCompileUnitId(string xml, ProgramBlockComponent component)
+    public static IReadOnlyDictionary<string, string> GetNetworkStatementTextBySegmentKey(string xml, ProgramBlockComponent component)
     {
-        return GetNetworkLogicByCompileUnitId(xml, component)
+        return GetNetworkLogicBySegmentKey(xml, component)
             .Where(pair => !string.IsNullOrWhiteSpace(pair.Value.Statements))
             .ToDictionary(pair => pair.Key, pair => pair.Value.Statements, StringComparer.OrdinalIgnoreCase);
     }
@@ -50,7 +50,7 @@ public static class ProgramBlockLogicYamlWriter
     /// (docs/decisions.md D25). Both sides come from one parse so a block is not
     /// read twice.
     /// </remarks>
-    public static IReadOnlyDictionary<string, NetworkLogic> GetNetworkLogicByCompileUnitId(string xml, ProgramBlockComponent component)
+    public static IReadOnlyDictionary<string, NetworkLogic> GetNetworkLogicBySegmentKey(string xml, ProgramBlockComponent component)
     {
         if (component == null)
         {
@@ -66,7 +66,7 @@ public static class ProgramBlockLogicYamlWriter
                 continue;
             }
 
-            result[network.CompileUnitId] = new NetworkLogic(
+            result[network.Key] = new NetworkLogic(
                 string.Join("\n", network.Statements),
                 network.CommentedSource);
         }
@@ -95,11 +95,42 @@ public static class ProgramBlockLogicYamlWriter
         }
 
         var blockLanguage = GetBlockLanguage(document);
-        var networks = document
+        var networks = new List<LogicNetwork>();
+        var compileUnits = document
             .Descendants()
             .Where(element => element.Name.LocalName == "SW.Blocks.CompileUnit")
-            .Select((element, index) => ParseNetwork(element, index + 1, blockLanguage))
             .ToArray();
+
+        for (var index = 0; index < compileUnits.Length; index++)
+        {
+            var compileUnit = compileUnits[index];
+            var tiaNetworkIndex = index + 1;
+            var compileUnitId = ((string?)compileUnit.Attribute("ID"))?.Trim() ?? string.Empty;
+            var language = GetDirectAttributeValue(compileUnit, "ProgrammingLanguage");
+            if (string.IsNullOrWhiteSpace(language))
+            {
+                language = blockLanguage;
+            }
+
+            // A pure SCL CompileUnit is one long text: its REGIONs are the
+            // addressable units, so it becomes several networks (docs/decisions.md D27).
+            if (string.Equals(language, "SCL", StringComparison.OrdinalIgnoreCase))
+            {
+                var title = GetPreferredMultilingualText(compileUnit, "Title");
+                var segmentation = SclRegionSegmenter.Segment(compileUnit, compileUnitId, tiaNetworkIndex, title);
+                foreach (var segment in segmentation.Segments)
+                {
+                    networks.Add(BuildSclSegmentNetwork(segment, language));
+                }
+
+                if (segmentation.Segments.Count > 0)
+                {
+                    continue;
+                }
+            }
+
+            networks.Add(ParseNetwork(compileUnit, tiaNetworkIndex, blockLanguage));
+        }
 
         return new LogicBlock(
             component.Name,
@@ -107,6 +138,43 @@ public static class ProgramBlockLogicYamlWriter
             component.ExportedFile,
             blockLanguage,
             networks);
+    }
+
+    /// <summary>
+    /// Turns one SCL segment into a `LogicNetwork`, keeping executable statements
+    /// and commented-out source apart exactly as the whole-network path does.
+    /// </summary>
+    private static LogicNetwork BuildSclSegmentNetwork(SclSegment segment, string language)
+    {
+        var statements = SplitSclStatements(segment.Text);
+        if (statements.Count == 0)
+        {
+            // The segment renders to comments only (a documentation region such as
+            // HEADER): keep the text for a reviewer, never report it as executable
+            // logic (docs/decisions.md D25).
+            return new LogicNetwork(
+                segment.Index,
+                segment.CompileUnitId,
+                segment.Title,
+                language,
+                "scl",
+                "exact",
+                Array.Empty<string>(),
+                Array.Empty<string>(),
+                string.IsNullOrWhiteSpace(segment.Text) ? null : segment.Text.Trim(),
+                segment.Key);
+        }
+
+        return new LogicNetwork(
+            segment.Index,
+            segment.CompileUnitId,
+            segment.Title,
+            language,
+            "scl",
+            "exact",
+            statements,
+            Array.Empty<string>(),
+            key: segment.Key);
     }
 
     private static LogicNetwork ParseNetwork(XElement compileUnit, int networkIndex, string blockLanguage)
@@ -354,7 +422,7 @@ public static class ProgramBlockLogicYamlWriter
             return string.Empty;
         }
 
-        var structuredText = RenderStructuredTextSource(networkSource);
+        var structuredText = SclTextRenderer.RenderNetworkSource(networkSource);
         if (!string.IsNullOrWhiteSpace(structuredText))
         {
             return structuredText;
@@ -371,139 +439,6 @@ public static class ProgramBlockLogicYamlWriter
         }
 
         return NormalizeWhitespace(text);
-    }
-
-    private static string RenderStructuredTextSource(XElement networkSource)
-    {
-        var structuredText = networkSource
-            .Descendants()
-            .FirstOrDefault(element => element.Name.LocalName == "StructuredText");
-        if (structuredText == null)
-        {
-            return string.Empty;
-        }
-
-        var builder = new StringBuilder();
-        foreach (var child in structuredText.Elements())
-        {
-            AppendStructuredTextElement(builder, child);
-        }
-
-        return TrimStructuredText(builder.ToString());
-    }
-
-    private static void AppendStructuredTextElement(StringBuilder builder, XElement element)
-    {
-        switch (element.Name.LocalName)
-        {
-            case "Blank":
-                builder.Append(' ');
-                return;
-            case "NewLine":
-                builder.AppendLine();
-                return;
-            case "Token":
-                builder.Append(((string?)element.Attribute("Text")) ?? element.Value);
-                return;
-            case "LineComment":
-                // Openness keeps a commented-out SCL line in a LineComment element
-                // whose <Text> is the raw line. The comment marker itself exists
-                // only as the element name, so emitting the text verbatim made the
-                // "comment stripper" (SplitSclStatements/StripSclComments) treat it
-                // as executable code. Restore the marker, then the stripper sees a
-                // comment exactly as it would in a real // line.
-                AppendCommentedLines(builder, element.Value);
-                return;
-            case "Comment":
-            case "BlockComment":
-                builder.AppendLine("/*");
-                AppendCommentedLines(builder, element.Value);
-                builder.AppendLine("*/");
-                return;
-            case "Component":
-                builder.Append(FormatComponentName(element));
-                foreach (var child in element.Elements())
-                {
-                    AppendStructuredTextElement(builder, child);
-                }
-
-                return;
-            case "Instruction":
-                builder.Append(((string?)element.Attribute("Name")) ?? element.Value);
-                foreach (var child in element.Elements())
-                {
-                    AppendStructuredTextElement(builder, child);
-                }
-
-                return;
-            case "Parameter":
-                builder.Append(((string?)element.Attribute("Name")) ?? element.Value);
-                foreach (var child in element.Elements())
-                {
-                    AppendStructuredTextElement(builder, child);
-                }
-
-                return;
-            case "ConstantValue":
-                builder.Append(element.Value);
-                return;
-            default:
-                foreach (var child in element.Elements())
-                {
-                    AppendStructuredTextElement(builder, child);
-                }
-
-                if (!element.Elements().Any() && !string.IsNullOrWhiteSpace(element.Value))
-                {
-                    builder.Append(element.Value.Trim());
-                }
-
-                return;
-        }
-    }
-
-    /// <summary>
-    /// Appends a commented-out block line by line, prefixing each line with `//`.
-    /// </summary>
-    /// <remarks>
-    /// Openness stores a commented-out SCL statement as a `LineComment` element
-    /// whose `<Text>` can span several lines. Prefixing only the first one would
-    /// leave the rest looking like executable code, which is exactly the defect this
-    /// fixes (docs/decisions.md D25), so every line gets the marker.
-    /// </remarks>
-    private static void AppendCommentedLines(StringBuilder builder, string? text)
-    {
-        foreach (var line in (text ?? string.Empty)
-                     .Replace("\r\n", "\n", StringComparison.Ordinal)
-                     .Replace('\r', '\n')
-                     .Split('\n'))
-        {
-            builder.Append("// ").Append(line.Trim()).AppendLine();
-        }
-    }
-
-    private static string TrimStructuredText(string source)
-    {
-        var lines = source
-            .Replace("\r\n", "\n")
-            .Replace('\r', '\n')
-            .Split('\n')
-            .Select(line => line.TrimEnd())
-            .ToArray();
-
-        return string.Join("\n", lines).Trim();
-    }
-
-    private static string FormatComponentName(XElement component)
-    {
-        var name = ((string?)component.Attribute("Name"))?.Trim() ?? component.Value ?? string.Empty;
-        var slice = ((string?)component.Attribute("SliceAccessModifier"))?.Trim();
-        if (string.IsNullOrWhiteSpace(slice))
-        {
-            return name;
-        }
-
-        return $"{name}.%{slice!.ToUpperInvariant()}";
     }
 
     private static IReadOnlyList<string> SplitSclStatements(string source)
@@ -566,6 +501,20 @@ public static class ProgramBlockLogicYamlWriter
                     blockCommentDepth--;
                     index++;
                 }
+                else if (current == '/' && next == '*')
+                {
+                    // SCL accepts both comment styles; the renderer emits `/* */` for
+                    // Openness <Comment> blocks, so the stripper has to know it too
+                    // (before this it left `/*` and `*/` behind as "code", which made
+                    // a documentation region look like a 5-character statement).
+                    blockCommentDepth++;
+                    index++;
+                }
+                else if (current == '*' && next == '/')
+                {
+                    blockCommentDepth--;
+                    index++;
+                }
                 else if (current is '\r' or '\n')
                 {
                     builder.Append(current);
@@ -610,6 +559,16 @@ public static class ProgramBlockLogicYamlWriter
                 index++;
             }
             else if (current == '(' && next == '*')
+            {
+                if (builder.Length > 0 && !char.IsWhiteSpace(builder[^1]))
+                {
+                    builder.Append(' ');
+                }
+
+                blockCommentDepth = 1;
+                index++;
+            }
+            else if (current == '/' && next == '*')
             {
                 if (builder.Length > 0 && !char.IsWhiteSpace(builder[^1]))
                 {
@@ -2183,7 +2142,7 @@ public static class ProgramBlockLogicYamlWriter
             var components = instance
                 .Descendants()
                 .Where(element => element.Name.LocalName == "Component")
-                .Select(FormatComponentName)
+                .Select(SclTextRenderer.FormatComponentName)
                 .Where(value => !string.IsNullOrWhiteSpace(value))
                 .ToArray();
 
@@ -2201,7 +2160,7 @@ public static class ProgramBlockLogicYamlWriter
             var components = instance
                 .Descendants()
                 .Where(element => element.Name.LocalName == "Component")
-                .Select(FormatComponentName)
+                .Select(SclTextRenderer.FormatComponentName)
                 .Where(value => !string.IsNullOrWhiteSpace(value))
                 .ToArray();
 
@@ -2275,7 +2234,7 @@ public static class ProgramBlockLogicYamlWriter
 
         private static string FormatSymbolComponent(XElement component)
         {
-            var value = FormatComponentName(component);
+            var value = SclTextRenderer.FormatComponentName(component);
             if (string.Equals((string?)component.Attribute("AccessModifier"), "Array", StringComparison.OrdinalIgnoreCase))
             {
                 var indexes = component
@@ -2332,7 +2291,8 @@ public static class ProgramBlockLogicYamlWriter
             string confidence,
             IReadOnlyList<string> statements,
             IReadOnlyList<string> notes,
-            string? commentedSource = null)
+            string? commentedSource = null,
+            string? key = null)
         {
             NetworkIndex = networkIndex;
             CompileUnitId = compileUnitId;
@@ -2343,6 +2303,7 @@ public static class ProgramBlockLogicYamlWriter
             Statements = statements;
             Notes = notes;
             CommentedSource = commentedSource;
+            Key = string.IsNullOrWhiteSpace(key) ? $"{compileUnitId}#{networkIndex}" : key!;
         }
 
         public int NetworkIndex { get; }
@@ -2350,6 +2311,9 @@ public static class ProgramBlockLogicYamlWriter
         public string CompileUnitId { get; }
 
         public string Title { get; }
+
+        /// <summary>The join key to the segment/importer record (compile unit + segment index).</summary>
+        public string Key { get; }
 
         public string Language { get; }
 

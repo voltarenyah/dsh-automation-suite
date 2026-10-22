@@ -68,8 +68,8 @@ spawn（`apply` 不预热，所以缺引擎时加载没有任何副作用），�
 | `knowledge_ingest` | `Ingest` | 爬取导出目录 → 解析成图 → 写入 SQLite（**整库重建**） | 写 `.db` |
 | `knowledge_query` | `Query` | 单条只读 `SELECT`/`WITH`/`EXPLAIN`（逃生舱） | 否 |
 | `knowledge_search` | `Query`（TS 拼 SQL） | 在节点名 / 网段标题 / 译出的逻辑里找一段文本 | 否 |
-| `knowledge_block` | `Query`（TS 拼 SQL） | 一个块：属性 + 网段紧凑清单（索引/标题/逻辑字符数） | 否 |
-| `knowledge_network` | `Query`（TS 拼 SQL） | 一个网段：读/写变量 + 逻辑**分块**续读 | 否 |
+| `knowledge_block` | `Query`（TS 拼 SQL） | 一个块：属性 + 网段紧凑清单（索引/标题/逻辑字符数；SCL 块按 REGION 列出，标 `region` / `module` / `part`） | 否 |
+| `knowledge_network` | `Query`（TS 拼 SQL） | 一个网段（SCL 块：一个 REGION）：读/写变量 + 逻辑**分块**续读 + `Region:` / `TIA network:` / `Context:` | 否 |
 | `knowledge_variable_usage` | `Query`（TS 拼 SQL） | 一个变量的全部使用点（read / write / mention） | 否 |
 
 四者的名字、顺序、参数、描述与渲染都是**冻结的**契约。`knowledge_workspace` 是唯一的本地工具，它声明**自己的信封**（`ok`/`tool`/`summary`/`details`/`data`/`warnings`/`error`）而不是引擎信封 —— 报一个引擎从没跑过的 `operation` 就是撒谎（`src/workspace-tool.ts` 的模块注释）。唯一可变的只有"`knowledge_ingest` 在不在"
@@ -78,6 +78,8 @@ spawn（`apply` 不预热，所以缺引擎时加载没有任何副作用），�
 **四个下钻工具用 TypeScript 拼固定 SQL，走现有 `Query` 操作**（**D24** §5）：`knowledge_search`（FTS5 `knowledge_search` 索引，<3 字符退化 LIKE）、`knowledge_block`、`knowledge_network`（逻辑默认 3000 字符、硬顶 6000，给 `offset`/`nextOffset`）、`knowledge_variable_usage`（READS/WRITES 边 + 文本 mention 合并）。**没有一条改 C#、改协议白名单或重发 `engine/bin`**。每个工具都自己限界：长值截断、明细行按字符预算裁剪、超出给"下一页怎么取"的指引，**绝不把"其余在 data 里"当作答复**（框架只把 `render` 的文本交给模型）。**D26** 又收紧了两处：`knowledge_block` 的总数来自同一条语句的 `COUNT`（`Networks: 50 of 72`，不再把分页大小当总数），`knowledge_network` 一旦只给出一段就在 summary 里写 `PARTIAL 0–6000 of 93742` 并附一条可复制的 `NEXT:` 续读指令。
 
 **`knowledge_query` 的渲染同样是预算化的**：逐字段默认截断到 200 字符（`max_field_chars` 可调到 3500，用来整段读一条长逻辑）、整段渲染有字符预算，超出的行数如实计数并提示用 `LIMIT`/`OFFSET` 翻页 —— 原先那句"其余在 `data.rows`"已删除，因为 `data` 到不了模型。**整网被注释掉的网络**（**D25**）在 `knowledge_network` 里直接说"no executable logic — the source is commented out"并附原文，在 `knowledge_block` 的列表里标 `COMMENTED OUT`。
+
+**纯 SCL 块按 REGION 分段**（**D27**，2026-10-21，这是 D26 留的那一项）。Openness 把一个纯 SCL 块写成**一个** CompileUnit，于是"一个 network"能装下 83,742 字符、514 条读写 —— 工具一次只读 6,000 字符，模型既不知道读哪段也拿不到"这段读写了什么"。现在 `Parsing/SclRegionSegmenter.cs` 按 `REGION … END_REGION` **全深度**切段（含嵌套；父段只留自有正文），region 外正文成 `module` 段，仍 >6,000 字符的段按语句边界切 `part (1/n)`；每段的读写按**元素身份**归属。判定按 **CompileUnit 的语言**，所以 LAD 块里的 SCL 网络也分（LAD/FBD 路径一行未动）。`segmentKind` / `regionPath` / `regionDepth` / `enclosingControl` / `tiaNetworkIndex` 写在**节点属性**上而不是派生表列里：旧库缺属性时工具返回 `null`、退化为"一块一网络"，不会 SQL 报错。因为 41% 的 region 开在 `IF`/`CASE` 内部，`knowledge_network` 会多一行 `Context: inside IF … THEN`。同批把 `knowledge_block` 的网络清单预算从 900 提到 3,500 字符（89 段的块用 900 只显示约 12 行，调大 `max_networks` 也不增加）。顺带修掉三个渲染漏洞：`<Constant Name="ZERO"/>` 与 `<PredefinedVariable Name="ENO"/>` 只有属性、名字曾被整个丢掉（`IF frequency <=  THEN`、` := TRUE;`），以及 `<Comment>` 渲染成 `/* */` 却没被剥离器识别（纯文档段会剩 5 个字符被当成可执行逻辑）。
 
 **`knowledge_query` 的 `db_path` 可以省略**（2026-10-19，发行版 **D24**）。省略时它读会话工作目录：
 

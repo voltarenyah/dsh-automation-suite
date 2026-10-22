@@ -219,11 +219,12 @@
 | 图落库到 SQLite（含原生 provider） | ✅ | `--self-test` 的 SQLite 往返（写图 → 读回）；**原生 `e_sqlite3` 运行期加载已验证** —— 这一条编译证明不了 |
 | 引擎协议（NDJSON 帧 + 操作白名单） | ✅ | **D19**；`dotnet build` **0 warning / 0 error**；stdio 实测 ready / result / progress 三类帧与四条错误路径 |
 | PLC 语法翻译（SCL 与 LAD/FBD 语句级，深度随结果标注） | 🟡 | 来源库的 FlgNet → 类 SCL 翻译器原样移植；**STL / GRAPH 明确不支持**（**D14**） |
+| SCL 结构分段（一个 REGION = 一个 network 段） | ✅ | **D27**（2026-10-21）：纯 SCL 块按 `REGION` 全深度分段，region 外正文成 `module` 段，仍 >6,000 字符的段按语句边界切 `part`；读写与正文按段归属，`segmentKind`/`regionPath`/`enclosingControl`/`tiaNetworkIndex` 落在节点属性上（旧库缺属性时退化，不加列）。真实工程：`LAxisCtrl_Axis` 1 → 103 段、83,742 → 4,683 字符；SCL 段最大 5,809；4550 → 4899 网络；逐块读写并集与旧库相等。顺带修掉 `Constant`/`PredefinedVariable` 丢名字与 `/* */` 未剥离两个渲染漏洞 |
 | 查询接口 | ✅ | 只读 SQL（`knowledge_query`，渲染预算化：逐字段截断可用 `max_field_chars` 放宽 + 超限给翻页指引）+ schema + 发现（`knowledge_workspace`）+ **四个下钻工具**（`knowledge_search` / `knowledge_block` / `knowledge_network` / `knowledge_variable_usage`，2026-10-19 **D24** 阶段 3；TS 侧固定 SQL，零 C# 改动） |
 | 测试与 CI 覆盖 | ✅ | 该包 **111 项** `node:test`，含**经真实引擎**的端到端（ingest → query → 计数、只读闸门拒绝 `DROP`）与传输层故障注入；引擎自检也被 `pnpm test` 覆盖 |
 | 新鲜度 / 增量更新 | ⬜ | 属 **D13** 第 4 步。来源库**没有** `status` 操作（新鲜度住在消费端），需新写；contentHash 兜底还须先归一化 |
 | 兼容层（跨版本 / 跨来源降级） | ⬜ | 目前只有 manifest 与 crawl 两条入口，没有按版本降级 |
-| LLM 友好的分级表示（项目摘要 + 分页） | 🟡 | 第 8 项。`knowledge_networks` / `knowledge_network_accesses` / `knowledge_search` 三张投影表已由四个下钻工具暴露，逻辑按 `offset`/`max_chars` 分块（默认 3000、硬顶 6000）；**项目级摘要**还没有 |
+| LLM 友好的分级表示（项目摘要 + 分页） | 🟡 | 第 8 项。`knowledge_networks` / `knowledge_network_accesses` / `knowledge_search` 三张投影表已由四个下钻工具暴露，逻辑按 `offset`/`max_chars` 分块（默认 3000、硬顶 6000）；**SCL 侧已按 REGION 分段**（**D27**，95% 以上的段一次读完），**项目级摘要**还没有 |
 
 > **已登记进蓝图（2026-10-15）**：`profile/dsh-automation-suite/package.json` 的 `dsh.profile.bundles` 已含它。
 > 注意 D23 之后工具面**按 preset 分发**：`leader` 是 4 个、`expert` 是 3 个（不含 `knowledge_ingest`），

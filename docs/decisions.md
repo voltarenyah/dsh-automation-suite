@@ -780,6 +780,81 @@ exit 0，`maxActiveSubagents: 2` 与三段新 persona 规则都在解析结果�
 
 ---
 
+## D27 · 纯 SCL 块按 REGION 分段：段就是 network，读写与正文都按段落归属 ✅
+
+**背景**：D26 记下的"SCL 大块的结构级导航（REGION 偏移表）"没有做，本轮把它做成真问题。
+原因是数据侧的量级：真实工程（`PEI_SinoARP_SWT2`，1376 个源文件）里 **194 个纯 SCL 块中 192 个只有一个
+CompileUnit**，也就是"一个 network 装下整块正文"；`LAxisCtrl_Axis` 的 N1 是 **83,742 字符**、514 条读写
+（读 351 / 写 163），而工具一次只读 6,000 字符（**14 次调用**）且访问清单硬顶 200 条。模型既不知道该读哪一段，
+也拿不到"这段读写了哪些 tag"，于是只能整段翻页——正是 D26 描述的那种"巨大失焦"。
+
+**决定**（四条口径由用户拍定）
+
+1. **`index` = 段序号**：纯 SCL 块不再按 TIA 网络编号，块内 1..N 连续编号即模型读的 `network_index`；
+   `knowledge_networks` 的 `UNIQUE(block_id, network_index)` 不变，TIA 网络号另存 `tiaNetworkIndex`。
+2. **嵌套 region 全深度展开**：任意深度的 `REGION` 都成段（父段只保留"自有正文"：第一个子 region 之前、
+   子 region 之间、最后一个之后）。只切顶层时 `LAxisCtrl_Axis` 仍会剩 **56,801 字符**的单段，所以这条是必须的。
+3. **无 REGION 的大块按语句边界切片兜底**：任何仍 > 6,000 字符的段，按 `;` 结束的语句边界切成
+   `part (1/2)`…（控制结构深度 0 的边界优先，>`2×` 上限时强切）。实测 22 个 >6,000 字符的 SCL CompileUnit
+   里 **19 个没有 region**，没有这条它们不会变好。
+4. **父段自有正文单独成段**：读写归属按元素身份（一个 `Access` 只属于一段），不把父级代码算进子段。
+
+实现上另有四条不成文但必需的规则：
+
+- **按 CompileUnit 的语言判定，不按块语言**：`CoolingCoupelleSWT2` 是 72 个 CompileUnit 的 LAD 块，其中
+  12 个是 SCL、2 个含 region —— 按块语言判会漏掉它们。LAD/FBD 路径一行未动（`segmentKind = 'network'`）。
+- **`END_REGION` 后重复的 region 名必须跳过**：Openness 在开、闭两处各写一遍 `Blank + Text<名字> + NewLine`，
+  不跳过就会把"刚关掉的 region 名"变成下一段的第一行（实测表现为一段叫 `Block info header` 的代码）。
+- **新信息走节点属性、不加派生表列**：`segmentKind` / `regionPath` / `regionName` / `regionDepth` /
+  `tiaNetworkIndex` / `enclosingControl` 都写在 `graph_node_properties`，读取面用相关子查询取。
+  旧库缺这些属性时工具返回 `null` 并退化为"一块一网络"，不会因为少一列直接 SQL 报错（与 D25 同一模式）。
+- **41% 的 region 开在 `IF`/`CASE` 内部**（实测 73/176），所以段正文经常是语法不完整的片段；
+  `enclosingControl` 记下段起点处仍然打开的控制结构（`IF NOT tempEnable AND statEnableOld THEN`），
+  工具渲染成 `Context: inside …`。没有这一行，模型会把半个 IF 当完整逻辑读——那是 D25 注释事故的同类陷阱。
+
+**顺带修掉的三个渲染漏洞**（都在同一条 SCL 文本路径上，不修则"段落正文"仍然不可读）：
+
+1. `<Constant Name="ZERO"/>` 与 `<PredefinedVariable Name="ENO"/>` 只有属性、没有文本，原渲染器把名字丢掉，
+   于是 `IF frequency <= ZERO THEN` 变成 `IF frequency <=  THEN`、`ENO := TRUE;` 变成 ` := TRUE;`。
+   现在两者都按名字渲染。
+2. `<Comment>` 被渲染成 `/* … */`，但 `StripSclComments` 只认 `(* … *)`，于是纯文档段落会留下
+   `/*` + `*/` 这 5 个字符，被当成"可执行逻辑"。现在剥离器同时认这两种块注释。
+3. 段落外只含 `;` 或 `//-----` 分隔线的 run 不再产段：否则每个 region 间隙都会多出一行 1 字符的
+   `Network 1`。正文里有文字的注释 run 仍然保留，region 外侧的文档不会丢。
+
+**实测（同一份真实导出物，旧库 vs 新库）**
+
+| 指标 | 旧 | 新 |
+|---|---|---|
+| 网络行 | 4,550 | **4,899**（module 295 / region 213 / part 133 / LAD network 4,258） |
+| 块数 | 471 | 471（不变） |
+| 最大 `logicStatements` | 83,742 | **7,561**（且只出现在 2 个 **LAD** 网络，本次未动） |
+| SCL 段最大字符 | 83,742 | **5,809**（全部 ≤ 6,000，一次读完） |
+| `LAxisCtrl_Axis` | 1 段 / 83,742 字符 | **103 段 / 最大 4,683**，首段 `HEADER`、次段 `ENABLE_FB / FALLING_EDGE_AT_ENABLE_FB` |
+| 逐块"读/写变量并集" | — | 与旧库**完全相等**（0 个块有差异，无丢失无重复） |
+| 重灌耗时 | — | 33–43 s / 1,376 文件 / 449 MB |
+
+**模型面**：`knowledge_block` 每行变成 `[7] ENABLE_FB / FB_ENABLED (SCL region), 6,766 logic char(s)`，
+`knowledge_network` 回 `Region:` / `TIA network:` / `Context: inside …`，读写只列本段变量。
+同时把 `knowledge_block` 的网络清单预算从固定 900 字符提到 **3,500**：89 段的块用 900 字符只显示约 12 行，
+即使把 `max_networks` 调大也不增加——那是"工具在说谎"，必须同批修。
+
+**后果**：引擎需重建（`engine/bin` 随包提交，`pwsh engine/build.ps1`；本机 dotnet 在
+`C:\Program Files\dotnet`，不在 PATH 上）；已有库要**重灌一次**（`knowledge_ingest` 是全量重建，
+1376 文件约 30–45 s）才有段落信息；不重灌也能用，只是仍是"一块一网络"。旧库的 `index` 语义随之改变：
+SCL 块的 `index` 从"TIA 网络号（恒为 1）"变成"段序号"，要追溯原网络看 `tiaNetworkIndex`。
+
+**验证**：包内 **114 项**全绿（新增 `knowledge_block` 的 region/part 渲染、`knowledge_network` 的
+region 上下文、以及 `test/13-scl-segmentation.test.mjs`：用真实引擎灌一个含嵌套 region、IF 内 region、
+超大 region、region 外代码与纯注释 region 的块，断言 7 段、kind 序列、标题、`enclosingControl`、
+每段 ≤6,000 字符与按段的读写归属）。fixture 增加 `SclRegions [FC11].xml`（`LGF_Impulse` 的
+`<NetworkSource>` 逐字照搬），自检 crawler 计数 72 → **89 节点 / 198 边**。
+
+**没做**：跨 REGION 的控制结构上下文（只报"起点处打开了什么"，不报"这一段关闭了什么"）；
+`<Comment>` 的多语言正文仍按 Openness 原样拼出所有语言（文档段落会重复 2–6 份）。
+
+---
+
 ## 待办验证清单（由以上决策派生）
 
 | # | 待验证 | 来源 |

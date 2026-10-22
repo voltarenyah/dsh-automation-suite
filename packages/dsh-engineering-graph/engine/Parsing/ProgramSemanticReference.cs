@@ -47,6 +47,13 @@ public sealed class ProgramNetworkRecord
         int networkIndex,
         string compileUnitId,
         string title,
+        int segmentIndex,
+        string segmentKind,
+        string regionPath,
+        string regionName,
+        int regionDepth,
+        int tiaNetworkIndex,
+        string enclosingControl,
         int accessCount,
         int callCount,
         int partCount,
@@ -63,6 +70,13 @@ public sealed class ProgramNetworkRecord
         NetworkIndex = networkIndex;
         CompileUnitId = compileUnitId;
         Title = title;
+        SegmentIndex = segmentIndex;
+        SegmentKind = segmentKind;
+        RegionPath = regionPath;
+        RegionName = regionName;
+        RegionDepth = regionDepth;
+        TiaNetworkIndex = tiaNetworkIndex;
+        EnclosingControl = enclosingControl;
         AccessCount = accessCount;
         CallCount = callCount;
         PartCount = partCount;
@@ -82,11 +96,33 @@ public sealed class ProgramNetworkRecord
 
     public string SourceFile { get; }
 
+    /// <summary>1-based segment index inside the block — the `networkIndex` the tools read.</summary>
     public int NetworkIndex { get; }
 
     public string CompileUnitId { get; }
 
     public string Title { get; }
+
+    /// <summary>Segment ordinal inside its CompileUnit (always 1 for a LAD/FBD network).</summary>
+    public int SegmentIndex { get; }
+
+    /// <summary>`network` (LAD/FBD), `region`, `module` or `part`.</summary>
+    public string SegmentKind { get; }
+
+    public string RegionPath { get; }
+
+    public string RegionName { get; }
+
+    public int RegionDepth { get; }
+
+    /// <summary>1-based CompileUnit ordinal — the TIA network number the segment came from.</summary>
+    public int TiaNetworkIndex { get; }
+
+    /// <summary>Control structures open where the segment starts, e.g. `IF tempEnable THEN`.</summary>
+    public string EnclosingControl { get; }
+
+    /// <summary>The key the logic translator uses for this segment.</summary>
+    public string LogicKey => $"{CompileUnitId}#{SegmentIndex}";
 
     public int AccessCount { get; }
 
@@ -194,29 +230,93 @@ public static class ProgramSemanticReferenceBuilder
             .Select((element, index) => new { Element = element, Index = index + 1 })
             .ToArray();
         var blockLanguage = GetBlockLanguage(document);
+        var networkIndex = 0;
 
         foreach (var compileUnit in compileUnits)
         {
-            var baseId = $"network:{component.Name}:{compileUnit.Index}";
-            var networkId = string.IsNullOrEmpty(deviceName) ? baseId : $"{deviceName}/{baseId}";
-            var title = GetPreferredMultilingualText(compileUnit.Element, "Title");
-            if (string.IsNullOrWhiteSpace(title))
-            {
-                title = $"Network {compileUnit.Index}";
-            }
-
             var language = GetDirectAttributeValue(compileUnit.Element, "ProgrammingLanguage");
             if (string.IsNullOrWhiteSpace(language))
             {
                 language = blockLanguage;
             }
 
+            var compileUnitId = ((string?)compileUnit.Element.Attribute("ID")) ?? string.Empty;
+            var compileUnitTitle = GetPreferredMultilingualText(compileUnit.Element, "Title");
+            var accessByUid = BuildAccessIndex(compileUnit.Element);
+            // The assignment-target inference is per CompileUnit: a UID belongs to
+            // exactly one segment, so computing it once gives every segment the same
+            // answer while walking the token stream only once (docs/decisions.md D27).
+            var sclAssignmentTargetUids = InferSclAssignmentTargetUids(compileUnit.Element);
+
+            if (string.Equals(language, "SCL", StringComparison.OrdinalIgnoreCase))
+            {
+                var segmentation = SclRegionSegmenter.Segment(
+                    compileUnit.Element,
+                    compileUnitId,
+                    compileUnit.Index,
+                    compileUnitTitle);
+                foreach (var segment in segmentation.Segments)
+                {
+                    networkIndex++;
+                    var segmentId = NetworkId(component.Name, deviceName, networkIndex);
+                    var segmentReferences = ParseNetworkReferences(
+                        compileUnit.Element,
+                        component,
+                        segmentId,
+                        networkIndex,
+                        segment.Title,
+                        accessByUid,
+                        sclAssignmentTargetUids,
+                        segmentation,
+                        segment.Index);
+                    references.AddRange(segmentReferences);
+
+                    networks.Add(new ProgramNetworkRecord(
+                        segmentId,
+                        component.Name,
+                        component.Category,
+                        language,
+                        component.ExportedFile,
+                        networkIndex,
+                        compileUnitId,
+                        segment.Title,
+                        segment.Index,
+                        segment.Kind,
+                        segment.RegionPath,
+                        segment.RegionName,
+                        segment.RegionDepth,
+                        compileUnit.Index,
+                        segment.EnclosingControl,
+                        segment.CountDescendants("Access"),
+                        segment.CountDescendants("CallInfo"),
+                        segment.CountDescendants("Part"),
+                        segment.CountDescendants("Wire"),
+                        DistinctTargets(segmentReferences, "read"),
+                        DistinctTargets(segmentReferences, "write"),
+                        DistinctCallTargets(segmentReferences)));
+                }
+
+                if (segmentation.Segments.Count > 0)
+                {
+                    continue;
+                }
+            }
+
+            networkIndex++;
+            var title = string.IsNullOrWhiteSpace(compileUnitTitle)
+                ? $"Network {compileUnit.Index}"
+                : compileUnitTitle;
+            var networkId = NetworkId(component.Name, deviceName, networkIndex);
             var networkReferences = ParseNetworkReferences(
                 compileUnit.Element,
                 component,
                 networkId,
-                compileUnit.Index,
-                title);
+                networkIndex,
+                title,
+                accessByUid,
+                sclAssignmentTargetUids,
+                null,
+                0);
             references.AddRange(networkReferences);
 
             networks.Add(new ProgramNetworkRecord(
@@ -225,9 +325,16 @@ public static class ProgramSemanticReferenceBuilder
                 component.Category,
                 language,
                 component.ExportedFile,
-                compileUnit.Index,
-                ((string?)compileUnit.Element.Attribute("ID")) ?? string.Empty,
+                networkIndex,
+                compileUnitId,
                 title,
+                1,
+                SclRegionSegmenter.SegmentKinds.Network,
+                string.Empty,
+                string.Empty,
+                0,
+                compileUnit.Index,
+                string.Empty,
                 CountDescendants(compileUnit.Element, "Access"),
                 CountDescendants(compileUnit.Element, "CallInfo"),
                 CountDescendants(compileUnit.Element, "Part"),
@@ -245,22 +352,23 @@ public static class ProgramSemanticReferenceBuilder
         ProgramBlockComponent component,
         string networkId,
         int networkIndex,
-        string title)
+        string title,
+        IReadOnlyDictionary<string, AccessRecord> accessByUid,
+        IReadOnlySet<string> sclAssignmentTargetUids,
+        SclSegmentation? segmentation,
+        int segmentIndex)
     {
-        var references = new List<ProgramReferenceRecord>();
-        var accessByUid = compileUnit
-            .Descendants()
-            .Where(element => element.Name.LocalName == "Access")
-            .Select(element => new AccessRecord(
-                GetUid(element),
-                GetSymbolName(element),
-                ((string?)element.Attribute("Scope"))?.Trim() ?? string.Empty))
-            .Where(item => !string.IsNullOrWhiteSpace(item.Uid))
-            .GroupBy(item => item.Uid, StringComparer.OrdinalIgnoreCase)
-            .ToDictionary(group => group.Key, group => group.First(), StringComparer.OrdinalIgnoreCase);
+        // Segment scoping is by element identity: an Access inside a CallInfo is a
+        // descendant of the segment's direct child, so it resolves to that segment
+        // (docs/decisions.md D27).
+        bool InScope(XElement element) => segmentation == null || segmentation.SegmentOf(element) == segmentIndex;
 
+        var references = new List<ProgramReferenceRecord>();
         var classifiedAccessUids = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        foreach (var callInfo in compileUnit.Descendants().Where(element => element.Name.LocalName == "CallInfo"))
+        foreach (var callInfo in compileUnit
+            .Descendants()
+            .Where(element => element.Name.LocalName == "CallInfo")
+            .Where(InScope))
         {
             var calleeName = GetCalleeName(callInfo);
             var calleeBlockType = ((string?)callInfo.Attribute("BlockType"))?.Trim() ?? string.Empty;
@@ -311,31 +419,36 @@ public static class ProgramSemanticReferenceBuilder
             }
         }
 
-        foreach (var inferredAccess in InferStandaloneAccesses(compileUnit, accessByUid, classifiedAccessUids))
+        // LAD/FBD only: standalone accesses are classified from wire topology, which
+        // SCL does not have. A segmented unit has no wires, so this loop only runs
+        // on the whole-network path.
+        if (segmentation == null)
         {
-            classifiedAccessUids.Add(inferredAccess.AccessUid);
-            references.Add(new ProgramReferenceRecord(
-                networkId,
-                component.Name,
-                networkIndex,
-                title,
-                inferredAccess.Symbol,
-                "symbol",
-                inferredAccess.Access,
-                inferredAccess.Scope,
-                string.Empty,
-                string.Empty,
-                string.Empty,
-                string.Empty,
-                component.ExportedFile));
+            foreach (var inferredAccess in InferStandaloneAccesses(compileUnit, accessByUid, classifiedAccessUids))
+            {
+                classifiedAccessUids.Add(inferredAccess.AccessUid);
+                references.Add(new ProgramReferenceRecord(
+                    networkId,
+                    component.Name,
+                    networkIndex,
+                    title,
+                    inferredAccess.Symbol,
+                    "symbol",
+                    inferredAccess.Access,
+                    inferredAccess.Scope,
+                    string.Empty,
+                    string.Empty,
+                    string.Empty,
+                    string.Empty,
+                    component.ExportedFile));
+            }
         }
 
         // I1: SCL assignments are a flat token stream under <StructuredText>; an Access directly
         // followed (skipping blanks/newlines) by a ':=' token is the assignment target → write.
         // Everything else stays "unknown"; the graph importer falls back to an over-inclusive
         // READS edge for those instead of dropping the access entirely.
-        var sclAssignmentTargetUids = InferSclAssignmentTargetUids(compileUnit);
-        foreach (var access in accessByUid.Values)
+        foreach (var access in accessByUid.Values.Where(access => InScope(access.Element)))
         {
             if (classifiedAccessUids.Contains(access.Uid) ||
                 string.IsNullOrWhiteSpace(access.Symbol) ||
@@ -361,6 +474,28 @@ public static class ProgramSemanticReferenceBuilder
         }
 
         return references;
+    }
+
+    /// <summary>Indexes a CompileUnit's `<Access>` elements by UID (first occurrence wins).</summary>
+    private static IReadOnlyDictionary<string, AccessRecord> BuildAccessIndex(XElement compileUnit)
+    {
+        return compileUnit
+            .Descendants()
+            .Where(element => element.Name.LocalName == "Access")
+            .Select(element => new AccessRecord(
+                GetUid(element),
+                GetSymbolName(element),
+                ((string?)element.Attribute("Scope"))?.Trim() ?? string.Empty,
+                element))
+            .Where(item => !string.IsNullOrWhiteSpace(item.Uid))
+            .GroupBy(item => item.Uid, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(group => group.Key, group => group.First(), StringComparer.OrdinalIgnoreCase);
+    }
+
+    private static string NetworkId(string blockName, string deviceName, int networkIndex)
+    {
+        var baseId = $"network:{blockName}:{networkIndex}";
+        return string.IsNullOrEmpty(deviceName) ? baseId : $"{deviceName}/{baseId}";
     }
 
     private static IReadOnlySet<string> InferSclAssignmentTargetUids(XElement compileUnit)
@@ -868,11 +1003,12 @@ public static class ProgramSemanticReferenceBuilder
 
     private sealed class AccessRecord
     {
-        public AccessRecord(string uid, string symbol, string scope)
+        public AccessRecord(string uid, string symbol, string scope, XElement element)
         {
             Uid = uid;
             Symbol = symbol;
             Scope = scope;
+            Element = element;
         }
 
         public string Uid { get; }
@@ -880,6 +1016,9 @@ public static class ProgramSemanticReferenceBuilder
         public string Symbol { get; }
 
         public string Scope { get; }
+
+        /// <summary>The `<Access>` element, used to attribute the access to a segment.</summary>
+        public XElement Element { get; }
     }
 
     private sealed class PartRecord

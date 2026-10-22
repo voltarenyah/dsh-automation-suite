@@ -185,6 +185,10 @@ export function blockNetworksStatement(nodeId: string, limit: number): string {
     'SELECT network_index, network_id, title, language, coalesce(length(logic_statements), 0), source_file,\n' +
     "  (SELECT value FROM graph_node_properties p WHERE p.node_id = knowledge_networks.network_id\n" +
     "     AND p.name = 'logicCommented') AS commented,\n" +
+    "  (SELECT value FROM graph_node_properties p WHERE p.node_id = knowledge_networks.network_id\n" +
+    "     AND p.name = 'regionPath') AS region_path,\n" +
+    "  (SELECT value FROM graph_node_properties p WHERE p.node_id = knowledge_networks.network_id\n" +
+    "     AND p.name = 'segmentKind') AS segment_kind,\n" +
     `  (SELECT COUNT(*) FROM knowledge_networks total WHERE total.block_id = ${block}) AS total,\n` +
     '  (SELECT COUNT(*) FROM graph_node_properties cp\n' +
     '     JOIN knowledge_networks cw ON cw.network_id = cp.node_id\n' +
@@ -204,6 +208,10 @@ export interface NetworkSummary {
   sourceFile: string | null
   /** True when the network's whole source is commented out, so it has no executable logic. */
   commented: boolean
+  /** The SCL region path when this row is a region (or part of one); `null` for a plain network. */
+  regionPath: string | null
+  /** `network` (LAD/FBD), `region`, `module` or `part`; `null` on a database built before D27. */
+  segmentKind: string | null
 }
 
 // -------------------------------------------------------------------- network
@@ -215,7 +223,15 @@ export function networkStatement(blockId: string, networkIndex: number): string 
     "  (SELECT value FROM graph_node_properties p WHERE p.node_id = knowledge_networks.network_id\n" +
     "     AND p.name = 'commentedLogic') AS commented_logic,\n" +
     "  (SELECT value FROM graph_node_properties p WHERE p.node_id = knowledge_networks.network_id\n" +
-    "     AND p.name = 'logicCommented') AS commented\n" +
+    "     AND p.name = 'logicCommented') AS commented,\n" +
+    "  (SELECT value FROM graph_node_properties p WHERE p.node_id = knowledge_networks.network_id\n" +
+    "     AND p.name = 'regionPath') AS region_path,\n" +
+    "  (SELECT value FROM graph_node_properties p WHERE p.node_id = knowledge_networks.network_id\n" +
+    "     AND p.name = 'segmentKind') AS segment_kind,\n" +
+    "  (SELECT value FROM graph_node_properties p WHERE p.node_id = knowledge_networks.network_id\n" +
+    "     AND p.name = 'tiaNetworkIndex') AS tia_network_index,\n" +
+    "  (SELECT value FROM graph_node_properties p WHERE p.node_id = knowledge_networks.network_id\n" +
+    "     AND p.name = 'enclosingControl') AS enclosing_control\n" +
     `FROM knowledge_networks\nWHERE block_id = ${sqlText(blockId)} AND network_index = ${Math.trunc(networkIndex)}\n` +
     'LIMIT 1'
   )

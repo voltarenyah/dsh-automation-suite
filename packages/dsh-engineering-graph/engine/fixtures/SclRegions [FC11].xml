@@ -1,0 +1,593 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Document>
+  <Engineering version="V17" />
+  <DocumentInfo>
+    <Created>2026-10-21T00:00:00.0000000Z</Created>
+    <ExportSetting>WithDefaults</ExportSetting>
+  </DocumentInfo>
+  <SW.Blocks.FC ID="0">
+    <AttributeList>
+      <AutoNumber>true</AutoNumber>
+      <HeaderAuthor />
+      <HeaderFamily />
+      <HeaderName />
+      <HeaderVersion>0.1</HeaderVersion>
+      <Interface><Sections xmlns="http://www.siemens.com/automation/Openness/SW/Interface/v5">
+  <Section Name="None" />
+</Sections></Interface>
+      <IsIECCheckEnabled>false</IsIECCheckEnabled>
+      <Name>SclRegions</Name>
+      <Number>11</Number>
+      <ProgrammingLanguage>SCL</ProgrammingLanguage>
+    </AttributeList>
+    <ObjectList>
+      <SW.Blocks.CompileUnit ID="3" CompositionName="CompileUnits">
+        <AttributeList>
+<NetworkSource><StructuredText xmlns="http://www.siemens.com/automation/Openness/SW/NetworkSource/StructuredText/v3">
+  <Token Text="REGION" UId="21" />
+  <Blank Num="1" UId="22" />
+  <Text UId="23">Block info header</Text>
+  <NewLine Num="1" UId="24" />
+  <Blank Num="2" UId="25" />
+  <LineComment Inserted="false" NoClosingBracket="false" UId="26">
+    <Text UId="27">=============================================================================</Text>
+  </LineComment>
+  <NewLine Num="1" UId="28" />
+  <Blank Num="2" UId="29" />
+  <LineComment Inserted="false" NoClosingBracket="false" UId="30">
+    <Text UId="31"> SIEMENS AG / (c)Copyright 2017</Text>
+  </LineComment>
+  <NewLine Num="1" UId="32" />
+  <Blank Num="2" UId="33" />
+  <LineComment Inserted="false" NoClosingBracket="false" UId="34">
+    <Text UId="35">-----------------------------------------------------------------------------</Text>
+  </LineComment>
+  <NewLine Num="1" UId="36" />
+  <Blank Num="2" UId="37" />
+  <LineComment Inserted="false" NoClosingBracket="false" UId="38">
+    <Text UId="39"> Title:            LGF_Impulse</Text>
+  </LineComment>
+  <NewLine Num="1" UId="40" />
+  <Blank Num="2" UId="41" />
+  <LineComment Inserted="false" NoClosingBracket="false" UId="42">
+    <Text UId="43"> Comment/Function: This function generates pulses at a given frequency. The pulse is always present for one (control) cycle.</Text>
+  </LineComment>
+  <NewLine Num="1" UId="44" />
+  <Blank Num="2" UId="45" />
+  <LineComment Inserted="false" NoClosingBracket="false" UId="46">
+    <Text UId="47"> Library/Family:   LGF(Library General Functions)</Text>
+  </LineComment>
+  <NewLine Num="1" UId="48" />
+  <Blank Num="2" UId="49" />
+  <LineComment Inserted="false" NoClosingBracket="false" UId="50">
+    <Text UId="51"> Author:           Siemens Digital Industry Support</Text>
+  </LineComment>
+  <NewLine Num="1" UId="52" />
+  <Blank Num="2" UId="53" />
+  <LineComment Inserted="false" NoClosingBracket="false" UId="54">
+    <Text UId="55"> Tested with:      S7-PLCSIM Advanced V2.0 SP1</Text>
+  </LineComment>
+  <NewLine Num="1" UId="56" />
+  <Blank Num="2" UId="57" />
+  <LineComment Inserted="false" NoClosingBracket="false" UId="58">
+    <Text UId="59"> Engineering:      TIA Portal V15 Update 2</Text>
+  </LineComment>
+  <NewLine Num="1" UId="60" />
+  <Blank Num="2" UId="61" />
+  <LineComment Inserted="false" NoClosingBracket="false" UId="62">
+    <Text UId="63"> Restrictions:     ENO disabled - error handling done by error and status</Text>
+  </LineComment>
+  <NewLine Num="1" UId="64" />
+  <Blank Num="2" UId="65" />
+  <LineComment Inserted="false" NoClosingBracket="false" UId="66">
+    <Text UId="67"> Requirements:     PLC (S7-1200 / S7-1500)</Text>
+  </LineComment>
+  <NewLine Num="1" UId="68" />
+  <Blank Num="2" UId="69" />
+  <LineComment Inserted="false" NoClosingBracket="false" UId="70">
+    <Text UId="71">-------------------------------------------------------------------------------</Text>
+  </LineComment>
+  <NewLine Num="1" UId="72" />
+  <Blank Num="2" UId="73" />
+  <LineComment Inserted="false" NoClosingBracket="false" UId="74">
+    <Text UId="75"> Change log table:</Text>
+  </LineComment>
+  <NewLine Num="1" UId="76" />
+  <Blank Num="2" UId="77" />
+  <LineComment Inserted="false" NoClosingBracket="false" UId="78">
+    <Text UId="79"> Version  | Date       | Expert in charge       | Changes applied</Text>
+  </LineComment>
+  <NewLine Num="1" UId="80" />
+  <Blank Num="2" UId="81" />
+  <LineComment Inserted="false" NoClosingBracket="false" UId="82">
+    <Text UId="83">----------|------------|------------------------|------------------------------</Text>
+  </LineComment>
+  <NewLine Num="1" UId="84" />
+  <Blank Num="2" UId="85" />
+  <LineComment Inserted="false" NoClosingBracket="false" UId="86">
+    <Text UId="87"> 01.00.00 19.08.2015  Siemens Industry Online Support</Text>
+  </LineComment>
+  <NewLine Num="1" UId="88" />
+  <Blank Num="2" UId="89" />
+  <LineComment Inserted="false" NoClosingBracket="false" UId="90">
+    <Text UId="91">                      First released version</Text>
+  </LineComment>
+  <NewLine Num="1" UId="92" />
+  <Blank Num="2" UId="93" />
+  <LineComment Inserted="false" NoClosingBracket="false" UId="94">
+    <Text UId="95"> 01.01.01 16.06.2015  Siemens Industry Online Support</Text>
+  </LineComment>
+  <NewLine Num="1" UId="96" />
+  <Blank Num="2" UId="97" />
+  <LineComment Inserted="false" NoClosingBracket="false" UId="98">
+    <Text UId="99">                      LGF_Impulse calls new LGF_Frequency V1.1.1</Text>
+  </LineComment>
+  <NewLine Num="1" UId="100" />
+  <Blank Num="2" UId="101" />
+  <LineComment Inserted="false" NoClosingBracket="false" UId="102">
+    <Text UId="103"> 01.01.02 02.01.2017  Siemens Industry Online Support</Text>
+  </LineComment>
+  <NewLine Num="1" UId="104" />
+  <Blank Num="2" UId="105" />
+  <LineComment Inserted="false" NoClosingBracket="false" UId="106">
+    <Text UId="107">                      Upgrade: TIA Portal V14 Update 1</Text>
+  </LineComment>
+  <NewLine Num="1" UId="108" />
+  <Blank Num="2" UId="109" />
+  <LineComment Inserted="false" NoClosingBracket="false" UId="110">
+    <Text UId="111"> 01.02.00 02.02.2017  Siemens Industry Online Support</Text>
+  </LineComment>
+  <NewLine Num="1" UId="112" />
+  <Blank Num="2" UId="113" />
+  <LineComment Inserted="false" NoClosingBracket="false" UId="114">
+    <Text UId="115">                      Code optimization: no call of LGF_Frequency</Text>
+  </LineComment>
+  <NewLine Num="1" UId="116" />
+  <Blank Num="2" UId="117" />
+  <LineComment Inserted="false" NoClosingBracket="false" UId="118">
+    <Text UId="119">                      Fix at output "countdown"</Text>
+  </LineComment>
+  <NewLine Num="1" UId="120" />
+  <Blank Num="2" UId="121" />
+  <LineComment Inserted="false" NoClosingBracket="false" UId="122">
+    <Text UId="123"> 01.02.01 17.08.2018  Siemens Industry Online Support</Text>
+  </LineComment>
+  <NewLine Num="1" UId="124" />
+  <Blank Num="2" UId="125" />
+  <LineComment Inserted="false" NoClosingBracket="false" UId="126">
+    <Text UId="127">                      Upgrade: TIA V15 Update 2</Text>
+  </LineComment>
+  <NewLine Num="1" UId="128" />
+  <Blank Num="2" UId="129" />
+  <LineComment Inserted="false" NoClosingBracket="false" UId="130">
+    <Text UId="131"> 01.02.02 23.11.2018  Siemens Industry Online Support</Text>
+  </LineComment>
+  <NewLine Num="1" UId="132" />
+  <Blank Num="2" UId="133" />
+  <LineComment Inserted="false" NoClosingBracket="false" UId="134">
+    <Text UId="135">                      Upgrade: TIA V15.1</Text>
+  </LineComment>
+  <NewLine Num="1" UId="136" />
+  <Blank Num="2" UId="137" />
+  <LineComment Inserted="false" NoClosingBracket="false" UId="138">
+    <Text UId="139"> 01.02.04 20.09.2019  Simatic Systems Support</Text>
+  </LineComment>
+  <NewLine Num="1" UId="140" />
+  <Blank Num="2" UId="141" />
+  <LineComment Inserted="false" NoClosingBracket="false" UId="142">
+    <Text UId="143">                      Code refactoring, regions and more comments added</Text>
+  </LineComment>
+  <NewLine Num="1" UId="144" />
+  <Blank Num="2" UId="145" />
+  <LineComment Inserted="false" NoClosingBracket="false" UId="146">
+    <Text UId="147"> 03.00.00 23.04.2020  Simatic Systems Support</Text>
+  </LineComment>
+  <NewLine Num="1" UId="148" />
+  <Blank Num="2" UId="149" />
+  <LineComment Inserted="false" NoClosingBracket="false" UId="150">
+    <Text UId="151">                      Set version to V3.0.0, harmonize the version of the whole library</Text>
+  </LineComment>
+  <NewLine Num="1" UId="152" />
+  <Blank Num="2" UId="153" />
+  <LineComment Inserted="false" NoClosingBracket="false" UId="154">
+    <Text UId="155"> 03.00.01 15.02.2021  Simatic Systems Support</Text>
+  </LineComment>
+  <NewLine Num="1" UId="156" />
+  <Blank Num="2" UId="157" />
+  <LineComment Inserted="false" NoClosingBracket="false" UId="158">
+    <Text UId="159">                      Insert documentation</Text>
+  </LineComment>
+  <NewLine Num="1" UId="160" />
+  <Blank Num="2" UId="161" />
+  <LineComment Inserted="false" NoClosingBracket="false" UId="162">
+    <Text UId="163">=============================================================================</Text>
+  </LineComment>
+  <NewLine Num="1" UId="164" />
+  <Token Text="END_REGION" UId="165" />
+  <Blank Num="1" UId="166" />
+  <Text UId="167">Block info header</Text>
+  <NewLine Num="2" UId="168" />
+  <Token Text="REGION" UId="169" />
+  <Blank Num="1" UId="170" />
+  <Text UId="171">DESCRIPTION</Text>
+  <NewLine Num="1" UId="172" />
+  <Blank Num="2" UId="173" />
+  <Comment Inserted="true" UId="174">
+    <MultiLanguageText Lang="fr-FR" />
+    <MultiLanguageText Lang="de-DE">
+Die Funktion generiert Impulse am Ausgang `impulse` mit der Frequenz `frequency`.  
+Der Baustein beginnt immer mit einem Impuls und setzt den folgenden Impuls nach der verstrichenen Periodendauer.
+
+#### Beispiel
+
+![LGF_Impulse](LGF_Impulse.png "LGF_Impulse")
+</MultiLanguageText>
+    <MultiLanguageText Lang="en-GB" />
+    <MultiLanguageText Lang="es-MX" />
+    <MultiLanguageText Lang="th-TH" />
+    <MultiLanguageText Lang="zh-CN" />
+    <MultiLanguageText Lang="en-US">
+The function generates pulses at the output `impulse` with the frequency `frequency`.  
+The block always begins with a pulse and sets the next pulse after the period that has elapsed.
+
+#### Example
+
+![LGF_Impulse](LGF_Impulse.png "LGF_Impulse")
+
+</MultiLanguageText>
+  </Comment>
+  <NewLine Num="1" UId="182" />
+  <Token Text="END_REGION" UId="183" />
+  <Blank Num="1" UId="184" />
+  <Text UId="185">DESCRIPTION</Text>
+  <NewLine Num="2" UId="186" />
+  <Token Text="REGION" UId="187" />
+  <Blank Num="1" UId="188" />
+  <Text UId="189">Calculation of settings and program execution</Text>
+  <NewLine Num="1" UId="190" />
+  <Blank Num="2" UId="191" />
+  <LineComment Inserted="false" NoClosingBracket="false" UId="192">
+    <Text UId="193"> If input &lt;= 0.0 the block is disabled</Text>
+  </LineComment>
+  <NewLine Num="1" UId="194" />
+  <Blank Num="2" UId="195" />
+  <Token Text="IF" UId="196" />
+  <Blank Num="1" UId="197" />
+  <Access Scope="LocalVariable" UId="198">
+    <Symbol UId="199">
+      <Component Name="frequency" UId="200" />
+    </Symbol>
+  </Access>
+  <Blank Num="1" UId="201" />
+  <Token Text="&lt;=" UId="202" />
+  <Blank Num="1" UId="203" />
+  <Access Scope="LocalConstant" UId="204">
+    <Constant Name="ZERO" UId="205" />
+  </Access>
+  <Blank Num="1" UId="208" />
+  <Token Text="THEN" UId="209" />
+  <NewLine Num="1" UId="210" />
+  <Blank Num="4" UId="211" />
+  <Access Scope="LocalVariable" UId="212">
+    <Symbol UId="213">
+      <Component Name="tempImpulse" UId="214" />
+    </Symbol>
+  </Access>
+  <Blank Num="1" UId="215" />
+  <Token Text=":=" UId="216" />
+  <Blank Num="1" UId="217" />
+  <Access Scope="LiteralConstant" UId="218">
+    <Constant UId="219">
+      <ConstantValue UId="221">FALSE</ConstantValue>
+    </Constant>
+  </Access>
+  <Token Text=";" UId="222" />
+  <NewLine Num="1" UId="223" />
+  <Blank Num="4" UId="224" />
+  <Access Scope="LocalVariable" UId="225">
+    <Symbol UId="226">
+      <Component Name="tempCountdown" UId="227" />
+    </Symbol>
+  </Access>
+  <Blank Num="1" UId="228" />
+  <Token Text=":=" UId="229" />
+  <Blank Num="1" UId="230" />
+  <Access Scope="LocalConstant" UId="231">
+    <Constant Name="ZERO_TIME" UId="232" />
+  </Access>
+  <Token Text=";" UId="235" />
+  <NewLine Num="1" UId="236" />
+  <Blank Num="2" UId="237" />
+  <Token Text="ELSE" UId="238" />
+  <NewLine Num="1" UId="239" />
+  <Blank Num="4" UId="240" />
+  <LineComment Inserted="false" NoClosingBracket="false" UId="241">
+    <Text UId="242">//Calculating function frequency parameters - only when the input is changed</Text>
+  </LineComment>
+  <NewLine Num="1" UId="243" />
+  <Blank Num="4" UId="244" />
+  <Token Text="IF" UId="245" />
+  <Blank Num="1" UId="246" />
+  <Access Scope="LocalVariable" UId="247">
+    <Symbol UId="248">
+      <Component Name="frequency" UId="249" />
+    </Symbol>
+  </Access>
+  <Blank Num="1" UId="250" />
+  <Token Text="&lt;&gt;" UId="251" />
+  <Blank Num="1" UId="252" />
+  <Access Scope="LocalVariable" UId="253">
+    <Symbol UId="254">
+      <Component Name="statFrequencyOld" UId="255" />
+    </Symbol>
+  </Access>
+  <Blank Num="1" UId="256" />
+  <Token Text="THEN" UId="257" />
+  <NewLine Num="1" UId="258" />
+  <Blank Num="6" UId="259" />
+  <LineComment Inserted="false" NoClosingBracket="false" UId="260">
+    <Text UId="261"> Assign frequency - convert frequency to period</Text>
+  </LineComment>
+  <NewLine Num="1" UId="262" />
+  <Blank Num="6" UId="263" />
+  <Access Scope="LocalVariable" UId="264">
+    <Symbol UId="265">
+      <Component Name="statTimePulse" UId="266" />
+    </Symbol>
+  </Access>
+  <Blank Num="1" UId="267" />
+  <Token Text=":=" UId="268" />
+  <Blank Num="1" UId="269" />
+  <Access Scope="LocalConstant" UId="270">
+    <Constant Name="THOUSAND_SECONDS" UId="271" />
+  </Access>
+  <Blank Num="1" UId="274" />
+  <Token Text="/" UId="275" />
+  <Blank Num="1" UId="276" />
+  <Access Scope="Call" UId="277">
+    <Instruction Name="TRUNC" UId="278">
+      <Token Text="(" UId="279" />
+      <NamelessParameter UId="280">
+        <Access Scope="LocalVariable" UId="281">
+          <Symbol UId="282">
+            <Component Name="frequency" UId="283" />
+          </Symbol>
+        </Access>
+        <Blank Num="1" UId="284" />
+        <Token Text="*" UId="285" />
+        <Blank Num="1" UId="286" />
+        <Access Scope="LocalConstant" UId="287">
+          <Constant Name="THOUSAND" UId="288" />
+        </Access>
+      </NamelessParameter>
+      <Token Text=")" UId="292" />
+    </Instruction>
+  </Access>
+  <Token Text=";" UId="293" />
+  <NewLine Num="1" UId="294" />
+  <Blank Num="6" UId="295" />
+  <Access Scope="LocalVariable" UId="296">
+    <Symbol UId="297">
+      <Component Name="statFrequencyOld" UId="298" />
+    </Symbol>
+  </Access>
+  <Blank Num="1" UId="299" />
+  <Token Text=":=" UId="300" />
+  <Blank Num="1" UId="301" />
+  <Access Scope="LocalVariable" UId="302">
+    <Symbol UId="303">
+      <Component Name="frequency" UId="304" />
+    </Symbol>
+  </Access>
+  <Token Text=";" UId="305" />
+  <NewLine Num="1" UId="306" />
+  <Blank Num="4" UId="307" />
+  <Token Text="END_IF" UId="308" />
+  <Token Text=";" UId="309" />
+  <NewLine Num="1" UId="310" />
+  <Blank Num="4" UId="311" />
+  <NewLine Num="1" UId="312" />
+  <Blank Num="4" UId="313" />
+  <LineComment Inserted="false" NoClosingBracket="false" UId="314">
+    <Text UId="315"> Assign impulse</Text>
+  </LineComment>
+  <NewLine Num="1" UId="316" />
+  <Blank Num="4" UId="317" />
+  <Access Scope="LocalVariable" UId="318">
+    <Symbol UId="319">
+      <Component Name="tempImpulse" UId="320" />
+    </Symbol>
+  </Access>
+  <Blank Num="1" UId="321" />
+  <Token Text=":=" UId="322" />
+  <Blank Num="1" UId="323" />
+  <Token Text="NOT" UId="324" />
+  <Blank Num="1" UId="325" />
+  <Access Scope="LocalVariable" UId="326">
+    <Symbol UId="327">
+      <Component Name="instTofTimePulse" UId="328" />
+      <Token Text="." UId="329" />
+      <Component Name="Q" UId="330" />
+    </Symbol>
+  </Access>
+  <Token Text=";" UId="331" />
+  <NewLine Num="1" UId="332" />
+  <Blank Num="4" UId="333" />
+  <NewLine Num="1" UId="334" />
+  <Blank Num="4" UId="335" />
+  <LineComment Inserted="false" NoClosingBracket="false" UId="336">
+    <Text UId="337">Self-restarting timer, with time calculated from the frequency input</Text>
+  </LineComment>
+  <NewLine Num="1" UId="338" />
+  <Blank Num="4" UId="339" />
+  <Access Scope="LocalVariable" UId="340">
+    <Symbol UId="341">
+      <Component Name="instTofTimePulse" UId="342" />
+    </Symbol>
+  </Access>
+  <Access Scope="Call" UId="343">
+    <Instruction UId="344">
+      <Token Text="(" UId="345" />
+      <Parameter Name="IN" UId="346">
+        <Blank Num="1" UId="347" />
+        <Token Text=":=" UId="348" />
+        <Blank Num="1" UId="349" />
+        <Token Text="NOT" UId="350" />
+        <Blank Num="1" UId="351" />
+        <Access Scope="LocalVariable" UId="352">
+          <Symbol UId="353">
+            <Component Name="instTofTimePulse" UId="354" />
+            <Token Text="." UId="355" />
+            <Component Name="Q" UId="356" />
+          </Symbol>
+        </Access>
+      </Parameter>
+      <Token Text="," UId="357" />
+      <NewLine Num="1" UId="358" />
+      <Blank Num="22" UId="359" />
+      <Parameter Name="PT" UId="360">
+        <Blank Num="1" UId="361" />
+        <Token Text=":=" UId="362" />
+        <Blank Num="1" UId="363" />
+        <Access Scope="LocalVariable" UId="364">
+          <Symbol UId="365">
+            <Component Name="statTimePulse" UId="366" />
+          </Symbol>
+        </Access>
+      </Parameter>
+      <Token Text=")" UId="367" />
+    </Instruction>
+  </Access>
+  <Token Text=";" UId="368" />
+  <NewLine Num="1" UId="369" />
+  <Blank Num="4" UId="370" />
+  <NewLine Num="1" UId="371" />
+  <Blank Num="4" UId="372" />
+  <LineComment Inserted="false" NoClosingBracket="false" UId="373">
+    <Text UId="374"> Assign countdown</Text>
+  </LineComment>
+  <NewLine Num="1" UId="375" />
+  <Blank Num="4" UId="376" />
+  <Access Scope="LocalVariable" UId="377">
+    <Symbol UId="378">
+      <Component Name="tempCountdown" UId="379" />
+    </Symbol>
+  </Access>
+  <Blank Num="1" UId="380" />
+  <Token Text=":=" UId="381" />
+  <Blank Num="1" UId="382" />
+  <Access Scope="LocalVariable" UId="383">
+    <Symbol UId="384">
+      <Component Name="statTimePulse" UId="385" />
+    </Symbol>
+  </Access>
+  <Blank Num="1" UId="386" />
+  <Token Text="-" UId="387" />
+  <Blank Num="1" UId="388" />
+  <Access Scope="LocalVariable" UId="389">
+    <Symbol UId="390">
+      <Component Name="instTofTimePulse" UId="391" />
+      <Token Text="." UId="392" />
+      <Component Name="ET" UId="393" />
+    </Symbol>
+  </Access>
+  <Token Text=";" UId="394" />
+  <NewLine Num="1" UId="395" />
+  <Blank Num="2" UId="396" />
+  <Token Text="END_IF" UId="397" />
+  <Token Text=";" UId="398" />
+  <NewLine Num="1" UId="399" />
+  <Token Text="END_REGION" UId="400" />
+  <NewLine Num="2" UId="401" />
+  <Token Text="REGION" UId="402" />
+  <Blank Num="1" UId="403" />
+  <Text UId="404">Writing to outputs</Text>
+  <NewLine Num="1" UId="405" />
+  <Blank Num="2" UId="406" />
+  <LineComment Inserted="false" NoClosingBracket="false" UId="407">
+    <Text UId="408"> Assigning value of the pulse to the output</Text>
+  </LineComment>
+  <NewLine Num="1" UId="409" />
+  <Blank Num="2" UId="410" />
+  <Access Scope="LocalVariable" UId="411">
+    <Symbol UId="412">
+      <Component Name="impulse" UId="413" />
+    </Symbol>
+  </Access>
+  <Blank Num="1" UId="414" />
+  <Token Text=":=" UId="415" />
+  <Blank Num="1" UId="416" />
+  <Access Scope="LocalVariable" UId="417">
+    <Symbol UId="418">
+      <Component Name="tempImpulse" UId="419" />
+    </Symbol>
+  </Access>
+  <Token Text=";" UId="420" />
+  <NewLine Num="1" UId="421" />
+  <Blank Num="2" UId="422" />
+  <Access Scope="LocalVariable" UId="423">
+    <Symbol UId="424">
+      <Component Name="countdown" UId="425" />
+    </Symbol>
+  </Access>
+  <Blank Num="1" UId="426" />
+  <Token Text=":=" UId="427" />
+  <Blank Num="1" UId="428" />
+  <Access Scope="LocalVariable" UId="429">
+    <Symbol UId="430">
+      <Component Name="tempCountdown" UId="431" />
+    </Symbol>
+  </Access>
+  <Token Text=";" UId="432" />
+  <NewLine Num="1" UId="433" />
+  <Blank Num="2" UId="434" />
+  <LineComment Inserted="false" NoClosingBracket="false" UId="435">
+    <Text UId="436">ENO mechanism is not used - forced to true.</Text>
+  </LineComment>
+  <NewLine Num="1" UId="437" />
+  <Blank Num="2" UId="438" />
+  <Access Scope="PredefinedVariable" UId="439">
+    <PredefinedVariable Name="ENO" UId="440" />
+  </Access>
+  <Blank Num="1" UId="441" />
+  <Token Text=":=" UId="442" />
+  <Blank Num="1" UId="443" />
+  <Access Scope="LiteralConstant" UId="444">
+    <Constant UId="445">
+      <ConstantValue UId="447">TRUE</ConstantValue>
+    </Constant>
+  </Access>
+  <Token Text=";" UId="448" />
+  <NewLine Num="1" UId="449" />
+  <Token Text="END_REGION" UId="450" />
+  <NewLine Num="1" UId="451" />
+</StructuredText></NetworkSource>
+          <ProgrammingLanguage>SCL</ProgrammingLanguage>
+        </AttributeList>
+        <ObjectList>
+          <MultilingualText ID="4" CompositionName="Comment">
+            <ObjectList>
+              <MultilingualTextItem ID="5" CompositionName="Items">
+                <AttributeList>
+                  <Culture>en-US</Culture>
+                  <Text />
+                </AttributeList>
+              </MultilingualTextItem>
+            </ObjectList>
+          </MultilingualText>
+          <MultilingualText ID="6" CompositionName="Title">
+            <ObjectList>
+              <MultilingualTextItem ID="7" CompositionName="Items">
+                <AttributeList>
+                  <Culture>en-US</Culture>
+                  <Text>Impulse sequence</Text>
+                </AttributeList>
+              </MultilingualTextItem>
+            </ObjectList>
+          </MultilingualText>
+        </ObjectList>
+      </SW.Blocks.CompileUnit>
+    </ObjectList>
+  </SW.Blocks.FC>
+</Document>
+
