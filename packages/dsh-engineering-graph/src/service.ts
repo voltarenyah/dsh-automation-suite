@@ -18,6 +18,12 @@
  *      device directory, an unreadable manifest or an empty tree comes back as
  *      `ok:false` with a coded error; a missing engine executable, a timeout or a
  *      protocol mismatch is thrown, and the caller decides how loudly to report it.
+ *   3. **A successful ingest leaves a freshness sidecar.** After the engine wrote
+ *      the database, the service records the PLC checksum the export ledger names
+ *      in `<workspace>/.dsh/local/graph/<device>.json` (`graph-freshness.ts`), which
+ *      is what lets `knowledge_workspace` answer "was this graph built from the
+ *      source tree I am looking at?". The engine never writes it, and a failed
+ *      ingest never touches it.
  *
  * @module dsh-engineering-graph/service
  */
@@ -28,6 +34,7 @@ import { Service } from '@deepseek-ai/cordis'
 import type { Context } from '@deepseek-ai/cordis'
 
 import { resolveEnginePath } from './engine-path.js'
+import { recordGraphSidecar } from './graph-freshness.js'
 import { outcomeOf, type ToolDependencies } from './tools.js'
 import type { JsonRecord, ToolOutcome } from './protocol.js'
 
@@ -111,15 +118,19 @@ export class KnowledgeGraph extends Service {
    * Build (or rebuild) one device's knowledge database from its source directory.
    *
    * `deviceDir` is `<project root>/source/<device>`: the directory holding
-   * `_tia-openness-manifest.json` plus `blocks/`, `types/` and `tag_tables/`. The
+   * `_manifest.json` plus `blocks/`, `types/` and `tag_tables/`. The
    * interface plugin's `rebuildSource` returns exactly that directory per device
    * (`devices[].directory`), so a caller does not have to construct it.
    *
-   * It is a **full rebuild** every time, and there is no freshness check yet: the
-   * caller decides when the graph is stale by exporting again and calling this.
+   * It is a **full rebuild** every time. Its provenance is recorded, not checked:
+   * a successful call writes the freshness sidecar from the device's
+   * `_evidence.json` (`graph-freshness.ts`), and the caller decides when a rebuild
+   * is worth doing by comparing that sidecar with the ledger —
+   * `knowledge_workspace` reports the comparison as `graphFreshness`.
    *
    * @param deviceDir - absolute path of one device's source directory.
    * @param options - database path override and cancellation.
+   * @returns the engine's outcome; a failed ingest writes no sidecar.
    * @throws when the engine cannot be reached at all (transport failure).
    */
   async ingestDevice(deviceDir: string, options: IngestDeviceOptions = {}): Promise<ToolOutcome> {
@@ -137,6 +148,16 @@ export class KnowledgeGraph extends Service {
         : { onProgress: (progress) => options.onProgress?.(progress.message) }),
     })
 
-    return outcomeOf('Ingest', frame)
+    const outcome = outcomeOf('Ingest', frame)
+
+    // Only a successful ingest may claim provenance. `recordGraphSidecar` reports a
+    // write failure as a warning and returns null: the database exists, so the
+    // caller must not see the ingest as failed because its sidecar was not writable
+    // — the honest consequence is `graphFreshness: unknown`.
+    if (outcome.ok) {
+      await recordGraphSidecar(deviceDir, { log: this.dependencies.log })
+    }
+
+    return outcome
   }
 }

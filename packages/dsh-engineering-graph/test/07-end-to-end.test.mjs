@@ -7,8 +7,9 @@
  *
  *   1. spawn `EngineeringGraph.Engine.exe`, read the `ready` frame;
  *   2. `{"type":"operation","operation":"GetSchema","params":{}}` → `result`;
- *   3. `{"operation":"Ingest","params":{"deviceDir":<fixtures>,"dbPath":<tmp>}}`
- *      → two `progress` frames plus one `result`;
+ *   3. `{"operation":"Ingest","params":{"deviceDir":<fixtures copy>,"dbPath":<tmp>}}`
+ *      → two `progress` frames plus one `result`, and the tool's freshness sidecar
+ *      under `<tmp>/.dsh/local/graph/` carrying the ledger's PLC checksum;
  *   4. `{"operation":"Query","params":{"dbPath":<tmp>,"sql":"SELECT COUNT(*) …"}}`;
  *   5. `{"operation":"Query","params":{…,"sql":"DROP TABLE graph_nodes"}}` →
  *      `result` with `ok:false` and `QUERY_REJECTED` (the read-only guard), not a
@@ -21,13 +22,14 @@
  * The engine is a build artifact (`.gitignore` excludes `engine/bin/`), so on a
  * checkout where the C# half has not been built this test **skips with the command
  * to fix that** instead of failing. Everything it writes lands in a fresh
- * `os.tmpdir()` directory, which is removed afterwards.
+ * `os.tmpdir()` directory, which is removed afterwards — including the fixture copy
+ * it ingests, because the plugin derives the sidecar's location from `deviceDir`.
  *
  * @module dsh-engineering-graph/test/end-to-end
  */
 
 import assert from 'node:assert/strict'
-import { mkdtempSync, rmSync } from 'node:fs'
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
@@ -52,6 +54,12 @@ const FIXTURES = join(packageRoot, 'engine', 'fixtures')
 /** The graph-node count, spelled once so every step asks the same question. */
 const COUNT_SQL = 'SELECT COUNT(*) AS n FROM graph_nodes'
 
+/**
+ * The PLC checksum the export ledger records. The ingest records it in the
+ * freshness sidecar, and the copy below is where it has to end up.
+ */
+const PLC_CHECKSUM = 'E1 F0 C1 F9 0A 1B 2C 3D'
+
 test('ingest engine/fixtures into a temp db, then query the node count', async (t) => {
   if (!engineAvailable) {
     t.skip(engineSkipReason)
@@ -64,9 +72,36 @@ test('ingest engine/fixtures into a temp db, then query the node count', async (
     // link is involved, so a recursive delete is safe here (root AGENTS.md §3).
     rmSync(dir, { recursive: true, force: true })
   })
+
+  // The device directory is a **copy** under `<temp>/source/fixtures`, for two
+  // reasons: the plugin derives the freshness sidecar's location from `deviceDir`
+  // (two levels up), so ingesting `engine/fixtures` directly would write
+  // `.dsh/local/graph/` inside the package; and test data must never leave
+  // `os.tmpdir()`. The copy also lets this test supply an evidence ledger.
+  const deviceDir = join(dir, 'source', 'fixtures')
+  mkdirSync(deviceDir, { recursive: true })
+  cpSync(FIXTURES, deviceDir, { recursive: true })
+  writeFileSync(
+    join(deviceDir, '_evidence.json'),
+    `${JSON.stringify(
+      {
+        schemaVersion: 1,
+        hashAlgo: 'xml-norm-v1',
+        device: 'fixtures',
+        software: 'fixtures',
+        plcChecksum: PLC_CHECKSUM,
+        stateId: 'state-e2e',
+        objects: {},
+      },
+      null,
+      2,
+    )}\n`,
+    'utf8',
+  )
+
   const dbPath = join(dir, 'plc-knowledge.db')
-  // The database deliberately lives in the temp directory and *not* next to the
-  // fixtures: the ingest must write somewhere this test owns and can delete.
+  // The database deliberately lives in the temp directory in its own right: the
+  // ingest must write somewhere this test owns and can delete.
 
   const logs = []
   const client = await engineClient({ logs })
@@ -110,8 +145,8 @@ test('ingest engine/fixtures into a temp db, then query the node count', async (
     'the schema carries worked example queries',
   )
 
-  // 2. Ingest the fixtures into a database this test owns.
-  const ingestOutcome = await executeTool(ingestTool, { device_dir: FIXTURES, db_path: dbPath }, exec)
+  // 2. Ingest the fixture copy into a database this test owns.
+  const ingestOutcome = await executeTool(ingestTool, { device_dir: deviceDir, db_path: dbPath }, exec)
   assertOutcomeMatchesSchema(ingestTool, ingestOutcome)
   assert.equal(ingestOutcome.ok, true, renderFailure(ingestOutcome))
   assert.equal(ingestOutcome.operation, 'Ingest')
@@ -128,7 +163,21 @@ test('ingest engine/fixtures into a temp db, then query the node count', async (
   // this is the same callback the tools hand to the client.
   const progress = logsAt(logs, 'debug').filter((entry) => entry.message.startsWith('engine ingest ['))
   assert.ok(progress.length >= 2, `expected ingest progress frames, got: ${JSON.stringify(logs)}`)
-  assert.ok(progress.some((entry) => entry.message.includes(FIXTURES)), 'the first frame names the folder being crawled')
+  assert.ok(progress.some((entry) => entry.message.includes(deviceDir)), 'the first frame names the folder being crawled')
+
+  // 2b. The tool recorded the graph's provenance after the real engine wrote the
+  //     database: the sidecar lives under `<temp>/.dsh/local/graph/`, i.e. derived
+  //     from the device directory — never from the process cwd, and never in the
+  //     package.
+  const sidecarPath = join(dir, '.dsh', 'local', 'graph', 'fixtures.json')
+  assert.equal(existsSync(sidecarPath), true, 'a successful ingest must leave the freshness sidecar behind')
+  const sidecar = JSON.parse(readFileSync(sidecarPath, 'utf8'))
+  assert.equal(sidecar.schemaVersion, 1)
+  assert.equal(sidecar.device, 'fixtures')
+  assert.equal(sidecar.plcChecksum, PLC_CHECKSUM, 'the sidecar carries the evidence ledger checksum verbatim')
+  assert.equal(sidecar.stateId, 'state-e2e')
+  assert.equal(sidecar.sourceDir, 'source/fixtures')
+  assert.match(sidecar.builtAt, /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/)
 
   // 3. The graph is non-empty, asked the way the model would ask.
   const countOutcome = await executeTool(queryTool, { db_path: dbPath, sql: COUNT_SQL }, exec)

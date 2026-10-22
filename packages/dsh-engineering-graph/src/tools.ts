@@ -33,6 +33,7 @@ import type { Context } from '@deepseek-ai/cordis'
 import { defineTool, type InferValue, type JsonValue, type ToolDefinition } from '@deepseek-ai/dsh-tools'
 
 import type { LogSink } from './engine-client.js'
+import { recordGraphSidecar } from './graph-freshness.js'
 import type { JsonRecord, Operation, ProgressFrame, ResultFrame, ToolError, ToolOutcome } from './protocol.js'
 import { workspaceToolDefinition } from './workspace-tool.js'
 import { chooseDatabase, type DatabaseChoice } from './workspace.js'
@@ -560,7 +561,9 @@ export function registerTools(ctx: Context, dependencies: ToolDependencies, opti
           'every source file it lists into a graph of nodes and edges, and write it to a SQLite database. It is a full ' +
           'rebuild, so point db_path at a database this tool owns. Call it once per device -- a project with several ' +
           'PLCs has one folder per device under source/. Progress is reported while the files are parsed and the ' +
-          'database is written. Fails with DEVICE_DIR_REQUIRED, DEVICE_DIR_NOT_FOUND, NO_SOURCE_FILES or ' +
+          'database is written. A successful rebuild also records the export ledger\'s PLC checksum in ' +
+          '.dsh/local/graph/<device>.json, which is what makes knowledge_workspace report the database as fresh or ' +
+          'stale afterwards. Fails with DEVICE_DIR_REQUIRED, DEVICE_DIR_NOT_FOUND, NO_SOURCE_FILES or ' +
           'MANIFEST_INVALID, and with an engine error only if the database itself cannot be written.',
         parameters: {
           device_dir: {
@@ -592,15 +595,23 @@ export function registerTools(ctx: Context, dependencies: ToolDependencies, opti
         async execute(args, exec) {
           const params: JsonRecord = { deviceDir: args.device_dir }
           if (args.db_path !== undefined) params['dbPath'] = args.db_path
-          return asJsonOutcome(
-            await runOperation(dependencies, 'Ingest', params, {
-              signal: exec.signal,
-              // The engine reports what it is crawling and where it is writing.
-              // Turning that into debug lines is what makes a slow ingest visible in
-              // the plugin log without changing the tool result.
-              onProgress: (frame) => dependencies.log.debug(`engine ingest [${frame.phase}] ${frame.message}`),
-            }),
-          )
+          const outcome = await runOperation(dependencies, 'Ingest', params, {
+            signal: exec.signal,
+            // The engine reports what it is crawling and where it is writing.
+            // Turning that into debug lines is what makes a slow ingest visible in
+            // the plugin log without changing the tool result.
+            onProgress: (frame) => dependencies.log.debug(`engine ingest [${frame.phase}] ${frame.message}`),
+          })
+
+          // Same writer as the `knowledgeGraph` service: the tool drives the engine
+          // directly, so it has to leave the same provenance file, or a database
+          // rebuilt from here would report `unknown` forever. A failed ingest
+          // (outcome.ok false) must not touch the sidecar.
+          if (outcome.ok) {
+            await recordGraphSidecar(args.device_dir, { log: dependencies.log })
+          }
+
+          return asJsonOutcome(outcome)
         },
       }),
     )

@@ -120,6 +120,11 @@ export async function loadWorkspaceToolModule() {
   return await importBuilt('workspace-tool.js')
 }
 
+/** Load the built graph-freshness module (the ingest sidecar and its rule). */
+export async function loadFreshnessModule() {
+  return await importBuilt('graph-freshness.js')
+}
+
 /** The engine executable this package ships, resolved the way `apply` resolves it. */
 export const enginePath = (await loadEnginePathModule()).bundledEnginePath()
 

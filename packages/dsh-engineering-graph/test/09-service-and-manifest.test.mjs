@@ -3,14 +3,16 @@
  *
  * Why this file exists: every other test drives the **crawl fallback**, because the
  * fixtures are flat — no manifest, no `blocks/`-style category directories. The path
- * real exports actually take (family 1's `_tia-openness-manifest.json` under the D24
+ * real exports actually take (family 1's `_manifest.json` under the D24
  * layout) had **no automated coverage at all**, so a regression there would have gone
  * unnoticed while the suite stayed green. That is exactly how the earlier "a
  * cross-group CALLS edge points at a placeholder" defect survived.
  *
  * It goes through the service rather than the tool on purpose: that is the seam
  * family 2 will call, so the same test proves the service is registered, that it
- * shares the tools' conversion, and that the manifest path is correct.
+ * shares the tools' conversion, that the manifest path is correct, and that a
+ * successful ingest records the freshness sidecar from the device's ledger
+ * (`src/graph-freshness.ts`).
  *
  * Engine-dependent assertions skip with the build command when the engine is absent
  * (it is a build artefact even though it is committed — see `engine/build.ps1`).
@@ -20,7 +22,7 @@
 
 import { after, test } from 'node:test'
 import assert from 'node:assert/strict'
-import { copyFileSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
@@ -41,6 +43,12 @@ after(async () => {
   for (const unload of teardowns.reverse()) await unload()
 })
 
+/**
+ * The PLC checksum the export ledger records. It is what the freshness sidecar
+ * must carry, so it is spelled once here and compared in the ingest test.
+ */
+const PLC_CHECKSUM = 'C0 01 C3 13 58 AC 0E 50'
+
 /** Build a device tree in the D24 shape, with a manifest covering two blocks in two groups. */
 function buildDeviceTree() {
   const root = mkdtempSync(join(tmpdir(), 'graph-manifest-'))
@@ -54,11 +62,31 @@ function buildDeviceTree() {
     join(device, 'blocks', '010_Cell', 'FC_LAD_SimulateCylinder_Call [FC1].xml'),
   )
 
+  // The export ledger family 1 writes next to the manifest. Only the two fields the
+  // freshness sidecar borrows matter here.
+  writeFileSync(
+    join(device, '_evidence.json'),
+    `${JSON.stringify(
+      {
+        schemaVersion: 1,
+        hashAlgo: 'xml-norm-v1',
+        device: DEVICE,
+        software: DEVICE,
+        plcChecksum: PLC_CHECKSUM,
+        stateId: 'state-manifest-1',
+        objects: {},
+      },
+      null,
+      2,
+    )}\n`,
+    'utf8',
+  )
+
   // Family 1's own shape, including the three documented-but-absent fields this
   // importer must tolerate: no `counts`, no `objectCount`, and `group` missing for
   // root-group objects (not an empty string).
   writeFileSync(
-    join(device, '_tia-openness-manifest.json'),
+    join(device, '_manifest.json'),
     JSON.stringify(
       {
         schemaVersion: 1,
@@ -157,6 +185,19 @@ test('a D24 device tree ingests from its manifest', async (t) => {
     //    device directory, then knowledge/<device>/<device>_knowledge.db.
     const expectedDb = join(root, 'knowledge', DEVICE, `${DEVICE}_knowledge.db`)
     assert.equal(data.dbPath, expectedDb)
+
+    // 2b. A successful ingest records its provenance in the workspace's local state
+    //     (`.dsh/local/`, never committed), derived from the device directory rather
+    //     than from the process cwd, and carrying the ledger's PLC checksum verbatim.
+    const sidecarPath = join(root, '.dsh', 'local', 'graph', `${DEVICE}.json`)
+    assert.equal(existsSync(sidecarPath), true, 'a successful ingest must leave the freshness sidecar behind')
+    const sidecar = JSON.parse(readFileSync(sidecarPath, 'utf8'))
+    assert.equal(sidecar.schemaVersion, 1)
+    assert.equal(sidecar.device, DEVICE)
+    assert.equal(sidecar.plcChecksum, PLC_CHECKSUM, 'the sidecar must carry the evidence ledger checksum')
+    assert.equal(sidecar.stateId, 'state-manifest-1')
+    assert.equal(sidecar.sourceDir, `source/${DEVICE}`)
+    assert.match(sidecar.builtAt, /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/)
 
     // 3. The manifest's failures are surfaced, never dropped.
     assert.ok(

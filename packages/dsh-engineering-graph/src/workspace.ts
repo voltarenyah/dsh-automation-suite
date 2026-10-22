@@ -23,10 +23,12 @@
  *      independent (no shared package). The constants below are as much a
  *      contract as the file names themselves; they are also asserted against a
  *      real `create_engineering_project` index in the tests.
- *   3. **Nothing here decides freshness.** The database is a derived snapshot; a
- *      report carries its `modifiedAt` and the export timestamp the index
- *      recorded, and the persona forbids concluding "the code changed/did not
- *      change" from the database (D13's freshness work is still open).
+ *   3. **Freshness is compared, never guessed.** The database is a derived
+ *      snapshot, so a report carries its `modifiedAt`, the export timestamp the
+ *      index recorded, and — the only factual basis — the PLC checksum sidecar the
+ *      last successful ingest wrote, compared with the one in the device's
+ *      `_evidence.json` (`graph-freshness.ts`). Timestamps are not the comparison:
+ *      an export that changed nothing is not a stale graph.
  *
  * @module dsh-engineering-graph/workspace
  */
@@ -35,8 +37,10 @@ import { readFile, readdir, stat } from 'node:fs/promises'
 import type { Dirent } from 'node:fs'
 import { isAbsolute, join, relative } from 'node:path'
 
+import { readGraphFacts, SOURCE_DIR_NAME, type GraphFacts } from './graph-freshness.js'
+
 /** Directory holding the exported source tree, one folder per device (the context plugin's `source/`). */
-export const SOURCE_DIR_NAME = 'source'
+export { SOURCE_DIR_NAME }
 
 /** Directory holding one folder per device with everything generated for it (D20). */
 export const KNOWLEDGE_DIR_NAME = 'knowledge'
@@ -60,7 +64,7 @@ export interface WorkspaceProject {
 }
 
 /** One device of the project and the database it gets. */
-export interface WorkspaceDevice {
+export interface WorkspaceDevice extends GraphFacts {
   /** The device name: the `source/<device>` folder name, per D20. */
   device: string
   /**
@@ -300,6 +304,9 @@ export async function discoverWorkspace(workspaceRoot: string): Promise<Workspac
       bytes: info?.bytes ?? null,
       modifiedAt: info?.modifiedAt ?? null,
       origin: 'index',
+      // Read from the device directory the ingest itself would take, so the two
+      // sides of the comparison always describe the same folder.
+      ...await readGraphFacts(deviceDir),
     })
   }
 
@@ -310,17 +317,19 @@ export async function discoverWorkspace(workspaceRoot: string): Promise<Workspac
     claimed.add(database.device)
     const info = await statFile(database.path)
     const candidateDir = join(workspaceRoot, SOURCE_DIR_NAME, database.device)
+    const deviceDir = (await directoryExists(candidateDir)) ? candidateDir : null
     warnings.push(
       `Device ${database.device} has a database (${database.path}) but is not listed in ${sourceIndex}; the index may be stale.`,
     )
     devices.push({
       device: database.device,
-      deviceDir: (await directoryExists(candidateDir)) ? candidateDir : null,
+      deviceDir,
       database: database.path,
       exists: info !== null,
       bytes: info?.bytes ?? null,
       modifiedAt: info?.modifiedAt ?? null,
       origin: 'directory',
+      ...await readGraphFacts(deviceDir),
     })
   }
 

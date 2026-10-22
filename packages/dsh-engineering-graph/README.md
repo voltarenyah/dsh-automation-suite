@@ -63,9 +63,9 @@ spawn（`apply` 不预热，所以缺引擎时加载没有任何副作用），�
 
 | 工具 | 引擎操作 | 作用 | 写入 |
 |---|---|---|---|
-| `knowledge_workspace` | —（本地文件，不经引擎） | 这个 workspace 是哪个工程、每个设备的库在哪、多大、什么时候写的；缺库时给出 `device_dir` | 否 |
+| `knowledge_workspace` | —（本地文件，不经引擎） | 这个 workspace 是哪个工程、每个设备的库在哪、多大、什么时候写的、`graphFreshness` 是 `fresh`/`stale`/`unknown`；缺库时给出 `device_dir` | 否 |
 | `knowledge_schema` | `GetSchema` | 图谱 schema：DDL、节点种类、边类型、示例查询 | 否 |
-| `knowledge_ingest` | `Ingest` | 爬取导出目录 → 解析成图 → 写入 SQLite（**整库重建**） | 写 `.db` |
+| `knowledge_ingest` | `Ingest` | 爬取导出目录 → 解析成图 → 写入 SQLite（**整库重建**） | 写 `.db` + `.dsh/local/graph/<device>.json` |
 | `knowledge_query` | `Query` | 单条只读 `SELECT`/`WITH`/`EXPLAIN`（逃生舱） | 否 |
 | `knowledge_search` | `Query`（TS 拼 SQL） | 在节点名 / 网段标题 / 译出的逻辑里找一段文本 | 否 |
 | `knowledge_block` | `Query`（TS 拼 SQL） | 一个块：属性 + 网段紧凑清单（索引/标题/逻辑字符数；SCL 块按 REGION 列出，标 `region` / `module` / `part`） | 否 |
@@ -90,7 +90,22 @@ spawn（`apply` 不预热，所以缺引擎时加载没有任何副作用），�
 
 三个分支都**不会**先问引擎：拒绝路径上引擎一次调用都没有（详见 `test/11-workspace.test.mjs`）。
 相对路径按会话工作目录解析（引擎是把它按自己的进程目录解析的，那不是调用方想要的）。
-"库是不是最新"**不在**这个解析里 —— 新鲜度属于 D13 的第 4 步，仍是 ⬜（见 §6）。
+`db_path` 的解析**不用**新鲜度参与（"恰好一个库"就是唯一判据），但报告会把它单独写清楚，见下一条。
+
+**新鲜度（2026-10-22，B3）以 PLC checksum 为唯一依据。** 一次**成功**的 ingest 会在
+`<workspace>/.dsh/local/graph/<device>.json` 留下一份 sidecar（`schemaVersion: 1` / `device` /
+`plcChecksum` / `stateId` / `builtAt` / `sourceDir`），`plcChecksum` 与 `stateId` 取自
+`deviceDir/_evidence.json`（缺失或不可读就是 `null`，**不让 ingest 失败**）。工作区根由 `deviceDir`
+**往上两级**推出（`source/<device>` → workspace；服务只拿得到设备目录，用 `process.cwd()` 会把
+sidecar 写到宿主的工作目录里去），写入是"同目录临时文件 + rename"，所以读者看不到半个 JSON，失败的 ingest
+不碰它。`knowledge_workspace` 对每台设备多报 `graphChecksum` / `graphStateId` / `graphBuiltAt` /
+`graphFreshness`：sidecar 与当前 `_evidence.json` 的 checksum 都有且相等 = `fresh`，都有但不同 = `stale`，
+任一侧缺失（没有 sidecar、账本没了、账本没有 checksum、sidecar 版本不认识）= `unknown`。时间戳**不**参与判定：
+导出没改动 PLC 时 `builtAt` 旧也不算 `stale`。两条入口（`knowledgeGraph` 服务与 `knowledge_ingest` 工具）
+调**同一个**写函数；C# 引擎从不写它。两点刻意行为：`deviceDir` 的父目录不是 `source/` 时**不写**
+sidecar（否则 `D:\exports\PLC_1` 会在盘符根目录造一个 `.dsh/`），只打一条 warning，结果是 `unknown`；
+复制来的库没有 sidecar，因此也是 `unknown` 而不是被当成 `fresh`。`.dsh/local/` 是工作区的本地状态
+（族 2 已把它写进工作区 `.gitignore`），不是交付物。
 
 **服务面 `knowledgeGraph`**（`src/service.ts`，供族 2 的 `create_engineering_project` 调用）走的是同一套
 `runOperation` + `outcomeOf`，只是没有工具 schema：
@@ -101,7 +116,8 @@ spawn（`apply` 不预热，所以缺引擎时加载没有任何副作用），�
   `data` 含 `device` / `dbPath` / `source` / `filesFound` / `filesImported` / `nodes` / `edges` /
   `byKind` / `warnings[]`（`warnings` 里含清单的 `failures[]`，即 TIA 拒绝导出的对象）。
   省略 `dbPath` 时库写到 `<项目根>/knowledge/<设备名>/<设备名>_knowledge.db`（由设备目录往上两级推出）。
-  它是**全量重建**、没有新鲜度/增量，所以"每次导出后调一次"是唯一的刷新方式；
+  它是**全量重建**（没有增量重建）；成功后顺手写下上文那份 sidecar，所以"库相对当前导出是否过时"
+  由 `knowledge_workspace` 的 `graphFreshness` 回答，"每次导出后调一次"仍是唯一的刷新方式；
   实测 1376 个源文件约 30 s、库约 450 MB。库不进 git：本包自身的 `.gitignore` 挡包内残留，
   **工作区**那一侧由族 2 维护 `knowledge/**/*.db*`（含 SQLite 的 `-wal` / `-shm` / `-journal`，
   见族 2 D25）。
@@ -213,6 +229,7 @@ packages/dsh-engineering-graph/
 │   ├── tools-entry.ts      # 工具行（包 "./tools"）：Config(includeIngest) + 注册四个工具
 │   ├── workspace.ts        # 发现逻辑：工程身份 / 设备 / 库路径与 mtime / 单库解析与多库拒绝
 │   ├── workspace-tool.ts   # knowledge_workspace 的定义、本地信封与渲染（不经引擎）
+│   ├── graph-freshness.ts  # ingest sidecar：路径与 schema、原子写、与账本 checksum 的比较规则
 │   ├── runtime-service.ts  # 内部缝 knowledgeEngine：宿主行交给自己的工具行
 │   ├── service.ts          # 公开缝 knowledgeGraph：给工程上下文插件用
 │   ├── tools.ts            # 工具注册面：discovery 工具 + 三个引擎工具的 defineTool 定义与渲染；query 的渲染预算

@@ -25,12 +25,14 @@ import type { Context } from '@deepseek-ai/cordis'
 import { defineTool, type ToolDefinition } from '@deepseek-ai/dsh-tools'
 
 import { asWireOutcome, localFailure, localOutcomeSchema, renderLocalOutcome, type LocalOutcome } from './local-outcome.js'
+import type { GraphFreshness } from './graph-freshness.js'
 import {
   discoverWorkspace,
   portablePath,
   renderBytes,
   SOURCE_DIR_NAME,
   SOURCE_INDEX_FILE,
+  type WorkspaceDevice,
   type WorkspaceReport,
 } from './workspace.js'
 
@@ -57,7 +59,39 @@ export interface WorkspaceData {
     bytes: number | null
     modifiedAt: string | null
     origin: string
+    /** The PLC checksum the database was built from, per the ingest sidecar, or null. */
+    graphChecksum: string | null
+    /** The ledger state id the ingest recorded, or null. */
+    graphStateId: string | null
+    /** When the database was built (ISO-8601), or null. */
+    graphBuiltAt: string | null
+    /** `fresh` when both checksums agree, `stale` when they differ, `unknown` when either is missing. */
+    graphFreshness: GraphFreshness
   }>
+}
+
+/**
+ * Spells one device's freshness for the device line.
+ *
+ * The model acts on rendered text, never on `data`, so `graphFreshness` has to be
+ * visible here. `stale` also names the two facts that made it stale, because the
+ * next step (rebuild or ignore) depends on them; `unknown` stays a single word —
+ * it only means "this build cannot tell", and inventing a reason would be a guess.
+ *
+ * @param device - one device of the report.
+ */
+function renderFreshness(device: WorkspaceDevice): string {
+  switch (device.graphFreshness) {
+    case 'fresh':
+      return 'graph: fresh'
+    case 'stale': {
+      const built = device.graphBuiltAt === null ? 'build time unknown' : `built ${device.graphBuiltAt}`
+      const checksum = device.graphChecksum === null ? 'checksum unknown' : `from checksum ${device.graphChecksum}`
+      return `graph: STALE (${built}, ${checksum})`
+    }
+    case 'unknown':
+      return 'graph: unknown'
+  }
 }
 
 /**
@@ -96,9 +130,11 @@ export function workspaceSuccess(workspaceRoot: string, report: WorkspaceReport)
       if (device.exists) {
         const size = renderBytes(device.bytes) ?? 'unknown size'
         const modified = device.modifiedAt ?? 'unknown mtime'
-        details.push(`  - ${device.device}: ${database} — ${size}, modified ${modified} (source: ${source})`)
+        details.push(
+          `  - ${device.device}: ${database} — ${size}, modified ${modified} (source: ${source}; ${renderFreshness(device)})`,
+        )
       } else {
-        details.push(`  - ${device.device}: NO DATABASE YET (expected ${database}; source: ${source})`)
+        details.push(`  - ${device.device}: NO DATABASE YET (expected ${database}; source: ${source}; ${renderFreshness(device)})`)
       }
     }
     if (report.devices.length > MAX_DEVICES) {
@@ -112,6 +148,21 @@ export function workspaceSuccess(workspaceRoot: string, report: WorkspaceReport)
     } else {
       details.push(`Next step: ${existing.length} devices have a database, so knowledge_query needs an explicit db_path.`)
     }
+  }
+
+  // A stale graph is the one condition a caller must not have to dig out of `data`:
+  // answers read from it describe an older source tree. Name the devices and the
+  // exact rebuild call, the same way the missing-database case does.
+  const staleDevices = report.devices.filter((device) => device.graphFreshness === 'stale')
+  if (staleDevices.length > 0) {
+    const named = staleDevices.map((device) => device.device).join(', ')
+    const buildable = staleDevices.filter((device) => device.deviceDir !== null)
+    const rebuild = buildable.length === 0
+      ? ''
+      : `; rebuild with knowledge_ingest (device_dir: ${buildable.map((device) => `'${device.deviceDir}'`).join(', ')})`
+    details.push(
+      `Graph freshness: ${staleDevices.length} device(s) changed since its knowledge database was built (${named})${rebuild}.`,
+    )
   }
 
   return {
@@ -149,6 +200,10 @@ function workspaceData(workspaceRoot: string, report: WorkspaceReport): Workspac
       bytes: device.bytes,
       modifiedAt: device.modifiedAt,
       origin: device.origin,
+      graphChecksum: device.graphChecksum,
+      graphStateId: device.graphStateId,
+      graphBuiltAt: device.graphBuiltAt,
+      graphFreshness: device.graphFreshness,
     })),
   }
 }
@@ -167,8 +222,12 @@ export const workspaceToolDefinition: ToolDefinition = defineTool({
     'source/_dsh-engineering-context.json names the project and one device per PLC, and ' +
     'knowledge/<device>/<device>_knowledge.db is the database each device gets (with its size and last write time). ' +
     'It also returns the device_dir each database is built from, so a missing database is one knowledge_ingest call ' +
-    'away. Read-only, no engine needed, and cheap: call it first in a session that may have a knowledge database, ' +
-    'and again after an export or an ingest. It never decides whether the database is up to date.',
+    'away. Each device additionally reports graphFreshness, which compares the PLC checksum recorded in the ingest ' +
+    'sidecar (.dsh/local/graph/<device>.json) with the checksum in source/<device>/_evidence.json: fresh means they ' +
+    'are equal, stale means the source tree changed after the database was built, and unknown means either side is ' +
+    'missing (no sidecar yet, or a ledger without a checksum). Read-only, no engine needed, and cheap: call it first ' +
+    'in a session that may have a knowledge database, and again after an export or an ingest. It only compares ' +
+    'checksums; it never rebuilds or repairs anything.',
   parameters: {},
   output: {
     schema: localOutcomeSchema(

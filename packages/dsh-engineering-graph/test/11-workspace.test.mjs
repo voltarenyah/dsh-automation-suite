@@ -69,7 +69,7 @@ function deviceEntry(root, device) {
     device,
     software: device,
     directory: join(root, 'source', device),
-    manifest: join(root, 'source', device, '_tia-openness-manifest.json'),
+    manifest: join(root, 'source', device, '_manifest.json'),
     exported: { blocks: 3, types: 0, tagTables: 1 },
     skipped: 0,
   }
