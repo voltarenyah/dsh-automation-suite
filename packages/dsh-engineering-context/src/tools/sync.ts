@@ -20,6 +20,7 @@ import type { DeviceInfo } from '../device.js'
 import { resolveDevice } from '../device.js'
 import { EngineeringContextError } from '../errors.js'
 import { readEvidence, type EvidenceDocument } from '../evidence.js'
+import { refreshKnowledgeGraph, type KnowledgeRefreshReport } from '../knowledge-refresh.js'
 import { describePath, resolveScope, type ResolvedScope } from '../scope.js'
 import { runSync } from '../sync.js'
 import type { ToolDependencies } from './deps.js'
@@ -34,6 +35,13 @@ const PARAMETERS = {
     description:
       'Default true: read the PLC checksum (a few seconds) and report whether a sync is needed, writing nothing. Pass false to run the ' +
       'scan, update the source tree and commit it. Only the controller writes files; this tool never modifies the TIA project.',
+  },
+  refresh_knowledge: {
+    type: 'boolean',
+    description:
+      'Default false. After a successful sync, refresh the derived knowledge graph: incremental for a small block-only change set, a full ' +
+      'rebuild when a type/tag table changed, more than 20 files changed, or the graph build has no incremental support. A graph failure ' +
+      'is a warning and never fails or rolls back the sync.',
   },
 } as const
 
@@ -147,6 +155,7 @@ export function syncTool(dependencies: ToolDependencies): ToolDefinition {
               },
               manifest: { path: manifestFile, present: manifest.kind === 'file' },
               wouldSync,
+              wouldRefreshKnowledge: args.refresh_knowledge === true,
             },
             {
               dryRun: true,
@@ -159,6 +168,7 @@ export function syncTool(dependencies: ToolDependencies): ToolDefinition {
                     ? 'Evidence: missing (a full scan will be needed).'
                     : `Evidence: ${evidence.objects.size} object(s).`,
                 `Manifest: ${manifest.kind === 'file' ? 'present' : 'missing'}.`,
+                `Knowledge graph: ${args.refresh_knowledge === true ? 'will be refreshed after the sync' : 'not refreshed (refresh_knowledge=false)'}.`,
               ],
             },
           )
@@ -168,6 +178,21 @@ export function syncTool(dependencies: ToolDependencies): ToolDefinition {
         // A real sync always scanned; its own checksum is the freshest fact, so
         // refresh the cache with it (never the other way around).
         if (result.checksum !== null) writeCachedChecksum(cacheKey, result.checksum)
+
+        let knowledge: KnowledgeRefreshReport | null = null
+        if (args.refresh_knowledge === true) {
+          knowledge = await refreshKnowledgeGraph({
+            ctx: dependencies.ctx,
+            log: dependencies.log,
+            root: scope.workspace.path,
+            device: result.device,
+            changedPaths: result.changedPaths,
+            removedPaths: result.removedPaths,
+            fullRebuildRequired: result.fullRebuildRequired,
+            signal: exec.signal,
+          })
+        }
+
         const details = [
           `PLC: ${result.device.device} / ${result.device.software} → ${result.device.directory}`,
           result.unchanged
@@ -178,6 +203,7 @@ export function syncTool(dependencies: ToolDependencies): ToolDefinition {
           result.commit.committed
             ? `Commit: ${result.commit.hash ?? 'unknown'}.`
             : 'Commit: nothing to commit (the working tree already matched).',
+          ...(knowledge === null ? [] : knowledge.details),
         ]
         return okOutcome(
           PROJECT_SYNC_TOOL,
@@ -196,8 +222,9 @@ export function syncTool(dependencies: ToolDependencies): ToolDefinition {
             commit: result.commit,
             stateId: result.stateId,
             checksum: result.checksum,
+            knowledge,
           },
-          { details, dryRun: false },
+          { details, warnings: knowledge?.warnings ?? [], dryRun: false },
         )
       } catch (error) {
         return failedOutcome(PROJECT_SYNC_TOOL, scope?.view ?? null, error, scope?.view.warnings ?? [])

@@ -39,6 +39,19 @@ export interface SyncRunResult {
   commit: { committed: boolean; hash: string | null }
   stateId: string | null
   checksum: string | null
+  /**
+   * Device-relative XML paths a knowledge-graph refresh must reconsider. Built
+   * from the ledger keys in `report.changed`/`added`; removed paths come from the
+   * previous ledger. Empty on `unchanged`.
+   */
+  changedPaths: string[]
+  removedPaths: string[]
+  /**
+   * True when the changed objects include a PLC type or tag table, or when the
+   * change set is too large for an incremental update. The caller then rebuilds
+   * the graph instead of updating components in place.
+   */
+  fullRebuildRequired: boolean
 }
 
 async function exists(file: string): Promise<boolean> {
@@ -170,6 +183,9 @@ export async function runSync(
           commit: { committed: false, hash: null },
           stateId: report.stateId,
           checksum: report.checksum,
+          changedPaths: [],
+          removedPaths: [],
+          fullRebuildRequired: false,
         }
       }
       if (report.stage === null) {
@@ -186,6 +202,22 @@ export async function runSync(
           evidence: report.stage.evidence,
         })
       }
+
+      // The changed/added rows carry ledger keys; the ledger carries their paths.
+      // Removed objects are gone from the next ledger, so their paths come from
+      // the previous one. These lists drive the optional graph refresh; they are
+      // empty when the fast path said `unchanged`.
+      const changedObjects = [...report.changed, ...report.added]
+      const changedPaths = changedObjects
+        .map((object) => next.objects.get(object.key)?.path ?? null)
+        .filter((path): path is string => path !== null)
+      const removedPaths = report.removed
+        .map((object) => previous?.objects.get(object.key)?.path ?? null)
+        .filter((path): path is string => path !== null)
+      const isBlock = (category: string): boolean => category === 'blocks' || category === 'block'
+      const fullRebuildRequired =
+        changedObjects.some((object) => !isBlock(object.category)) ||
+        report.removed.some((object) => !isBlock(object.category))
 
       // Only promoted files exist in STAGE; unchanged objects are not copied and
       // therefore keep their previous bytes (and their previous manifest entry).
@@ -252,6 +284,9 @@ export async function runSync(
         commit,
         stateId: report.stateId,
         checksum: report.checksum,
+        changedPaths,
+        removedPaths,
+        fullRebuildRequired,
       }
     } finally {
       await rm(stageDir, { recursive: true, force: true }).catch(() => undefined)

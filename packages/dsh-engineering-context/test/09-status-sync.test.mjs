@@ -149,13 +149,74 @@ function fakeAccess(options = {}) {
   return { service, calls }
 }
 
-function tools(service, config = {}) {
-  const { ctx } = createTestContext({ services: service === undefined ? {} : { engineeringAccess: service } })
+function tools(service, config = {}, knowledge = undefined) {
+  const services = {}
+  if (service !== undefined) services.engineeringAccess = service
+  if (knowledge !== undefined) services.knowledgeGraph = knowledge
+  const { ctx } = createTestContext({ services })
   const definitions = toolDefinitions({ ctx, config: resolveConfig(config), log: ctx.logger })
   return {
     definitions,
     status: findTool(definitions, STATUS),
     sync: findTool(definitions, SYNC),
+  }
+}
+
+function fakeKnowledge(options = {}) {
+  const calls = []
+  return {
+    calls,
+    service: {
+      status: () => ({
+        available: true,
+        reason: null,
+        enginePath: 'engine.exe',
+        engineExists: true,
+        source: 'config',
+        databaseConvention: 'knowledge/<device>/<device>_knowledge.db',
+      }),
+      async ingestDevice(directory, query) {
+        calls.push({ operation: 'ingestDevice', directory, query })
+        return {
+          ok: options.ingestOk !== false,
+          summary: 'ingested',
+          data: {
+            device: DEVICE,
+            dbPath: join(directory, '..', 'knowledge.db'),
+            source: 'manifest',
+            filesFound: 1,
+            filesImported: 1,
+            nodes: 10,
+            edges: 12,
+            byKind: { block: 1 },
+            warnings: [],
+          },
+          error: options.ingestOk === false ? { code: 'INGEST_FAILED', message: 'refused' } : null,
+          durationMs: 1,
+        }
+      },
+      async updateDevice(directory, query) {
+        calls.push({ operation: 'updateDevice', directory, query })
+        if (options.updateCode !== undefined) {
+          return { ok: false, summary: 'refused', data: null, error: { code: options.updateCode, message: 'refused' }, durationMs: 1 }
+        }
+        return {
+          ok: true,
+          summary: 'updated',
+          data: {
+            device: DEVICE,
+            dbPath: join(directory, '..', 'knowledge.db'),
+            changed: query.changedPaths.length,
+            removed: (query.removedPaths ?? []).length,
+            closure: 0,
+            nodes: 5,
+            edges: 4,
+          },
+          error: null,
+          durationMs: 1,
+        }
+      },
+    },
   }
 }
 
@@ -830,3 +891,141 @@ test('the checksum cache expires after CHECKSUM_TTL_MS (no sleeping)', () => {
   assert.equal(readCachedChecksum(key), null, 'clearChecksumCache drops everything')
 })
 
+
+// ---------------------------------------------------------------------------
+// project_sync: optional knowledge-graph refresh
+// ---------------------------------------------------------------------------
+
+function stageFiles(query, objects, category = 'block') {
+  const paths = Object.values(objects).map((entry) => entry.path).filter((path) => typeof path === 'string')
+  for (const path of paths) {
+    const content = category === 'type' ? '<xml>type</xml>' : '<xml>block</xml>'
+    return { path, content }
+  }
+  return null
+}
+
+test('refresh_knowledge updates the graph incrementally for a block-only change', async (t) => {
+  const root = await gitWorkspace(t)
+  const knowledge = fakeKnowledge()
+  const { service } = fakeAccess({
+    scan: async (query) => {
+      await makeFile(join(query.stageDir, 'blocks', '010', 'FB1.xml'), '<xml>FB1</xml>')
+      await makeFile(
+        join(query.stageDir, '_evidence.json'),
+        `${JSON.stringify(evidenceDocument({ objects: { 'block||FB1': objectEntry() } }), null, 2)}\n`,
+      )
+      await makeFile(join(query.stageDir, '_manifest.json'), '{"blocks":[]}')
+      return scanReport(query)
+    },
+  })
+
+  const outcome = assertEnvelope(
+    await executeTool(tools(service, {}, knowledge.service).sync, { dry_run: false, refresh_knowledge: true }, fakeExec(root)),
+  )
+
+  assert.equal(outcome.ok, true)
+  assert.deepEqual(knowledge.calls.map((call) => call.operation), ['updateDevice'])
+  assert.deepEqual(knowledge.calls[0].query.changedPaths, ['blocks/010/FB1.xml'])
+  assert.equal(outcome.data.knowledge.state, 'updated')
+  assert.equal(outcome.data.knowledge.mode, 'incremental')
+})
+
+test('a type change forces a full graph rebuild instead of an incremental update', async (t) => {
+  const root = await gitWorkspace(t)
+  const knowledge = fakeKnowledge()
+  const { service } = fakeAccess({
+    scan: async (query) => {
+      await makeFile(join(query.stageDir, 'types', 'UDT1.xml'), '<xml>type</xml>')
+      await makeFile(
+        join(query.stageDir, '_evidence.json'),
+        `${JSON.stringify(
+          evidenceDocument({
+            objects: { 'type||UDT1': objectEntry({ category: 'type', name: 'UDT1', path: 'types/UDT1.xml' }) },
+          }),
+          null,
+          2,
+        )}\n`,
+      )
+      await makeFile(join(query.stageDir, '_manifest.json'), '{"blocks":[]}')
+      return scanReport(query, {
+        changed: [{ key: 'type||UDT1', category: 'type', name: 'UDT1', group: null, faces: ['Interface'] }],
+      })
+    },
+  })
+
+  const outcome = assertEnvelope(
+    await executeTool(tools(service, {}, knowledge.service).sync, { dry_run: false, refresh_knowledge: true }, fakeExec(root)),
+  )
+
+  assert.equal(outcome.ok, true)
+  assert.deepEqual(knowledge.calls.map((call) => call.operation), ['ingestDevice'])
+  assert.equal(outcome.data.knowledge.mode, 'full')
+  assert.equal(outcome.data.knowledge.forcedFull, true)
+  assert.equal(outcome.data.knowledge.state, 'rebuilt')
+})
+
+test('an incremental refusal falls back to a full rebuild', async (t) => {
+  const root = await gitWorkspace(t)
+  const knowledge = fakeKnowledge({ updateCode: 'UPDATE_TOO_LARGE' })
+  const { service } = fakeAccess({
+    scan: async (query) => {
+      await makeFile(join(query.stageDir, 'blocks', '010', 'FB1.xml'), '<xml>FB1</xml>')
+      await makeFile(
+        join(query.stageDir, '_evidence.json'),
+        `${JSON.stringify(evidenceDocument({ objects: { 'block||FB1': objectEntry() } }), null, 2)}\n`,
+      )
+      await makeFile(join(query.stageDir, '_manifest.json'), '{"blocks":[]}')
+      return scanReport(query)
+    },
+  })
+
+  const outcome = assertEnvelope(
+    await executeTool(tools(service, {}, knowledge.service).sync, { dry_run: false, refresh_knowledge: true }, fakeExec(root)),
+  )
+
+  assert.equal(outcome.ok, true)
+  assert.deepEqual(knowledge.calls.map((call) => call.operation), ['updateDevice', 'ingestDevice'])
+  assert.equal(outcome.data.knowledge.mode, 'full')
+  assert.equal(outcome.data.knowledge.state, 'rebuilt')
+})
+
+test('refresh_knowledge is off by default and a graph failure is only a warning', async (t) => {
+  const root = await gitWorkspace(t)
+  const knowledge = fakeKnowledge({ updateCode: 'UPDATE_FAILED' })
+  const { service } = fakeAccess({
+    scan: async (query) => {
+      await makeFile(join(query.stageDir, 'blocks', '010', 'FB1.xml'), '<xml>FB1</xml>')
+      await makeFile(
+        join(query.stageDir, '_evidence.json'),
+        `${JSON.stringify(evidenceDocument({ objects: { 'block||FB1': objectEntry() } }), null, 2)}\n`,
+      )
+      await makeFile(join(query.stageDir, '_manifest.json'), '{"blocks":[]}')
+      return scanReport(query)
+    },
+  })
+
+  const off = assertEnvelope(await executeTool(tools(service, {}, knowledge.service).sync, { dry_run: false }, fakeExec(root)))
+  assert.equal(off.ok, true)
+  assert.equal(off.data.knowledge, null)
+  assert.deepEqual(knowledge.calls, [])
+
+  const failed = assertEnvelope(
+    await executeTool(tools(service, {}, knowledge.service).sync, { dry_run: false, refresh_knowledge: true }, fakeExec(root)),
+  )
+  assert.equal(failed.ok, true)
+  assert.equal(failed.data.knowledge.state, 'failed')
+  assert.ok(failed.warnings.some((warning) => /knowledge graph was not refreshed/u.test(warning)))
+})
+
+test('the plan announces refresh_knowledge without calling the graph service', async (t) => {
+  const root = await tempWorkspace(t)
+  const knowledge = fakeKnowledge()
+  const { service } = fakeAccess({ checksum: checksumReport('AA') })
+  const outcome = assertEnvelope(
+    await executeTool(tools(service, {}, knowledge.service).sync, { refresh_knowledge: true }, fakeExec(root)),
+  )
+  assert.equal(outcome.ok, true)
+  assert.equal(outcome.data.wouldRefreshKnowledge, true)
+  assert.deepEqual(knowledge.calls, [])
+})

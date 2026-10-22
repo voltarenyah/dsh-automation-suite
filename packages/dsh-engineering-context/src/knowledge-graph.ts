@@ -140,6 +140,19 @@ export interface KnowledgeGraphLike {
     deviceDir: string,
     options?: { dbPath?: string; signal?: AbortSignal; onProgress?: (message: string) => void },
   ): Promise<unknown>
+  /**
+   * Optional incremental update (B4). Older graph builds only know the full
+   * `ingestDevice`; a caller that wants incremental must check for this member.
+   */
+  updateDevice?(
+    deviceDir: string,
+    options: {
+      changedPaths: readonly string[]
+      removedPaths?: readonly string[]
+      dbPath?: string
+      signal?: AbortSignal
+    },
+  ): Promise<unknown>
 }
 
 // ------------------------------------------------------------------ the lookup
