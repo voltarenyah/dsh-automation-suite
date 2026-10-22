@@ -144,6 +144,60 @@ internal static class Operations
     }
 
     /// <summary>
+    /// Refresh the components a sync touched, without re-parsing the whole device.
+    ///
+    /// A conservative incremental update over the provenance a full <see cref="Ingest"/>
+    /// already records (`source_components` and the two ownership tables). Every case
+    /// it cannot prove safe is a coded refusal whose remediation is "run Ingest"; see
+    /// <see cref="IncrementalGraphUpdate"/> for the algorithm, the one-hop closure and
+    /// the atomicity guarantee.
+    ///
+    /// Parameters: <c>deviceDir</c> (required, absolute), <c>dbPath</c> (optional,
+    /// same default as Ingest), <c>changedPaths</c> / <c>removedPaths</c>
+    /// (device-relative, forward or back slashes), <c>maxComponents</c> (optional,
+    /// default <see cref="IncrementalGraphUpdate.DefaultMaxComponents"/>).
+    /// </summary>
+    internal static object Update(JsonObject? parameters, IProgressSink progress)
+    {
+        var deviceDir = JsonParams.String(parameters, "deviceDir")
+            ?? throw new EngineException(
+                "DEVICE_DIR_REQUIRED",
+                "deviceDir is required.",
+                "Pass the per-device folder the database was built from, i.e. <project>/source/<device>.");
+
+        if (!Directory.Exists(deviceDir))
+        {
+            throw new EngineException(
+                "DEVICE_DIR_NOT_FOUND",
+                $"Device source directory '{deviceDir}' was not found.",
+                "Pass the per-device folder written by the export step, i.e. <project>/source/<device>.");
+        }
+
+        var changedPaths = JsonParams.StringList(parameters, "changedPaths");
+        var removedPaths = JsonParams.StringList(parameters, "removedPaths");
+        if (changedPaths.Count == 0 && removedPaths.Count == 0)
+        {
+            throw new EngineException(
+                "UPDATE_NOTHING_TO_DO",
+                "The request named neither changedPaths nor removedPaths.",
+                "Pass at least one device-relative path that the sync changed or removed; a full rebuild is a separate operation.");
+        }
+
+        var device = DeviceNameOf(deviceDir);
+        var dbPath = JsonParams.String(parameters, "dbPath") ?? DefaultDbPath(deviceDir, device);
+        var maxComponents = JsonParams.Int(parameters, "maxComponents")
+            ?? IncrementalGraphUpdate.DefaultMaxComponents;
+
+        return IncrementalGraphUpdate.Run(
+            deviceDir,
+            dbPath,
+            changedPaths,
+            removedPaths,
+            maxComponents,
+            progress);
+    }
+
+    /// <summary>
     /// The device's name as the source tree spells it: the last segment of
     /// <c>source/&lt;device&gt;</c>. The manifest's own `device` field is authoritative for the
     /// graph (it becomes a property of the project node); the directory is what names the

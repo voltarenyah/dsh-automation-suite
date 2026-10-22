@@ -22,12 +22,12 @@
 
 import { after, test } from 'node:test'
 import assert from 'node:assert/strict'
-import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, unlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
 
-import { createTestContext, loadPlugin, packageRoot } from './helpers/harness.mjs'
+import { createTestContext, engineClient, loadPlugin, packageRoot } from './helpers/harness.mjs'
 
 const FIXTURES = join(packageRoot, 'engine', 'fixtures')
 const DEVICE = 'Sino_PEI'
@@ -136,6 +136,220 @@ async function applyAndGetService() {
   teardowns.push(harness.unload)
   return { ...harness, plugin, service: harness.ctx.get('knowledgeGraph') }
 }
+
+/** The two components `buildDeviceTree` exports, by the relative path the ledger records. */
+const MAIN_RELATIVE = 'blocks/Main [OB1].xml'
+const FC_RELATIVE = 'blocks/010_Cell/FC_LAD_SimulateCylinder_Call [FC1].xml'
+
+/** Best-effort removal of a temp tree (no junction is involved, see the test above). */
+function removeTempTree(root) {
+  try {
+    rmSync(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 })
+  } catch {
+    // deliberately ignored: a cleanup hiccup must not fail a passing test
+  }
+}
+
+/** The provenance row for one component, read through node:sqlite rather than the plugin. */
+function componentRows(dbPath, relativePath) {
+  const db = new DatabaseSync(dbPath, { readOnly: true })
+  try {
+    const component = db
+      .prepare('SELECT component_key AS key, content_hash AS hash FROM source_components WHERE relative_path = ?')
+      .get(relativePath)
+    const nodes =
+      component === undefined
+        ? 0
+        : db.prepare('SELECT COUNT(*) AS n FROM source_component_nodes WHERE component_key = ?').get(component.key).n
+    return { component, nodes }
+  } finally {
+    db.close()
+  }
+}
+
+/** Rename the FC's first `Bool` input everywhere it appears (declaration and network use). */
+function renameInterfaceMember(fcPath) {
+  const original = readFileSync(fcPath, 'utf8')
+  assert.ok(original.includes('"btn_forward"'), 'the fixture must still declare btn_forward')
+  writeFileSync(fcPath, original.replaceAll('"btn_forward"', '"btn_forward_renamed"'), 'utf8')
+}
+
+test('an incremental update replaces one changed block and keeps the rest of the graph', async (t) => {
+  const { service } = await applyAndGetService()
+  if (!service.status().available) {
+    t.skip('engine not built — run: pwsh -NoProfile -File engine/build.ps1')
+    return
+  }
+
+  const { root, device } = buildDeviceTree()
+  try {
+    const ingest = await service.ingestDevice(device)
+    assert.equal(ingest.ok, true, `ingest failed: ${JSON.stringify(ingest.error)}`)
+    const dbPath = ingest.data.dbPath
+    const sidecarPath = join(root, '.dsh', 'local', 'graph', `${DEVICE}.json`)
+    const sidecarBefore = JSON.parse(readFileSync(sidecarPath, 'utf8'))
+
+    const before = componentRows(dbPath, FC_RELATIVE)
+    const mainBefore = componentRows(dbPath, MAIN_RELATIVE)
+    assert.ok(before.component, 'the ingest must record component provenance for the FC')
+    assert.ok(mainBefore.nodes > 0, 'the caller must own nodes before the update')
+
+    renameInterfaceMember(join(device, 'blocks', '010_Cell', 'FC_LAD_SimulateCylinder_Call [FC1].xml'))
+
+    const outcome = await service.updateDevice(device, { changedPaths: [FC_RELATIVE] })
+    assert.equal(outcome.ok, true, `update failed: ${JSON.stringify(outcome.error)}`)
+    assert.equal(outcome.operation, 'Update')
+    assert.equal(outcome.data.dbPath, dbPath, 'the update reports the database it wrote')
+    assert.equal(outcome.data.changed, 1)
+    assert.equal(outcome.data.removed, 0)
+    assert.ok(outcome.data.closure >= 1, 'the calling block is re-imported as the dependency closure')
+    assert.ok(
+      outcome.data.closureComponents.includes(MAIN_RELATIVE),
+      `the closure must name the caller: ${JSON.stringify(outcome.data.closureComponents)}`,
+    )
+    assert.ok(outcome.data.nodes > 0 && outcome.data.edges > 0, 'the graph totals are reported')
+
+    // 1. The component's content hash changed, and only that component was replaced.
+    const after = componentRows(dbPath, FC_RELATIVE)
+    assert.notEqual(after.component.hash, before.component.hash, 'the content hash must change')
+    assert.equal(after.component.key, before.component.key, 'a content change must not change the identity')
+
+    // 2. The renamed member is in, the old one is out, and the caller's node count is
+    //    untouched (it was re-imported, not rebuilt).
+    const db = new DatabaseSync(dbPath, { readOnly: true })
+    try {
+      const symbolCount = (id) => db.prepare('SELECT COUNT(*) AS n FROM graph_nodes WHERE id = ?').get(id).n
+      assert.equal(symbolCount('symbol:btn_forward'), 0, 'the old symbol node must be gone')
+      assert.equal(symbolCount('symbol:btn_forward_renamed'), 1, 'the renamed symbol node must exist')
+      assert.equal(
+        db.prepare("SELECT COUNT(*) AS n FROM source_components").get().n,
+        2,
+        'the other component must still be there',
+      )
+      const calls = db
+        .prepare(
+          "SELECT COUNT(*) AS n FROM graph_edges WHERE type = 'CALLS' AND from_node_id = 'block:Main' AND to_node_id = 'block:FC_LAD_SimulateCylinder_Call'",
+        )
+        .get().n
+      assert.equal(calls, 1, "the closure re-import must keep Main's CALLS edge to the changed FC")
+      // The derived tables were rebuilt, not left describing the pre-update graph.
+      const networks = db.prepare("SELECT COUNT(*) AS n FROM knowledge_networks WHERE block_id = 'block:FC_LAD_SimulateCylinder_Call'").get().n
+      assert.ok(networks > 0, 'the derived network table must describe the updated block')
+    } finally {
+      db.close()
+    }
+    assert.equal(componentRows(dbPath, MAIN_RELATIVE).nodes, mainBefore.nodes, "the caller's node count must not change")
+
+    // 3. A successful update claims freshness through the same writer an ingest uses.
+    const sidecarAfter = JSON.parse(readFileSync(sidecarPath, 'utf8'))
+    assert.equal(sidecarAfter.plcChecksum, PLC_CHECKSUM)
+    assert.equal(sidecarAfter.device, DEVICE)
+    assert.ok(sidecarAfter.builtAt >= sidecarBefore.builtAt, 'the update must refresh the sidecar timestamp')
+  } finally {
+    removeTempTree(root)
+  }
+})
+
+test('an incremental update removes a deleted block and ignores a path it never imported', async (t) => {
+  const { service } = await applyAndGetService()
+  if (!service.status().available) {
+    t.skip('engine not built — run: pwsh -NoProfile -File engine/build.ps1')
+    return
+  }
+
+  const { root, device } = buildDeviceTree()
+  try {
+    const ingest = await service.ingestDevice(device)
+    assert.equal(ingest.ok, true, `ingest failed: ${JSON.stringify(ingest.error)}`)
+    const dbPath = ingest.data.dbPath
+    const mainBefore = componentRows(dbPath, MAIN_RELATIVE)
+
+    unlinkSync(join(device, 'blocks', '010_Cell', 'FC_LAD_SimulateCylinder_Call [FC1].xml'))
+    const outcome = await service.updateDevice(device, {
+      changedPaths: [],
+      removedPaths: [FC_RELATIVE, 'blocks/NeverExported.xml'],
+    })
+    assert.equal(outcome.ok, true, `removal failed: ${JSON.stringify(outcome.error)}`)
+    assert.equal(outcome.data.changed, 0)
+    assert.equal(outcome.data.removed, 1, 'only the component the database knew is removed')
+    assert.deepEqual(
+      outcome.data.ignoredRemovedPaths,
+      ['blocks/NeverExported.xml'],
+      'a path the database never imported is reported, not refused',
+    )
+
+    const db = new DatabaseSync(dbPath, { readOnly: true })
+    try {
+      assert.equal(
+        db.prepare('SELECT COUNT(*) AS n FROM source_components WHERE relative_path = ?').get(FC_RELATIVE).n,
+        0,
+        'the removed component must leave no provenance row',
+      )
+      assert.equal(db.prepare('SELECT COUNT(*) AS n FROM source_components').get().n, 1)
+    } finally {
+      db.close()
+    }
+    assert.equal(componentRows(dbPath, MAIN_RELATIVE).nodes, mainBefore.nodes, "the survivor's node count must not change")
+  } finally {
+    removeTempTree(root)
+  }
+})
+
+test('the incremental update refuses what it cannot prove safe, and changes nothing', async (t) => {
+  const { service } = await applyAndGetService()
+  if (!service.status().available) {
+    t.skip('engine not built — run: pwsh -NoProfile -File engine/build.ps1')
+    return
+  }
+
+  const { root, device } = buildDeviceTree()
+  try {
+    const ingest = await service.ingestDevice(device)
+    assert.equal(ingest.ok, true, `ingest failed: ${JSON.stringify(ingest.error)}`)
+    const dbPath = ingest.data.dbPath
+    const sidecarPath = join(root, '.dsh', 'local', 'graph', `${DEVICE}.json`)
+    const sidecarBefore = readFileSync(sidecarPath, 'utf8')
+    const hashBefore = componentRows(dbPath, FC_RELATIVE).component.hash
+
+    // A path the database never imported is a refusal, never a guess at which
+    // component the caller meant.
+    const unknown = await service.updateDevice(device, { changedPaths: ['blocks/DoesNotExist.xml'] })
+    assert.equal(unknown.ok, false)
+    assert.equal(unknown.error.code, 'UPDATE_UNKNOWN_COMPONENT')
+    assert.match(unknown.error.details.remediation, /Ingest/)
+
+    // A database without provenance cannot be updated in place; the consumer is told
+    // to fall back to a full rebuild.
+    const emptyDb = join(root, 'empty.db')
+    writeFileSync(emptyDb, '')
+    const rebuild = await service.updateDevice(device, { changedPaths: [FC_RELATIVE], dbPath: emptyDb })
+    assert.equal(rebuild.ok, false)
+    assert.equal(rebuild.error.code, 'UPDATE_REQUIRES_FULL_REBUILD')
+
+    // The cap: the service deliberately does not expose it, so the raw client asks
+    // for an update of two components with a limit of one.
+    const client = await engineClient()
+    try {
+      const frame = await client.request('Update', {
+        deviceDir: device,
+        dbPath,
+        changedPaths: [FC_RELATIVE, MAIN_RELATIVE],
+        maxComponents: 1,
+      })
+      assert.equal(frame.ok, false)
+      assert.equal(frame.error.code, 'UPDATE_TOO_LARGE')
+      assert.match(frame.error.remediation, /Ingest/)
+    } finally {
+      await client.stop()
+    }
+
+    // Every refusal left the database and its sidecar exactly as they were.
+    assert.equal(componentRows(dbPath, FC_RELATIVE).component.hash, hashBefore)
+    assert.equal(readFileSync(sidecarPath, 'utf8'), sidecarBefore, 'a refused update must not touch the sidecar')
+  } finally {
+    removeTempTree(root)
+  }
+})
 
 test('the service is registered under the name the consumer looks up', async () => {
   const { service, plugin } = await applyAndGetService()

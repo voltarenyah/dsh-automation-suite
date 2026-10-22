@@ -49,15 +49,17 @@ function readyFrame(overrides = {}) {
 }
 
 test('OPERATIONS is the engine catalog, in declaration order', () => {
-  assert.deepEqual([...protocol.OPERATIONS], ['GetSchema', 'Ingest', 'Query'])
+  assert.deepEqual([...protocol.OPERATIONS], ['GetSchema', 'Ingest', 'Query', 'Update'])
   assert.equal(protocol.PROTOCOL_VERSION, 1)
   assert.equal(protocol.OPERATIONS.length, protocol.OPERATION_SET.size)
 
   assert.equal(protocol.isOperation('GetSchema'), true)
   assert.equal(protocol.isOperation('Ingest'), true)
   assert.equal(protocol.isOperation('Query'), true)
+  assert.equal(protocol.isOperation('Update'), true)
   // The operation names are case sensitive on both sides (`OperationCatalog.IsAllowed`).
   assert.equal(protocol.isOperation('getSchema'), false)
+  assert.equal(protocol.isOperation('update'), false)
   assert.equal(protocol.isOperation('Drop'), false)
   assert.equal(protocol.isOperation(''), false)
 })

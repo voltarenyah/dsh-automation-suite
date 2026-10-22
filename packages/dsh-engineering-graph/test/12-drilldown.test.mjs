@@ -531,13 +531,20 @@ test('the drill-down tools are opt-in and follow the four shared tools', async (
 
   const without = createTestContext()
   tools.registerTools(without.ctx, dependencies)
-  assert.deepEqual(without.registered(), ['knowledge_workspace', 'knowledge_schema', 'knowledge_ingest', 'knowledge_query'])
+  assert.deepEqual(without.registered(), [
+    'knowledge_workspace',
+    'knowledge_schema',
+    'knowledge_ingest',
+    'knowledge_update',
+    'knowledge_query',
+  ])
 
   tools.registerTools(context.ctx, dependencies, { includeDrilldown: true })
   assert.deepEqual(context.registered(), [
     'knowledge_workspace',
     'knowledge_schema',
     'knowledge_ingest',
+    'knowledge_update',
     'knowledge_query',
     ...DRILLDOWN_NAMES,
   ])

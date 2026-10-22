@@ -69,6 +69,36 @@ public static class ManifestImporter
     public const string MetadataFileName = "metadata.json";
     public const string ExpectedSchemaVersion = "1.0";
 
+    /// <summary>
+    /// Cheap check: does the metadata.json at <paramref name="path"/> have a
+    /// "components" array? True for legacy device manifests, false for the
+    /// project-level metadata the 2026-07-24 split introduced.
+    ///
+    /// Stated once here because both `ExportFolderCrawler.Import` (which layout is
+    /// this tree?) and `ComponentProvenanceStore.ImportComponent` (which importer
+    /// re-imports ONE component of it?) have to reach the same answer; two copies
+    /// would let a full ingest and an incremental update disagree.
+    /// </summary>
+    public static bool HasComponents(string path)
+    {
+        try
+        {
+            using var document = JsonDocument.Parse(File.ReadAllText(path));
+            return document.RootElement.TryGetProperty("components", out var components) &&
+                components.ValueKind == JsonValueKind.Array;
+        }
+        catch (JsonException ex)
+        {
+            throw new ManifestInvalidException(
+                $"metadata.json at '{path}' is not valid JSON: {ex.Message}");
+        }
+        catch (IOException ex)
+        {
+            throw new ManifestInvalidException(
+                $"metadata.json at '{path}' could not be read: {ex.Message}");
+        }
+    }
+
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,

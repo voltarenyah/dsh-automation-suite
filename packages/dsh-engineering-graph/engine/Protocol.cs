@@ -71,8 +71,9 @@ internal static class OperationCatalog
     internal const string GetSchema = "GetSchema";
     internal const string Ingest = "Ingest";
     internal const string Query = "Query";
+    internal const string Update = "Update";
 
-    private static readonly string[] Names = { GetSchema, Ingest, Query };
+    private static readonly string[] Names = { GetSchema, Ingest, Query, Update };
 
     /// <summary>The whitelist in declaration order; used by the ready frame and the self test.</summary>
     internal static IReadOnlyList<string> All => Names;
@@ -134,6 +135,42 @@ internal static class JsonParams
             ? node.GetValue<string>()
             : node.ToJsonString().Trim('"');
         return string.IsNullOrWhiteSpace(value) ? null : value;
+    }
+
+    /// <summary>
+    /// A string-array parameter, tolerant by design: a missing, non-array or
+    /// array-with-non-string member yields the strings it can read instead of
+    /// throwing. The operation that consumes it validates the content (paths, caps)
+    /// and reports its own coded refusal; a shape mismatch here is the caller's
+    /// plugin, not the model, and must not become an untyped internal error.
+    /// </summary>
+    internal static IReadOnlyList<string> StringList(JsonObject? parameters, string name)
+    {
+        if (parameters is null ||
+            !parameters.TryGetPropertyValue(name, out var node) ||
+            node is not JsonArray array)
+        {
+            return Array.Empty<string>();
+        }
+
+        var values = new List<string>(array.Count);
+        foreach (var item in array)
+        {
+            if (item is null)
+            {
+                continue;
+            }
+
+            var value = item.GetValueKind() == System.Text.Json.JsonValueKind.String
+                ? item.GetValue<string>()
+                : item.ToJsonString().Trim('"');
+            if (!string.IsNullOrWhiteSpace(value))
+            {
+                values.Add(value);
+            }
+        }
+
+        return values;
     }
 
     internal static int? Int(JsonObject? parameters, string name)

@@ -11,6 +11,23 @@
 //   * the temp-directory segment "Mcp.Knowledge" -> "EngineeringGraph.Engine"
 // The origin's own header below is kept verbatim.
 // Naming rule: docs/decisions.md D17.
+//
+// Local change for B4 (the incremental `Update` operation, 2026-10-22):
+//   * single-component import is now LAYOUT-AWARE (`ImportComponent`): a D24 device
+//     tree (`_manifest.json`) imports through `DeviceManifestImporter`, a legacy
+//     `metadata.json` tree through `ManifestImporter`, and a manifest-less tree
+//     through `ExportFolderCrawler` -- each one the importer a full `Ingest` used,
+//     so the component key and relative path a replacement computes are the ones
+//     already stored. Before this, `Replace` only knew the legacy manifest and
+//     therefore could not update a real device tree at all.
+//   * `Replace`/`Delete` are split into a public one-shot entry (own connection +
+//     transaction + derived-data rebuild, as before) and an internal core
+//     (`ApplyReplace`/`ApplyDelete`) that the `Update` operation drives inside ONE
+//     transaction, so a batch either lands completely or not at all. The derived
+//     tables are rebuilt once per batch, not once per component.
+//   * `Delete` is new: it removes a component's node/edge ownership, the graph
+//     rows that nothing else references, and the `source_components` row, in the
+//     same NOT-EXISTS order `Replace` uses.
 // ---------------------------------------------------------------------------
 using Microsoft.Data.Sqlite;
 
@@ -18,49 +35,130 @@ namespace EngineeringGraph.Engine;
 
 public static class ComponentProvenanceStore
 {
+    /// <summary>
+    /// Import one component from a device/export tree and replace it in the database.
+    ///
+    /// A one-shot convenience over <see cref="ImportComponent"/> +
+    /// <see cref="Replace(string, SemanticPlcGraph, ComponentImport)"/>. The batch
+    /// entry point an incremental update uses is the internal `ApplyReplace`, so a
+    /// multi-component update is a single transaction.
+    /// </summary>
     public static void Replace(
         string dbPath,
         string exportRoot,
         string relativePath,
         string deviceName = "")
     {
-        var replacement = ManifestImporter.ImportComponent(
-            exportRoot,
-            relativePath,
-            deviceName);
-        Replace(
-            dbPath,
-            replacement.Graph,
-            replacement.Components.Single());
+        var replacement = ImportComponent(exportRoot, relativePath, deviceName);
+        Replace(dbPath, replacement.Graph, replacement.Component);
     }
 
+    /// <summary>
+    /// Import ONE component from the tree that stores it, using the same importer a
+    /// full <c>Ingest</c> would have used for that layout.
+    ///
+    /// The three layouts are the three `ExportFolderCrawler.Import` handles, in its
+    /// order (D24 device manifest first, then the legacy per-device `metadata.json`,
+    /// then the manifest-less crawl). Getting this wrong is not a cosmetic defect:
+    /// `Replace` validates the stored identity, so a different key scheme or a
+    /// different relative-path spelling would make every update fail with
+    /// `COMPONENT_IDENTITY_MISMATCH` instead of replacing anything.
+    ///
+    /// `deviceName` is passed through for the legacy manifest only, exactly as
+    /// `Ingest` passes it; the other two layouts are single-device by construction
+    /// and always use an empty device name (D13/D24).
+    /// </summary>
+    internal static (SemanticPlcGraph Graph, ComponentImport Component) ImportComponent(
+        string exportRoot,
+        string relativePath,
+        string deviceName = "")
+    {
+        if (string.IsNullOrWhiteSpace(exportRoot))
+        {
+            throw new ArgumentException("Export root is required.", nameof(exportRoot));
+        }
+
+        if (string.IsNullOrWhiteSpace(relativePath))
+        {
+            throw new ArgumentException("Component path is required.", nameof(relativePath));
+        }
+
+        var fullRoot = Path.GetFullPath(exportRoot);
+        if (!Directory.Exists(fullRoot))
+        {
+            throw new DirectoryNotFoundException($"Export root '{fullRoot}' was not found.");
+        }
+
+        if (DeviceManifests.Exists(fullRoot))
+        {
+            return DeviceManifestImporter.ImportComponent(fullRoot, relativePath);
+        }
+
+        var legacyManifest = Path.Combine(fullRoot, ManifestImporter.MetadataFileName);
+        if (File.Exists(legacyManifest) && ManifestImporter.HasComponents(legacyManifest))
+        {
+            var legacy = ManifestImporter.ImportComponent(fullRoot, relativePath, deviceName);
+            return (legacy.Graph, legacy.Components.Single());
+        }
+
+        var crawled = ExportFolderCrawler.ImportComponent(fullRoot, relativePath);
+        return (crawled.Graph, crawled.Components.Single());
+    }
+
+    /// <summary>
+    /// Replace one already-imported component in the database: identity check,
+    /// remove its old ownership and the rows nothing else references, upsert the
+    /// replacements, rebuild the derived tables, commit.
+    /// </summary>
     public static void Replace(
         string dbPath,
         SemanticPlcGraph replacementGraph,
         ComponentImport replacement)
     {
-        if (string.IsNullOrWhiteSpace(dbPath))
-        {
-            throw new ArgumentException("SQLite path is required.", nameof(dbPath));
-        }
-
         ArgumentNullException.ThrowIfNull(replacementGraph);
         ArgumentNullException.ThrowIfNull(replacement);
-        if (!File.Exists(dbPath))
+
+        using var session = Session.Open(dbPath);
+        ApplyReplace(session.Connection, session.Transaction, replacementGraph, replacement);
+        session.CommitAfterRebuild();
+    }
+
+    /// <summary>
+    /// Remove ONE component from the database: its node/edge ownership, the graph
+    /// rows that no other component references, and its `source_components` row.
+    ///
+    /// The graph rows are deleted in the same order `Replace` deletes them -- an
+    /// edge first if nothing owns it any more, then a node if nothing owns it and no
+    /// surviving edge mentions it -- so a shared symbol (one a component merely
+    /// touched, owned by the file that declared it) survives a different component's
+    /// removal instead of being torn out from under it.
+    /// </summary>
+    public static void Delete(string dbPath, string componentKey)
+    {
+        if (string.IsNullOrWhiteSpace(componentKey))
         {
-            throw new FileNotFoundException(
-                $"Knowledge database '{dbPath}' was not found.",
-                dbPath);
+            throw new ArgumentException("Component key is required.", nameof(componentKey));
         }
 
-        SqliteSemanticGraphStore.EnsureSqliteInitialized();
-        using var connection = new SqliteConnection($"Data Source={dbPath}");
-        connection.Open();
-        Execute(connection, null, "PRAGMA foreign_keys = ON;");
-        EnsureProvenanceAvailable(connection);
-        SqliteSemanticGraphStore.EnsureSchema(connection);
+        using var session = Session.Open(dbPath);
+        ApplyDelete(session.Connection, session.Transaction, componentKey);
+        session.CommitAfterRebuild();
+    }
 
-        using var transaction = connection.BeginTransaction();
+    /// <summary>
+    /// The core of <see cref="Replace"/>, without a connection, a commit or a
+    /// derived-data rebuild: the incremental update calls it once per component
+    /// inside a single transaction and rebuilds the derived tables once at the end.
+    /// </summary>
+    internal static void ApplyReplace(
+        SqliteConnection connection,
+        SqliteTransaction transaction,
+        SemanticPlcGraph replacementGraph,
+        ComponentImport replacement)
+    {
+        ArgumentNullException.ThrowIfNull(replacementGraph);
+        ArgumentNullException.ThrowIfNull(replacement);
+
         ValidateStoredIdentity(connection, transaction, replacement);
         (replacementGraph, replacement) = AlignProjectContainment(
             connection,
@@ -144,8 +242,158 @@ public static class ComponentProvenanceStore
         }
 
         Save(connection, transaction, new[] { replacement });
-        SqliteSemanticGraphStore.RebuildDerivedData(connection, transaction);
-        transaction.Commit();
+    }
+
+    /// <summary>
+    /// The core of <see cref="Delete"/>, without a connection, a commit or a
+    /// derived-data rebuild (see <see cref="ApplyReplace"/>).
+    /// </summary>
+    internal static void ApplyDelete(
+        SqliteConnection connection,
+        SqliteTransaction transaction,
+        string componentKey)
+    {
+        var oldEdgeIds = ReadIds(
+            connection,
+            transaction,
+            "SELECT edge_id FROM source_component_edges WHERE component_key = $component_key;",
+            componentKey);
+        var oldNodeIds = ReadIds(
+            connection,
+            transaction,
+            "SELECT node_id FROM source_component_nodes WHERE component_key = $component_key;",
+            componentKey);
+
+        Execute(
+            connection,
+            transaction,
+            "DELETE FROM source_component_edges WHERE component_key = $component_key;",
+            ("$component_key", componentKey));
+        foreach (var edgeId in oldEdgeIds)
+        {
+            Execute(
+                connection,
+                transaction,
+                """
+                DELETE FROM graph_edges
+                WHERE id = $edge_id
+                  AND NOT EXISTS (
+                    SELECT 1
+                    FROM source_component_edges
+                    WHERE edge_id = $edge_id
+                  );
+                """,
+                ("$edge_id", edgeId));
+        }
+
+        Execute(
+            connection,
+            transaction,
+            "DELETE FROM source_component_nodes WHERE component_key = $component_key;",
+            ("$component_key", componentKey));
+        foreach (var nodeId in oldNodeIds)
+        {
+            Execute(
+                connection,
+                transaction,
+                """
+                DELETE FROM graph_nodes
+                WHERE id = $node_id
+                  AND NOT EXISTS (
+                    SELECT 1
+                    FROM source_component_nodes
+                    WHERE node_id = $node_id
+                  )
+                  AND NOT EXISTS (
+                    SELECT 1
+                    FROM graph_edges
+                    WHERE from_node_id = $node_id OR to_node_id = $node_id
+                  );
+                """,
+                ("$node_id", nodeId));
+        }
+
+        Execute(
+            connection,
+            transaction,
+            "DELETE FROM source_components WHERE component_key = $component_key;",
+            ("$component_key", componentKey));
+    }
+
+    /// <summary>
+    /// One opened database with the transaction every write path needs: foreign keys
+    /// enforced, provenance proven to exist, schema ensured.
+    ///
+    /// It exists so a batch update and a single-component replace cannot disagree
+    /// about those three steps. Disposing without <see cref="CommitAfterRebuild"/>
+    /// rolls the whole transaction back, which is what makes the incremental update
+    /// all-or-nothing even when an import throws half way through.
+    /// </summary>
+    internal sealed class Session : IDisposable
+    {
+        private SqliteTransaction? _transaction;
+
+        private Session(SqliteConnection connection, SqliteTransaction transaction)
+        {
+            Connection = connection;
+            _transaction = transaction;
+        }
+
+        internal SqliteConnection Connection { get; }
+
+        internal SqliteTransaction Transaction =>
+            _transaction ?? throw new ObjectDisposedException(nameof(Session));
+
+        internal static Session Open(string dbPath)
+        {
+            if (string.IsNullOrWhiteSpace(dbPath))
+            {
+                throw new ArgumentException("SQLite path is required.", nameof(dbPath));
+            }
+
+            if (!File.Exists(dbPath))
+            {
+                throw new FileNotFoundException(
+                    $"Knowledge database '{dbPath}' was not found.",
+                    dbPath);
+            }
+
+            SqliteSemanticGraphStore.EnsureSqliteInitialized();
+            var connection = new SqliteConnection($"Data Source={dbPath}");
+            try
+            {
+                connection.Open();
+                Execute(connection, null, "PRAGMA foreign_keys = ON;");
+                EnsureProvenanceAvailable(connection);
+                SqliteSemanticGraphStore.EnsureSchema(connection);
+                return new Session(connection, connection.BeginTransaction());
+            }
+            catch
+            {
+                connection.Dispose();
+                throw;
+            }
+        }
+
+        /// <summary>Rebuild the derived tables from the new graph state, then commit.</summary>
+        internal void CommitAfterRebuild()
+        {
+            SqliteSemanticGraphStore.RebuildDerivedData(Connection, Transaction);
+            _transaction!.Commit();
+        }
+
+        public void Dispose()
+        {
+            try
+            {
+                _transaction?.Dispose();
+            }
+            finally
+            {
+                _transaction = null;
+                Connection.Dispose();
+            }
+        }
     }
 
     internal static void Load(

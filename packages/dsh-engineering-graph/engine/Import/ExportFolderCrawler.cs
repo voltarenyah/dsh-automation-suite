@@ -19,7 +19,6 @@
 // methods (Graph/TiaXmlSemanticGraphImporter).
 using System.Security.Cryptography;
 using System.Text;
-using System.Text.Json;
 using System.Xml;
 using System.Xml.Linq;
 
@@ -70,7 +69,7 @@ public static class ExportFolderCrawler
         RejectReparsePoint(new DirectoryInfo(fullRoot));
 
         // 0. Family 1's own manifest at the root. This is the D24 layout: one directory
-        //    per device, holding blocks/ + types/ + tag_tables/ + _tia-openness-manifest.json.
+        //    per device, holding blocks/ + types/ + tag_tables/ + _manifest.json.
         //    When present it is AUTHORITATIVE -- the export already knows which files belong
         //    to this device, so re-deriving that from directory names is strictly worse.
         if (DeviceManifests.Exists(fullRoot))
@@ -249,26 +248,12 @@ public static class ExportFolderCrawler
     }
 
     /// <summary>Cheap check: does the metadata.json at <paramref name="path"/> have a "components"
-    /// array? True for legacy device manifests, false for project-level metadata.</summary>
-    private static bool HasComponents(string path)
-    {
-        try
-        {
-            using var doc = JsonDocument.Parse(File.ReadAllText(path));
-            return doc.RootElement.TryGetProperty("components", out var comps)
-                && comps.ValueKind == JsonValueKind.Array;
-        }
-        catch (JsonException ex)
-        {
-            throw new ManifestInvalidException(
-                $"metadata.json at '{path}' is not valid JSON: {ex.Message}");
-        }
-        catch (IOException ex)
-        {
-            throw new ManifestInvalidException(
-                $"metadata.json at '{path}' could not be read: {ex.Message}");
-        }
-    }
+    /// array? True for legacy device manifests, false for project-level metadata.
+    ///
+    /// The rule itself lives on <see cref="ManifestImporter.HasComponents"/> so the
+    /// incremental update's single-component importer cannot drift from the one a
+    /// full ingest picks.</summary>
+    private static bool HasComponents(string path) => ManifestImporter.HasComponents(path);
 
     internal static SemanticGraphNode CreateProjectNode(string exportRoot, string fullRoot)
     {

@@ -1,9 +1,9 @@
 /**
  * The model-facing tools of the engineering-graph plugin.
  *
- * Four tools: `knowledge_workspace` reports the project and its databases
- * (local, no engine), and `knowledge_schema` / `knowledge_ingest` /
- * `knowledge_query` drive the engine's three operations. The engine-backed three
+ * Five tools: `knowledge_workspace` reports the project and its databases (local,
+ * no engine), and `knowledge_schema` / `knowledge_ingest` / `knowledge_update` /
+ * `knowledge_query` drive the engine's four operations. The engine-backed four
  * return one canonical envelope, so a model always sees `ok`, a one-line
  * `summary`, the engine's structured `data`, the (empty) `changes` /
  * `diagnostics` lists and a structured `error` carrying the engine's code,
@@ -12,7 +12,7 @@
  * (`workspace-tool.ts`).
  *
  * **The tool names are deliberate**: `knowledge_schema`, `knowledge_ingest`,
- * `knowledge_query`. They keep the names the origin library
+ * `knowledge_update`, `knowledge_query`. They keep the names the origin library
  * (`Tools/KnowledgeTools.cs`, see `engine/Operations.cs`) exposed to a model, so
  * prompts, notes and muscle memory written against that surface keep working after
  * the move into DSH. The DSH house style would be an unprefixed verb_noun
@@ -81,6 +81,16 @@ function numberOf(value: unknown): number | undefined {
 
 function strings(value: unknown): string[] {
   return list(value).map((item) => text(item) ?? '?')
+}
+
+/**
+ * A bounded comma-separated list, for the per-component path listings an update
+ * reports. The full arrays stay in `data`; this only keeps one rendered line from
+ * growing without limit when a large batch is refused or reported.
+ */
+function renderPathList(values: readonly string[]): string {
+  const shown = values.slice(0, MAX_LISTED).join(', ')
+  return values.length > MAX_LISTED ? `${shown} … (+${values.length - MAX_LISTED} more)` : shown
 }
 
 /** The table names a `CREATE TABLE` script defines, in script order. */
@@ -190,7 +200,7 @@ function renderError(error: ToolError | null): string {
  * Operation-specific detail lines; the full payload is always in `data`.
  *
  * `operation` is a plain string because the envelope carries the engine's own
- * spelling of it; the three the engine can return are exactly the three cases
+ * spelling of it; the four the engine can return are exactly the four cases
  * below.
  */
 function renderData(operation: string, data: JsonRecord | null, fieldChars = MAX_FIELD_CHARS): string {
@@ -241,6 +251,25 @@ function renderData(operation: string, data: JsonRecord | null, fieldChars = MAX
         lines.push(`Warnings (${warnings.length}):`)
         for (const warning of warnings.slice(0, MAX_LISTED)) lines.push(`  - ${warning}`)
       }
+      break
+    }
+    case 'Update': {
+      const changed = numberOf(data['changed']) ?? 0
+      const closure = numberOf(data['closure']) ?? 0
+      const removed = numberOf(data['removed']) ?? 0
+      lines.push(`Database: ${text(data['dbPath']) ?? '?'}`)
+      lines.push(`Replaced: ${changed} changed component(s), plus ${closure} in the dependency closure; removed ${removed}.`)
+      const changedPaths = strings(data['changedComponents'])
+      if (changedPaths.length > 0) lines.push(`Changed: ${renderPathList(changedPaths)}`)
+      const closurePaths = strings(data['closureComponents'])
+      if (closurePaths.length > 0) lines.push(`Closure (re-imported so their edges survive): ${renderPathList(closurePaths)}`)
+      const removedPaths = strings(data['removedComponents'])
+      if (removedPaths.length > 0) lines.push(`Removed: ${renderPathList(removedPaths)}`)
+      const ignored = strings(data['ignoredRemovedPaths'])
+      if (ignored.length > 0) {
+        lines.push(`Ignored (never imported into this database, so nothing to remove): ${renderPathList(ignored)}`)
+      }
+      lines.push(`Graph now: ${numberOf(data['nodes']) ?? 0} node(s), ${numberOf(data['edges']) ?? 0} edge(s)`)
       break
     }
     case 'Query': {
@@ -341,6 +370,18 @@ function summarize(operation: Operation, frame: ResultFrame): string {
       return (
         `Ingested ${numberOf(data['filesImported']) ?? 0} of ${numberOf(data['filesFound']) ?? 0} file(s) into ` +
         `${text(data['dbPath']) ?? 'the database'}: ${numberOf(data['nodes']) ?? 0} node(s) and ${numberOf(data['edges']) ?? 0} edge(s).`
+      )
+    }
+    case 'Update': {
+      if (data === null) return 'The knowledge database was updated in place.'
+      const changed = numberOf(data['changed']) ?? 0
+      const closure = numberOf(data['closure']) ?? 0
+      const removed = numberOf(data['removed']) ?? 0
+      return (
+        `Updated ${changed} changed component(s)` +
+        `${closure > 0 ? ` plus ${closure} in the dependency closure` : ''}` +
+        `${removed > 0 ? ` and removed ${removed}` : ''} in ${text(data['dbPath']) ?? 'the database'}: ` +
+        `${numberOf(data['nodes']) ?? 0} node(s) and ${numberOf(data['edges']) ?? 0} edge(s) now.`
       )
     }
     case 'Query': {
@@ -447,7 +488,7 @@ async function resolveQueryDatabase(explicitPath: string | undefined, cwd: strin
 /**
  * How much of the reading surface a preset gets.
  *
- * `none` — orientation only (workspace, schema, ingest, raw query); `inspect` —
+ * `none` — orientation only (workspace, schema, ingest, update, raw query); `inspect` —
  * add the two tools that answer "what is in this block / network"; `all` — add
  * search and variable usage as well, which is the expert's full surface
  * (docs/decisions.md D25).
@@ -457,14 +498,15 @@ export type DrilldownSurface = 'none' | 'inspect' | 'all'
 /** Options that select which tools become visible, without changing any of them. */
 export interface RegisterToolsOptions {
   /**
-   * Whether `knowledge_ingest` is registered. Defaults to `true`, so a caller
-   * that says nothing keeps the full surface.
+   * Whether the two database-writing tools (`knowledge_ingest` and
+   * `knowledge_update`) are registered. Defaults to `true`, so a caller that says
+   * nothing keeps the full surface.
    *
-   * A full graph rebuild is a heavy write (one database per device, minutes on a
-   * large project), so it belongs to the main agent's project workflow; a
-   * read-only subagent preset turns it off and keeps the discovery, schema and
-   * query tools. Those are unaffected, and their order and definitions are
-   * identical either way.
+   * A graph rebuild — or an incremental update of it — is a heavy write (one
+   * database per device, minutes on a large project), so it belongs to the main
+   * agent's project workflow; a read-only subagent preset turns it off and keeps the
+   * discovery, schema and query tools. Those are unaffected, and their order and
+   * definitions are identical either way.
    */
   includeIngest?: boolean
   /**
@@ -486,8 +528,8 @@ export interface RegisterToolsOptions {
  *
  * Registration order is the order the model reads them in, so it follows the
  * work: find the project and its databases (`knowledge_workspace`), learn the
- * schema (`knowledge_schema`), build a database (`knowledge_ingest`, optional),
- * then ask a question (`knowledge_query`).
+ * schema (`knowledge_schema`), build or refresh a database (`knowledge_ingest`,
+ * `knowledge_update`, optional together), then ask a question (`knowledge_query`).
  *
  * @param ctx - the context whose `ctx.tools` receives the definitions.
  * @param dependencies - the engine seam every engine-backed tool body runs against.
@@ -548,10 +590,10 @@ export function registerTools(ctx: Context, dependencies: ToolDependencies, opti
     }),
   )
 
-  // The one tool a read-only preset must not see. Skipping the whole definition
-  // (rather than registering a body that refuses) is deliberate: a tool the model
+  // The tools a read-only preset must not see. Skipping the whole definitions
+  // (rather than registering bodies that refuse) is deliberate: a tool the model
   // cannot call at all is a clearer boundary than one that answers "no", and the
-  // other two tools keep their names, order and definitions untouched.
+  // other tools keep their names, order and definitions untouched.
   if (includeIngest) {
     register(
       defineTool({
@@ -607,6 +649,99 @@ export function registerTools(ctx: Context, dependencies: ToolDependencies, opti
           // directly, so it has to leave the same provenance file, or a database
           // rebuilt from here would report `unknown` forever. A failed ingest
           // (outcome.ok false) must not touch the sidecar.
+          if (outcome.ok) {
+            await recordGraphSidecar(args.device_dir, { log: dependencies.log })
+          }
+
+          return asJsonOutcome(outcome)
+        },
+      }),
+    )
+
+    // The incremental sibling of knowledge_ingest: same heavy-write surface, so it
+    // is registered (or withheld) with it. A conservative refresh of a few blocks is
+    // still a write to a device database, and the read-only subagent presets must not
+    // be able to start one any more than they can start a full rebuild.
+    register(
+      defineTool({
+        name: 'knowledge_update',
+        description:
+          'Refresh ONE device\'s knowledge database for the files a sync changed or removed, without re-parsing the ' +
+          'whole export. It re-imports each named component and replaces its slice of the graph, plus one dependency ' +
+          'hop: every component that owns an edge pointing at a node of a changed or removed component is re-imported ' +
+          'too, because replacing a component can otherwise strip a neighbour\'s edge. The whole batch is one ' +
+          'transaction, so a failure leaves the previous database intact. It is deliberately conservative and never ' +
+          'falls back on its own: a database without component provenance is refused with ' +
+          'UPDATE_REQUIRES_FULL_REBUILD, a changed path the database never imported with UPDATE_UNKNOWN_COMPONENT, a ' +
+          'component whose stored identity moved (a block moved to another group) with UPDATE_IDENTITY_CHANGED, a ' +
+          'batch over max_components with UPDATE_TOO_LARGE, and a changed file that no longer exists with ' +
+          'UPDATE_SOURCE_MISSING — in every one of those cases call knowledge_ingest instead. Only direct block XML ' +
+          'changes are the supported incremental case; type-wide or tag-table changes are the caller\'s decision to ' +
+          'force a full ingest. A successful update records the export ledger\'s PLC checksum in ' +
+          '.dsh/local/graph/<device>.json exactly like knowledge_ingest.',
+        parameters: {
+          device_dir: {
+            type: 'string',
+            required: true,
+            description:
+              'Absolute path of the device folder the database was built from, i.e. <project>/source/<device>. It ' +
+              'must still exist (the changed components are re-imported from it); a missing folder is ' +
+              'DEVICE_DIR_NOT_FOUND.',
+          },
+          changed_paths: {
+            type: 'array',
+            items: { type: 'string' },
+            required: true,
+            description:
+              'Device-relative paths of the files whose content changed, e.g. ["blocks/010_Cell/FC.xml"]. Forward or ' +
+              'back slashes are both accepted. Pass an empty array when only files were removed. Each path must be the ' +
+              'relative_path of a component the database already has, otherwise UPDATE_UNKNOWN_COMPONENT.',
+          },
+          removed_paths: {
+            type: 'array',
+            items: { type: 'string' },
+            description:
+              'Device-relative paths of the files deleted from the tree. A path the database never imported is ' +
+              'reported in data.ignoredRemovedPaths and ignored, so a sync may name every deletion it saw.',
+          },
+          db_path: {
+            type: 'string',
+            description:
+              'Absolute path of the database to update. Omit for <project>/knowledge/<device>/<device>_knowledge.db, ' +
+              'the same default knowledge_ingest uses. It must already exist and carry component provenance.',
+          },
+          max_components: {
+            type: 'integer',
+            description:
+              'Upper bound on how many components this call may touch (changed + dependency closure + removed), ' +
+              'default 50. A wider batch is refused with UPDATE_TOO_LARGE: at that size a full knowledge_ingest is ' +
+              'cheaper and cannot drift.',
+          },
+        },
+        output: {
+          schema: OUTCOME_SCHEMA,
+          render: (_args, value) => [{ type: 'text', text: renderValue(value) }],
+        },
+        presentCall: (args) => ({
+          card: 'generic',
+          title: 'Update engineering graph (incremental)',
+          kind: 'other',
+          rawInput: args,
+        }),
+        async execute(args, exec) {
+          const params: JsonRecord = { deviceDir: args.device_dir, changedPaths: args.changed_paths }
+          if (args.removed_paths !== undefined) params['removedPaths'] = args.removed_paths
+          if (args.db_path !== undefined) params['dbPath'] = args.db_path
+          if (args.max_components !== undefined) params['maxComponents'] = args.max_components
+
+          const outcome = await runOperation(dependencies, 'Update', params, {
+            signal: exec.signal,
+            // One note per component, so a slow batch is visible in the plugin log.
+            onProgress: (frame) => dependencies.log.debug(`engine update [${frame.phase}] ${frame.message}`),
+          })
+
+          // The same sidecar writer the service uses: a database refreshed here must be
+          // able to report `fresh`, and a refused update must not touch the sidecar.
           if (outcome.ok) {
             await recordGraphSidecar(args.device_dir, { log: dependencies.log })
           }
@@ -682,7 +817,7 @@ export function registerTools(ctx: Context, dependencies: ToolDependencies, opti
   )
 
   // The reading surface, off unless a preset asks for it. Registered last so the
-  // first four names — the ones every preset shares — keep their order.
+  // shared orientation/write/query names keep their order.
   if (drilldown !== 'none') {
     for (const definition of drilldownToolDefinitions(dependencies, drilldown)) register(definition)
   }

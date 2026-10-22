@@ -34,7 +34,7 @@ const runtimeModule = await loadRuntimeModule()
 const { bundledEnginePath } = await loadEnginePathModule()
 
 /** The tool names this plugin registers, in registration order (deliberate; see `src/tools.ts`). */
-const TOOL_NAMES = ['knowledge_workspace', 'knowledge_schema', 'knowledge_ingest', 'knowledge_query']
+const TOOL_NAMES = ['knowledge_workspace', 'knowledge_schema', 'knowledge_ingest', 'knowledge_update', 'knowledge_query']
 
 /** The tool names the read-only preset keeps (`includeIngest: false`). */
 const READ_ONLY_TOOL_NAMES = ['knowledge_workspace', 'knowledge_schema', 'knowledge_query']

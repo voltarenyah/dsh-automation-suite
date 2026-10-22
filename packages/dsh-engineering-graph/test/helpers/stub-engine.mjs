@@ -33,7 +33,7 @@ function send(frame) {
   process.stdout.write(`${JSON.stringify(frame)}\n`)
 }
 
-const operations = mode === 'unknown-operations' ? ['GetSchema'] : ['GetSchema', 'Ingest', 'Query']
+const operations = mode === 'unknown-operations' ? ['GetSchema'] : ['GetSchema', 'Ingest', 'Query', 'Update']
 
 if (mode !== 'silent') {
   send({

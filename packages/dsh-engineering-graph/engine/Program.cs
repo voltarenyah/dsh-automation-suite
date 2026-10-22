@@ -242,6 +242,7 @@ internal static class Program
                 OperationCatalog.GetSchema => Operations.GetSchema(parameters),
                 OperationCatalog.Ingest => Operations.Ingest(parameters, progress),
                 OperationCatalog.Query => Operations.Query(parameters),
+                OperationCatalog.Update => Operations.Update(parameters, progress),
                 _ => throw new EngineException(
                     "unsupported_operation",
                     $"'{operation}' is not implemented.",

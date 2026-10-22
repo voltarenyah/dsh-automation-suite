@@ -26,10 +26,16 @@ import {
 } from './helpers/harness.mjs'
 
 /** The tool names this plugin registers, in registration order (deliberate; see `src/tools.ts`). */
-const TOOL_NAMES = ['knowledge_workspace', 'knowledge_schema', 'knowledge_ingest', 'knowledge_query']
+const TOOL_NAMES = [
+  'knowledge_workspace',
+  'knowledge_schema',
+  'knowledge_ingest',
+  'knowledge_update',
+  'knowledge_query',
+]
 
-/** The three tools that drive the engine, and therefore share its canonical envelope. */
-const ENGINE_TOOLS = ['knowledge_schema', 'knowledge_ingest', 'knowledge_query']
+/** The four tools that drive the engine, and therefore share its canonical envelope. */
+const ENGINE_TOOLS = ['knowledge_schema', 'knowledge_ingest', 'knowledge_update', 'knowledge_query']
 
 /** A result frame shaped exactly like the engine's (`engine/Program.cs:ResultFrame`). */
 function resultFrame(operation, options = {}) {
@@ -85,7 +91,7 @@ async function harness(reply) {
   return { tools, context, calls: recording.calls, logs: recording.logs, byName }
 }
 
-test('registerTools registers the four deliberate tool names, in order', async () => {
+test('registerTools registers the five deliberate tool names, in order', async () => {
   const { context } = await harness(() => resultFrame('GetSchema'))
   assert.deepEqual(context.registered(), TOOL_NAMES)
   for (const definition of context.definitions) {
@@ -110,8 +116,8 @@ test('registerTools takes includeIngest as an option and defaults it to true', a
 
   assert.deepEqual(withDefault.registered(), TOOL_NAMES, 'an omitted option keeps today\'s full surface')
   assert.deepEqual(withTrue.registered(), TOOL_NAMES)
-  // The two survivors keep their names *and* their order: schema first, query last,
-  // whether or not the ingest tool sits between them.
+  // The survivors keep their names *and* their order: schema first, query last,
+  // whether or not the two database writers sit between them.
   assert.deepEqual(without.registered(), ['knowledge_workspace', 'knowledge_schema', 'knowledge_query'])
 })
 
@@ -167,6 +173,7 @@ test('the declared parameters require exactly what the engine requires; discover
   const { byName } = await harness(() => resultFrame('GetSchema'))
 
   assert.deepEqual([...byName['knowledge_ingest'].parameters.required], ['device_dir'])
+  assert.deepEqual([...byName['knowledge_update'].parameters.required].sort(), ['changed_paths', 'device_dir'])
   // db_path became optional: the tool resolves the workspace's database when the
   // model cannot name one (docs/decisions.md D24).
   assert.deepEqual([...byName['knowledge_query'].parameters.required], ['sql'])
@@ -175,6 +182,12 @@ test('the declared parameters require exactly what the engine requires; discover
 
   assert.deepEqual(Object.keys(byName['knowledge_schema'].parameters.properties), ['known_version'])
   assert.deepEqual(Object.keys(byName['knowledge_ingest'].parameters.properties).sort(), ['db_path', 'device_dir'])
+  assert.deepEqual(
+    Object.keys(byName['knowledge_update'].parameters.properties).sort(),
+    ['changed_paths', 'db_path', 'device_dir', 'max_components', 'removed_paths'],
+  )
+  assert.equal(byName['knowledge_update'].parameters.properties.changed_paths.type, 'array')
+  assert.equal(byName['knowledge_update'].parameters.properties.max_components.type, 'integer')
   assert.deepEqual(Object.keys(byName['knowledge_query'].parameters.properties).sort(), ['db_path', 'max_field_chars', 'max_rows', 'sql'])
   assert.equal(byName['knowledge_query'].parameters.properties.max_rows.type, 'integer')
 })
@@ -196,12 +209,14 @@ test('every tool declares a presentCall in the plugin presentation shape', async
   const workspace = byName['knowledge_workspace'].presentCall({})
   const schema = byName['knowledge_schema'].presentCall({})
   const ingest = byName['knowledge_ingest'].presentCall({ device_dir: 'C:\\exp' })
+  const update = byName['knowledge_update'].presentCall({ device_dir: 'C:\\exp', changed_paths: ['blocks/a.xml'] })
   const query = byName['knowledge_query'].presentCall({ db_path: 'C:\\a.db', sql: 'SELECT 1' })
 
   for (const [presentation, kind] of [
     [workspace, 'read'],
     [schema, 'read'],
     [ingest, 'other'],
+    [update, 'other'],
     [query, 'read'],
   ]) {
     assert.equal(presentation.card, 'generic')
@@ -212,6 +227,7 @@ test('every tool declares a presentCall in the plugin presentation shape', async
   assert.equal(workspace.title, 'Engineering knowledge databases')
   assert.equal(schema.title, 'Engineering graph schema')
   assert.equal(ingest.title, 'Ingest engineering exports')
+  assert.equal(update.title, 'Update engineering graph (incremental)')
   assert.equal(query.title, 'Query engineering graph')
 })
 
@@ -238,6 +254,35 @@ test('each tool maps its parameters onto the engine\'s own camelCase names', asy
 
   await executeTool(byName['knowledge_query'], { db_path: 'C:\\a.db', sql: 'SELECT 1', max_rows: 5 }, NO_SIGNAL)
   assert.deepEqual(calls[5].params, { dbPath: 'C:\\a.db', sql: 'SELECT 1', maxRows: 5 })
+
+  await executeTool(
+    byName['knowledge_update'],
+    { device_dir: 'C:\\exp', changed_paths: ['blocks/010_Cell/FC.xml'] },
+    NO_SIGNAL,
+  )
+  assert.deepEqual(calls[6].operation, 'Update')
+  assert.deepEqual(calls[6].params, { deviceDir: 'C:\\exp', changedPaths: ['blocks/010_Cell/FC.xml'] })
+
+  // Empty changed_paths plus the three optional parameters: a removal-only update
+  // still names the database and may raise the component cap.
+  await executeTool(
+    byName['knowledge_update'],
+    {
+      device_dir: 'C:\\exp',
+      changed_paths: [],
+      removed_paths: ['blocks/Old.xml'],
+      db_path: 'C:\\a.db',
+      max_components: 5,
+    },
+    NO_SIGNAL,
+  )
+  assert.deepEqual(calls[7].params, {
+    deviceDir: 'C:\\exp',
+    changedPaths: [],
+    removedPaths: ['blocks/Old.xml'],
+    dbPath: 'C:\\a.db',
+    maxComponents: 5,
+  })
 })
 
 test('a relative db_path is resolved against the session working directory, not the engine\'s', async () => {
@@ -288,6 +333,42 @@ test('a successful operation fills the envelope from the engine frame', async ()
   assert.match(rendered, /\{"n":42\}/, 'a row is rendered as a column-named JSON object')
   assert.match(rendered, /\(11 ms in the engine\)/)
   assert.ok(!rendered.includes('Error code:'), 'a success must not render an error section')
+})
+
+test('knowledge_update renders the changed, closure and removed counts and paths', async () => {
+  const data = {
+    device: 'Sino_PEI',
+    dbPath: 'C:\\ws\\knowledge\\Sino_PEI\\Sino_PEI_knowledge.db',
+    changed: 1,
+    removed: 1,
+    closure: 1,
+    changedComponents: ['blocks/010_Cell/FC.xml'],
+    closureComponents: ['blocks/Main [OB1].xml'],
+    removedComponents: ['blocks/Old.xml'],
+    ignoredRemovedPaths: ['blocks/Never.xml'],
+    nodes: 35,
+    edges: 109,
+  }
+  const { byName } = await harness((operation) => resultFrame(operation, { data }))
+  const tool = byName['knowledge_update']
+
+  const outcome = await executeTool(tool, { device_dir: 'C:\\exp', changed_paths: ['blocks/010_Cell/FC.xml'] }, NO_SIGNAL)
+  assertOutcomeMatchesSchema(tool, outcome)
+  assert.equal(outcome.operation, 'Update')
+  assert.equal(
+    outcome.summary,
+    'Updated 1 changed component(s) plus 1 in the dependency closure and removed 1 in ' +
+      'C:\\ws\\knowledge\\Sino_PEI\\Sino_PEI_knowledge.db: 35 node(s) and 109 edge(s) now.',
+  )
+
+  const rendered = renderedText(tool, { device_dir: 'C:\\exp', changed_paths: ['blocks/010_Cell/FC.xml'] }, outcome)
+  assert.match(rendered, /Update succeeded\./)
+  assert.match(rendered, /Replaced: 1 changed component\(s\), plus 1 in the dependency closure; removed 1\./)
+  assert.match(rendered, /Changed: blocks\/010_Cell\/FC\.xml/)
+  assert.match(rendered, /Closure .*: blocks\/Main \[OB1\]\.xml/)
+  assert.match(rendered, /Removed: blocks\/Old\.xml/)
+  assert.match(rendered, /Ignored .*: blocks\/Never\.xml/)
+  assert.match(rendered, /Graph now: 35 node\(s\), 109 edge\(s\)/)
 })
 
 test('an operation failure is ok:false with the engine code, and renders the remediation', async () => {
@@ -399,7 +480,7 @@ test('the schema tool renders the tables, kinds and example queries', async () =
     nodeKinds: ['Project', 'FB'],
     edgeTypes: ['CALLS'],
     exampleQueries: [{ name: 'Count node kinds', sql: 'SELECT kind, COUNT(*) FROM graph_nodes GROUP BY kind' }],
-    operations: ['GetSchema', 'Ingest', 'Query'],
+    operations: ['GetSchema', 'Ingest', 'Query', 'Update'],
   }
   const { byName } = await harness((operation) => resultFrame(operation, { data }))
   const tool = byName['knowledge_schema']
@@ -410,7 +491,7 @@ test('the schema tool renders the tables, kinds and example queries', async () =
   assert.match(rendered, /Tables: graph_nodes, graph_edges/)
   assert.match(rendered, /Node kinds \(2\): Project, FB/)
   assert.match(rendered, /Count node kinds: SELECT kind, COUNT\(\*\) FROM graph_nodes/)
-  assert.match(rendered, /Operations: GetSchema, Ingest, Query/)
+  assert.match(rendered, /Operations: GetSchema, Ingest, Query, Update/)
 
   // The known_version short circuit is a two-field payload and says so.
   const { byName: shortByName } = await harness((operation) => resultFrame(operation, { data: { version: 'deadbeef', unchanged: true } }))

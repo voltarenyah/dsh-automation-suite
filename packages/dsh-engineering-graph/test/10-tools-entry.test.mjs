@@ -24,9 +24,15 @@ const entry = await loadToolsEntry()
 const plugin = await loadPlugin()
 
 /** The full surface, in registration order (deliberate; see `src/tools.ts`). */
-const ALL_TOOLS = ['knowledge_workspace', 'knowledge_schema', 'knowledge_ingest', 'knowledge_query']
+const ALL_TOOLS = [
+  'knowledge_workspace',
+  'knowledge_schema',
+  'knowledge_ingest',
+  'knowledge_update',
+  'knowledge_query',
+]
 
-/** What the read-only preset keeps: discovery, schema and query — the same order, minus the write. */
+/** What the read-only preset keeps: discovery, schema and query — the same order, minus the writers. */
 const READ_ONLY_TOOLS = ['knowledge_workspace', 'knowledge_schema', 'knowledge_query']
 
 /** Apply both rows on one context, the way a preset declares them. */
@@ -78,12 +84,12 @@ test('the real schemastery schema applies the same default and rejects non-boole
   assert.throws(() => entry.Config({ includeIngest: 'yes' }), 'a non-boolean must not validate')
 })
 
-test('by default the row registers exactly workspace, schema, ingest and query — in that order', () => {
+test('by default the row registers exactly workspace, schema, ingest, update and query — in that order', () => {
   const { registered } = applyBoth({})
   assert.deepEqual(registered(), ALL_TOOLS)
 })
 
-test('the row registers all four when applied with no config block at all', () => {
+test('the row registers all five when applied with no config block at all', () => {
   const { registered } = applyBoth(undefined)
   assert.deepEqual(registered(), ALL_TOOLS)
 })
@@ -121,6 +127,7 @@ test('the surviving tools are byte-for-byte the ones the default row registers',
     )
   }
   assert.equal(readOnlyByName['knowledge_ingest'], undefined, 'knowledge_ingest must not be registered at all')
+  assert.equal(readOnlyByName['knowledge_update'], undefined, 'knowledge_update must not be registered at all')
 })
 
 test('the row logs the names it registered and names the owner of the engine', () => {
@@ -132,14 +139,15 @@ test('the row logs the names it registered and names the owner of the engine', (
   assert.ok(info[0].message.includes('knowledgeGraph service'))
 })
 
-test('the row says in its log when it deliberately withheld the ingest tool', () => {
+test('the row says in its log when it deliberately withheld the database writers', () => {
   const { logs } = applyBoth({ includeIngest: false })
   const info = logs.filter((entry) => entry.level === 'info' && entry.scope === 'engineering-graph-tools')
 
   assert.equal(info.length, 1)
   assert.ok(info[0].message.includes(READ_ONLY_TOOLS.join(', ')))
   assert.ok(!info[0].message.includes('knowledge_ingest,'), 'the log must not claim the withheld tool was registered')
-  assert.match(info[0].message, /knowledge_ingest is disabled/)
+  assert.ok(!info[0].message.includes('knowledge_update,'), 'the log must not claim the withheld tool was registered')
+  assert.match(info[0].message, /knowledge_ingest and knowledge_update are disabled/)
 })
 
 test('applying the row without the host row fails loudly instead of registering broken tools', () => {

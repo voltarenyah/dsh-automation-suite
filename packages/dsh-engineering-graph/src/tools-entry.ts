@@ -1,19 +1,21 @@
 /**
- * The `/tools` row: the three model-facing tools as a Loader entry of their own.
+ * The `/tools` row: the model-facing tools as a Loader entry of their own.
  *
  * DSH resolves tool visibility per **declaration scope**. Registering the tools
  * in the same row that owns the engine would put them in the host (global)
- * plane, so every agent — delegated subagents included — would inherit all
- * three. The tools therefore live behind this second entry, reachable as the
+ * plane, so every agent — delegated subagents included — would inherit all of
+ * them. The tools therefore live behind this second entry, reachable as the
  * package's `./tools` subpath export, and each agent preset decides whether to
  * declare it and with which config:
  *
  *   - `leader` (main agent): declares the row with the default config and keeps
- *     all three tools;
+ *     every tool, including the two database writers (`knowledge_ingest` and
+ *     `knowledge_update`);
  *   - `expert` (subagent): declares the same row with `includeIngest: false`, so
- *     it sees `knowledge_schema` and `knowledge_query` but not
- *     `knowledge_ingest` — a full graph rebuild is a heavy write that belongs to
- *     the main agent's project workflow, not to a read-only investigation.
+ *     it sees `knowledge_schema` and `knowledge_query` but neither writer — a
+ *     graph rebuild and an incremental graph update are both heavy writes that
+ *     belong to the main agent's project workflow, not to a read-only
+ *     investigation. The `auditor` preset does not mount this row at all.
  *
  * This row owns nothing durable. It reads the host row's internal
  * `knowledgeEngine` seam (`runtime-service.ts`), registers `tools.ts`'s tool
@@ -53,9 +55,10 @@ export const inject = ['tools', KNOWLEDGE_ENGINE_SERVICE]
 /** The tools row's configuration, as the profile sees it. */
 export interface ToolsEntryConfig {
   /**
-   * Whether `knowledge_ingest` is registered. `true` (the default) gives the
-   * full three-tool surface; `false` keeps `knowledge_schema` and
-   * `knowledge_query` only.
+   * Whether the two database writers are registered: `knowledge_ingest` (a full
+   * rebuild) and `knowledge_update` (the incremental refresh). `true` (the default)
+   * gives the full surface; `false` keeps `knowledge_workspace`,
+   * `knowledge_schema` and `knowledge_query` only.
    */
   includeIngest: boolean
   /**
@@ -147,7 +150,7 @@ export function apply(ctx: Context, config?: Partial<ToolsEntryConfig>): void {
   log.info(
     `Registered ${registered.length} engineering-graph tools (${registered.join(', ')}); ` +
       `the engine subprocess and the knowledgeGraph service are owned by the host row.` +
-      (settings.includeIngest ? '' : ' knowledge_ingest is disabled by this row\'s includeIngest config.') +
+      (settings.includeIngest ? '' : ' knowledge_ingest and knowledge_update are disabled by this row\'s includeIngest config.') +
       (settings.includeDrilldown === 'none'
         ? ' The drill-down tools are off: this row left includeDrilldown at its default.'
         : ` Drill-down surface: ${settings.includeDrilldown}.`),

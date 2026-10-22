@@ -81,6 +81,22 @@ test('the engine self test passes: native SQLite loads and real exports parse', 
 
   assert.match(output, /\[ok\] read-only guard: DROP rejected with QUERY_REJECTED/, output)
 
-  // 4. Every check that ran reported success.
+  // 4. The incremental update path (B4) against a real manifest-driven device tree:
+  //    one block mutated and replaced in place, one block removed, the three refusal
+  //    codes, and the rollback guarantee when a batch fails half way through.
+  const update = /\[ok\] incremental update: changed=(\d+) closure=(\d+)/.exec(output)
+  assert.ok(update, `no incremental update summary in the output:\n${output}`)
+  assert.equal(update[1], '1', 'exactly the one changed block must be replaced')
+  assert.ok(Number(update[2]) >= 1, 'the dependency closure must include the calling block')
+  assert.match(output, /blocks\/Main \[OB1\]\.xml/, 'Main calls the changed FC, so it is the closure')
+
+  const removal = /\[ok\] incremental removal: removed=(\d+)/.exec(output)
+  assert.ok(removal, `no incremental removal summary in the output:\n${output}`)
+  assert.equal(removal[1], '1')
+
+  assert.match(output, /\[ok\] update refusals: UPDATE_REQUIRES_FULL_REBUILD, UPDATE_UNKNOWN_COMPONENT, UPDATE_TOO_LARGE/, output)
+  assert.match(output, /\[ok\] update atomicity: a failed batch left the database unchanged/, output)
+
+  // 5. Every check that ran reported success.
   assert.match(output, /self-test: OK/, output)
 })

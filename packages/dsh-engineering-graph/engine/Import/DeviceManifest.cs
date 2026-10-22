@@ -1,4 +1,4 @@
-// Family 1's own export manifest (`_tia-openness-manifest.json`), read as the
+// Family 1's own export manifest (`_manifest.json`), read as the
 // authoritative index for ONE device's source tree.
 //
 // Written by the interface plugin's export (docs/OUTPUT-CONTRACT.md §3, the D24
@@ -22,7 +22,7 @@ namespace EngineeringGraph.Engine;
 internal sealed class DeviceManifest
 {
     /// <summary>The file's fixed name at the device root.</summary>
-    internal const string FileName = "_tia-openness-manifest.json";
+    internal const string FileName = "_manifest.json";
 
     /// <summary>
     /// Declared as <see cref="JsonElement"/> because its JSON type is not fixed: the

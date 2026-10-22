@@ -30,8 +30,12 @@ export const PROTOCOL_VERSION = 1
  * validation. **The order is part of the contract too** — the ready frame prints
  * this list in declaration order, and `test/05-protocol.test.mjs` compares the two
  * entry by entry (the C# catalog documents that requirement on its side as well).
+ *
+ * `Update` was appended (B4) rather than inserted: a peer of either vintage that
+ * understands the first three operations keeps its meaning, and the engine-side
+ * catalog appends it in the same position.
  */
-export const OPERATIONS = ['GetSchema', 'Ingest', 'Query'] as const
+export const OPERATIONS = ['GetSchema', 'Ingest', 'Query', 'Update'] as const
 
 export type Operation = (typeof OPERATIONS)[number]
 

@@ -43,7 +43,7 @@ test('a healthy stub behaves like the engine (the failure tests mean something)'
 
   const ready = await client.start()
   assert.equal(ready.protocol, 1)
-  assert.deepEqual([...ready.operations], ['GetSchema', 'Ingest', 'Query'])
+  assert.deepEqual([...ready.operations], ['GetSchema', 'Ingest', 'Query', 'Update'])
 
   const frame = await client.request('Query', { sql: 'SELECT 1' })
   assert.equal(frame.ok, true)

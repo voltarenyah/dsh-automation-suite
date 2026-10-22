@@ -17,16 +17,17 @@
  *
  *   the tools row (`tools-entry.ts`, package `"./tools"`) — declared per preset
  *   ────────────────────────────────────────────────────────────────────────────
- *   tools:      knowledge_schema, knowledge_ingest, knowledge_query, registered
- *               by `tools.ts` against the host row's runtime seam
+ *   tools:      knowledge_workspace, knowledge_schema, knowledge_ingest,
+ *               knowledge_update, knowledge_query, registered by `tools.ts` against
+ *               the host row's runtime seam
  *
  * Why the split: one row would register the tools in the host (global) plane, so
- * every agent — delegated subagents included — would inherit all three. The
- * leader preset declares the `/tools` row and keeps all three; the expert
- * subagent preset declares it too but with `includeIngest: false`, because a
- * full graph rebuild is a heavy write that belongs to the main agent's project
- * workflow. Both presets still share the one engine subprocess and the
- * `knowledgeGraph` service the host row owns.
+ * every agent — delegated subagents included — would inherit all of them. The
+ * leader preset declares the `/tools` row and keeps every tool; the expert
+ * subagent preset declares it too but with `includeIngest: false`, because a full
+ * graph rebuild and an incremental graph update are heavy writes that belong to
+ * the main agent's project workflow. Both presets still share the one engine
+ * subprocess and the `knowledgeGraph` service the host row owns.
  *
  * `apply` takes ownership of the engine subprocess through `ctx.effect` and
  * publishes the two services; it registers no tool. The engine is started lazily
@@ -168,4 +169,4 @@ export type { EnginePathSource } from './engine-path.js'
 export type { EngineClientStatus, EngineState, LogSink, RequestOptions } from './engine-client.js'
 export type { ToolDependencies } from './tools.js'
 export type { EngineError, ProgressFrame, ReadyFrame, ResultFrame, ToolOutcome } from './protocol.js'
-export type { IngestDeviceOptions, KnowledgeGraphStatus } from './service.js'
+export type { IngestDeviceOptions, KnowledgeGraphStatus, UpdateDeviceOptions } from './service.js'

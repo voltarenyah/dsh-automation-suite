@@ -15,9 +15,13 @@
  *      `result` with `ok:false` and `QUERY_REJECTED` (the read-only guard), not a
  *      transport failure;
  *   6. the same count query again, proving the refused DROP changed nothing;
- *   7. two requests issued at once, proving the client serializes and still matches
+ *   7. one block mutated on disk and `Update` called with its device-relative path:
+ *      the changed component and its caller (the dependency closure) are re-imported,
+ *      the renamed symbol replaces the old one, and the freshness sidecar is
+ *      rewritten — all through the tool, i.e. the whole stack;
+ *   8. two requests issued at once, proving the client serializes and still matches
  *      results to requests by id;
- *   8. `stop()` (closing stdin) and a second `stop()`.
+ *   9. `stop()` (closing stdin) and a second `stop()`.
  *
  * The engine is a build artifact (`.gitignore` excludes `engine/bin/`), so on a
  * checkout where the C# half has not been built this test **skips with the command
@@ -128,7 +132,7 @@ test('ingest engine/fixtures into a temp db, then query the node count', async (
 
   // The engine is up and agrees about the catalog before anything is sent.
   const ready = await client.start()
-  assert.deepEqual([...ready.operations], ['GetSchema', 'Ingest', 'Query'])
+  assert.deepEqual([...ready.operations], ['GetSchema', 'Ingest', 'Query', 'Update'])
 
   // 1. Schema first: no database needed, and it documents what the query may use.
   const schemaOutcome = await executeTool(schemaTool, {}, exec)
@@ -139,7 +143,7 @@ test('ingest engine/fixtures into a temp db, then query the node count', async (
   assert.ok(schemaOutcome.durationMs >= 0)
   assert.ok(schemaOutcome.data.nodeKinds.includes('FB'), 'the schema names the node kinds')
   assert.ok(schemaOutcome.data.ddl.includes('CREATE TABLE'), 'the schema carries the DDL')
-  assert.deepEqual([...schemaOutcome.data.operations], ['GetSchema', 'Ingest', 'Query'])
+  assert.deepEqual([...schemaOutcome.data.operations], ['GetSchema', 'Ingest', 'Query', 'Update'])
   assert.ok(
     schemaOutcome.data.exampleQueries.some((example) => typeof example.sql === 'string' && example.sql.length > 0),
     'the schema carries worked example queries',
@@ -217,6 +221,56 @@ test('ingest engine/fixtures into a temp db, then query the node count', async (
   assert.equal(afterOutcome.ok, true, renderFailure(afterOutcome))
   assert.equal(afterOutcome.data.rows[0][0], nodeCount, 'the graph survived the refused DROP')
 
+  // 6b. The incremental update through the tool: mutate one block, name it by its
+  //     device-relative path, and the graph is refreshed in place. This fixture tree
+  //     is manifest-less, so it also proves the crawl's component provenance is
+  //     updatable — and the caller's own sidecar writer must run here too.
+  const updateTool = findTool(context.definitions, 'knowledge_update')
+  const fcRelative = 'FC_LAD_SimulateCylinder_Call [FC1].xml'
+  const fcPath = join(deviceDir, fcRelative)
+  const sidecarBefore = JSON.parse(readFileSync(sidecarPath, 'utf8'))
+  writeFileSync(fcPath, readFileSync(fcPath, 'utf8').replaceAll('"btn_forward"', '"btn_forward_renamed"'), 'utf8')
+
+  const updateOutcome = await executeTool(
+    updateTool,
+    { device_dir: deviceDir, changed_paths: [fcRelative], db_path: dbPath },
+    exec,
+  )
+  assertOutcomeMatchesSchema(updateTool, updateOutcome)
+  assert.equal(updateOutcome.ok, true, renderFailure(updateOutcome))
+  assert.equal(updateOutcome.operation, 'Update')
+  assert.equal(updateOutcome.data.changed, 1, 'exactly the named block was replaced')
+  assert.ok(updateOutcome.data.closure >= 1, 'the block that calls it is re-imported as the dependency closure')
+  assert.ok(
+    updateOutcome.data.closureComponents.includes('Main [OB1].xml'),
+    `the closure must name the caller: ${JSON.stringify(updateOutcome.data.closureComponents)}`,
+  )
+  assert.match(renderedText(updateTool, { device_dir: deviceDir, changed_paths: [fcRelative] }, updateOutcome), /Update succeeded\./)
+
+  // The rename landed and the old symbol is gone: asked through a real query, so the
+  // answer comes from the database the engine just wrote.
+  const symbolOutcome = await executeTool(
+    queryTool,
+    {
+      db_path: dbPath,
+      sql: "SELECT id FROM graph_nodes WHERE id IN ('symbol:btn_forward', 'symbol:btn_forward_renamed') ORDER BY id",
+    },
+    exec,
+  )
+  assert.equal(symbolOutcome.ok, true, renderFailure(symbolOutcome))
+  assert.deepEqual(
+    symbolOutcome.data.rows.map((row) => row[0]),
+    ['symbol:btn_forward_renamed'],
+    'the old node must be gone and the renamed one present',
+  )
+
+  // A successful incremental update records the freshness sidecar through the same
+  // writer the service uses; a refused one must not touch it (asserted in 09).
+  const sidecarAfter = JSON.parse(readFileSync(sidecarPath, 'utf8'))
+  assert.equal(sidecarAfter.plcChecksum, PLC_CHECKSUM)
+  assert.ok(sidecarAfter.builtAt >= sidecarBefore.builtAt, 'the update must refresh the sidecar timestamp')
+  const nodesAfterUpdate = updateOutcome.data.nodes
+
   // 7. Two requests at once: the client queues them rather than interleaving, and
   //    both results are still matched to the request that asked for them.
   const [first, second] = await Promise.all([
@@ -225,7 +279,7 @@ test('ingest engine/fixtures into a temp db, then query the node count', async (
   ])
   assert.equal(first.ok, true)
   assert.equal(second.ok, true)
-  assert.equal(second.data.rows[0][0], nodeCount)
+  assert.equal(second.data.rows[0][0], nodesAfterUpdate)
 
   // 8. Status and shutdown. `stop()` closes stdin; the engine reads EOF and exits.
   const status = client.status()
@@ -233,7 +287,11 @@ test('ingest engine/fixtures into a temp db, then query the node count', async (
   assert.equal(status.inflightOperation, null)
   assert.equal(status.queueDepth, 0)
   assert.equal(status.restarts, 0, 'the engine never had to be replaced')
-  assert.equal(status.requestsServed, 8, 'GetSchema, Ingest, count, DROP, DB_NOT_FOUND, count, then the concurrent pair')
+  assert.equal(
+    status.requestsServed,
+    10,
+    'GetSchema, Ingest, count, DROP, DB_NOT_FOUND, count, Update, symbol query, then the concurrent pair',
+  )
   assert.ok(status.stderrTail.some((line) => line.includes('ready')), 'the engine notes itself on stderr')
 
   await client.stop()
@@ -248,7 +306,7 @@ test('ingest engine/fixtures into a temp db, then query the node count', async (
   try {
     const frame = await reopened.request('Query', { dbPath, sql: COUNT_SQL })
     assert.equal(frame.ok, true)
-    assert.equal(frame.data.rows[0][0], nodeCount)
+    assert.equal(frame.data.rows[0][0], nodesAfterUpdate)
   } finally {
     await reopened.stop()
   }
