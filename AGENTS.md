@@ -418,3 +418,63 @@ create_engineering_project({
   `packages/dsh-engineering-graph/engine/bin/EngineeringGraph.Engine.exe` 存在 —— 它缺席时
   `create_engineering_project` 只报"图谱未建成"，其余照常。`Get-Process TiaOpennessV17Min.Controller`
   有进程即说明接口插件已加载（见 §6「怎么判断启动成功」）。
+
+---
+
+## 8. 并行会话文件认领（dsh-file-claim）
+
+多个会话同时在本仓干活时，用 `dsh-file-claim` 协调"谁在改哪个文件"。**用法不需要看本节** ——
+插件每次会话都把协议注入系统提示，8 个工具自带说明；这里只记本仓约定与几条实测边界。
+
+### 现状与作用域
+
+- 它装在**日常** profile（`~/.dsh/profiles/desktop` 的 bundle 层），由 `dsh plugin add` 装入。
+- ❌ 本仓蓝图的 `profile/dsh-automation-suite/package.json` **没有**它，所以 §6 的验收环境
+  （独立 `DSH_HOME`）里**不会有**这套工具。要在验收环境用它，得把包名同时加进蓝图的
+  `dependencies` 与 `dsh.profile.bundles`；别指望两边自动同步。
+- 认领状态落在**会话所属的工作区**，跨 DSH 进程可见；认领者是**会话 id**，不是模型名 ——
+  两个会话用同一个模型也互不继承认领。
+- ⚠️ 认领范围跟**会话启动时的工作区**走，中途换 cwd **不会**换认领范围。实测：在本仓里开会话、
+  `working_directory` 切到别处后再 `claim_files("AGENTS.md")`，边车写进了会话原来的工作区
+  （旁挂的 `.dsh-file-claim.lock` 反倒落在进程 cwd）。所以要靠它保护本仓，就在本仓**开会话**
+  （cwd = 仓库根），别指望中途切换。
+
+### 认领粒度：只在真有并发时认领
+
+- ✅ 改前 `claim_files`，改完立刻 `release_files`；会话结束（`agent/disposed`）插件自动释放。
+- ✅ 按**包目录**认领，覆盖全部后代：`claim_files({ paths: ["packages/dsh-ui-plc-source/"] })`。
+- ✅ 只在另一个会话确实活跃、且可能碰同一批文件时认领（`claim_status` 看得到它）。
+- ❌ 单会话里的逐行小修不必认领：每条认领路径都会在工作区落一个 `<path>.dshclaim` 边车。
+- ❌ `claim_files({ paths: ["."] })` 认领整仓只用于"我明确要独占全仓"的场合，不是日常操作。
+
+### 撞车时的三条出路（守卫是"拒绝"，不是"覆盖"）
+
+1. 等对方 `release_files` 后再写；
+2. 对方心跳过期（默认 `staleMs` 2h；**进程已死的会话在下次活动时按 pid 立即清理**，
+   通常不用等满 2h）后 `claim_files({ paths: [...], force: true })` 接管；
+3. `pending_write` 把改好的内容 + git HEAD base 塞进待合并区：本仓是 git 仓库，这条路可用；
+   对方 release 时无冲突**自动三方合并**落盘，有冲突则留标记，由 `pending_apply` 手动合。
+
+### 守卫边界：挡不住不走 DSH 工具链的写
+
+- 拦 `write` / `edit` / `pwsh`（重定向目标 + `Set-Content`、`Out-File`、`Copy-Item` 等显式写命令）
+  / `bash`；**不拦 `read`**；解析不出写入目标就放行（fail-open）。
+- `guardCommit` 默认 **false**：`git commit -- <path>` 显式暂存别人认领的文件**不会**被拒。
+  要更严就在日常 profile 的 `~/.dsh/profiles/desktop/cordis.patch.yml` 加
+  `- id: dsh-file-claim` / `config: { guardCommit: true }`。
+- **只挡 DSH 的工具**：别的 CLI、别的 agent、TIA Portal 本体的写入都不认这套。它是一致性约定，
+  不是操作系统级文件锁；真需要独占就串行，别指望它。
+
+### 产物：边车与审计，别提交也别手删
+
+- 四种产物都是插件自有状态：`<path>.dshclaim`（认领边车，含持有者与心跳）、
+  `<path>.dshpending/`（待合并条目：改好的内容 + git HEAD base）、
+  根目录 `.dsh-file-claim.audit.jsonl`（追加式审计，每次 claim / release / 接管 / pending 变更一行 JSON）
+  与 `.dsh-file-claim.lock`（跨进程互斥锁，只在崩溃后可能残留）。
+- 四种模式已进 `.gitignore`（见该文件末尾说明块）。**不要提交、不要手删** —— 审计是崩溃后对账的唯一证据。
+- 它们是普通文件（不是链接），清它们不受 §3 的 junction 红线约束，但同样别用递归删除顺手扫。
+
+### 子 agent
+
+工具在宿主面注册，按 §1「宿主面注册的工具会被每个 agent 继承」，leader 与它派出的子 agent
+都能用 `claim_files`。并行子 agent 切包干活时各领一个 `packages/<包>/` 就不会互踩。
