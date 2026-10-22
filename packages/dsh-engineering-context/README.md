@@ -38,7 +38,7 @@ DeepSeek Harness 插件（**工程上下文插件**）：把一个 **TIA Portal 
 |---|---|---|
 | `create_engineering_project` | 把 TIA **当前打开**的工程另存进 `<workspace>/tia/<workspace 名>/`，把源文件树重建到 `<workspace>/source/<device>/`，逐设备写 `_evidence.json` + `_manifest.json`（`adoptExisting`：校验已有文件并收编，不再导出第二遍），逐设备重建知识图谱库，最后写入基线提交；默认 `dry_run: true`（只给计划）。工程已经在 workspace 里时跳过另存，只刷新源文件树与图谱 | 是（TIA 写工程、接口插件写源文件、图谱插件写 `.db`、本插件维护 `.gitignore`/`.gitattributes`、必要时的 `git init` 与基线提交） |
 | `project_status` | 只读报告：哪个 PLC、账本/清单在不在、git 看到什么、锁有没有被占，并给出 `nextAction`（`open_project` / `compile` / `sync` / `commit` / `git_init` / `clean`）。`verify: true` 才读 checksum（约 3 s），否则明确标 **NOT CHECKED**；`data.wouldSync` / `data.syncReason` 只在真的读到 checksum 时下结论（`no-evidence` / `no-manifest` / `checksum-differs` / `in-sync`，读不到时 `null` / `unavailable`，未验证时 `null` / `not-checked`），成功读到的 checksum 同时写入 30 s 进程内缓存 | 否 |
-| `project_sync` | 让 SOURCE 与 TIA 对齐：checksum 快路径 → 需要时慢路径扫描 → 只把差异提升进 SOURCE → 写账本/清单 → 提交该 device 目录。默认只读 checksum 并报告 `wouldSync`；计划命中上一个只读调用写入的缓存时不再读 TIA，并标 `checksumCached: true`；`dry_run: false` 永不用缓存做决定、总是重新扫描。写盘必须 `dry_run: false` | 是（SOURCE + `.dsh/local/stage` + 一次 git commit） |
+| `project_sync` | 让 SOURCE 与 TIA 对齐：checksum 快路径 → 需要时慢路径扫描 → 只把差异提升进 SOURCE → 写账本/清单 → 提交该 device 目录。默认只读 checksum 并报告 `wouldSync`；计划命中上一个只读调用写入的缓存时不再读 TIA，并标 `checksumCached: true`；`dry_run: false` 永不用缓存做决定、总是重新扫描。`refresh_knowledge: true` 时提交后刷新图谱：块级小改动走增量，类型/标签表或超过 20 个文件走全量；图谱失败只警告。写盘必须 `dry_run: false` | 是（SOURCE + `.dsh/local/stage` + 一次 git commit；可选图谱刷新） |
 
 **版本管理怎么判断"变没变"**：
 
@@ -67,10 +67,14 @@ DeepSeek Harness 插件（**工程上下文插件**）：把一个 **TIA Portal 
 `dry_run: false` 永远重新扫描、从不拿缓存决定要写什么，成功后把扫描结果写回缓存；进程退出即丢失，
 不落盘。因此缓存最坏只会让"计划"在 30 s 内看到略旧的答案，真实同步不会。
 
-**知识图谱这一步是软的（D25）**：它经**缝 B**（`ctx.get('knowledgeGraph')`，不 import）逐设备调用
-`ingestDevice`，是**全量重建**且没有增量。服务缺席、引擎没构建、或引擎不可达时，结果只说"图谱未建成"，
-**工作流本身照常成功**；引擎拒绝（`ok:false`）逐设备如实报出，含 `error.code` 与
-`error.details.remediation`。大工程实测约 30 s / 库约 450 MB。
+**知识图谱这一步是软的（D25 / B4）**：它经**缝 B**（`ctx.get('knowledgeGraph')`，不 import）逐设备调用
+`ingestDevice`（全量）或 `updateDevice`（增量）。`project_sync(refresh_knowledge:true)` 在提交后刷新：
+只改块且 ≤20 个文件走增量（引擎替换组件 + 一跳依赖闭包，单事务），类型/标签表或更大批量走全量；
+`UPDATE_REQUIRES_FULL_REBUILD` / `UPDATE_TOO_LARGE` / `UPDATE_UNKNOWN_COMPONENT` 自动回退全量。
+服务缺席、引擎没构建、或引擎不可达时，结果只说"图谱未刷新/未建成"，
+**工作流本身照常成功**；引擎拒绝（`ok:false`）如实报出 `error.code` 与 remediation。
+`project_status` 用 `<workspace>/.dsh/local/graph/<device>.json` 的 sidecar checksum 报
+`knowledge.fresh` / `stale` / `unknown`。大工程全量实测约 30 s / 库约 450 MB。
 
 **它不做的事**：不连 TIA（那是接口插件的 `engineeringAccess` 服务）、不启动 TIA 或控制器、
 不打开工程、不解析 XML / 不建图（那是图谱插件的引擎）、不删用户的原始工程、不碰 DRAFT/REMOTE。
