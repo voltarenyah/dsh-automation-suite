@@ -22,7 +22,6 @@ export function defineStageTool(opts: ToolOptions) {
       + '(including deletions and untracked files) or `update: true` to stage only already-tracked '
       + 'modifications/deletions. This is a safe, reversible operation.',
     parameters: {
-      repoDir: { type: 'string', description: 'Explicit git repository directory.' },
       paths: {
         type: 'array',
         description: 'Repo-root-relative paths to stage. Required unless `all` or `update` is set.',
@@ -51,7 +50,7 @@ export function defineStageTool(opts: ToolOptions) {
       }],
     },
     async execute(args, exec) {
-      const ctx = await createGitContext(opts, args, exec.signal)
+      const ctx = await createGitContext(opts, exec)
       if (args.all === true) {
         await ctx.run(['add', '-A'])
         return { repoDir: ctx.repoDir, mode: 'all' as const, paths: [] }

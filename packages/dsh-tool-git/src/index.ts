@@ -1,12 +1,21 @@
 /**
- * dsh-tool-git — a structured, safe Git tool family for DeepSeek Harness.
+ * dsh-tool-git host entry — the capability layer.
  *
- * Registers eight model-facing tools (`git_status`, `git_diff`, `git_log`,
- * `git_branch`, `git_stage`, `git_commit`, `git_stash`, `git_show`) that run
- * `git` through a shell-free subprocess runner and return canonical JSON
- * values, plus a `tools/pre-execute` safety gate that denies (or asks about)
- * destructive git operations such as force push, hard reset, and history
- * rewrites — whether invoked through these tools or through a shell tool.
+ * This row registers **no model-facing tools**. It provides:
+ *
+ * - the `gitContext` cordis service, which resolves git repositories from an
+ *   explicit root and runs `git` against them. Sibling plugins consume it via
+ *   `ctx.get('gitContext')` without importing this package; and
+ * - the `tools/pre-execute` safety gate, which denies (or asks about)
+ *   destructive git operations such as force push, hard reset, and history
+ *   rewrites — whether they arrive through the `/tools` row's own tools or
+ *   through a shell tool.
+ *
+ * The twelve `git_*` model tools live on the `dsh-tool-git/tools` subpath
+ * (`./tools-entry.ts`), so a profile/preset can grant them to one agent
+ * without also handing them to every other agent. That row injects
+ * `gitContext`; without this host row it does not load at all, so a missing
+ * host row fails closed instead of producing unguarded tools.
  *
  * @module dsh-tool-git
  */
@@ -14,19 +23,13 @@
 import type { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
 import { installSafetyGate, type DestructivePolicy } from './safety.ts'
-import { registerGitTools } from './tools/index.ts'
+import { createGitContextService } from './service.ts'
 
 export const name = 'tool-git'
 export const inject = ['tools']
 
-/** dsh-tool-git plugin configuration. */
+/** dsh-tool-git host configuration (service + safety gate). */
 export interface Config {
-  /**
-   * Directory to start git repository discovery from. Each tool call may
-   * override it with its own `repoDir` argument. Defaults to the process
-   * working directory.
-   */
-  workDir: string
   /** The `git` executable to invoke. Defaults to `git` on PATH. */
   gitPath: string
   /**
@@ -43,9 +46,14 @@ export interface Config {
   diffContextLines: number
 }
 
-/** Schemastery configuration schema for the plugin consumer. */
+/**
+ * There is deliberately no `workDir` here. Repository roots are resolved from
+ * the calling session's `exec.agent.session.header.cwd` (or from the explicit
+ * root passed to the `gitContext` service); a process-cwd-derived default was
+ * the trap that made tools operate on whichever directory happened to spawn
+ * the host.
+ */
 export const Config: z<Config> = z.object({
-  workDir: z.string().default(process.cwd()),
   gitPath: z.string().default('git'),
   destructivePolicy: z.union([
     z.const('deny'),
@@ -58,13 +66,18 @@ export const Config: z<Config> = z.object({
 })
 
 /**
- * Apply the plugin: register the git tools and install the destructive
- * command safety gate.
+ * Apply the host entry: provide the `gitContext` service and install the
+ * destructive-command safety gate. Model-facing tools are registered by the
+ * `dsh-tool-git/tools` entry instead.
  * @param ctx - registrant context carrying the tool runtime.
- * @param config - validated plugin configuration.
+ * @param config - validated host configuration.
  */
 export function apply(ctx: Context, config: Config): void {
-  registerGitTools(ctx, config)
+  ctx.provide('gitContext', createGitContextService({
+    gitPath: config.gitPath,
+    logMaxCommits: config.logMaxCommits,
+    diffContextLines: config.diffContextLines,
+  }))
   installSafetyGate(ctx, {
     destructivePolicy: config.destructivePolicy,
     extraDestructivePatterns: config.extraDestructivePatterns,

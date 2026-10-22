@@ -27,7 +27,6 @@ export function definePullTool(opts: ToolOptions) {
       + 'local commits on top. A conflict or non-fast-forward outcome reports `pulled: false` with '
       + 'a reason instead of failing the call.',
     parameters: {
-      repoDir: { type: 'string', description: 'Explicit git repository directory.' },
       remote: { type: 'string', description: 'Remote to pull from (default: the configured upstream).' },
       branch: { type: 'string', description: 'Branch to pull (default: the upstream branch).' },
       ffOnly: { type: 'boolean', description: 'Fast-forward only (default true); false allows a merge commit.' },
@@ -52,7 +51,7 @@ export function definePullTool(opts: ToolOptions) {
       }],
     },
     async execute(args, exec) {
-      const ctx = await createGitContext(opts, args, exec.signal)
+      const ctx = await createGitContext(opts, exec)
       const cmd = ['pull']
       if (args.rebase === true) cmd.push('--rebase')
       else if (args.ffOnly !== false) cmd.push('--ff-only')

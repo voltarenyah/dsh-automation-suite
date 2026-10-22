@@ -22,7 +22,6 @@ export function defineBranchTool(opts: ToolOptions) {
       'List branches with their upstream and ahead/behind tracking state. '
       + 'The current branch is marked with `current: true`.',
     parameters: {
-      repoDir: { type: 'string', description: 'Explicit git repository directory.' },
       all: { type: 'boolean', description: 'Include remote-tracking branches as well as local ones.' },
     },
     output: {
@@ -60,7 +59,7 @@ export function defineBranchTool(opts: ToolOptions) {
       }],
     },
     async execute(args, exec) {
-      const ctx = await createGitContext(opts, args, exec.signal)
+      const ctx = await createGitContext(opts, exec)
       const refs = args.all === true
         ? ['refs/heads', 'refs/remotes']
         : ['refs/heads']

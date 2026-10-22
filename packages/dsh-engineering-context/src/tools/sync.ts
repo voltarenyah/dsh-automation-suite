@@ -2,8 +2,11 @@
  * `project_sync` — make the committed source tree match the compiled PLC.
  *
  * The default is a plan: read the checksum (a few seconds) and report whether a
- * sync is needed, without writing. `dry_run: false` runs the whole scan, copies
- * the promoted XML, writes evidence + manifest, and commits the device directory.
+ * sync is needed, without writing. A plan reuses the checksum a recent read-only
+ * call cached (checksum-cache.ts) and says so via `checksumCached`; a real run
+ * (`dry_run: false`) never consults that cache, always scans, and then refreshes
+ * it. `dry_run: false` runs the whole scan, copies the promoted XML, writes
+ * evidence + manifest, and commits the device directory.
  *
  * @module dsh-engineering-context/tools/sync
  */
@@ -11,6 +14,7 @@
 import type { ToolDefinition } from '@deepseek-ai/dsh-tools'
 
 import { engineeringAccess, normalizeChecksum, type EngineeringAccessLike } from '../access.js'
+import { checksumCacheKey, readCachedChecksum, writeCachedChecksum } from '../checksum-cache.js'
 import { evidencePathForDevice, manifestPathForDevice } from '../config.js'
 import type { DeviceInfo } from '../device.js'
 import { resolveDevice } from '../device.js'
@@ -61,6 +65,7 @@ export function syncTool(dependencies: ToolDependencies): ToolDefinition {
         const device = await resolveDevice(scope, service, exec)
         const evidenceFile = evidencePathForDevice(device.directory)
         const manifestFile = manifestPathForDevice(device.directory)
+        const cacheKey = checksumCacheKey(scope.workspace.path, device.device, device.software)
 
         if (args.dry_run !== false) {
           let evidence: EvidenceDocument | null = null
@@ -71,36 +76,50 @@ export function syncTool(dependencies: ToolDependencies): ToolDefinition {
             // A corrupt ledger is a reason to sync, not a reason to refuse the plan.
             evidenceInvalid = true
           }
-          if (typeof service.readPlcChecksum !== 'function') {
-            throw new EngineeringContextError(
-              'tia_access_unavailable',
-              'The installed TIA interface plugin has no readPlcChecksum method. Update dsh-tia-openness-v17-min.',
-              { service: 'engineeringAccess', method: 'readPlcChecksum' },
-            )
-          }
-          const checksum = normalizeChecksum(
-            await service.readPlcChecksum({
-              deviceName: device.device,
-              softwareName: device.software,
-              signal: exec.signal,
-            }),
-          )
-          if (!checksum.ok) {
-            if (checksum.error?.code === 'checksum_unavailable') {
+
+          // A plan only needs "what does TIA say right now". A checksum another
+          // read-only call fetched moments ago answers that, so reuse it instead
+          // of paying for the same TIA round trip twice.
+          const cached = readCachedChecksum(cacheKey)
+          let checksum: string | null
+          let checksumCached = false
+          if (cached !== null) {
+            checksum = cached.checksum
+            checksumCached = true
+          } else {
+            if (typeof service.readPlcChecksum !== 'function') {
               throw new EngineeringContextError(
-                'needs_compile',
-                'The PLC has no compiled checksum (it was edited since the last compile). Compile it in TIA Portal, then sync.',
-                { device: device.device },
+                'tia_access_unavailable',
+                'The installed TIA interface plugin has no readPlcChecksum method. Update dsh-tia-openness-v17-min.',
+                { service: 'engineeringAccess', method: 'readPlcChecksum' },
               )
             }
-            throw new EngineeringContextError('sync_failed', checksum.summary || 'Reading the checksum failed.', {
-              device: device.device,
-              code: checksum.error?.code ?? null,
-            })
+            const report = normalizeChecksum(
+              await service.readPlcChecksum({
+                deviceName: device.device,
+                softwareName: device.software,
+                signal: exec.signal,
+              }),
+            )
+            if (!report.ok) {
+              if (report.error?.code === 'checksum_unavailable') {
+                throw new EngineeringContextError(
+                  'needs_compile',
+                  'The PLC has no compiled checksum (it was edited since the last compile). Compile it in TIA Portal, then sync.',
+                  { device: device.device },
+                )
+              }
+              throw new EngineeringContextError('sync_failed', report.summary || 'Reading the checksum failed.', {
+                device: device.device,
+                code: report.error?.code ?? null,
+              })
+            }
+            checksum = report.checksum
+            if (checksum !== null) writeCachedChecksum(cacheKey, checksum)
           }
 
           const manifest = await describePath(scope.workspace.path, manifestFile)
-          const wouldSync = evidence === null || evidence.plcChecksum !== checksum.checksum || manifest.kind !== 'file'
+          const wouldSync = evidence === null || evidence.plcChecksum !== checksum || manifest.kind !== 'file'
           const reason =
             evidenceInvalid
               ? 'the evidence ledger is unreadable'
@@ -117,7 +136,8 @@ export function syncTool(dependencies: ToolDependencies): ToolDefinition {
               : 'Dry run: the source tree already matches the compiled PLC; nothing to do.',
             {
               device,
-              checksum: checksum.checksum,
+              checksum,
+              checksumCached,
               lastKnownChecksum: evidence?.plcChecksum ?? null,
               evidence: {
                 path: evidenceFile,
@@ -132,7 +152,7 @@ export function syncTool(dependencies: ToolDependencies): ToolDefinition {
               dryRun: true,
               details: [
                 `PLC: ${device.device} / ${device.software} → ${device.directory}`,
-                `Checksum: ${checksum.checksum ?? 'unavailable'}`,
+                `Checksum: ${checksum ?? 'unavailable'}${checksumCached ? ' (reused from the checksum cache)' : ''}`,
                 evidenceInvalid
                   ? 'Evidence: unreadable (a full scan will rewrite it).'
                   : evidence === null
@@ -145,6 +165,9 @@ export function syncTool(dependencies: ToolDependencies): ToolDefinition {
         }
 
         const result = await runSync(scope, service, device, exec)
+        // A real sync always scanned; its own checksum is the freshest fact, so
+        // refresh the cache with it (never the other way around).
+        if (result.checksum !== null) writeCachedChecksum(cacheKey, result.checksum)
         const details = [
           `PLC: ${result.device.device} / ${result.device.software} → ${result.device.directory}`,
           result.unchanged

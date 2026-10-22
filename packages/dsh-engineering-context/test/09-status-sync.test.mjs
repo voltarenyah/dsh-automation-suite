@@ -11,7 +11,7 @@ import assert from 'node:assert/strict'
 import { execFile } from 'node:child_process'
 import { readdir, readFile, rm, stat } from 'node:fs/promises'
 import { join } from 'node:path'
-import { test } from 'node:test'
+import { beforeEach, test } from 'node:test'
 import { promisify } from 'node:util'
 
 import {
@@ -20,6 +20,7 @@ import {
   executeTool,
   fakeExec,
   findTool,
+  loadChecksumCacheModule,
   loadConfigModule,
   loadToolsModule,
   makeFile,
@@ -28,7 +29,16 @@ import {
 
 const { toolDefinitions } = await loadToolsModule()
 const { resolveConfig } = await loadConfigModule()
+const { CHECKSUM_TTL_MS, checksumCacheKey, clearChecksumCache, readCachedChecksum, writeCachedChecksum } =
+  await loadChecksumCacheModule()
 const execFileAsync = promisify(execFile)
+
+// The cache is module-level in-memory state, so one test must not inherit
+// another's warm entry (each test has its own workspace root, but clearing is
+// cheaper to reason about than relying on that).
+beforeEach(() => {
+  clearChecksumCache()
+})
 
 const STATUS = 'project_status'
 const SYNC = 'project_sync'
@@ -218,8 +228,29 @@ test('status reports an open project, the missing ledger/manifest and the next a
   assert.equal(outcome.data.nextAction, 'sync')
   assert.equal(outcome.data.git.repository, false)
   assert.equal(outcome.data.lock, null)
+  assert.equal(outcome.data.wouldSync, null, 'verify=false must not claim the tree is clean')
+  assert.equal(outcome.data.syncReason, 'not-checked')
   assert.deepEqual(operations(calls), ['readTiaSession'], 'verify=false must not read the checksum')
   assert.match(outcome.summary, /NOT checked/u)
+})
+
+test('status(verify:false) reports wouldSync null and never claims the tree is clean', async (t) => {
+  const root = await tempWorkspace(t)
+  const device = deviceDirectory(root)
+  // Everything a "clean" verdict would need is on disk — but the checksum was
+  // not read, so the only honest answer is "cannot tell".
+  await writeEvidence(device, { plcChecksum: 'AA' })
+  await writeManifest(device)
+  const { service, calls } = fakeAccess()
+
+  const outcome = assertEnvelope(await executeTool(tools(service).status, {}, fakeExec(root)))
+
+  assert.equal(outcome.ok, true)
+  assert.equal(outcome.data.checksum.state, 'not-checked')
+  assert.equal(outcome.data.wouldSync, null)
+  assert.equal(outcome.data.syncReason, 'not-checked')
+  assert.match(outcome.details.join('\n'), /Sync: not checked/u)
+  assert.deepEqual(operations(calls), ['readTiaSession'])
 })
 
 test('status verifies the checksum on request and reports drift, never "clean" by omission', async (t) => {
@@ -236,12 +267,18 @@ test('status verifies the checksum on request and reports drift, never "clean" b
   assert.equal(drift.data.checksum.value, 'CC')
   assert.equal(drift.data.checksum.lastKnown, 'AA')
   assert.equal(drift.data.checksum.drift, true)
+  assert.equal(drift.data.wouldSync, true)
+  assert.equal(drift.data.syncReason, 'checksum-differs')
   assert.equal(drift.data.nextAction, 'sync')
   assert.match(drift.details.join('\n'), /DIFFERS from the ledger/u)
+  assert.match(drift.details.join('\n'), /Sync: needed — checksum differs from the ledger/u)
 
   const matching = fakeAccess({ checksum: checksumReport('AA') })
   const equal = assertEnvelope(await executeTool(tools(matching.service).status, { verify: true }, fakeExec(root)))
   assert.equal(equal.data.checksum.drift, false)
+  assert.equal(equal.data.wouldSync, false)
+  assert.equal(equal.data.syncReason, 'in-sync')
+  assert.match(equal.details.join('\n'), /Sync: not needed/u)
   assert.equal(equal.data.nextAction, 'git_init', 'no repository yet')
 
   await git(root, ['init', '-q'])
@@ -267,6 +304,8 @@ test('status turns an uncompiled PLC into "compile", not a failure', async (t) =
   assert.equal(outcome.ok, true)
   assert.equal(outcome.data.checksum.state, 'unavailable')
   assert.equal(outcome.data.checksum.error.code, 'checksum_unavailable')
+  assert.equal(outcome.data.wouldSync, null, 'an unreadable checksum cannot answer "clean"')
+  assert.equal(outcome.data.syncReason, 'unavailable')
   assert.equal(outcome.data.nextAction, 'compile')
 })
 
@@ -348,6 +387,32 @@ test('the plan turns "no compiled checksum" into needs_compile and scans nothing
   assert.equal(outcome.error.code, 'needs_compile')
   assert.match(outcome.error.message, /Compile it in TIA Portal/u)
   assert.deepEqual(operations(calls), ['readTiaSession', 'readPlcChecksum'])
+})
+
+test('status(verify) warms the cache, so the following plan reads the PLC checksum only once', async (t) => {
+  const root = await tempWorkspace(t)
+  const device = deviceDirectory(root)
+  await writeEvidence(device, { plcChecksum: 'AA' })
+  await writeManifest(device)
+  const { service, calls } = fakeAccess({ checksum: checksumReport('BB') })
+  const { status, sync } = tools(service)
+
+  const verified = assertEnvelope(await executeTool(status, { verify: true }, fakeExec(root)))
+  assert.equal(verified.data.checksum.value, 'BB')
+
+  const plan = assertEnvelope(await executeTool(sync, {}, fakeExec(root)))
+
+  assert.equal(plan.ok, true)
+  assert.equal(plan.data.checksum, 'BB')
+  assert.equal(plan.data.checksumCached, true, 'the plan must say it reused the checksum')
+  assert.equal(plan.data.wouldSync, true)
+  assert.match(plan.details.join('\n'), /reused from the checksum cache/u)
+  assert.equal(
+    operations(calls).filter((operation) => operation === 'readPlcChecksum').length,
+    1,
+    'status + plan must cost exactly one PLC checksum read',
+  )
+  assert.deepEqual(operations(calls), ['readTiaSession', 'readPlcChecksum', 'readTiaSession'])
 })
 
 // ---------------------------------------------------------------------------
@@ -581,3 +646,79 @@ test('a scan that finds no compiled checksum leaves no STAGE and no source chang
   assert.equal(await exists(join(root, 'source', DEVICE)), false)
   assert.equal((await readdir(join(root, '.dsh', 'local', 'stage'))).length, 0, 'a failed scan must not leave scratch files')
 })
+
+// ---------------------------------------------------------------------------
+// the checksum cache: warm by read-only calls only, never by a real sync
+// ---------------------------------------------------------------------------
+
+test('a real sync always scans and refreshes the cache with the scan checksum', async (t) => {
+  const root = await gitWorkspace(t)
+  const { service, calls } = fakeAccess({
+    scan: async (query) => {
+      await makeFile(join(query.stageDir, 'blocks', '010', 'FB1.xml'), '<xml>FB1</xml>')
+      await makeFile(
+        join(query.stageDir, '_evidence.json'),
+        `${JSON.stringify(
+          evidenceDocument({
+            plcChecksum: 'BB',
+            stateId: 'state-2',
+            objects: { 'block||FB1': objectEntry({ fingerprint: { Code: 'fingerprint-2' } }) },
+          }),
+          null,
+          2,
+        )}\n`,
+      )
+      await makeFile(join(query.stageDir, '_manifest.json'), '{"files":{"blocks/010/FB1.xml":{}}}')
+      return scanReport(query)
+    },
+  })
+  const { sync } = tools(service)
+
+  const outcome = assertEnvelope(await executeTool(sync, { dry_run: false }, fakeExec(root)))
+
+  assert.equal(outcome.ok, true)
+  assert.equal(outcome.data.checksum, 'BB')
+  assert.deepEqual(operations(calls), ['readTiaSession', 'syncScan'], 'a real sync never reads the checksum separately')
+
+  const cached = readCachedChecksum(checksumCacheKey(root, DEVICE, SOFTWARE))
+  assert.ok(cached, 'the real sync must leave a fresh cache entry')
+  assert.equal(cached.checksum, 'BB')
+
+  // And the plan after it reuses that entry instead of asking TIA again. The
+  // fake service deliberately has no readPlcChecksum, so a miss would fail.
+  const plan = assertEnvelope(await executeTool(sync, {}, fakeExec(root)))
+  assert.equal(plan.ok, true)
+  assert.equal(plan.data.checksumCached, true)
+  assert.equal(plan.data.checksum, 'BB')
+  assert.equal(plan.data.wouldSync, false, 'ledger and manifest both match BB after the real sync')
+  assert.deepEqual(operations(calls), ['readTiaSession', 'syncScan', 'readTiaSession'])
+})
+
+test('the checksum cache expires after CHECKSUM_TTL_MS (no sleeping)', () => {
+  clearChecksumCache()
+  const key = checksumCacheKey('C:\\workspace', DEVICE, SOFTWARE)
+
+  assert.equal(readCachedChecksum(key), null, 'an empty cache is a miss')
+
+  writeCachedChecksum(key, 'AA')
+  const hit = readCachedChecksum(key)
+  assert.ok(hit)
+  assert.equal(hit.checksum, 'AA')
+  assert.equal(hit.cached, true)
+  assert.ok(hit.ageMs >= 0 && hit.ageMs <= CHECKSUM_TTL_MS)
+
+  assert.equal(readCachedChecksum(key, hit.storedAt + CHECKSUM_TTL_MS)?.checksum, 'AA', 'fresh at the TTL boundary')
+  assert.equal(readCachedChecksum(key, hit.storedAt + CHECKSUM_TTL_MS + 1), null, 'expired one millisecond past the TTL')
+  assert.equal(readCachedChecksum(key), null, 'an expired entry is dropped, not merely hidden')
+
+  // The key includes the workspace, device and software, so an entry never
+  // crosses those boundaries.
+  writeCachedChecksum(key, 'BB')
+  assert.equal(readCachedChecksum(checksumCacheKey('C:\\other-workspace', DEVICE, SOFTWARE)), null)
+  assert.equal(readCachedChecksum(checksumCacheKey('C:\\workspace', 'PLC2', SOFTWARE)), null)
+  assert.equal(readCachedChecksum(checksumCacheKey('C:\\workspace', DEVICE, 'SW2')), null)
+
+  clearChecksumCache()
+  assert.equal(readCachedChecksum(key), null, 'clearChecksumCache drops everything')
+})
+

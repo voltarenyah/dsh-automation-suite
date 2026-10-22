@@ -1,48 +1,64 @@
 /**
- * Shared per-call context for the git tools: resolves the repository root,
- * then runs `git` against it with the call's cancellation signal.
+ * Shared per-call context for the git tools: resolve the calling session's
+ * working directory, bind the host-provided `gitContext` service to it, and
+ * run `git` with the call's cancellation signal.
+ *
+ * The repository root is **never** `process.cwd()` and never a model-supplied
+ * path: it is the session cwd recorded on the tool call's agent.
  * @module dsh-tool-git/tools/context
  */
 
-import { resolveRepoDir } from '../repo.ts'
-import { runGitChecked } from '../runner.ts'
+import type { ToolRunContext } from '@deepseek-ai/dsh-tools'
+import type { GitContextService } from '../service.ts'
 
-/** Deployment options every tool inherits from plugin configuration. */
+/** Deployment options every tool inherits from the host row via the service. */
 export interface ToolOptions {
-  /** `git` executable to invoke. */
-  gitPath: string
-  /** Directory to start repository discovery from (per-call repoDir wins). */
-  workDir: string
-}
-
-/** Per-call options shared by every tool's parameters. */
-export interface PerCallOptions {
-  /** Explicit repository directory; overrides workDir discovery. */
-  repoDir?: string
+  /** The host-provided git capability. */
+  service: GitContextService
+  /** Default commit count for `git_log` when the caller omits `maxCount`. */
+  logMaxCommits: number
+  /** Default unified-diff context lines for `git_diff` / `git_show` patches. */
+  diffContextLines: number
 }
 
 /**
- * Resolve the repository root for one call and bind `git` to it.
- * @param opts - deployment options.
- * @param call - per-call options.
- * @param signal - the call's cancellation signal.
- * @returns a context that runs checked git commands in the repo root.
+ * Read the calling session's working directory from the execution context.
+ *
+ * There is no fallback to `process.cwd()` and no model-supplied replacement:
+ * a call without a session cwd is an error, because silently picking a
+ * directory is exactly the trap this plugin is removing.
+ * @param exec - the tool execution context.
+ * @returns the absolute session cwd.
+ * @throws when the call carries no session cwd.
+ */
+export function sessionCwd(exec: ToolRunContext): string {
+  const cwd = exec.agent?.session.header.cwd
+  if (typeof cwd !== 'string' || cwd.length === 0) {
+    throw new Error(
+      'dsh-tool-git: no session working directory (exec.agent.session.header.cwd); '
+      + 'refusing to fall back to process.cwd()',
+    )
+  }
+  return cwd
+}
+
+/**
+ * Bind one call to the repository containing its session cwd.
+ * @param opts - deployment options (host service + tool defaults).
+ * @param exec - the tool execution context (carries the session cwd and signal).
+ * @returns the repository root and a checked `git` runner bound to the call.
  */
 export async function createGitContext(
   opts: ToolOptions,
-  call: PerCallOptions,
-  signal: AbortSignal,
+  exec: ToolRunContext,
 ): Promise<{
   repoDir: string
   /** Run `git` in the repo root and require a zero exit code. */
   run: (args: string[]) => Promise<{ stdout: string; stderr: string }>
 }> {
-  const repoDir = await resolveRepoDir(opts.workDir, call.repoDir)
+  const git = await opts.service.create(sessionCwd(exec))
   return {
-    repoDir,
-    async run(args: string[]) {
-      const result = await runGitChecked(opts.gitPath, args, { cwd: repoDir, signal })
-      return { stdout: result.stdout, stderr: result.stderr }
-    },
+    repoDir: git.repoDir,
+    run: args => git.runChecked(args, { signal: exec.signal }),
   }
 }

@@ -8,7 +8,14 @@
 
 为 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)（`dsh`）开发的结构化、安全 Git 工具插件。
 
-编码 agent 几乎每天都在用 git，但 dsh 默认只提供裸 `bash` 命令。`dsh-tool-git` 为模型提供八个结构化工具——通过无 shell 的子进程运行器执行 `git`，返回规范的 JSON 值——并内置 `tools/pre-execute` 安全门，在破坏性 git 操作（强制推送、硬重置、rebase、amend、删除分支等）发生之前将其拦截，无论模型是通过这些工具调用，还是**通过 shell 工具**调用。
+编码 agent 几乎每天都在用 git，但 dsh 默认只提供裸 `bash` 命令。`dsh-tool-git` 为模型提供十二个结构化工具——通过无 shell 的子进程运行器执行 `git`，返回规范的 JSON 值——并内置 `tools/pre-execute` 安全门，在破坏性 git 操作（强制推送、硬重置、rebase、amend、删除分支等）发生之前将其拦截，无论模型是通过这些工具调用，还是**通过 shell 工具**调用。
+
+本包拆成两个入口，便于 profile 按 agent 授予工具：
+
+| 入口 | 注册内容 |
+|---|---|
+| `dsh-tool-git`（宿主行） | `gitContext` 服务 + 安全门。**不注册任何模型工具。** |
+| `dsh-tool-git/tools`（工具行） | 十二个 `git_*` 工具。它注入 `gitContext`，所以缺少宿主行时**根本不会加载**（fail closed）。 |
 
 - **无 shell 注入**：所有命令通过 `execFile` + 显式参数数组执行，模型提供的路径和消息永远不会被字符串拼接进 shell。
 - **机器可读输出**：porcelain v2、`--numstat`、`--format` 记录被解析为结构化 JSON，而不是文本。
@@ -31,7 +38,34 @@
 | `git_remote` | 列出已配置的远端（fetch/push URL） |
 | `git_checkout` | 切换分支或创建并切换（`-b`）；绝不丢弃更改 |
 
-每个工具都接受可选的 `repoDir` 参数，并在结果中返回解析后的仓库根目录。
+每个工具都在结果中返回解析后的仓库根目录。工具**不接受**仓库路径参数：每次调用都从会话工作目录（`exec.agent.session.header.cwd`）解析根目录——既不用 `process.cwd()`，也不用模型提供的路径。
+
+## 服务 API（`gitContext`）
+
+宿主行提供一个 cordis 服务，兄弟插件无需 import 本包或它的模型工具即可复用 git 路径解析：
+
+```ts
+const gitContext = ctx.get('gitContext')!
+
+await gitContext.isRepository(root)     // boolean
+await gitContext.repoRoot(root)         // string | null（git rev-parse --show-toplevel）
+await gitContext.init(root, { initialBranch: 'main' }) // 初始化新仓库 → GitContext
+await gitContext.create(root)           // 绑定到所在仓库的 GitContext
+```
+
+`create` / `init` 返回的 `GitContext`：
+
+| 成员 | 契约 |
+|---|---|
+| `repoDir` | 绝对仓库根目录 |
+| `run(args)` | `{ code, stdout, stderr }`；非零退出码是**数据**，不抛异常 |
+| `runChecked(args)` | `{ stdout, stderr }`；非零退出码抛异常 |
+| `status(paths)` | `git status --porcelain` 行，包含未跟踪文件 |
+| `head()` | HEAD 哈希；未诞生分支上为 `null` |
+| `commit(paths, message)` | 路径限定的 add + commit → `{ committed, hash }` |
+
+所有 root 参数都必须显式且为绝对路径；服务绝不回退到 `process.cwd()`。
+`run` / `runChecked` 还接受 `{ signal }`。
 
 ## 安全门
 
@@ -70,17 +104,23 @@ dsh plugin --profile web add github:lxj808624/dsh-tool-git#v0.1.2
 所有选项均可选，默认值如下：
 
 ```yaml
-# tool-git 行的 profile 级或 bundle patch 配置
+# 宿主行：服务 + 安全门（不含模型工具）
 - id: tool-git
   name: dsh-tool-git
   config:
-    workDir: ''                # 仓库发现起始目录（默认：进程 cwd）
     gitPath: git               # git 可执行文件
     destructivePolicy: deny    # deny | ask | allow
     extraDestructivePatterns: []  # 追加的忽略大小写正则（安全门使用）
     logMaxCommits: 20          # git_log 默认条数（上限 100）
     diffContextLines: 3        # git_diff / git_show 的 patch 上下文行数
+
+# 工具行：十二个模型工具（自身没有配置）
+- id: tool-git-tools
+  name: dsh-tool-git/tools
 ```
+
+**没有 `workDir`**。工具根目录来自调用会话的 cwd；`/tools` 行从宿主行的服务继承
+`logMaxCommits` / `diffContextLines`，因此宿主行是唯一的配置面。
 
 - `deny`（默认）—— 破坏性调用被拒绝，并附带模式名和原因说明。
 - `ask` —— 破坏性调用走运行时的审批通道（`ctx.approval`）；未挂载审批服务时降级为 `deny`。

@@ -1,46 +1,41 @@
 /**
- * Registry of the structured git tools, bound to plugin configuration.
+ * Registry of the structured git tools, bound to the host-provided
+ * `gitContext` service.
  * @module dsh-tool-git/tools
  */
 
 import type { Context } from '@deepseek-ai/cordis'
+import type { GitContextService } from '../service.ts'
 import { defineBranchTool } from './branch.ts'
 import { defineCheckoutTool } from './checkout.ts'
 import { defineCommitTool } from './commit.ts'
-import { defineDiffTool, type DiffToolOptions } from './diff.ts'
+import { defineDiffTool } from './diff.ts'
 import { defineFetchTool } from './fetch.ts'
-import { defineLogTool, type LogToolOptions } from './log.ts'
+import { defineLogTool } from './log.ts'
 import { definePullTool } from './pull.ts'
 import { defineRemoteTool } from './remote.ts'
-import { defineShowTool, type ShowToolOptions } from './show.ts'
+import { defineShowTool } from './show.ts'
 import { defineStageTool } from './stage.ts'
 import { defineStashTool } from './stash.ts'
 import { defineStatusTool } from './status.ts'
 import type { ToolOptions } from './context.ts'
 
-/** Plugin configuration consumed by the tool registry. */
-export interface ToolsConfig extends ToolOptions {
-  /** Default commit count for `git_log` when the caller omits `maxCount`. */
-  logMaxCommits: number
-  /** Default unified-diff context lines for `git_diff` / `git_show` patches. */
-  diffContextLines: number
-}
-
 /** Register every git tool on the context's tool registry. */
-export function registerGitTools(ctx: Context, config: ToolsConfig): void {
-  const options: ToolOptions = { gitPath: config.gitPath, workDir: config.workDir }
-  const diffOptions: DiffToolOptions = { ...options, diffContextLines: config.diffContextLines }
-  const logOptions: LogToolOptions = { ...options, logMaxCommits: config.logMaxCommits }
-  const showOptions: ShowToolOptions = { ...options, diffContextLines: config.diffContextLines }
+export function registerGitTools(ctx: Context, service: GitContextService): void {
+  const options: ToolOptions = {
+    service,
+    logMaxCommits: service.defaults.logMaxCommits,
+    diffContextLines: service.defaults.diffContextLines,
+  }
   const definitions = [
     defineStatusTool(options),
-    defineDiffTool(diffOptions),
-    defineLogTool(logOptions),
+    defineDiffTool(options),
+    defineLogTool(options),
     defineBranchTool(options),
     defineStageTool(options),
     defineCommitTool(options),
     defineStashTool(options),
-    defineShowTool(showOptions),
+    defineShowTool(options),
     defineFetchTool(options),
     definePullTool(options),
     defineRemoteTool(options),

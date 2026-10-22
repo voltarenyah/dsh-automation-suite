@@ -32,7 +32,6 @@ export function defineStatusTool(opts: ToolOptions) {
       + 'unstaged changes, and untracked files. Prefer this over running `git status` in bash — '
       + 'it returns structured data the model can reason about directly.',
     parameters: {
-      repoDir: { type: 'string', description: 'Explicit git repository directory. Defaults to the configured work directory.' },
       includeIgnored: { type: 'boolean', description: 'Also report ignored files (git status --ignored).' },
     },
     output: {
@@ -77,7 +76,7 @@ export function defineStatusTool(opts: ToolOptions) {
       }],
     },
     async execute(args, exec) {
-      const ctx = await createGitContext(opts, args, exec.signal)
+      const ctx = await createGitContext(opts, exec)
       const cmd = ['status', '--porcelain=v2', '--branch']
       if (args.includeIgnored === true) cmd.push('--ignored')
       const { stdout } = await ctx.run(cmd)

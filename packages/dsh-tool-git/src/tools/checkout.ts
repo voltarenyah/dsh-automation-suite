@@ -22,7 +22,6 @@ export function defineCheckoutTool(opts: ToolOptions) {
       + 'to pass `--`, `-f`, or a path — destructive checkouts are covered by the safety gate '
       + 'instead. Use `git_status` first if the working tree is dirty.',
     parameters: {
-      repoDir: { type: 'string', description: 'Explicit git repository directory.' },
       branch: { type: 'string', required: true, description: 'Branch to switch to, or (with create) the new branch name.' },
       create: { type: 'boolean', description: 'Create the branch first (git checkout -b) if it does not exist.' },
       start: { type: 'string', description: 'Start point for `create` (a commit, branch, or tag). Defaults to HEAD.' },
@@ -45,7 +44,7 @@ export function defineCheckoutTool(opts: ToolOptions) {
       }],
     },
     async execute(args, exec) {
-      const ctx = await createGitContext(opts, args, exec.signal)
+      const ctx = await createGitContext(opts, exec)
       const branch = args.branch.trim()
       if (branch.length === 0) {
         throw new Error('git_checkout: `branch` must be a non-empty string')

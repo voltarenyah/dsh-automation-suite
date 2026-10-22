@@ -8,10 +8,8 @@ import { parseDiffBlocks } from '../diff-blocks.ts'
 import { parseCommitRecords, parseNumstat, type CommitRecord } from '../parse.ts'
 import { createGitContext, type ToolOptions } from './context.ts'
 
-export interface ShowToolOptions extends ToolOptions {
-  /** Default unified-diff context lines when `patch` is requested. */
-  diffContextLines: number
-}
+/** `git_show` uses the shared tool options (including `diffContextLines`). */
+export type ShowToolOptions = ToolOptions
 
 /** One changed file in the canonical `git_show` value. */
 export interface ShowFile {
@@ -46,7 +44,6 @@ export function defineShowTool(opts: ShowToolOptions) {
       'Show one commit: author, date, subject, body, per-file statistics, and optionally the '
       + 'full unified diff patch. Defaults to HEAD; pass any revision, branch name, or tag.',
     parameters: {
-      repoDir: { type: 'string', description: 'Explicit git repository directory.' },
       rev: { type: 'string', description: 'Revision to show (commit hash, branch, tag). Defaults to HEAD.' },
       patch: { type: 'boolean', description: 'Include the unified diff patch text per file.' },
       contextLines: { type: 'integer', description: `Context lines for the patch (default ${opts.diffContextLines}).` },
@@ -90,7 +87,7 @@ export function defineShowTool(opts: ShowToolOptions) {
       }],
     },
     async execute(args, exec) {
-      const ctx = await createGitContext(opts, args, exec.signal)
+      const ctx = await createGitContext(opts, exec)
       const rev = args.rev?.trim() || 'HEAD'
       const { stdout: showOut } = await ctx.run(['show', SHOW_FORMAT, '--numstat', rev])
       // The format records end with \x1e; the numstat body follows the record separator.

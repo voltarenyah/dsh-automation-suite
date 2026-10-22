@@ -45,6 +45,11 @@ export async function loadConfigModule() {
   return await importBuilt('config.js')
 }
 
+/** Load the built in-memory checksum cache (`lib/checksum-cache.js`). */
+export async function loadChecksumCacheModule() {
+  return await importBuilt('checksum-cache.js')
+}
+
 /** Load the built path helpers. */
 export async function loadPathsModule() {
   return await importBuilt('paths.js')

@@ -7,10 +7,8 @@ import { defineTool } from '@deepseek-ai/dsh-tools'
 import { parseCommitRecords, type CommitRecord } from '../parse.ts'
 import { createGitContext, type ToolOptions } from './context.ts'
 
-export interface LogToolOptions extends ToolOptions {
-  /** Default commit count when `maxCount` is not supplied. */
-  logMaxCommits: number
-}
+/** `git_log` uses the shared tool options (including `logMaxCommits`). */
+export type LogToolOptions = ToolOptions
 
 /** Canonical `git_log` value. */
 export interface LogValue {
@@ -29,7 +27,6 @@ export function defineLogTool(opts: LogToolOptions) {
       + 'Use `rev` for a revision range (e.g. "HEAD~5..HEAD" or a branch name) and `path` to '
       + 'narrow history to one path. Results are newest-first.',
     parameters: {
-      repoDir: { type: 'string', description: 'Explicit git repository directory.' },
       maxCount: { type: 'integer', description: `Maximum commits to return (default ${opts.logMaxCommits}, cap 100).` },
       rev: { type: 'string', description: 'Revision or range to log, e.g. HEAD, main, HEAD~5..HEAD.' },
       path: { type: 'string', description: 'Limit history to commits touching this path.' },
@@ -68,7 +65,7 @@ export function defineLogTool(opts: LogToolOptions) {
       }],
     },
     async execute(args, exec) {
-      const ctx = await createGitContext(opts, args, exec.signal)
+      const ctx = await createGitContext(opts, exec)
       const maxCount = Math.min(Math.max(args.maxCount ?? opts.logMaxCommits, 1), 100)
       const cmd = ['log', LOG_FORMAT, `--max-count=${maxCount}`]
       if (args.all === true) cmd.push('--all')

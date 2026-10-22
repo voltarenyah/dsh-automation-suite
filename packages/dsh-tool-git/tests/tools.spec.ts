@@ -17,7 +17,7 @@ describe('dsh-tool-git tools', () => {
   })
 
   async function boot(): Promise<Context> {
-    ctx = await setupPlugin({ workDir: repo.dir })
+    ctx = await setupPlugin({ cwd: repo.dir })
     return ctx
   }
 
@@ -237,7 +237,7 @@ describe('dsh-tool-git tools', () => {
     it('fails with a clear message outside a repository', async () => {
       repo = makeTempRepo()
       cleanup.push(repo.cleanup)
-      const c = await setupPlugin({ workDir: '/tmp' })
+      const c = await setupPlugin({ cwd: '/tmp' })
       ctx = c
       const result = await callTool(c, 'git_status', {})
       expect(result.isError).toBe(true)

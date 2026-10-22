@@ -27,13 +27,13 @@
 #        dsh-tia-openness-v17-min 提供 `engineeringAccess` + TIA 控制器，
 #        dsh-engineering-graph 提供 `knowledgeGraph` + C# 引擎；
 #        它们的**模型面工具**已经拆到各自的 `/tools` 子路径行，由 preset 声明。
-#      • `dsh-engineering-context` 没有宿主面资源，所以它**整行搬进 `leader`**，
-#        宿主面这一行显式 `disabled: true` —— 否则它的 `create_engineering_project`
-#        会落在全局层，被包括子 agent 在内的每个 agent 继承。
+#      • `dsh-engineering-context` 没有宿主面资源，所以它**整行搬进 `leader` 与 `auditor`**，
+#        宿主面这一行显式 `disabled: true` —— 否则它的三个工具会落在全局层，被包括子 agent
+#        在内的每个 agent 继承。
 #      ⇒ 后果（有意为之）：一个会话能用哪些工程工具，取决于它的 preset。切到没有
 #        声明这些行的内置 preset（standard / minimal / …）时，这些工具**不存在**。
-#      ⚠️ dsh-tool-git 的 12 个工具**仍是宿主面全局行**，所以 `expert` 也看得到它们
-#        （v1 的已知欠账：不在本轮拆分范围内，见 docs/decisions.md D23）。
+#      ✅ git 的 12 个模型工具已拆成 `dsh-tool-git/tools` 行，只挂在 `leader`；
+#        `expert` 与 `auditor` 都看不到它们（git 的 root 由 `gitContext` 服务解析）。
 #
 # ⚠️ 升级 DSH 后：两个 preset 的 plugins 列表**不会**自动跟随上游 standard 的更新
 #    （registry 文档：覆盖替换完整子插件列表，不自动合并）。重新生成办法：
@@ -115,8 +115,8 @@
 
 - insert:
     # ══ leader：主 agent 的 preset ════════════════════════════════════════════
-    # 工具面 = 内置 standard 的全部 + 本发行版的四个工程工具面（TIA 26 / 工程上下文 1 /
-    # 图谱 6，git 12 由宿主面全局行提供）。相对上游 standard 只多这三行 + persona 政策文本。
+    # 工具面 = 内置 standard 的全部 + 本发行版的四个工程工具面（TIA 26 / 工程上下文 3 /
+    # 图谱 6 / git 12）。相对上游 standard 只多这几行 + persona 政策文本。
     - id: preset-leader
       name: '@deepseek-ai/dsh-agent-preset'
       config:
@@ -311,7 +311,7 @@
                 name: '@deepseek-ai/dsh-tool-workflow'
           # ── 本发行版的工程工具面（方案 A：宿主行留服务，工具行由 preset 声明）──
           # leader 拿全部操作工具 + 图谱的**检查面**（inspect：block + network），
-          # 以便写派发 brief 时不必手写 SQL：TIA 26 + 工程上下文 1 + 图谱 6。
+          # 以便写派发 brief 时不必手写 SQL：TIA 26 + 工程上下文 3 + 图谱 6。
           # 注意这几行的 name 必须与各包 package.json 的 exports 逐字对应。
           # `leader-tia-commands` 是**人**的斜线指令面（/tia-…），与 `leader-tia-tools`
           # 的模型工具面分开声明：它只 inject `commands` + `tiaOpennessRuntime`，
@@ -320,6 +320,8 @@
             name: '@voltarenyah/dsh-engineering-context'
           - id: leader-tia-tools
             name: '@voltarenyah/dsh-tia-openness-v17-min/tools'
+          - id: leader-git-tools
+            name: dsh-tool-git/tools
           - id: leader-tia-commands
             name: '@voltarenyah/dsh-tia-openness-v17-min/commands'
           - id: leader-graph-tools
@@ -347,6 +349,97 @@
             name: '@deepseek-ai/dsh-plugin-market/tools'
             disabled: true
 
+    # ══ auditor：版本管理会话的 preset ═══════════════════════════════════════
+    # 专管 create / status / sync：导入基线、判断漂移、同步 SOURCE、提交、报图谱新鲜度。
+    # 不是第二个主 agent，也不是知识专家：不读块逻辑、不解析 XML、不跑 shell。
+    # 工具面 = 工程上下文 3 + 只读文件 + ask_user/todo + 压缩。
+    # **刻意不给**：pwsh/bash（不允许用 shell 掩盖工具缺口）、TIA 26 个原子工具、
+    # git 12 个工具、knowledge_* 图谱工具、project_diff、subagent。
+    - id: preset-auditor
+      name: '@deepseek-ai/dsh-agent-preset'
+      config:
+        id: auditor
+        order: 5
+        name: dsh-automation-suite-auditor
+        description: >-
+          Version-management auditor: owns the project's one-time import baseline, drift/status,
+          SOURCE synchronization and git commit; reports graph freshness. Does not read program logic.
+        plugins:
+          - id: persona
+            name: '@deepseek-ai/dsh-persona'
+            config:
+              prefix: |-
+                You are the `auditor` agent of the dsh-automation-suite distribution: the version-management
+                agent for one TIA Portal project workspace. You own the one-time import baseline, the drift
+                report, the synchronization of SOURCE and its git commit, and the graph-freshness verdict.
+                You are not a PLC-programming expert: you report what changed, whether it is committed and
+                whether the derived knowledge graph is fresh; you do not explain why a block's logic changed.
+              suffix: |-
+                Your working directory is the session working directory reported in the runtime context.
+
+                Workspace layout (all paths are derived by the tools; never ask the user for them):
+                - `tia/<workspace>/` — the saved TIA project (binary; never committed).
+                - `source/<device>/` — the exported XML, `_evidence.json` (authoritative), `_manifest.json`
+                  (derived inventory), and the index `_dsh-engineering-context.json` (committed).
+                - `knowledge/<device>/` — the derived SQLite graph (never committed).
+                - `.dsh/local/` — lock, STAGE and the graph-freshness sidecar (never committed).
+
+                Rules:
+
+                - Use `create_engineering_project`, `project_status` and `project_sync` for version work.
+                  Do not ask for filesystem paths and do not assemble your own git commands.
+                - `create_engineering_project` is the one-time import: it saves the project, exports SOURCE,
+                  writes `_evidence.json` + `_manifest.json`, initializes git and commits the baseline.
+                  It refuses to initialize inside a foreign repository; never work around that refusal.
+                - A PLC without a compiled checksum must be compiled in TIA first. `checksum_unavailable`
+                  and `needs_compile` are states with a next action, not bugs and not something to retry blindly.
+                - `project_status(verify:true)` is the preflight: it returns checksum drift, evidence/manifest
+                  presence, git state, graph freshness and `nextAction`. Do not follow it with
+                  `project_sync(dry_run:true)`; the status already carries the plan.
+                - `project_sync` is the only writer of SOURCE. It commits exactly the device directory.
+                  Do not run git yourself; this preset has no shell and no git tools.
+                - Do not read or parse exported XML. If the user asks why a block changed, state that the
+                  Leader/Expert role owns that question; return the changed object names, faces, checksum,
+                  state id and commit facts instead.
+                - Never claim a sync, a commit or a graph refresh succeeded unless the tool result says so.
+                  Report a stale graph as stale; pass `refresh_knowledge:true` only when graph answers are
+                  actually needed.
+                - Keep reports bounded: counts, paths, checksums, commit ids and the next action. No dumps.
+          - id: time-context
+            name: '@deepseek-ai/dsh-time-context'
+          - id: auditor-engineering-context
+            name: '@voltarenyah/dsh-engineering-context'
+          - id: auditor-fs-readonly
+            name: '@deepseek-ai/dsh-tool-fs'
+            config:
+              write: false
+              edit: false
+          - id: auditor-fs-search
+            name: '@deepseek-ai/dsh-tool-fs-search'
+            config:
+              sampleOverCapGlobResults: false
+          - id: auditor-ask-user
+            name: '@deepseek-ai/dsh-tool-ask-user'
+          - id: auditor-todo
+            name: '@deepseek-ai/dsh-tool-todo'
+            config:
+              allowParallelInProgress: true
+          - id: auditor-compaction
+            name: cordis:group
+            group: true
+            isolate:
+              compaction: true
+              toolResultPruner: true
+            config:
+              - id: auditor-compaction-basic
+                name: '@deepseek-ai/dsh-compaction-basic'
+              - id: auditor-tool-result-pruner
+                name: '@deepseek-ai/dsh-compaction-tool-result-pruner'
+                config:
+                  thresholdChars: 8192
+                  headChars: 4096
+                  tailChars: 1024
+
     # ══ expert：子 agent 的 preset ════════════════════════════════════════════
     # 刻意的**极小**工具面。它是只读的知识专家，不是第二个主 agent：
     #   • 图谱：knowledge_workspace / knowledge_schema / knowledge_query，加四个下钻工具
@@ -358,9 +451,9 @@
     #     goal、plan、web、todo、ask_user（它没有面向用户的通道，问父 agent 就好）、
     #     skill（v1 有意省略，见 docs/decisions.md D23）。
     #   ⇒ 它自己的 preset 只声明 13 个工具（图谱 7 + read/read_image + glob/grep +
-    #     send_message/interrupt_agent）。**仍会继承宿主面的 13 个全局工具**：
-    #     dsh-tool-git 的 12 个（本轮不拆，D23）+ dsh-tool-working-directory 的
-    #     `working_directory`（上游本来就把这一行留在宿主面）。这是已知欠账，不是遗漏。
+    #     send_message/interrupt_agent）。宿主面仍有 `dsh-tool-working-directory` 的
+    #     `working_directory`（上游本来就把这一行留在宿主面）；git 的 12 个工具已拆成
+    #     `dsh-tool-git/tools` 行，只挂在 Leader，所以 Expert 看不到它们。
     # ⚠️ 沙箱与权限：子 agent 继承父会话的**显式**沙箱覆盖（本 profile 默认
     #   danger-full-access），审批策略被钉死 `never`（需要审批的操作自动拒绝、不弹给用户）。
     #   所以"只读"这件事**只由工具面保证**，不要以为沙箱会拦它。

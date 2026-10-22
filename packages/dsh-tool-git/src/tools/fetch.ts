@@ -23,7 +23,6 @@ export function defineFetchTool(opts: ToolOptions) {
       + 'Safe and non-destructive. Use before `git_pull` to inspect what would arrive, or '
       + 'periodically to stay current with upstream refs.',
     parameters: {
-      repoDir: { type: 'string', description: 'Explicit git repository directory.' },
       remote: { type: 'string', description: 'Remote name (default: the origin remote, or all configured remotes).' },
       prune: { type: 'boolean', description: 'Delete local refs that no longer exist on the remote (git fetch --prune).' },
       tags: { type: 'boolean', description: 'Also fetch tags (git fetch --tags).' },
@@ -46,7 +45,7 @@ export function defineFetchTool(opts: ToolOptions) {
       }],
     },
     async execute(args, exec) {
-      const ctx = await createGitContext(opts, args, exec.signal)
+      const ctx = await createGitContext(opts, exec)
       const cmd = ['fetch']
       if (args.prune === true) cmd.push('--prune')
       if (args.tags === true) cmd.push('--tags')

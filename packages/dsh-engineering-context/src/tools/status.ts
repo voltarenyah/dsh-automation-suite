@@ -4,7 +4,9 @@
  * The expensive checksum read is opt-in (`verify: true`): a status call is cheap
  * unless the caller explicitly asks whether TIA still matches the ledger. The
  * result always says which of the three views (TIA / source / git) is known, so a
- * model cannot mistake "not checked" for "clean".
+ * model cannot mistake "not checked" for "clean". A successful read also warms
+ * the in-memory checksum cache that the default `project_sync` plan reuses
+ * (checksum-cache.ts), so the pair costs one TIA round trip instead of two.
  *
  * @module dsh-engineering-context/tools/status
  */
@@ -12,6 +14,7 @@
 import type { ToolDefinition } from '@deepseek-ai/dsh-tools'
 
 import { engineeringAccess, normalizeChecksum, type EngineeringAccessLike } from '../access.js'
+import { checksumCacheKey, writeCachedChecksum } from '../checksum-cache.js'
 import { evidencePathForDevice, manifestPathForDevice } from '../config.js'
 import type { DeviceInfo } from '../device.js'
 import { resolveDevice } from '../device.js'
@@ -25,6 +28,38 @@ import { defineOutcomeTool, failedOutcome, okOutcome } from './outcome.js'
 
 /** The tool name, used by the registrar and the tests. */
 export const PROJECT_STATUS_TOOL = 'project_status'
+
+/**
+ * Why a sync is (or is not) needed, as a value rather than prose.
+ *
+ * `not-checked` and `unavailable` are the two honest refusals: without a fresh
+ * checksum this tool must not answer `wouldSync: false`.
+ */
+export type SyncReason =
+  | 'not-checked'
+  | 'unavailable'
+  | 'no-evidence'
+  | 'no-manifest'
+  | 'checksum-differs'
+  | 'in-sync'
+
+/** One line explaining {@link SyncReason} in the details block. */
+function syncReasonText(reason: SyncReason): string {
+  switch (reason) {
+    case 'not-checked':
+      return 'not checked (pass verify=true to read the checksum)'
+    case 'unavailable':
+      return 'cannot be determined (no usable PLC checksum)'
+    case 'no-evidence':
+      return 'needed — no readable evidence ledger'
+    case 'no-manifest':
+      return 'needed — no manifest'
+    case 'checksum-differs':
+      return 'needed — checksum differs from the ledger'
+    case 'in-sync':
+      return 'not needed — the source tree matches the compiled PLC'
+  }
+}
 
 const PARAMETERS = {
   verify: {
@@ -133,6 +168,11 @@ export function statusTool(dependencies: ToolDependencies): ToolDefinition {
                 signal: exec.signal,
               }),
             )
+            if (report.ok && report.checksum !== null) {
+              // Warm the cache a following `project_sync` plan can reuse; a real
+              // sync ignores it and always scans.
+              writeCachedChecksum(checksumCacheKey(root, device.device, device.software), report.checksum)
+            }
             checksum = report.ok
               ? { state: 'available', value: report.checksum, lastKnown: evidence?.plcChecksum ?? null, error: null }
               : {
@@ -161,6 +201,31 @@ export function statusTool(dependencies: ToolDependencies): ToolDefinition {
             ? checksumValue !== lastKnown
             : null
 
+        // `wouldSync` mirrors the dry-run plan's decision, but only when this call
+        // actually read a checksum. Without one, the honest answer is `null`
+        // ("cannot tell"), never `false` ("clean").
+        let wouldSync: boolean | null
+        let syncReason: SyncReason
+        if (args.verify !== true) {
+          wouldSync = null
+          syncReason = 'not-checked'
+        } else if (checksumState !== 'available' || checksumValue === null) {
+          wouldSync = null
+          syncReason = 'unavailable'
+        } else if (evidence === null) {
+          wouldSync = true
+          syncReason = 'no-evidence'
+        } else if (!manifestPresent) {
+          wouldSync = true
+          syncReason = 'no-manifest'
+        } else if (checksumValue !== lastKnown) {
+          wouldSync = true
+          syncReason = 'checksum-differs'
+        } else {
+          wouldSync = false
+          syncReason = 'in-sync'
+        }
+
         let nextAction: string
         if (device === null) nextAction = 'open_project'
         else if (checksumState === 'unavailable') nextAction = 'compile'
@@ -180,6 +245,7 @@ export function statusTool(dependencies: ToolDependencies): ToolDefinition {
             : `Evidence: ${evidence.objects.size} object(s), state ${evidence.stateId ?? 'unknown'}.`,
           `Manifest: ${manifestPresent ? 'present' : 'missing'}.`,
           `Checksum: ${checksumState}${checksumValue === null ? '' : ` (${checksumValue})`}${drift === null ? '' : drift ? ' — DIFFERS from the ledger' : ' — matches the ledger'}.`,
+          `Sync: ${syncReasonText(syncReason)}.`,
           `Git: ${repository ? `${dirty.length} change(s) in the device directory` : 'not a repository'}.`,
           lock === null ? 'Lock: free.' : `Lock: held by ${lock.operation} (pid ${lock.pid}).`,
         ]
@@ -200,6 +266,8 @@ export function statusTool(dependencies: ToolDependencies): ToolDefinition {
             git: { repository, dirty },
             lock: lock === null ? null : { held: true, operation: lock.operation, pid: lock.pid, startedAt: lock.startedAt },
             nextAction,
+            wouldSync,
+            syncReason,
           },
           { details },
         )

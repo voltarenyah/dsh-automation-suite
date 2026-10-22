@@ -37,8 +37,8 @@ DeepSeek Harness 插件（**工程上下文插件**）：把一个 **TIA Portal 
 | 工具 | 干什么 | 写？ |
 |---|---|---|
 | `create_engineering_project` | 把 TIA **当前打开**的工程另存进 `<workspace>/tia/<workspace 名>/`，把源文件树重建到 `<workspace>/source/<device>/`，最后逐设备重建知识图谱库；默认 `dry_run: true`（只给计划）。工程已经在 workspace 里时跳过另存，只刷新源文件树与图谱 | 是（TIA 写工程、接口插件写源文件、图谱插件写 `.db`、本插件维护 `.gitignore`） |
-| `project_status` | 只读报告：哪个 PLC、账本/清单在不在、git 看到什么、锁有没有被占，并给出 `nextAction`（`open_project` / `compile` / `sync` / `commit` / `git_init` / `clean`）。`verify: true` 才读 checksum（约 3 s），否则明确标 **NOT CHECKED** | 否 |
-| `project_sync` | 让 SOURCE 与 TIA 对齐：checksum 快路径 → 需要时慢路径扫描 → 只把差异提升进 SOURCE → 写账本/清单 → 提交该 device 目录。默认只读 checksum 并报告 `wouldSync`，写盘必须 `dry_run: false` | 是（SOURCE + `.dsh/local/stage` + 一次 git commit） |
+| `project_status` | 只读报告：哪个 PLC、账本/清单在不在、git 看到什么、锁有没有被占，并给出 `nextAction`（`open_project` / `compile` / `sync` / `commit` / `git_init` / `clean`）。`verify: true` 才读 checksum（约 3 s），否则明确标 **NOT CHECKED**；`data.wouldSync` / `data.syncReason` 只在真的读到 checksum 时下结论（`no-evidence` / `no-manifest` / `checksum-differs` / `in-sync`，读不到时 `null` / `unavailable`，未验证时 `null` / `not-checked`），成功读到的 checksum 同时写入 30 s 进程内缓存 | 否 |
+| `project_sync` | 让 SOURCE 与 TIA 对齐：checksum 快路径 → 需要时慢路径扫描 → 只把差异提升进 SOURCE → 写账本/清单 → 提交该 device 目录。默认只读 checksum 并报告 `wouldSync`；计划命中上一个只读调用写入的缓存时不再读 TIA，并标 `checksumCached: true`；`dry_run: false` 永不用缓存做决定、总是重新扫描。写盘必须 `dry_run: false` | 是（SOURCE + `.dsh/local/stage` + 一次 git commit） |
 
 **版本管理怎么判断"变没变"**：
 
@@ -56,6 +56,12 @@ DeepSeek Harness 插件（**工程上下文插件**）：把一个 **TIA Portal 
 
 **dry-run 规则**：两个写工具都默认只给计划。`create_engineering_project` 的另存是本插件唯一难以撤销的
 动作；`project_sync` 会写文件并提交历史。要真做必须显式 `dry_run: false`。
+
+**checksum 缓存（30 s，仅进程内）**：`project_status(verify: true)` 成功后把 checksum 写进一份
+按 **workspace + device + software** 键控的内存缓存；紧随其后的 `project_sync` 默认计划直接复用，
+不再付第二次 TIA 往返，并在 payload 里给出 `data.checksumCached: true`。缓存**只服务计划**：
+`dry_run: false` 永远重新扫描、从不拿缓存决定要写什么，成功后把扫描结果写回缓存；进程退出即丢失，
+不落盘。因此缓存最坏只会让"计划"在 30 s 内看到略旧的答案，真实同步不会。
 
 **知识图谱这一步是软的（D25）**：它经**缝 B**（`ctx.get('knowledgeGraph')`，不 import）逐设备调用
 `ingestDevice`，是**全量重建**且没有增量。服务缺席、引擎没构建、或引擎不可达时，结果只说"图谱未建成"，
@@ -101,7 +107,7 @@ DeepSeek Harness 插件（**工程上下文插件**）：把一个 **TIA Portal 
 # 裸 checkout 首次：链接宿主运行时（本包只读缓存，从不抽取）
 node scripts/link-dsh-runtime.mjs
 
-node scripts/run-tests.mjs     # 构建 + 跑 73 项测试
+node scripts/run-tests.mjs     # 构建 + 跑 77 项测试
 node scripts/tsc.mjs -p tsconfig.json          # 只构建
 node scripts/tsc.mjs -p tsconfig.json --noEmit # 只做类型检查
 ```
@@ -114,6 +120,8 @@ node scripts/tsc.mjs -p tsconfig.json --noEmit # 只做类型检查
 - **测试如何驱动 TIA、git 与图谱**：`test/02` 用假 `engineeringAccess` / `knowledgeGraph` 服务驱动创建
   工作流；`test/04` 单独驱动缝 B 的规范化与降级；**`test/09` 用真实临时 git 仓库 + 真实 STAGE 文件**，
   假服务只负责返回 `SyncScan` 结果，断言：计划不写任何东西、checksum 漂移、未编译、
+  `status(verify:true)` → 计划只读一次 checksum 且标 `checksumCached: true`、`verify:false` 不给
+  `wouldSync` 结论、真实同步仍扫描并刷新缓存、缓存 TTL 到期（用 `now` 参数，不 sleep）、
   首同步提交与四个 trailer、`unchanged` 不提交、墓碑删文件而 `unexportable` 保留、
   损坏账本重建、非仓库拒绝、锁被占、失败也清 STAGE。真实 TIA 与真实引擎不在这套测试里。
 

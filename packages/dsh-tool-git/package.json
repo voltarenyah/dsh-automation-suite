@@ -18,6 +18,10 @@
       "types": "./lib/types/index.d.ts",
       "default": "./lib/index.mjs"
     },
+    "./tools": {
+      "types": "./lib/types/tools-entry.d.ts",
+      "default": "./lib/tools-entry.mjs"
+    },
     "./src/*": "./src/*",
     "./package.json": "./package.json"
   },

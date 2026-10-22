@@ -469,7 +469,9 @@ TIA（权威，二进制，不进 git）
   否则慢路径枚举全部对象、只导出差异，并重写两份文档。**清单缺失/损坏会强制一次全量导出**，
   但账本仍然决定"哪些对象变了"，所以不会误删文件。
 - **计划默认**：`project_sync` 默认只读 checksum（约 3 s）并报告 `wouldSync`，写盘必须显式
-  `dry_run: false`。真实的同步在 workspace 锁内运行，成功/失败都会清掉 STAGE（`finally`）。
+  `dry_run: false`。`project_status(verify: true)` 读到 checksum 后写一份 TTL 30 s 的进程内缓存
+  （workspace + device + software 键控），计划命中即复用并标 `checksumCached: true`；真实同步
+  从不使用缓存做决定，永远重新扫描。真实的同步在 workspace 锁内运行，成功/失败都会清掉 STAGE（`finally`）。
 - **提交**：路径限定为 `source/<device>`，提交信息带 `Tia-Op: sync` / `Tia-Checksum` / `Tia-State` /
   `Tia-Manifest: rebuilt|updated` 四个 trailer。插件仍**从不 `git init`**：仓库不存在时
   `repository_not_found` 并让用户自己建；也从不 `push`/`reset`/`--force`。

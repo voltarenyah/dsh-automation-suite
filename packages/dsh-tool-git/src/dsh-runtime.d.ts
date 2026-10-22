@@ -60,6 +60,21 @@ declare module '@deepseek-ai/cordis' {
      * Load a plugin, and everything it depends on, into this context.
      */
     plugin(plugin: Plugin, config?: unknown): Promise<Context>
+    /**
+     * Register a service implementation owned by the current fiber. The
+     * service is visible to dependents and is removed when the fiber unloads.
+     * @returns the disposer that unregisters the service.
+     */
+    provide(name: 'gitContext', value: import('./service.ts').GitContextService): () => void
+    provide(name: string, value?: unknown): () => void
+    /**
+     * Read a service without declaring an inject dependency.
+     * @param strict - when `true` (default), only an active provider's value is
+     * returned; a service whose provider is still loading reads as `undefined`.
+     * @returns the service value, or `undefined` when not provided.
+     */
+    get(name: 'gitContext'): import('./service.ts').GitContextService | undefined
+    get(name: string, strict?: boolean): unknown
   }
 
   /** The root context constructor. */
@@ -224,13 +239,34 @@ declare module '@deepseek-ai/dsh-tools' {
   }
 
   /**
+   * The part of the calling agent a tool body may read.
+   *
+   * Only the session cwd is used: tools resolve their repository root from
+   * `agent.session.header.cwd` rather than from `process.cwd()` or a
+   * model-supplied path. The live session object carries far more; this
+   * declares the one field the tools depend on.
+   */
+  export interface ToolAgent {
+    readonly session: {
+      readonly header: {
+        /** The session's working directory, fixed when the session was created. */
+        readonly cwd?: string
+      }
+    }
+  }
+
+  /**
    * Execution identity handed to a tool body.
    *
    * `signal` is required, not optional: the live pipeline always supplies it, and
-   * tools forward it straight into APIs that demand one.
+   * tools forward it straight into APIs that demand one. `agent` is absent for
+   * calls that do not originate from an agent session (e.g. a direct registry
+   * call), which the tools treat as an error rather than a cwd fallback.
    */
   export interface ToolRunContext {
     readonly signal: AbortSignal
+    /** The calling agent, when the call came from an agent session. */
+    readonly agent?: ToolAgent
   }
 
   /**
@@ -328,6 +364,12 @@ declare module '@deepseek-ai/dsh-tools' {
     readonly callId: string
     readonly name: string
     readonly arguments: Record<string, unknown>
+    /**
+     * The calling agent scope. The test fixture supplies a minimal stand-in
+     * carrying `session.header.cwd`; the live pipeline supplies the real
+     * agent, which also selects the tool-visibility layer.
+     */
+    readonly agent?: ToolAgent
   }
 
   /**

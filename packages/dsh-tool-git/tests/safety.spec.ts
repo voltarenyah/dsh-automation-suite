@@ -29,7 +29,7 @@ describe('dsh-tool-git destructive-command gate', () => {
   })
 
   async function boot(config?: Parameters<typeof setupPlugin>[0]): Promise<Context> {
-    const ctx = await setupPlugin({ workDir: repo.dir, ...config })
+    const ctx = await setupPlugin({ cwd: repo.dir, ...config })
     return ctx
   }
 
@@ -159,7 +159,7 @@ describe('dsh-tool-git destructive-command gate', () => {
 
     it('rejects invalid regexes at apply time', async () => {
       repo = makeTempRepo()
-      await expect(setupPlugin({ workDir: repo.dir, extraDestructivePatterns: ['('] }))
+      await expect(setupPlugin({ cwd: repo.dir, extraDestructivePatterns: ['('] }))
         .rejects.toThrow(/invalid extraDestructivePatterns/)
     })
   })

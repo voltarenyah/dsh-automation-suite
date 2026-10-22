@@ -27,7 +27,6 @@ export function defineStashTool(opts: ToolOptions) {
       + 'most recent stash (or the one named by `stash`) and removes it. A pop that conflicts '
       + 'leaves the stash in place and reports `applied: false`.',
     parameters: {
-      repoDir: { type: 'string', description: 'Explicit git repository directory.' },
       action: { type: 'string', required: true, enum: ['list', 'push', 'pop'], description: 'What to do with stashes.' },
       message: { type: 'string', description: 'Stash message for `push`.' },
       includeUntracked: { type: 'boolean', description: 'For `push`: also stash untracked files (git stash -u).' },
@@ -67,7 +66,7 @@ export function defineStashTool(opts: ToolOptions) {
       }],
     },
     async execute(args, exec) {
-      const ctx = await createGitContext(opts, args, exec.signal)
+      const ctx = await createGitContext(opts, exec)
       if (args.action === 'list') {
         const { stdout } = await ctx.run(['stash', 'list', '--format=%gd%x1f%gs%x1e'])
         return {

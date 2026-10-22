@@ -33,7 +33,6 @@ export function defineCommitTool(opts: ToolOptions) {
       + 'is already staged. `amend` rewrites the most recent commit and is guarded by the '
       + 'destructive-operation policy. Commit messages should be imperative and concise.',
     parameters: {
-      repoDir: { type: 'string', description: 'Explicit git repository directory.' },
       message: { type: 'string', required: true, description: 'Commit message (subject line).' },
       amend: { type: 'boolean', description: 'Amend the most recent commit instead of creating a new one (destructive: guarded by policy).' },
       allowEmpty: { type: 'boolean', description: 'Allow an empty commit (git commit --allow-empty).' },
@@ -64,7 +63,7 @@ export function defineCommitTool(opts: ToolOptions) {
       }],
     },
     async execute(args, exec) {
-      const ctx = await createGitContext(opts, args, exec.signal)
+      const ctx = await createGitContext(opts, exec)
       const message = args.message.trim()
       if (message.length === 0) {
         throw new Error('git_commit: `message` must be a non-empty string')

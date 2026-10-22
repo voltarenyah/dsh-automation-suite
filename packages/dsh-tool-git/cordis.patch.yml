@@ -1,4 +1,10 @@
-# dsh-tool-git bundle layer: insert the plugin row when this bundle is active.
+# dsh-tool-git bundle layer: insert the host row when this bundle is active.
+#
+# This row registers ONLY the `gitContext` service and the destructive-command
+# safety gate. The twelve model-facing `git_*` tools live on the package's
+# `./tools` subpath and must be added as their own row (`name: dsh-tool-git/tools`)
+# wherever they should be visible — do not insert them here, or every agent on
+# the host plane inherits them.
 - insert:
     - id: tool-git
       name: dsh-tool-git

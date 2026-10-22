@@ -12,7 +12,7 @@ import { defineConfig } from 'tsdown'
  * dev-time runtime links are present. See that file for the full explanation.
  */
 export default defineConfig({
-  entry: ['src/index.ts'],
+  entry: ['src/index.ts', 'src/tools-entry.ts'],
   outDir: 'lib',
   format: ['esm'],
   platform: 'node',

@@ -9,11 +9,18 @@
 Structured, safe Git tool family for [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) (`dsh`).
 
 Coding agents reach for git constantly, but the stock runtime only offers raw `bash`.
-`dsh-tool-git` gives the model eight structured tools that run `git` through a
+`dsh-tool-git` gives the model twelve structured tools that run `git` through a
 shell-free subprocess runner and return canonical JSON values — plus a
 `tools/pre-execute` safety gate that stops destructive git operations
 (force push, hard reset, rebase, amend, branch deletion, …) before they happen,
 whether the model calls them through these tools **or** through a shell tool.
+
+The package has two entries so a profile can grant the tools per agent:
+
+| Entry | What it registers |
+|---|---|
+| `dsh-tool-git` (host row) | the `gitContext` service and the safety gate. **No model tools.** |
+| `dsh-tool-git/tools` (tools row) | the twelve `git_*` tools. It injects `gitContext`, so without the host row it does not load at all (fail closed). |
 
 - **No shell injection**: every command goes through `execFile` with an explicit
   argument array. Model-supplied paths and messages are never string-interpolated.
@@ -39,8 +46,38 @@ whether the model calls them through these tools **or** through a shell tool.
 | `git_remote` | List configured remotes with fetch/push URLs |
 | `git_checkout` | Switch branches, or create and switch (`-b`); never discards changes |
 
-Every tool accepts an optional `repoDir` argument and reports the resolved
-repository root in its result.
+Every tool reports the resolved repository root in its result. No tool accepts a
+repository path argument: each call resolves its root from the calling session's
+working directory (`exec.agent.session.header.cwd`) — never from `process.cwd()`
+and never from a model-supplied path.
+
+## Service API (`gitContext`)
+
+The host row provides a cordis service, so sibling plugins can use git path
+resolution without importing this package or its model tools:
+
+```ts
+const gitContext = ctx.get('gitContext')!
+
+await gitContext.isRepository(root)     // boolean
+await gitContext.repoRoot(root)         // string | null (git rev-parse --show-toplevel)
+await gitContext.init(root, { initialBranch: 'main' }) // fresh repo → GitContext
+await gitContext.create(root)           // GitContext bound to the containing repo
+```
+
+`create` / `init` return a `GitContext`:
+
+| Member | Contract |
+|---|---|
+| `repoDir` | absolute repository root |
+| `run(args)` | `{ code, stdout, stderr }`; a non-zero exit is data, not an exception |
+| `runChecked(args)` | `{ stdout, stderr }`; throws on a non-zero exit |
+| `status(paths)` | `git status --porcelain` lines, untracked included |
+| `head()` | HEAD hash, or `null` on an unborn branch |
+| `commit(paths, message)` | path-limited add+commit → `{ committed, hash }` |
+
+Every root argument is explicit and must be absolute; the service never falls
+back to `process.cwd()`. `run`/`runChecked` also accept `{ signal }`.
 
 ## Safety gate
 
@@ -90,17 +127,24 @@ allowlist the `prepare` build script once (see the
 All options are optional; the defaults are shown below:
 
 ```yaml
-# profile-level or bundle patch config for the tool-git row
+# host row: service + safety gate (no model tools)
 - id: tool-git
   name: dsh-tool-git
   config:
-    workDir: ''                # repo discovery start dir (default: process cwd)
     gitPath: git               # git executable
     destructivePolicy: deny    # deny | ask | allow
     extraDestructivePatterns: []  # extra case-insensitive regexes for the gate
     logMaxCommits: 20          # git_log default count (cap 100)
     diffContextLines: 3        # patch context lines for git_diff / git_show
+
+# tools row: the twelve model tools (no config of its own)
+- id: tool-git-tools
+  name: dsh-tool-git/tools
 ```
+
+There is no `workDir`. Tool roots come from the calling session's cwd, and the
+`/tools` row inherits `logMaxCommits` / `diffContextLines` from the host row's
+service, so the host row is the single configuration surface.
 
 - `deny` (default) — destructive calls are rejected with the pattern name and
   an explanation.
@@ -132,7 +176,7 @@ The test suite performs the same linking automatically on first run.
 pnpm install
 pnpm run typecheck   # tsc against the runtime the local harness actually ships
 pnpm test            # vitest: boots the plugin, runs real git in temp repos
-pnpm run build       # tsc declarations + tsdown bundle (lib/index.mjs)
+pnpm run build       # tsc declarations + tsdown bundles (lib/index.mjs, lib/tools-entry.mjs)
 ```
 
 The extracted runtime ships no `.d.ts` (the app's production build strips them),

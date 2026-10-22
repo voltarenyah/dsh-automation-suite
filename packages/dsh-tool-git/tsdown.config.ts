@@ -15,7 +15,7 @@ import { defineConfig } from 'tsdown'
  * external makes the build deterministic either way.
  */
 export default defineConfig({
-  entry: ['src/index.ts'],
+  entry: ['src/index.ts', 'src/tools-entry.ts'],
   outDir: 'lib',
   format: ['esm'],
   platform: 'node',

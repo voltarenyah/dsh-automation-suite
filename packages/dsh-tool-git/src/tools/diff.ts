@@ -8,10 +8,8 @@ import { parseDiffBlocks } from '../diff-blocks.ts'
 import { parseNumstat } from '../parse.ts'
 import { createGitContext, type ToolOptions } from './context.ts'
 
-export interface DiffToolOptions extends ToolOptions {
-  /** Default unified-diff context lines when `patch` is requested. */
-  diffContextLines: number
-}
+/** `git_diff` uses the shared tool options (including `diffContextLines`). */
+export type DiffToolOptions = ToolOptions
 
 /** One changed file in the canonical `git_diff` value. */
 export interface DiffFile {
@@ -40,7 +38,6 @@ export function defineDiffTool(opts: DiffToolOptions) {
       + 'set `cached` to diff the index against HEAD, or pass `rev` to diff the worktree against '
       + 'a revision. Use `path` to limit to one path.',
     parameters: {
-      repoDir: { type: 'string', description: 'Explicit git repository directory.' },
       cached: { type: 'boolean', description: 'Diff the index (staged changes) instead of the worktree.' },
       rev: { type: 'string', description: 'Base revision to diff against (e.g. HEAD, HEAD~2, a branch name). Defaults to the index/worktree baseline.' },
       path: { type: 'string', description: 'Limit the diff to a single path.' },
@@ -77,7 +74,7 @@ export function defineDiffTool(opts: DiffToolOptions) {
       }],
     },
     async execute(args, exec) {
-      const ctx = await createGitContext(opts, args, exec.signal)
+      const ctx = await createGitContext(opts, exec)
       const base = args.cached ? 'index' : (args.rev ?? 'worktree')
       const statsArgs = ['diff']
       if (args.cached) statsArgs.push('--cached')

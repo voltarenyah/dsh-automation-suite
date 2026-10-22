@@ -13,7 +13,7 @@ describe('dsh-tool-git network & branch tools', () => {
   })
 
   async function boot(repo: TempRepo): Promise<Context> {
-    return setupPlugin({ workDir: repo.dir })
+    return setupPlugin({ cwd: repo.dir })
   }
 
   describe('git_remote', () => {

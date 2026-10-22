@@ -760,6 +760,11 @@ STAGE / DRAFT）加一套自有版本号。核过之后收敛成一件更小的�
    `unexportable` → 保留旧文件。**没有墓碑就不删**，所以一次导不出的块不会被误删。
 6. **两个工具、一个默认**：`project_status` 只读（`verify: true` 才读 checksum）；
    `project_sync` 默认是计划（只读 checksum，约 3 s，报告 `wouldSync`），写盘必须 `dry_run: false`。
+   `project_status(verify: true)` 成功后把 checksum 写进一份**仅进程内、TTL 30 s**、按
+   workspace + device + software 键控的缓存；紧随其后的计划复用它（`checksumCached: true`）从而
+   只付一次 TIA 往返。**真实同步从不读这份缓存做决定**，永远重新扫描并在成功后刷新它。
+   `project_status` 在 `verify: false`（或读不到 checksum）时 `wouldSync` 必须是 `null`，
+   不得把"没读"说成"干净"。
 7. **写盘在 workspace 锁内**，顺序固定：`ensureRepository` → `syncScan` → 提升差异 → 删墓碑文件 →
    写两份文档 → `git add/commit -- source/<device>`；成功或失败都清 STAGE。**从不 `git init`**。
 8. **一个 workspace 一个 PLC**：`resolveDevice` 在 >1 个 PLC 时返回 `multiple_plc_unsupported`，
@@ -776,7 +781,9 @@ DRAFT 只是编辑沙盒，两者都不能回答"PLC 现在是什么"。
 只改 1 块也要 48.3 s，因为标签表要重新确认）；② 清单是派生品，损坏时只能全量重建；
 ③ STAGE 在崩溃后可能残留（`.dsh/local/` 不进 git，删掉即可，下一次同步不读它）。
 
-**验证**：`test/09-status-sync.test.mjs` 17 项 —— 状态六种（无服务 / 无账本 / 漂移 / 未编译 /
-损坏账本 / 锁被占）、计划三种（需要同步 / 已同步 / 未编译）、真实同步八种（首次提交与四个 trailer、
-unchanged 不提交、损坏账本重建、迁移后目录回退、删除 + 不可导出保留、非仓库拒绝、锁被占、扫描失败清 STAGE）。
-本包 **56 → 73 项全通过、无跳过**。
+**验证**：`test/09-status-sync.test.mjs` 21 项 —— 状态七种（无服务 / 无账本 / 漂移 / 未编译 /
+损坏账本 / 锁被占 / verify:false 不给 `wouldSync` 结论）、计划三种（需要同步 / 已同步 / 未编译）、
+status→计划共用一次 checksum 读、真实同步刷新缓存、缓存 TTL（不 sleep）、
+真实同步八种（首次提交与四个 trailer、unchanged 不提交、损坏账本重建、迁移后目录回退、
+删除 + 不可导出保留、非仓库拒绝、锁被占、扫描失败清 STAGE）。
+本包 **56 → 77 项全通过、无跳过**。

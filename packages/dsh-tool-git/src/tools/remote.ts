@@ -50,7 +50,6 @@ export function defineRemoteTool(opts: ToolOptions) {
       'List the configured git remotes with their fetch and push URLs. '
       + 'Useful before fetch/pull to know what upstreams exist.',
     parameters: {
-      repoDir: { type: 'string', description: 'Explicit git repository directory.' },
     },
     output: {
       schema: {
@@ -78,8 +77,8 @@ export function defineRemoteTool(opts: ToolOptions) {
           : value.remotes.map(r => `${r.name}\t${r.url}${r.pushUrl && r.pushUrl !== r.url ? ` (push: ${r.pushUrl})` : ''}`).join('\n'),
       }],
     },
-    async execute(args, exec) {
-      const ctx = await createGitContext(opts, args, exec.signal)
+    async execute(_args, exec) {
+      const ctx = await createGitContext(opts, exec)
       const { stdout } = await ctx.run(['remote', '-v'])
       return { repoDir: ctx.repoDir, remotes: parseRemoteV(stdout) }
     },
