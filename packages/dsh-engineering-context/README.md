@@ -4,10 +4,12 @@ DeepSeek Harness 插件（**工程上下文插件**）：把一个 **TIA Portal 
 另存进来、把源文件读出来、把块逻辑转译进知识图谱 —— 并在 TIA 改动之后，把差异同步成
 **SOURCE 树的一次 git 提交**。会话因此有三个确定的事实："现在谈的是哪个工程、它在哪、它和 TIA 是否一致"。
 
-> **实现状态（2026-10，S2 完成）。** 三个工具：
+> **实现状态（2026-10，S2 + D30 完成）。** 四个工具、三个挂载入口：
 > `create_engineering_project`（另存 + 重建源文件树 + 逐设备重建 knowledge.db）、
-> `project_status`（只读状态）、`project_sync`（TIA → STAGE → SOURCE → 一次提交）。
-> 版本管理的口径见 [`docs/decisions.md`](decisions.md) **D26**，路径规则见
+> `project_status`（只读状态）、`project_sync`（TIA → STAGE → SOURCE，**不提交**）、
+> `project_commit`（用调用方给的信息提交设备目录）。入口 `.` 挂前四个，`/diff` 只挂
+> `project_diff`，`/status` 只挂 `project_status`。
+> 版本管理的口径见 [`docs/decisions.md`](decisions.md) **D26** 与发行版的 **D30**，路径规则见
 > [`docs/PATH-RULES.md`](docs/PATH-RULES.md)（**现行布局以它为准**），核心架构见
 > [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)。
 > **未实现**：DRAFT / REMOTE 与逐块指纹锁（S3）、变更台账（P3）。
@@ -32,13 +34,14 @@ DeepSeek Harness 插件（**工程上下文插件**）：把一个 **TIA Portal 
 **不再有注册表**：workspace 里"有哪些工程"由目录布局本身回答（`tia/` 与 `source/` 下有什么），
 没有 `_dsh-eng/projects.json`，也没有"当前工程"指针（D22 的刻意取舍）。
 
-## 2. 工具（3 个）
+## 2. 工具（4 个，另有一个只挂 `project_diff` 的独立入口）
 
 | 工具 | 干什么 | 写？ |
 |---|---|---|
 | `create_engineering_project` | 把 TIA **当前打开**的工程另存进 `<workspace>/tia/<workspace 名>/`，把源文件树重建到 `<workspace>/source/<device>/`，逐设备写 `_evidence.json` + `_manifest.json`（`adoptExisting`：校验已有文件并收编，不再导出第二遍），逐设备重建知识图谱库，最后写入基线提交；默认 `dry_run: true`（只给计划）。工程已经在 workspace 里时跳过另存，只刷新源文件树与图谱 | 是（TIA 写工程、接口插件写源文件、图谱插件写 `.db`、本插件维护 `.gitignore`/`.gitattributes`、必要时的 `git init` 与基线提交） |
 | `project_status` | 只读报告：哪个 PLC、账本/清单在不在、git 看到什么、锁有没有被占，并给出 `nextAction`（`open_project` / `compile` / `sync` / `commit` / `git_init` / `clean`）。`verify: true` 才读 checksum（约 3 s），否则明确标 **NOT CHECKED**；`data.wouldSync` / `data.syncReason` 只在真的读到 checksum 时下结论（`no-evidence` / `no-manifest` / `checksum-differs` / `in-sync`，读不到时 `null` / `unavailable`，未验证时 `null` / `not-checked`），成功读到的 checksum 同时写入 30 s 进程内缓存 | 否 |
-| `project_sync` | 让 SOURCE 与 TIA 对齐：checksum 快路径 → 需要时慢路径扫描 → 只把差异提升进 SOURCE → 写账本/清单 → 提交该 device 目录。默认只读 checksum 并报告 `wouldSync`；计划命中上一个只读调用写入的缓存时不再读 TIA，并标 `checksumCached: true`；`dry_run: false` 永不用缓存做决定、总是重新扫描。`refresh_knowledge: true` 时提交后刷新图谱：块级小改动走增量，类型/标签表或超过 20 个文件走全量；图谱失败只警告。写盘必须 `dry_run: false` | 是（SOURCE + `.dsh/local/stage` + 一次 git commit；可选图谱刷新） |
+| `project_sync` | 让 SOURCE 与 TIA 对齐：checksum 快路径 → 需要时慢路径扫描 → 只把差异提升进 SOURCE → 写账本/清单，**然后停下**：返回 `pending.paths` 与 `pending.suggestedMessage`，不提交。默认只读 checksum 并报告 `wouldSync`；计划命中上一个只读调用写入的缓存时不再读 TIA，并标 `checksumCached: true`；`dry_run: false` 永不用缓存做决定、总是重新扫描。`refresh_knowledge: true` 时导出后刷新图谱：块级小改动走增量，类型/标签表或超过 20 个文件走全量；图谱失败只警告。写盘必须 `dry_run: false` | 是（SOURCE + `.dsh/local/stage`；可选图谱刷新） |
+| `project_commit` | 提交 `source/<device>`。`message` 必填（空消息 → `invalid_commit_message`，超 8000 字符同样拒绝），默认只给计划——列出会提交的路径、账本事实与**最终信息全文**；`dry_run: false` 才写历史。插件在信息末尾追加 `Tia-Op` / `Tia-Checksum` / `Tia-State` trailer（信息里已有 trailer 块时不重复）。没有可读账本时以 `not_synced` 拒绝；工作树干净时返回"无需提交"而不是报错。提交路径限定在该 device 目录，别处的脏文件不会被带走 | 是（一次 git commit） |
 
 **版本管理怎么判断"变没变"**：
 
@@ -50,16 +53,19 @@ DeepSeek Harness 插件（**工程上下文插件**）：把一个 **TIA Portal 
 4. 清单 `_manifest.json` 是**派生**：只描述磁盘上的文件（bytes / sha256 / 类型元数据），
    **绝不拿它的 sha256 当变更键**（TIA 导出的 XML 带 `<Created>`，重新导出就会变）。
 
-**提交**：`project_sync` 的提交路径限定 `source/<device>`，提交信息带 `Tia-Op: sync` / `Tia-Checksum` /
-`Tia-State` / `Tia-Manifest: rebuilt|updated` 四个 trailer。`project_sync` / `project_status` **从不
-`git init`**：仓库不存在时 `repository_not_found` 并让用户自己建。`create_engineering_project` 是唯一的
-例外：workspace 没有仓库时它初始化一个（`git init -b main`）并提交一次基线（`Tia-Op: create`，
-路径恰好 `.gitignore` / `.gitattributes` / `source`）；但 workspace 位于别人的仓库里、或根目录的仓库
-不是本插件建的（无 `Tia-Op: create` trailer 且无 `.dsh/local/repo.json` 标记）时，它以
-`workspace_is_repository` 拒绝。任何工具都从不 `push` / `reset` / `--force`。
+**提交**：提交只发生在 `project_commit`，路径限定 `source/<device>`，信息由调用方给、插件追加
+`Tia-Op: sync` / `Tia-Checksum` / `Tia-State` / `Tia-Manifest` trailer（D30 把"写树"和"写历史"
+分成两步：`project_sync` 只写树，`project_commit` 才写历史）。`project_sync` / `project_commit` /
+`project_status` **从不 `git init`**：仓库不存在时 `repository_not_found` 并让用户自己建。
+`create_engineering_project` 是唯一的例外：workspace 没有仓库时它初始化一个（`git init -b main`）
+并提交一次基线（`Tia-Op: create`，路径恰好 `.gitignore` / `.gitattributes` / `source`）；
+但 workspace 位于别人的仓库里、或根目录的仓库不是本插件建的（无 `Tia-Op: create` trailer 且无
+`.dsh/local/repo.json` 标记）时，它以 `workspace_is_repository` 拒绝。任何工具都从不
+`push` / `reset` / `--force`。
 
-**dry-run 规则**：两个写工具都默认只给计划。`create_engineering_project` 的另存是本插件唯一难以撤销的
-动作；`project_sync` 会写文件并提交历史。要真做必须显式 `dry_run: false`。
+**dry-run 规则**：三个写工具（create / sync / commit）都默认只给计划。`create_engineering_project`
+的另存是本插件唯一难以撤销的动作；`project_sync` 会写 SOURCE；`project_commit` 会写历史。
+要真做必须显式 `dry_run: false`。
 
 **checksum 缓存（30 s，仅进程内）**：`project_status(verify: true)` 成功后把 checksum 写进一份
 按 **workspace + device + software** 键控的内存缓存；紧随其后的 `project_sync` 默认计划直接复用，
@@ -68,7 +74,7 @@ DeepSeek Harness 插件（**工程上下文插件**）：把一个 **TIA Portal 
 不落盘。因此缓存最坏只会让"计划"在 30 s 内看到略旧的答案，真实同步不会。
 
 **知识图谱这一步是软的（D25 / B4）**：它经**缝 B**（`ctx.get('knowledgeGraph')`，不 import）逐设备调用
-`ingestDevice`（全量）或 `updateDevice`（增量）。`project_sync(refresh_knowledge:true)` 在提交后刷新：
+`ingestDevice`（全量）或 `updateDevice`（增量）。`project_sync(refresh_knowledge:true)` 在导出后刷新：
 只改块且 ≤20 个文件走增量（引擎替换组件 + 一跳依赖闭包，单事务），类型/标签表或更大批量走全量；
 `UPDATE_REQUIRES_FULL_REBUILD` / `UPDATE_TOO_LARGE` / `UPDATE_UNKNOWN_COMPONENT` 自动回退全量。
 服务缺席、引擎没构建、或引擎不可达时，结果只说"图谱未刷新/未建成"，

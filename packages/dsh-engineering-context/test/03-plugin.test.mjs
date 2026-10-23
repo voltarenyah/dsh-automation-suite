@@ -26,7 +26,7 @@ test('the plugin declares its identity and its one hard dependency', () => {
   assert.ok(plugin.Config !== undefined, 'the profile needs a Config schema to validate the config block')
 })
 
-test('apply registers the three tools in a stable order and reports them once', () => {
+test('apply registers the four tools in a stable order and reports them once', () => {
   const { ctx, definitions, logs } = createTestContext()
   plugin.apply(ctx, {})
 
@@ -36,7 +36,7 @@ test('apply registers the three tools in a stable order and reports them once', 
   )
   const info = logs.filter((entry) => entry.level === 'info')
   assert.equal(info.length, 1)
-  assert.match(info[0].message, /Registered 3 engineering-context tools/u)
+  assert.match(info[0].message, /Registered 4 engineering-context tools/u)
   assert.match(info[0].message, /<workspace>\/tia\//u)
 })
 
@@ -130,17 +130,22 @@ test('the real harness runtime holds this schema and validates the result', () =
       `${definition.name}: an undeclared property must be rejected`,
     )
 
-    // Every parameter is optional, so an empty call must be a valid request. A
+    // Every parameter is optional except where the tool cannot work without one
+    // (`project_commit.message`), so the minimal call must be a valid request. A
     // full one uses each tool's own real-run argument set.
+    const minimal = {
+      project_commit: { message: 'chore: no-op' },
+    }[definition.name] ?? {}
     assert.deepEqual(
-      dshTools.validateJsonSchemaValue(parameters, {}),
+      dshTools.validateJsonSchemaValue(parameters, minimal),
       [],
-      `${definition.name}: calling it with no arguments must be a valid request`,
+      `${definition.name}: the minimal argument set must be a valid request`,
     )
     const realRun = {
       create_engineering_project: { dry_run: false, overwrite: true },
       project_status: { verify: true },
       project_sync: { dry_run: false },
+      project_commit: { dry_run: false, message: 'fix(cav-a): stop loading while the cooling belt is full' },
     }[definition.name]
     assert.deepEqual(
       dshTools.validateJsonSchemaValue(parameters, realRun),
@@ -151,6 +156,7 @@ test('the real harness runtime holds this schema and validates the result', () =
       create_engineering_project: { dry_run: 'yes' },
       project_status: { verify: 'yes' },
       project_sync: { dry_run: 'yes' },
+      project_commit: { dry_run: 'yes', message: 'x' },
     }[definition.name]
     assert.ok(
       dshTools.validateJsonSchemaValue(parameters, mistyped).length > 0,

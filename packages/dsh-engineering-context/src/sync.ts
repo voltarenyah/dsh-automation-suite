@@ -1,11 +1,12 @@
 /**
- * One `sync`: TIA → STAGE → SOURCE → git.
+ * One `sync`: TIA → STAGE → SOURCE.
  *
  * The controller produces the ledger, the manifest and only the changed XML in a
  * private STAGE directory. This module copies the promoted files into the device
- * directory, deletes what disappeared, writes both JSON documents, and commits
- * the device directory with trailers. It never opens TIA and never asks the model
- * to assemble the steps.
+ * directory, deletes what disappeared and writes both JSON documents. It does
+ * **not** commit: a commit is a separate decision (`project_commit`), taken once
+ * what changed is known and a human has seen it. It never opens TIA and never
+ * asks the model to assemble the steps.
  *
  * @module dsh-engineering-context/sync
  */
@@ -20,7 +21,7 @@ import { evidencePathForDevice, manifestPathForDevice, stageRootPath } from './c
 import type { DeviceInfo } from './device.js'
 import { EngineeringContextError } from './errors.js'
 import { presentObjects, readEvidence, type EvidenceDocument, type EvidenceObject } from './evidence.js'
-import { commitPaths, ensureRepository, gitPath, statusPaths } from './git.js'
+import { ensureRepository, gitPath, porcelainPaths, statusPaths } from './git.js'
 import { withLock } from './lock.js'
 import { callSyncScan } from './scan.js'
 import type { ResolvedScope } from './scope.js'
@@ -36,7 +37,12 @@ export interface SyncRunResult {
   /** Source files removed because their objects disappeared. */
   removedFiles: number
   stageDir: string | null
-  commit: { committed: boolean; hash: string | null }
+  /**
+   * What is left for `project_commit`: the dirty paths under the device directory
+   * and a ready-made message (subject plus the trailer block) the caller can pass
+   * through, or replace with something that says *why* the change exists.
+   */
+  pending: { paths: string[]; suggestedMessage: string }
   stateId: string | null
   checksum: string | null
   /**
@@ -63,7 +69,11 @@ async function exists(file: string): Promise<boolean> {
   }
 }
 
-function syncMessage(result: {
+/**
+ * The message `project_commit` would record if the caller passed it through
+ * unchanged: one factual subject line plus the trailer block.
+ */
+function suggestedCommitMessage(result: {
   device: DeviceInfo
   counts: SyncScanCounts
   manifestRebuilt: boolean
@@ -180,7 +190,7 @@ export async function runSync(
           copied: 0,
           removedFiles: 0,
           stageDir: null,
-          commit: { committed: false, hash: null },
+          pending: { paths: [], suggestedMessage: '' },
           stateId: report.stateId,
           checksum: report.checksum,
           changedPaths: [],
@@ -257,20 +267,22 @@ export async function runSync(
       await copyFile(report.stage.manifest, manifestFile)
 
       const relative = gitPath(root, device.directory)
-      const dirty = await statusPaths(root, [relative])
-      let commit: { committed: boolean; hash: string | null } = { committed: false, hash: null }
-      if (dirty.length > 0) {
-        commit = await commitPaths(
-          root,
-          [relative],
-          syncMessage({
-            device,
-            counts: report.counts,
-            manifestRebuilt: report.manifestRebuilt,
-            checksum: report.checksum,
-            stateId: report.stateId,
-          }),
-        )
+      const dirty = porcelainPaths(await statusPaths(root, [relative]))
+      // The sync stops here: `project_commit` is the only place that writes history,
+      // because the message has to describe *why* these files changed and a human
+      // gets to see the change set before it is committed.
+      const pending = {
+        paths: dirty,
+        suggestedMessage:
+          dirty.length === 0
+            ? ''
+            : suggestedCommitMessage({
+                device,
+                counts: report.counts,
+                manifestRebuilt: report.manifestRebuilt,
+                checksum: report.checksum,
+                stateId: report.stateId,
+              }),
       }
 
       return {
@@ -281,7 +293,7 @@ export async function runSync(
         copied,
         removedFiles,
         stageDir,
-        commit,
+        pending,
         stateId: report.stateId,
         checksum: report.checksum,
         changedPaths,

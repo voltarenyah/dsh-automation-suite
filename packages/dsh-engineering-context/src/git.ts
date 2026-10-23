@@ -98,6 +98,29 @@ export async function statusPaths(root: string, paths: readonly string[]): Promi
     .filter((line) => line.length > 0)
 }
 
+/**
+ * The file paths out of `git status --porcelain` lines.
+ *
+ * Each line is `XY path`, and a rename is `XY old -> new`; the model is shown
+ * paths, not status codes, so both shapes are reduced to the path that exists
+ * now. Kept separate from {@link statusPaths} because the status tool only needs
+ * a count, while sync and commit quote the paths back to the model.
+ *
+ * @param lines - the raw porcelain lines.
+ * @returns the workspace-relative paths, in the order git listed them.
+ */
+export function porcelainPaths(lines: readonly string[]): string[] {
+  const paths: string[] = []
+  for (const line of lines) {
+    // "XY path": two status columns, one space, then the path.
+    const body = line.length > 3 ? line.slice(3) : ''
+    if (body.length === 0) continue
+    const arrow = body.indexOf(' -> ')
+    paths.push(arrow >= 0 ? body.slice(arrow + 4) : body)
+  }
+  return paths
+}
+
 /** The HEAD commit, or null on an unborn branch. */
 export async function headCommit(root: string): Promise<string | null> {
   const result = await runGit(root, ['rev-parse', '--verify', 'HEAD'])

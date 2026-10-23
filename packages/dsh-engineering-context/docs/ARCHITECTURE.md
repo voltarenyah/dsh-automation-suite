@@ -1,7 +1,7 @@
 # 核心架构：工程上下文插件
 
 > **状态：设计定稿；P0/P1 已按 D22 删除，现行实现是 `create_engineering_project` / `project_status` /
-> `project_sync` 三个工具（S2 见 D26）。**
+> `project_sync` / `project_commit` 四个工具（S2 见 D26；sync 与 commit 拆成两步见发行版 D30）。**
 >
 > ⚠️ **2026-10 起本文有相当一部分是"目标态"而不是现状**：原先注册的
 > `eng_status` / `eng_project` / `eng_scope` / `eng_version`，以及它们下面的工程注册表与内部 git
@@ -452,8 +452,13 @@ D22 删掉的是 P1 那套**内部 git 版本层**（`eng_version` + 自建提�
 TIA（权威，二进制，不进 git）
   └─ SyncScan ─→ STAGE（<workspace>/.dsh/local/stage/<id>/，本机临时，只放差异）
                    └─ 提升 ─→ SOURCE（source/<device>/**，文本，进 git，含 _evidence.json + _manifest.json）
-                                  └─ project_sync 提交（路径限定在该 device 目录）
+                                  └─ project_commit 提交（路径限定在该 device 目录，message 由调用方给）
 ```
+
+> **D30 起 `project_sync` 不再提交**：提升完就停下，把 `pending.paths` 交出去；`project_commit`
+> 才写历史。原因不是洁癖——同步会写几十个文件、可能刷新图谱，耗时分钟级；而"提交"是唯一会
+> 产生不可逆历史的动作，必须在有人看过差异之后发生。原先把两者塞进一次调用，
+> 结果是"用户说'看看是否成立'，结论还没出口，改动已经进了 git 历史"（发行版 D30 的背景记录）。
 
 - **相等性有两个层级**：`PlcChecksumProvider.Software` 是 **PLC 级**的"有没有人动过"，一次读 3.2 s，
   用作快路径；逐对象是否真的变了，用**分面指纹**（块/UDT）与**归一化 XML 哈希**（标签表）判断。
@@ -550,10 +555,11 @@ TIA（权威，二进制，不进 git）
 |---|---|---|---|---|---|
 | 1 | `create_engineering_project` | 把工程接进 workspace：没打开就**打开**（`source_project`），另存进 `tia/`，把**源文件树**重建到 `source/<device>/`，再逐设备把图谱库重建到 `knowledge/<device>/`；默认只给计划 | 是（TIA 写工程、接口插件写源文件、图谱插件写 `.db`、本插件维护 `.gitignore` 的三行） | ① + 缝 A + 缝 B | ✅ **已实现** |
 | 2 | `project_status` | 这个 workspace 现在是什么状态：哪个 PLC、账本/清单在不在、git 看到什么、锁有没有被占、下一步该做什么（`open_project` / `compile` / `sync` / `commit` / `git_init` / `clean`） | 否（`verify: true` 时只读 checksum） | 缝 A | ✅ **已实现**（S2） |
-| 3 | `project_sync` | 让 SOURCE 与 TIA 对齐：checksum 快路径 → 需要时全量扫描、只导出差异到 STAGE → 提升进 SOURCE → 写账本/清单 → 提交该 device 目录；默认只给计划 | 是（SOURCE + `.dsh/local/stage` + 一次 git commit） | 缝 A（`syncScan`）+ git | ✅ **已实现**（S2） |
-| 4 | `eng_context` | 工程变更台账：`record` / `list` / `resolve` / `pending` | 状态 | 台账存储 | ⬜ P3 |
+| 3 | `project_sync` | 让 SOURCE 与 TIA 对齐：checksum 快路径 → 需要时全量扫描、只导出差异到 STAGE → 提升进 SOURCE → 写账本/清单，**不提交**（返回 `pending.paths` + `pending.suggestedMessage`）；默认只给计划 | 是（SOURCE + `.dsh/local/stage`） | 缝 A（`syncScan`）+ git（只读状态） | ✅ **已实现**（S2 + D30） |
+| 4 | `project_commit` | 把上一次同步留下的脏树提交成历史：`message` 必填、默认只给计划、插件补 trailer、没有账本拒绝（`not_synced`） | 是（一次 git commit，限定 `source/<device>`） | git | ✅ **已实现**（D30） |
+| 5 | `eng_context` | 工程变更台账：`record` / `list` / `resolve` / `pending` | 状态 | 台账存储 | ⬜ P3 |
 
-**为什么只有 4 行**：26 个控制器操作的名字 + 描述 + 参数 schema 序列化后约 **14k tokens/会话**
+**为什么只有这几行**：26 个控制器操作的名字 + 描述 + 参数 schema 序列化后约 **14k tokens/会话**
 （[`docs/tool-surface.md`](../../../docs/tool-surface.md) §2.7）。工作流工具面保持个位数，
 省下来的是每个会话都要付的常驻成本。
 

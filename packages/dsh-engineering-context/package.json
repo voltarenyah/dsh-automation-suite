@@ -16,6 +16,9 @@
     "./diff": {
       "default": "./lib/diff-entry.js"
     },
+    "./status": {
+      "default": "./lib/status-entry.js"
+    },
     "./package.json": "./package.json"
   },
   "files": [

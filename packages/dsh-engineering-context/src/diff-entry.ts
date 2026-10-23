@@ -1,13 +1,13 @@
 /**
  * The `engineering-context-diff` entry point: `project_diff` on its own.
  *
- * Why a separate entry: the main entry registers the three workflow tools
- * (create / status / sync) and is mounted whole into the Leader and Auditor
- * presets. The structural diff is a different audience — Leader and Expert read
- * program logic, the Auditor only reports that something changed — so it needs a
- * row the presets can mount independently. This module therefore registers
- * **exactly one tool** and nothing else; it never registers create, status or
- * sync, and it opens no resource that would need disposing.
+ * Why a separate entry: the main entry registers the version workflow
+ * (create / status / sync / commit) and is mounted whole into the Auditor preset.
+ * The structural diff has a different audience — the Auditor reports what a
+ * version step changed, the Expert reads program logic — so it needs a row the
+ * presets can mount independently. This module therefore registers **exactly one
+ * tool** and nothing else; it never registers create, status, sync or commit, and
+ * it opens no resource that would need disposing.
  *
  * The profile mounts it as `@voltarenyah/dsh-engineering-context/diff`.
  *
@@ -44,7 +44,7 @@ export function apply(ctx: Context, config?: Partial<PluginConfig>): void {
   ctx.tools.register(diffTool(dependencies))
   log.info(
     `Registered 1 engineering-context diff tool (${PROJECT_DIFF_TOOL}); read-only over git revisions, `
-      + `mounted for Leader and Expert only.`,
+      + `mounted for the Auditor and Expert presets.`,
   )
 }
 

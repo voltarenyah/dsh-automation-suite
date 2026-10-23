@@ -45,6 +45,11 @@ export async function loadDiffEntryModule() {
   return await importBuilt('diff-entry.js')
 }
 
+/** Load the separate status-only entry point (`lib/status-entry.js`). */
+export async function loadStatusEntryModule() {
+  return await importBuilt('status-entry.js')
+}
+
 /** Load the built config module. */
 export async function loadConfigModule() {
   return await importBuilt('config.js')

@@ -1,11 +1,15 @@
 /**
  * The tool registry of this plugin.
  *
- * Three workflow-shaped tools, not one tool per TIA operation: this plugin exists
+ * Four workflow-shaped tools, not one tool per TIA operation: this plugin exists
  * to answer "which engineering project is this conversation about, where does it
  * live on disk, what shape is it in, and how does it get back in sync with TIA".
  * The count is deliberately small because every tool's name, description and
  * parameter schema is paid for in every session (docs/ARCHITECTURE.md §6).
+ *
+ * The version workflow is split in two on purpose: `project_sync` writes the
+ * source tree, `project_commit` records it with a message that says why
+ * (docs/decisions.md D30).
  *
  * @module dsh-engineering-context/tools
  */
@@ -13,13 +17,14 @@
 import type { Context } from '@deepseek-ai/cordis'
 import type { ToolDefinition } from '@deepseek-ai/dsh-tools'
 
+import { commitTool } from './commit.js'
 import { createProjectTool } from './create-project.js'
 import type { ToolDependencies } from './deps.js'
 import { statusTool } from './status.js'
 import { syncTool } from './sync.js'
 
 /** The tools this build registers, in registration order. */
-export const TOOL_NAMES = ['create_engineering_project', 'project_status', 'project_sync'] as const
+export const TOOL_NAMES = ['create_engineering_project', 'project_status', 'project_sync', 'project_commit'] as const
 
 /** One of the registered tool names. */
 export type ToolName = (typeof TOOL_NAMES)[number]
@@ -34,7 +39,7 @@ export type ToolName = (typeof TOOL_NAMES)[number]
  * @returns the definitions, in registration order.
  */
 export function toolDefinitions(dependencies: ToolDependencies): ToolDefinition[] {
-  return [createProjectTool(dependencies), statusTool(dependencies), syncTool(dependencies)]
+  return [createProjectTool(dependencies), statusTool(dependencies), syncTool(dependencies), commitTool(dependencies)]
 }
 
 /**

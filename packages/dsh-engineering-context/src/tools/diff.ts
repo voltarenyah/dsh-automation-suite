@@ -6,9 +6,11 @@
  * the git read path live in the module, so they are testable without a registry.
  *
  * It is registered by the separate `engineering-context-diff` entry point
- * (`src/diff-entry.ts`) and mounted only into the Leader and Expert presets. The
- * Auditor preset deliberately has no context row with this entry: the auditor
- * reports *that* something changed, Leader/Expert explain *what* changed.
+ * (`src/diff-entry.ts`) and mounted into the Auditor and Expert presets. The
+ * Auditor reports what a version step changed; the Expert reads program logic.
+ * The Leader deliberately has no diff row: "which objects changed, and inside
+ * them which networks/members" belongs to the version workflow it delegates
+ * (docs/decisions.md D30).
  *
  * @module dsh-engineering-context/tools/diff
  */
@@ -69,9 +71,8 @@ export function diffTool(dependencies: ToolDependencies): ToolDefinition {
       'deltas; interface members added/removed/changed datatype; multilingual text added/removed; and the evidence-ledger faces ' +
       '(Code/Interface/Comments/Properties) that changed, or "unknown" when no ledger exists on both sides. ' +
       'Read-only: it never writes, never runs TIA, never creates or commits a repository, and returns bounded counts plus the first ' +
-      'N entries instead of XML. Default from=HEAD~1, to=HEAD; pass to="WORKTREE" for uncommitted changes. ' +
-      'This tool is available to Leader and Expert only — it is deliberately NOT available to the Auditor, so never delegate a ' +
-      'project_diff call to the Auditor.',
+      'N entries instead of XML. Default from=HEAD~1, to=HEAD; pass to="WORKTREE" for uncommitted changes, which is how a pending ' +
+      'sync is described before it is committed.',
     parameters: PARAMETERS,
     async execute(args, exec) {
       let scope: ResolvedScope | null = null

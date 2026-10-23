@@ -63,6 +63,10 @@ export type EngineeringErrorCode =
   | 'multiple_plc_unsupported'
   /** The scan itself failed; the project and the existing source tree are unchanged. */
   | 'sync_failed'
+  /** The commit message is empty or longer than the tool accepts. */
+  | 'invalid_commit_message'
+  /** There is no evidence ledger to describe a commit against: sync before committing. */
+  | 'not_synced'
   /** An argument is missing or malformed. */
   | 'invalid_argument'
 

@@ -1,12 +1,16 @@
 /**
- * `project_sync` — make the committed source tree match the compiled PLC.
+ * `project_sync` — make the source tree match the compiled PLC. It does not commit.
  *
  * The default is a plan: read the checksum (a few seconds) and report whether a
  * sync is needed, without writing. A plan reuses the checksum a recent read-only
  * call cached (checksum-cache.ts) and says so via `checksumCached`; a real run
  * (`dry_run: false`) never consults that cache, always scans, and then refreshes
  * it. `dry_run: false` runs the whole scan, copies the promoted XML, writes
- * evidence + manifest, and commits the device directory.
+ * evidence + manifest, and reports what is left dirty.
+ *
+ * Committing is deliberately a second call (`project_commit`): the change set is
+ * only worth a commit once somebody has read what it contains, and the message
+ * has to say why the change exists.
  *
  * @module dsh-engineering-context/tools/sync
  */
@@ -34,14 +38,16 @@ const PARAMETERS = {
     type: 'boolean',
     description:
       'Default true: read the PLC checksum (a few seconds) and report whether a sync is needed, writing nothing. Pass false to run the ' +
-      'scan, update the source tree and commit it. Only the controller writes files; this tool never modifies the TIA project.',
+      'scan and update the source tree. A real run never commits: it reports the dirty paths and a suggested commit message for ' +
+      '`project_commit`. Only the controller writes files; this tool never modifies the TIA project.',
   },
   refresh_knowledge: {
     type: 'boolean',
     description:
       'Default false. After a successful sync, refresh the derived knowledge graph: incremental for a small block-only change set, a full ' +
       'rebuild when a type/tag table changed, more than 20 files changed, or the graph build has no incremental support. A graph failure ' +
-      'is a warning and never fails or rolls back the sync.',
+      'is a warning and never fails or rolls back the sync. This is the slow part of a sync on a large project — delegate the whole ' +
+      'sync to the auditor instead of running it in the main conversation.',
   },
 } as const
 
@@ -54,9 +60,10 @@ export function syncTool(dependencies: ToolDependencies): ToolDefinition {
     name: PROJECT_SYNC_TOOL,
     description:
       'Synchronize the workspace source tree with the project TIA has open. It compares the PLC checksum and, when it differs, scans the ' +
-      'whole PLC (blocks, PLC types, tag tables), exports only the changed objects, updates the evidence ledger and the manifest, and commits ' +
-      'the device directory. Defaults to a plan: pass dry_run=false to write. Requires an open project and a compiled PLC (a missing checksum ' +
-      'means "compile first"). One workspace syncs one PLC; it never opens TIA, never creates a git repository and never modifies the project.',
+      'whole PLC (blocks, PLC types, tag tables), exports only the changed objects and updates the evidence ledger and the manifest. ' +
+      'It does NOT commit: the result carries `pending.paths` and `pending.suggestedMessage` for `project_commit`. Defaults to a plan: ' +
+      'pass dry_run=false to write. Requires an open project and a compiled PLC (a missing checksum means "compile first"). One workspace ' +
+      'syncs one PLC; it never opens TIA, never creates a git repository and never modifies the project.',
     parameters: PARAMETERS,
     async execute(args, exec) {
       let scope: ResolvedScope | null = null
@@ -140,7 +147,7 @@ export function syncTool(dependencies: ToolDependencies): ToolDefinition {
             PROJECT_SYNC_TOOL,
             scope.view,
             wouldSync
-              ? `Dry run: a sync is needed (${reason}). Pass dry_run=false to run it.`
+              ? `Dry run: a sync is needed (${reason}). Pass dry_run=false to run it; it writes the source tree but leaves the commit to project_commit.`
               : 'Dry run: the source tree already matches the compiled PLC; nothing to do.',
             {
               device,
@@ -200,9 +207,10 @@ export function syncTool(dependencies: ToolDependencies): ToolDefinition {
             : `Scan: ${result.counts.changed} changed, ${result.counts.added} added, ${result.counts.removed} removed, ${result.counts.unexportable} unexportable.`,
           `Files: ${result.copied} copied, ${result.removedFiles} removed.`,
           result.manifestRebuilt ? 'Manifest: rebuilt from this scan.' : 'Manifest: updated.',
-          result.commit.committed
-            ? `Commit: ${result.commit.hash ?? 'unknown'}.`
-            : 'Commit: nothing to commit (the working tree already matched).',
+          result.pending.paths.length === 0
+            ? 'Commit: nothing to commit (the working tree already matched).'
+            : `Commit: NOT performed. ${result.pending.paths.length} path(s) left dirty for project_commit: ` +
+              `${result.pending.paths.slice(0, 10).join(', ')}${result.pending.paths.length > 10 ? ', …' : ''}.`,
           ...(knowledge === null ? [] : knowledge.details),
         ]
         return okOutcome(
@@ -210,8 +218,10 @@ export function syncTool(dependencies: ToolDependencies): ToolDefinition {
           scope.view,
           result.unchanged
             ? 'Already in sync: the PLC checksum matches the evidence ledger.'
-            : `Synchronized ${device.device}: ${result.counts.changed} changed, ${result.counts.added} added, ${result.counts.removed} removed` +
-                `${result.commit.committed ? `, committed ${result.commit.hash ?? ''}` : ''}.`,
+            : `Synchronized ${device.device}: ${result.counts.changed} changed, ${result.counts.added} added, ${result.counts.removed} removed.` +
+                (result.pending.paths.length === 0
+                  ? ''
+                  : ` Not committed: ${result.pending.paths.length} path(s) await project_commit.`),
           {
             device: result.device,
             unchanged: result.unchanged,
@@ -219,7 +229,7 @@ export function syncTool(dependencies: ToolDependencies): ToolDefinition {
             counts: result.counts,
             copied: result.copied,
             removedFiles: result.removedFiles,
-            commit: result.commit,
+            pending: result.pending,
             stateId: result.stateId,
             checksum: result.checksum,
             knowledge,

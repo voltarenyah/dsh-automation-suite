@@ -248,7 +248,7 @@ export function statusTool(dependencies: ToolDependencies): ToolDefinition {
       'evidence ledger and manifest are present, what git sees for the device directory, and whether a lock is held. ' +
       'Pass verify=true to also read the PLC checksum from TIA (a few seconds) and learn whether TIA still matches the ledger; ' +
       'without it the checksum is reported as NOT CHECKED, never as clean. The result names the next action (open_project, compile, sync, ' +
-      'commit, clean) — this tool never performs it.',
+      'commit, clean) — this tool never performs it: `sync` belongs to project_sync, `commit` to project_commit.',
     parameters: PARAMETERS,
     async execute(args, exec) {
       let scope: ResolvedScope | null = null

@@ -22,6 +22,7 @@ import {
   findTool,
   loadConfigModule,
   loadDiffEntryModule,
+  loadStatusEntryModule,
   loadToolsModule,
   makeFile,
   packageRoot,
@@ -31,9 +32,11 @@ import {
 const { resolveConfig } = await loadConfigModule()
 const { toolDefinitions } = await loadToolsModule()
 const diffEntry = await loadDiffEntryModule()
+const statusEntry = await loadStatusEntryModule()
 const execFileAsync = promisify(execFile)
 
 const DIFF = 'project_diff'
+const STATUS = 'project_status'
 const DEVICE = 'PLC1'
 const BLOCK_PATH = 'blocks/010/FC1.xml'
 
@@ -621,8 +624,13 @@ test('the diff entry registers exactly one tool; the main entry never registers 
   const { ctx, definitions } = createTestContext()
   diffEntry.apply(ctx, {})
   assert.deepEqual(definitions.map((definition) => definition.name), [DIFF])
-  assert.equal(definitions[0].description.includes('NOT available to the Auditor'), true)
+  assert.equal(definitions[0].description.includes('WORKTREE'), true)
   assert.equal(definitions[0].description.includes('Read-only'), true)
+  assert.equal(
+    definitions[0].description.includes('NOT available to the Auditor'),
+    false,
+    'the Auditor owns the diff now (docs/decisions.md D30)',
+  )
 
   const { ctx: mainCtx } = createTestContext()
   const main = toolDefinitions({ ctx: mainCtx, config: resolveConfig(), log: mainCtx.logger })
@@ -630,18 +638,26 @@ test('the diff entry registers exactly one tool; the main entry never registers 
     'create_engineering_project',
     'project_status',
     'project_sync',
+    'project_commit',
   ])
   assert.equal(main.some((definition) => definition.name === DIFF), false)
 
+  // The status entry is the Leader's whole engineering-context surface: state
+  // only, none of the version workflow (D30).
+  const { ctx: statusCtx, definitions: statusDefinitions } = createTestContext()
+  statusEntry.apply(statusCtx, {})
+  assert.deepEqual(statusDefinitions.map((definition) => definition.name), [STATUS])
+
   const pkg = JSON.parse(await readFile(join(packageRoot, 'package.json'), 'utf8'))
   assert.deepEqual(pkg.exports['./diff'], { default: './lib/diff-entry.js' })
+  assert.deepEqual(pkg.exports['./status'], { default: './lib/status-entry.js' })
   assert.equal(typeof pkg.dependencies['fast-xml-parser'], 'string')
 })
 
-test("the presets mount project_diff for Leader and Expert, never for the Auditor", async () => {
+test('the presets mount project_diff for the Auditor and Expert, never for the Leader', async () => {
   // The preset lab in this repository is authored outside this package, so this
-  // is a read-only guard: Leader/Expert may mount the diff entry, the Auditor
-  // must not gain it by accident.
+  // is a read-only guard: the Leader hands the version workflow to the Auditor,
+  // so it must not keep the diff, create, sync or commit row (docs/decisions.md D30).
   const profilePath = join(packageRoot, '..', '..', 'profile', 'dsh-automation-suite', 'cordis.patch.yml')
   let yaml
   try {
@@ -656,24 +672,16 @@ test("the presets mount project_diff for Leader and Expert, never for the Audito
   assert.ok(auditorStart > leaderStart, 'the leader block precedes the auditor block')
   assert.ok(expertStart > auditorStart, 'the auditor block precedes the expert block')
 
-  const diffRow = "@voltarenyah/dsh-engineering-context/diff"
+  const diffRow = '@voltarenyah/dsh-engineering-context/diff'
+  const mainRow = /name:\s*'@voltarenyah\/dsh-engineering-context'/u
   const leaderBlock = yaml.slice(leaderStart, auditorStart)
-  assert.match(leaderBlock, /- id: leader-project-diff/u)
-  assert.equal(leaderBlock.includes(diffRow), true, 'the Leader preset must mount the diff entry')
+  assert.equal(leaderBlock.includes(diffRow), false, 'the Leader must not mount the diff entry')
+  assert.match(leaderBlock, /- id: leader-engineering-status/u)
+  assert.equal(mainRow.test(leaderBlock), false, 'the Leader must not mount the version workflow')
 
   const auditorBlock = yaml.slice(auditorStart, expertStart)
-  assert.equal(
-    /name:\s*'@voltarenyah\/dsh-engineering-context\/diff'/u.test(auditorBlock),
-    false,
-    'the Auditor preset must not mount the diff entry',
-  )
-  assert.equal(
-    /name:\s*'@voltarenyah\/dsh-engineering-context'/u.test(
-      auditorBlock.split('- id: auditor-tia-tools')[0] ?? auditorBlock,
-    ),
-    true,
-    'the Auditor keeps its create/status/sync row',
-  )
+  assert.equal(auditorBlock.includes(diffRow), true, 'the Auditor must mount the diff entry')
+  assert.equal(mainRow.test(auditorBlock), true, 'the Auditor keeps the create/status/sync/commit row')
 
   const expertBlock = yaml.slice(expertStart)
   assert.match(expertBlock, /- id: expert-project-diff/u)

@@ -588,9 +588,15 @@ test('status(verify) warms the cache, so the following plan reads the PLC checks
 // project_sync: the real run
 // ---------------------------------------------------------------------------
 
-test('a real sync copies only the promoted XML, writes both documents and commits with trailers', async (t) => {
+test('a real sync copies only the promoted XML, writes both documents and leaves the commit pending', async (t) => {
   const root = await gitWorkspace(t)
   const device = deviceDirectory(root)
+  await writeEvidence(device, { plcChecksum: 'AA' })
+  await makeFile(join(device, 'blocks', '010', 'FB1.xml'), '<xml>old</xml>')
+  await git(root, ['add', '--', 'source/PLC1'])
+  await git(root, ['commit', '-q', '-m', 'import'])
+  const head = (await git(root, ['rev-parse', 'HEAD'])).stdout.trim()
+
   const { service, calls } = fakeAccess({
     scan: async (query) => {
       await makeFile(join(query.stageDir, 'blocks', '010', 'FB1.xml'), '<xml>FB1</xml>')
@@ -618,24 +624,30 @@ test('a real sync copies only the promoted XML, writes both documents and commit
   assert.equal(outcome.data.manifestRebuilt, true)
   assert.equal(outcome.data.counts.changed, 1)
   assert.equal(outcome.data.copied, 1)
-  assert.equal(outcome.data.commit.committed, true)
   assert.equal(await readFile(join(device, 'blocks', '010', 'FB1.xml'), 'utf8'), '<xml>FB1</xml>')
   assert.equal(
     JSON.parse(await readFile(join(device, '_evidence.json'), 'utf8')).plcChecksum,
     'BB',
-    'the ledger is committed beside the XML',
+    'the ledger is written beside the XML',
   )
   assert.match(await readFile(join(device, '_manifest.json'), 'utf8'), /FB1\.xml/u)
 
-  const message = (await git(root, ['log', '-1', '--format=%B'])).stdout
-  assert.match(message, /^sync: PLC1 — 1 changed, 0 added, 0 removed, manifest rebuilt$/mu)
-  assert.match(message, /^Tia-Op: sync$/mu)
-  assert.match(message, /^Tia-Checksum: BB$/mu)
-  assert.match(message, /^Tia-State: state-2$/mu)
-  assert.match(message, /^Tia-Manifest: rebuilt$/mu)
+  // The sync writes the tree and stops. It reports what is left for the commit,
+  // and the suggested message carries the facts the commit will record.
+  assert.equal((await git(root, ['rev-parse', 'HEAD'])).stdout.trim(), head, 'a sync must not create a commit')
+  assert.equal(outcome.data.pending.paths.length, 3, 'the XML and both ledger documents are left dirty')
+  assert.ok(
+    outcome.data.pending.paths.includes('source/PLC1/blocks/010/FB1.xml'),
+    'the promoted block is listed for the commit',
+  )
+  assert.match(outcome.data.pending.suggestedMessage, /^sync: PLC1 — 1 changed, 0 added, 0 removed, manifest rebuilt$/mu)
+  assert.match(outcome.data.pending.suggestedMessage, /^Tia-Op: sync$/mu)
+  assert.match(outcome.data.pending.suggestedMessage, /^Tia-Checksum: BB$/mu)
+  assert.match(outcome.data.pending.suggestedMessage, /^Tia-State: state-2$/mu)
+  assert.match(outcome.data.pending.suggestedMessage, /^Tia-Manifest: rebuilt$/mu)
 
-  const status = (await git(root, ['status', '--porcelain', '--', 'source/PLC1'])).stdout.trim()
-  assert.equal(status, '', 'the commit must cover exactly the device directory')
+  const dirty = (await git(root, ['status', '--porcelain', '--', 'source/PLC1'])).stdout.trim()
+  assert.match(dirty, /M source\/PLC1\/blocks\/010\/FB1\.xml/u, 'the change is left dirty for project_commit')
   assert.equal((await readdir(join(root, '.dsh', 'local', 'stage'))).length, 0, 'STAGE is scratch space and must be cleaned')
   assert.equal(await exists(join(root, '.dsh', 'local', 'lock.json')), false, 'the lock is released')
   assert.deepEqual(operations(calls), ['readTiaSession', 'syncScan'])
@@ -644,7 +656,7 @@ test('a real sync copies only the promoted XML, writes both documents and commit
   assert.equal(calls[1].query.manifestPath, join(device, '_manifest.json'))
 })
 
-test('an unchanged scan is a no-op: no copy, no commit, STAGE removed', async (t) => {
+test('an unchanged scan is a no-op: no copy, nothing pending, STAGE removed', async (t) => {
   const root = await gitWorkspace(t)
   const device = deviceDirectory(root)
   await writeEvidence(device, { plcChecksum: 'AA' })
@@ -663,7 +675,7 @@ test('an unchanged scan is a no-op: no copy, no commit, STAGE removed', async (t
   assert.equal(outcome.data.unchanged, true)
   assert.equal(outcome.data.copied, 0)
   assert.equal(outcome.data.removedFiles, 0)
-  assert.equal(outcome.data.commit.committed, false)
+  assert.deepEqual(outcome.data.pending, { paths: [], suggestedMessage: '' }, 'nothing may be left for the commit')
   assert.equal((await git(root, ['rev-parse', 'HEAD'])).stdout.trim(), head, 'an unchanged scan must not create a commit')
   assert.equal(await readFile(join(device, 'blocks', '010', 'FB1.xml'), 'utf8'), '<xml>old</xml>')
   assert.deepEqual(operations(calls), ['readTiaSession', 'syncScan'])
