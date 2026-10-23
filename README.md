@@ -1,3 +1,5 @@
+[English](README.en.md) | **简体中文**
+
 # dsh-automation-suite
 
 > **DeepSeek Harness 的自动化发行版**：一份 profile 蓝图 + 两个插件，让 `dsh` 里的模型
