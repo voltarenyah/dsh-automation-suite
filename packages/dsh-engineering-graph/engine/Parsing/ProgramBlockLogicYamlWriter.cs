@@ -2303,7 +2303,13 @@ public static class ProgramBlockLogicYamlWriter
             Statements = statements;
             Notes = notes;
             CommentedSource = commentedSource;
-            Key = string.IsNullOrWhiteSpace(key) ? $"{compileUnitId}#{networkIndex}" : key!;
+            // The importer joins on `{CompileUnitId}#{SegmentIndex}`, and a
+            // LAD/FBD network is a single segment — index 1 — not the block's
+            // network ordinal. Using `networkIndex` here silently detached every
+            // LAD network from its translated logic between D27 and this fix
+            // (a 2026-10-23 session's expert then correctly reported "LAD
+            // networks have no logic text", which was true of that database).
+            Key = string.IsNullOrWhiteSpace(key) ? $"{compileUnitId}#1" : key!;
         }
 
         public int NetworkIndex { get; }

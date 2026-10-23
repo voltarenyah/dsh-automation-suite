@@ -869,3 +869,42 @@ region 上下文、以及 `test/13-scl-segmentation.test.mjs`：用真实引擎�
 | 8 | 工程知识图谱插件取指纹的路径：消费工程上下文插件的变更集（默认）还是自己经接口插件族 `engineeringAccess` 服务 | D13（A10） |
 | 9 | ~~DSH 按 agent 隐藏工具的确切机制（子 agent preset 如何排除操作层工具）~~ → **✅ 已查实并落地**：工具可见性 = 全局层 + 祖先层逐层过 `admits`；方案 A 拆 `/tools` 行 + 两个 preset，见 **D23** | D16（B16） |
 | 10 | ~~工程知识图谱插件把 12 个文件拍平到单一命名空间后是否撞名~~ → **✅ 已验证无撞名**（`dotnet build` 0 error / 0 warning，37 个顶层类型无重名） | D17 |
+
+---
+
+## D28 · LAD 逻辑与网络"脱钩"的回归：修 `#segmentIndex` 键 + 给引擎自检加一条守卫 ✅
+
+**背景**：2026-10-23 的会话（`session-b788de08…`，工程 `SWT2_PEI_FJib_Wait`）里，expert 报告
+"LAD 网络在图谱中只有读写集、无逻辑文本，故网络逻辑按你的指示读导出 XML 对应片段"。用户指出这与设计
+不符——LAD 逻辑本应转写成类 SCL 文本存在 `logicStatements` 里。
+
+**核实**：用当时的 `engine/bin` 对**同一份** XML 重新 ingest：
+`knowledge_networks` 里 **60 个 LAD 网络全部 `logic_statements` 为空**，14 个 SCL 里 10 个有文本。
+而 2026-10-20 用旧引擎对同一份 XML ingest 时 LAD 是有的。⇒ **不是模型误读，是引擎回归**。
+
+**根因**（D27 引入）：D27 把"网络 ↔ 译文"的连接键从 `compileUnitId` 改成
+`{compileUnitId}#{segmentIndex}`，两侧各自生成：
+
+- `ProgramSemanticReference.ProgramNetworkRecord.LogicKey` = `{CompileUnitId}#{SegmentIndex}`，LAD 的
+  `SegmentIndex` **恒为 1**；
+- 翻译侧 `LogicNetwork.Key` 在没有显式 key 时回落到 `{compileUnitId}#{networkIndex}`，而 `networkIndex`
+  是**块内网络序号**（1..72）。
+
+于是 LAD 网络的键永远对不上（`3C#4` vs `3C#1`），**逻辑一条都不落库**；SCL 段落因为显式传了
+`segment.Key` 所以正常。这个回归**不动任何节点/边计数**，crawl 与"节点数"断言全绿，只有读库的人能发现。
+
+**决定**
+
+1. 翻译侧回落键改为 `{compileUnitId}#1`（LAD/FBD 网络恒为单段），并把"为什么不是 networkIndex"写进注释。
+2. **引擎 `--self-test` 增一条守卫**：ingest 后查
+   `SUM(language='LAD')` 与 `SUM(language='LAD' AND logic_statements 非空)`；有 LAD 网络却一条逻辑都没有
+   就 `[FAIL] LAD logic`。包内 `test/04-engine.test.mjs` 同时断言 `[ok] LAD logic: n/m` 存在且 n>0。
+   —— 这条正对着本次回归的形态：**计数不变、内容为空**。
+3. 已建的库**必须重新 ingest** 才能拿回 LAD 逻辑（本次受影响的正是 `SWT2_PEI_FJib_Wait` 的库）。
+
+**验证**：重建引擎后，同一份 XML ingest 得到 LAD 60 个网络、仅 12 个无逻辑（空/注释网络，与 SCL 的
+4/14 同构），net 4 / net 50 的 `logicStatements` 与转译文本一致；`--self-test engine/fixtures` 输出
+`[ok] LAD logic: 7/9`；包内 **128 项**全绿（04-engine 的新断言计入其中）。
+
+**教训**：引擎自检原先只断言"节点/边不为零"，对"内容为空"完全盲。凡是"两处各自生成同一个键"的地方，
+都需要一条**内容级**断言，而不是计数级。

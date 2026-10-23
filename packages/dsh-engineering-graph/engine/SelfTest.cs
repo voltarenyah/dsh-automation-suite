@@ -187,6 +187,46 @@ internal static class SelfTest
             var rows = queryData?["rows"] as JsonArray;
             Console.WriteLine($"[ok] query: columns={columns.Count} rows={rows?.Count ?? 0}");
 
+            // A LAD network's translated logic must be attached to its row. The
+            // join between the translator and the importer is a segment key, and a
+            // one-character mistake there empties every LAD network without
+            // changing a single node count — the crawl stays green and only an
+            // expert reading the database notices (docs/decisions.md D28).
+            var logicQuery = Program.Execute(
+                "self-test",
+                OperationCatalog.Query,
+                new JsonObject
+                {
+                    ["dbPath"] = dbPath,
+                    ["sql"] =
+                        "SELECT " +
+                        "SUM(CASE WHEN language = 'LAD' THEN 1 ELSE 0 END) AS lad, " +
+                        "SUM(CASE WHEN language = 'LAD' AND logic_statements IS NOT NULL AND length(logic_statements) > 0 " +
+                        "THEN 1 ELSE 0 END) AS lad_with_logic FROM knowledge_networks;",
+                },
+                NullProgressSink.Instance);
+
+            var logicError = DescribeError(logicQuery);
+            if (logicError is not null)
+            {
+                Console.WriteLine($"[FAIL] LAD logic: {logicError}");
+                return 1;
+            }
+
+            var logicRow = (logicQuery["data"] as JsonObject)?["rows"] as JsonArray;
+            var firstRow = logicRow is { Count: > 0 } ? logicRow[0] as JsonArray : null;
+            var lad = firstRow?[0]?.GetValue<int>() ?? 0;
+            var ladWithLogic = firstRow?[1]?.GetValue<int>() ?? 0;
+            if (lad > 0 && ladWithLogic == 0)
+            {
+                Console.WriteLine(
+                    $"[FAIL] LAD logic: {lad} LAD network(s) but none carries translated logic — " +
+                    "the translator/importer segment key is not joining");
+                return 1;
+            }
+
+            Console.WriteLine($"[ok] LAD logic: {ladWithLogic}/{lad} LAD network(s) carry translated logic");
+
             // The read-only guard must refuse a write even though the caller is the
             // engine itself: it is the backstop, not a convenience.
             var write = Program.Execute(

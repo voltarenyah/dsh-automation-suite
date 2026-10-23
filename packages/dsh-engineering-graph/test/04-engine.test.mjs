@@ -79,6 +79,14 @@ test('the engine self test passes: native SQLite loads and real exports parse', 
   assert.ok(Number(query[1]) > 0, 'the query returned no columns')
   assert.ok(Number(query[2]) > 0, 'the query returned no rows')
 
+  // 4. LAD networks must carry their translated logic. The engine asserts this
+  //    itself because a broken translator/importer segment key empties every LAD
+  //    network without moving a single node count: the crawl stays green and only
+  //    a model reading the database notices (docs/decisions.md D28).
+  const ladLogic = /\[ok\] LAD logic: (\d+)\/(\d+) LAD network/.exec(output)
+  assert.ok(ladLogic, `no LAD-logic summary in the output:\n${output}`)
+  assert.ok(Number(ladLogic[1]) > 0, `no LAD network carries translated logic:\n${output}`)
+
   assert.match(output, /\[ok\] read-only guard: DROP rejected with QUERY_REJECTED/, output)
 
   // 4. The incremental update path (B4) against a real manifest-driven device tree:
