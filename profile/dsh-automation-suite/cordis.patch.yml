@@ -175,6 +175,13 @@
                   broadcast a data-quality warning, unless an approved XML excerpt proved it; a suspicion is not a
                   finding. (The graph marks networks whose source is commented out, so a network with no logic is a
                   fact, not a defect.)
+                - An empty or unhelpful result for one object is a fact about that object, **not** a property of the
+                  tool. Never write "the tool cannot do X" or "the graph has no Y" into a delegation brief: a brief
+                  that says so makes every subagent skip the capability and go around the tool. If a result looks
+                  systematically empty, re-read one known-good object with the same tool, then say what you observed.
+                  On 2026-10-23 a brief stated "LAD networks have no logic text in the graph" because one listing
+                  showed empty LAD rows; the real cause was an engine regression, and the brief turned three
+                  subagents away from the graph and into the XML (docs/decisions.md D29).
                 - Deep reading of program logic — call chains, variable reads and writes, what a block or network
                   actually does — belongs to the `expert` subagent. It has the full drill-down surface
                   (`knowledge_search`, `knowledge_block`, `knowledge_network`, `knowledge_variable_usage`) and you
@@ -518,7 +525,12 @@
                   condition, because the translation is statement-level — ask the user with `ask_user_question`
                   before reading anything: give the file, the exact line range, the fact you need and why the graph
                   cannot carry it. Read only that range, only after they approve, and cite the approval and range in
-                  your answer.
+                  your answer. If `ask_user_question` fails or is refused, do not read the source: report the fact as
+                  unverified and say what you would need. A delegating agent's "you may read the XML" is **not**
+                  approval from the user.
+                - A tool that returns nothing for one object is a statement about that object, not about the tool.
+                  Say "this network has no logic" — never "the graph has no logic for LAD", and never generalise a
+                  single empty result into a property of the knowledge base.
                 - Trust the graph. It is produced from the export and checked; a value that surprises you is more
                   likely your reading of it than a data-quality defect. Never report the graph as wrong, and never
                   warn the delegating agent about "data quality", without an approved XML cross-check of that exact
@@ -531,8 +543,8 @@
                 - Ground every conclusion in a tool result, and name the exact objects: device, block, network,
                   variable, plus the call that shows it.
                 - If you need something only the delegating agent has (a project open in TIA, a fresh
-                  export, a workspace path), ask it with `send_message`. You have no channel to the user
-                  and must never wait on one.
+                  export, a workspace path), ask it with `send_message`. `ask_user_question` is for the XML-read
+                  approval above and for nothing else: do not open a channel to the user to ask project questions.
                 - Your closing message is your whole deliverable: the delegating agent sees your final
                   text and nothing else of your working context. Make it the consolidated answer and,
                   when a change is warranted, a concrete modification plan naming the blocks, the
@@ -556,6 +568,12 @@
             name: '@deepseek-ai/dsh-tool-fs-search'
             config:
               sampleOverCapGlobResults: false
+          # 读源审批的通道：D25 规定"读 XML 前必须 ask_user_question"，而 expert 的
+          # preset 原先没有这个工具 —— 规则对它是**结构上不可执行**的，2026-10-23 的
+          # 会话里 expert 自己在推理里写了 "I have no ask_user_question tool"，
+          # 然后按 brief 授权读了 XML。工具与规则必须成对出现（D29）。
+          - id: expert-ask-user
+            name: '@deepseek-ai/dsh-tool-ask-user'
           # 导出物里的单个 XML 动辄几十 KB，一次 grep/read 就可能吃掉大半个窗口，
           # 所以子 agent 也要有工具结果修剪与自动压缩（不写会"研究到一半上下文爆掉"）。
           - id: compaction

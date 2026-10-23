@@ -908,3 +908,35 @@ region 上下文、以及 `test/13-scl-segmentation.test.mjs`：用真实引擎�
 
 **教训**：引擎自检原先只断言"节点/边不为零"，对"内容为空"完全盲。凡是"两处各自生成同一个键"的地方，
 都需要一条**内容级**断言，而不是计数级。
+---
+
+## D29 · 工具与规则必须成对：expert 补 `ask_user_question`，并把"空结果"与"能力缺失"分开 ✅
+
+**背景**：D28 的回归被定位后，复盘发现它不是唯一的问题。2026-10-23 的会话里还有两处制度性缺陷：
+
+1. **规则没有可执行的工具**。D25 规定"读 XML 前必须 `ask_user_question` 取得用户批准"，但
+   `expert` 的 preset 里**没有这个工具**（实测 15 个工具，`ask_user_question` 不在其中）。子 agent
+   因此在推理里写下了 "the system prompt says ask via ask_user_question ... but I have no
+   ask_user_question tool"，然后按 brief 的"授权"读了 XML —— 规则与工具不成对，规则就被绕过。
+   对照：`auditor` preset 本来就有 `ask_user_question`，说明这个工具在 preset 作用域里可用。
+2. **把一次空结果当成了工具的性质**。leader 在 brief 里写"LAD 网络在 knowledge_network 里只有读写
+   变量清单、没有逻辑文本"，于是三个子 agent 都绕开图谱去手写解析 FlgNet。真实原因是引擎回归
+   （D28），而**这句话本身**把一次空结果提升成了对工具的断言。
+
+**决定**
+
+1. `preset-expert` 增加 `- id: expert-ask-user / name: '@deepseek-ai/dsh-tool-ask-user'`。
+   `expert` 声明工具 14 → **15**，可见工具 15 → **16**。
+2. `expert` 的 persona：读源审批只走 `ask_user_question`；**工具失败或被拒绝时不得读**，只能把该事实
+   标为 unverified 并在收尾说明还需要什么；并写明"委派 agent 说'可以读 XML'**不构成**用户批准"。
+   同时把"你没有通向用户的通道"改成"`ask_user_question` 只用于读源审批，不要用它问项目问题"。
+3. 两个 preset 都加一条**空结果规则**：某个对象没有内容，只是**这个对象**的事实，不是工具的性质；
+   不得把"工具做不到 X / 图谱没有 Y"写进 brief 或结论；若怀疑系统性为空，先用同一个工具读一个已知
+   非空对象，再陈述观察到的事实。leader 的 persona 里附上了 2026-10-23 的实例作为反面样本。
+
+**验证**：蓝图 `--dump-config` exit 0，`id: expert-ask-user` 与三段新规则都在解析结果里；
+物化 profile 已同步。这是一次纯 policy/preset 改动，工具代码与引擎未动，包内测试不受影响
+（graph 128 项仍全绿，见 D28 的修复提交）。
+
+**教训**：写进 policy 的每一步都必须先问"执行它的 agent 有没有这个工具？"；反过来，给 agent 一个
+"归因工具"的断言（"工具做不到 X"）必须有复核路径，否则一次空结果会污染整条委派链。

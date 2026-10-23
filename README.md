@@ -202,10 +202,10 @@ PLC 对象增删改、监视表与软件单元、F 相关服务、编译与关�
 `project_status` / `project_sync`）、只读文件 4（`read` / `read_image` / `glob` / `grep`）、
 `ask_user`、`todo`。它**没有** `pwsh`、TIA 原子工具、git、`knowledge_*`、`project_diff`、subagent。
 
-子 agent（`expert`）自己的 preset 只声明 **14 个**（图谱 7：`knowledge_workspace` / `knowledge_schema` /
+子 agent（`expert`）自己的 preset 只声明 **15 个**（图谱 7：`knowledge_workspace` / `knowledge_schema` /
 `knowledge_query` + 四个下钻工具；`project_diff`；只读文件 2：`read` / `read_image`；检索 2：`glob` / `grep`；
-通信 2：`send_message` / `interrupt_agent`），
-加上**宿主面仍是全局行的 1 个**（`working_directory`）= **15 个**。
+通信 2：`send_message` / `interrupt_agent`；再加审批 1：`ask_user_question`（读源码前必须用它拿用户批准，D29）），
+加上**宿主面仍是全局行的 1 个**（`working_directory`）= **16 个**。
 git 的 12 个模型工具已从宿主行拆到 `dsh-tool-git/tools`，只挂 `leader`，所以 `expert` 与 `auditor`
 都看不到它们。
 

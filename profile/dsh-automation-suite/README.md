@@ -62,7 +62,7 @@
 |---|---|---|
 | **`leader`** | 主 agent | 内置 `standard` 的全部工具 + 本发行版五个工程工具行（TIA 26、工程上下文 3、`project_diff`、图谱 7 `includeDrilldown: inspect`、git 12） |
 | **`auditor`** | 版本管理会话 | `create_engineering_project` / `project_status` / `project_sync`、只读 `read`/`read_image`/`glob`/`grep`、`ask_user`、`todo`、`time-context`、`compaction` |
-| **`expert`** | 子 agent（`subagent` 工具默认挂它） | **只读**：图谱 `knowledge_workspace` / `knowledge_schema` / `knowledge_query` + 四个下钻工具（`includeIngest: false, includeDrilldown: all`）、`project_diff`、`read`/`read_image`/`glob`/`grep`、`send_message`/`interrupt_agent`、`time-context`、`compaction` |
+| **`expert`** | 子 agent（`subagent` 工具默认挂它） | **只读**：图谱 `knowledge_workspace` / `knowledge_schema` / `knowledge_query` + 四个下钻工具（`includeIngest: false, includeDrilldown: all`）、`project_diff`、`read`/`read_image`/`glob`/`grep`、`send_message`/`interrupt_agent`、`ask_user_question`（读源码审批，D29）、`time-context`、`compaction` |
 
 `auditor` **没有**：`pwsh`/`bash`、TIA 26 个原子工具、git、`knowledge_*`、`project_diff`、
 `subagent`。它的职责是导入基线、判断漂移、同步 SOURCE、提交、报图谱新鲜度；**不解释块内逻辑为什么改**
