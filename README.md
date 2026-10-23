@@ -407,22 +407,28 @@ cmd /c rmdir "$env:USERPROFILE\.dsh\profiles\dsh-automation-suite"
 
 ### 6.3 装发布物（Monorepo 之外）
 
-`workspace:^` 在仓库外无法解析，所以要把依赖换成 tarball 的 `file:` 路径：
-拷 `package.json` / `cordis.patch.yml` / `pnpm-workspace.yaml` 三个文件到目标 profile 目录，
-把每个 `workspace:^` 改写为对应 tarball（`pnpm pack` 产出，注意
-`@scope/name` 的文件名是 `scope-name-<version>.tgz`，**剥掉了 `@`**），然后：
+从 [Releases](https://github.com/voltarenyah/dsh-automation-suite/releases) 下载
+`dsh-automation-suite-<version>.zip`，解压后一条命令装完整份发行版：
 
 ```powershell
-dsh plugin --profile dsh-automation-suite install
-dsh --profile dsh-automation-suite --dump-config
+pwsh -NoProfile -File install.ps1
 ```
 
-发布到 npm 之后这一步更简单：`pnpm pack` / `pnpm publish` 会把 `workspace:^`
-重写成发布时的具体版本（实测打包内变成 `"^0.1.0"`），消费者照上面两步即可。
+它把 profile 的三件套（`package.json` / `cordis.patch.yml` / `pnpm-workspace.yaml`）复制到
+`<DSH_HOME>/profiles/dsh-automation-suite/`，再用 DSH 自带的 pnpm 安装六个插件的 tarball
+（Release 资产，profile 里是**直接 URL 依赖**，不需要 npm 账号）。`-DshHome` / `-Profile` /
+`-Force` 见脚本头部。装完用 `dsh --profile dsh-automation-suite` 启动。
 
-> ⚠️ `dsh plugin add` **装不了这个 profile**：插件管理器只接受带 `dsh.bundle.patch` 的 **bundle**，
-> 而蓝图声明的是 `dsh.profile.bundles`，用途不同，会被拒为 `not-a-bundle`。
-> 两个插件本身则是标准 bundle，可以单独 `dsh plugin --profile web add dsh-tool-git`。
+维护者生成发布目录（tarball + profile + `install.ps1` + sha256 清单）：
+
+```powershell
+node scripts/build-distribution.mjs
+```
+
+为什么不能直接 `dsh plugin add` 装整份发行版：命令只接受带 `dsh.bundle.patch` 的 **bundle**，
+而蓝图声明的是 `dsh.profile.bundles`，会被拒为 `not-a-bundle`。方案对比、`ERR_PNPM_*` 两个坑、
+发布与本地验收步骤见 [`docs/distribution.md`](docs/distribution.md)。六个插件本身是标准 bundle，
+仍可单独 `dsh plugin --profile web add <包名或 tarball>`。
 
 ### 6.4 首次进入必须自己配模型
 
@@ -911,6 +917,7 @@ TIA 排障第一步永远是让模型调：
 | [`packages/dsh-ui-plc-source/README.md`](packages/dsh-ui-plc-source/README.md) | 右侧栏 **PLC Blocks** 标签页的用法、构建（tsc + esbuild）与安装位置 |
 | [`packages/dsh-engineering-context/README.md`](packages/dsh-engineering-context/README.md) | 工程上下文插件的用法、配置与开发命令（**S2 已实现**：创建 + 状态 + 同步） |
 | [`packages/dsh-engineering-context/docs/`](packages/dsh-engineering-context/docs/) | 该插件的设计与取舍：`ARCHITECTURE.md`（核心架构、作用域模型、版本管理、工具面）、`PATH-RULES.md`（workspace 内路径规则与账本/清单）、`decisions.md`（编号决策 D1–D26） |
+| [`docs/distribution.md`](docs/distribution.md) | **公开发行与安装**：DSH 的安装面实测（`dsh plugin` 的 spec 形式、bundle 对账、patch 语义、pnpm 11 的两个错误）、三种打包方案对比、Release 发布步骤与验收记录 |
 | [`profile/dsh-automation-suite/README.md`](profile/dsh-automation-suite/README.md) | 蓝图的组成、三种部署方式、验收方式 |
 | [`packages/dsh-tia-openness-v17-min/README.md`](packages/dsh-tia-openness-v17-min/README.md) | TIA 插件的完整说明（验证状态、协议、工具、错误码、V17 API 要点） |
 | [`packages/dsh-tia-openness-v17-min/docs/`](packages/dsh-tia-openness-v17-min/docs/) | `PROTOCOL.md`（线路协议权威描述）、`decisions.md`（技术取舍）、`REAL-RUN.md`（真实项目实测）、`FUNCTIONAL-TEST.md`、`verification.md`（验证清单）、`ECOSYSTEM-COMPAT.md`（生态兼容与事故记录） |

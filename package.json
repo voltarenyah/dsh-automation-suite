@@ -7,6 +7,7 @@
     "build": "pnpm -r build",
     "typecheck": "pnpm -r typecheck",
     "test": "pnpm -r test",
+    "build:distribution": "node scripts/build-distribution.mjs",
     "clean:build": "node scripts/clean-build.mjs"
   },
   "devDependencies": {
