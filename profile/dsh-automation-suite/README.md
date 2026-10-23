@@ -12,10 +12,10 @@
 | `@deepseek-ai/dsh-base` | DSH 基础层（会话、工具注册表、LLM……） |
 | `@deepseek-ai/dsh-web-app` | Web 应用层 —— 没有它这个 profile 启动后没有 app 可跑 |
 | `@voltarenyah/dsh-tia-openness-v17-min` | 接口插件族：TIA 控制器子进程 + `engineeringAccess` 服务（**模型面工具已拆到 `/tools` 子路径行**，见下节） |
-| `@voltarenyah/dsh-engineering-context` | 工程上下文插件：`create_engineering_project`。**没有宿主面资源**，所以宿主面这一行被 `disabled: true`，整行搬进 `leader` preset |
+| `@voltarenyah/dsh-engineering-context` | 工程上下文插件：`create_engineering_project` / `project_status` / `project_sync`。**没有宿主面资源**，所以宿主面这一行被 `disabled: true`，整行搬进 `leader` 与 `auditor` preset |
 | `@voltarenyah/dsh-engineering-graph` | 工程知识图谱插件：C# 引擎子进程 + `knowledgeGraph` 服务（**模型面工具同样拆到 `/tools`**） |
-| `dsh-tool-git` | 结构化 Git 工具族 + 破坏性命令闸门（vendor 自上游 `lxj808624/dsh-tool-git` v0.1.3）。**仍是宿主面全局行**，所以每个 preset 的 agent 都看得到它 |
-| `dsh-ui-plc-source` | **纯 UI 插件**：右侧栏多一个 **PLC Blocks** 标签页（读 `source/<device>/_tia-openness-manifest.json`，按 device 与 simaticType 筛选，点行打开既有文档预览）。宿主半侧是空 `apply()`，**不注册任何模型可见的东西**；必须在 `dsh-web-app` 之后，浏览器半侧才拿得到客户端座位 |
+| `dsh-tool-git` | 结构化 Git 工具族 + `gitContext` 服务 + 破坏性命令闸门（vendor 自上游 `lxj808624/dsh-tool-git` v0.1.3）。**模型面工具已拆到 `dsh-tool-git/tools`，只挂 `leader`**；`expert` / `auditor` 看不到 |
+| `dsh-ui-plc-source` | **纯 UI 插件**：右侧栏多一个 **PLC Blocks** 标签页（读 `source/<device>/_manifest.json`，按 device 与 simaticType 筛选，点行打开既有文档预览）。宿主半侧是空 `apply()`，**不注册任何模型可见的东西**；必须在 `dsh-web-app` 之后，浏览器半侧才拿得到客户端座位 |
 | `dsh-ui-tia-console` | **仅浏览器半侧**：会话输入框上方的 **TIA 控制台**（状态 + 打开/保存/编译/关闭/刷新五个按钮，dispatch 现有 `/tia-*` 指令）。同样不注册任何模型可见的东西 |
 | `dsh-opencode-go` | **公共插件**（npm 上的第三方 bundle，不是本仓代码）：OpenCode Go 模型提供方 + 设置页。见下面的「公共插件」一节 |
 
@@ -54,14 +54,19 @@
 `dsh` 首次启动一个 profile 目录时会额外生成 `cordis.yml`（空的根 include 存根，内容写着
 "Edit cordis.patch.yml, not this file"）与 `.plugin-manager/`。两者都已 gitignore，不要手改。
 
-## 两个 preset：`leader` 与 `expert`
+## 三个 preset：`leader`、`auditor` 与 `expert`
 
-本蓝图声明两个 preset，默认（新会话）是 `leader`：
+本蓝图声明三个 preset，默认（新会话）是 `leader`：
 
 | preset | 谁用 | 工具面 |
 |---|---|---|
-| **`leader`** | 主 agent | 内置 `standard` 的全部工具 + 本发行版三个工程工具行（TIA 26、`create_engineering_project`、图谱 6，`includeDrilldown: inspect`）+ git 12（宿主面） |
-| **`expert`** | 子 agent（`subagent` 工具默认挂它） | **只读**：图谱 `knowledge_workspace` / `knowledge_schema` / `knowledge_query` + 四个下钻工具（`includeIngest: false, includeDrilldown: all`）、`read`/`read_image`/`glob`/`grep`、`send_message`/`interrupt_agent`、`time-context`、`compaction` |
+| **`leader`** | 主 agent | 内置 `standard` 的全部工具 + 本发行版五个工程工具行（TIA 26、工程上下文 3、`project_diff`、图谱 7 `includeDrilldown: inspect`、git 12） |
+| **`auditor`** | 版本管理会话 | `create_engineering_project` / `project_status` / `project_sync`、只读 `read`/`read_image`/`glob`/`grep`、`ask_user`、`todo`、`time-context`、`compaction` |
+| **`expert`** | 子 agent（`subagent` 工具默认挂它） | **只读**：图谱 `knowledge_workspace` / `knowledge_schema` / `knowledge_query` + 四个下钻工具（`includeIngest: false, includeDrilldown: all`）、`project_diff`、`read`/`read_image`/`glob`/`grep`、`send_message`/`interrupt_agent`、`time-context`、`compaction` |
+
+`auditor` **没有**：`pwsh`/`bash`、TIA 26 个原子工具、git、`knowledge_*`、`project_diff`、
+`subagent`。它的职责是导入基线、判断漂移、同步 SOURCE、提交、报图谱新鲜度；**不解释块内逻辑为什么改**
+（那是 Leader/Expert 的职责）。
 
 `expert` **没有**：任何 TIA 操作工具、git、工程上下文工作流、`pwsh`、`jobs`、`schedule`、
 `goal`、`plan`、`web`、`todo`、`ask_user`、`skill`。它也不掌握 `knowledge_ingest`（整库重建是
@@ -73,17 +78,18 @@ DSH 的工具可见性是**按声明作用域**解析的（`dsh-tools` 的 `view
 祖先层，再逐层过 `admits` 过滤）。所以：
 
 - **宿主面（bundle 层）只留资源与服务**：TIA 控制器子进程、`engineeringAccess`、
-  C# 引擎、`knowledgeGraph`。
+  C# 引擎、`knowledgeGraph`、git 的 `gitContext` 服务与安全闸门。
 - **模型面工具行由 preset 声明**：`@voltarenyah/dsh-tia-openness-v17-min/tools`、
-  `@voltarenyah/dsh-engineering-graph/tools`。哪个 preset 写了这一行，它名下的 agent 才有这些工具。
-- **`dsh-engineering-context` 没有宿主面资源**，所以它的行整个搬进 `leader`，宿主面那份
-  `disabled: true`（否则 `create_engineering_project` 会落在全局层被所有 agent 继承）。
+  `@voltarenyah/dsh-engineering-graph/tools`、`dsh-tool-git/tools`。哪个 preset 写了这一行，
+  它名下的 agent 才有这些工具。
+- **`dsh-engineering-context` 没有宿主面资源**，所以它的行整个搬进 `leader` 与 `auditor`，
+  宿主面那份 `disabled: true`（否则三个工具会落在全局层被所有 agent 继承）。
 
 ⇒ 一个会话能用哪些工程工具，取决于它的 preset。切到没有声明这些行的内置 preset
 （`standard` / `minimal` / …）时，**这些工具不存在**——这是有意的，不是故障。
 
-> ⚠️ 欠账：`dsh-tool-git` 的 12 个工具仍是全局行，所以 `expert` 也看得到它们。v1 不拆
-> （vendor 副本每多一处差异就要在同步时维护），见 `docs/decisions.md` **D23**。
+> ✅ `dsh-tool-git` 的 12 个模型工具已从宿主行拆到 `dsh-tool-git/tools`，只挂 `leader`；
+> `auditor` / `expert` 看不到它们。宿主行保留 `gitContext` 服务与破坏性命令闸门。
 
 ### 子 agent 的"只读"靠什么保证
 
@@ -137,11 +143,12 @@ DSH 的工具可见性是**按声明作用域**解析的（`dsh-tools` 的 `view
 
 因此本文件里的 `preset-leader` 与上游 `standard` 的 **22 条**顶层子插件行**逐项等价**（id、name、顺序、
 `disabled`/`group`/`isolate`/`config` 全部相同），只在三处不同：persona 行、id/order/名称，
-以及**多出的三个工程工具行**（`leader-engineering-context` / `leader-tia-tools` / `leader-graph-tools`，
-共 25 条）。
-`preset-expert` 则是一个**刻意从零写的极小清单**（6 行），不与上游对齐——它要的正是"少"。
+以及**多出的工程工具行**（`leader-engineering-context` / `leader-tia-tools` / `leader-git-tools` /
+`leader-tia-commands` / `leader-graph-tools`）。
+`preset-auditor` 是版本管理的专用小清单（context 3 + 只读 fs + ask_user/todo + 压缩），
+`preset-expert` 是只读知识专家的极小清单；两者都不与上游对齐——它们要的正是"少"。
 升级 DSH 后上游若改了 `standard`，`preset-leader` 这份副本**不会**自动跟随，需要按文件头注释重新生成；
-`preset-expert` 只需核对它引用的那几个包名是否还在。
+`preset-auditor` / `preset-expert` 只需核对它们引用的那几个包名是否还在。
 
 ### 验收
 
@@ -175,8 +182,8 @@ dsh --profile web --patch .\profile\dsh-automation-suite\cordis.patch.yml --dump
 **两条比行数更硬的断言**（行数只用来发现"整行消失"这类事故）：
 
 ```powershell
-# 1. 两个 preset 行都在
-dsh --profile dsh-automation-suite --dump-config | Select-String "preset-(leader|expert)"
+# 1. 三个 preset 行都在
+dsh --profile dsh-automation-suite --dump-config | Select-String "preset-(leader|auditor|expert)"
 
 # 2. 工程工具的宿主面行已被禁用、工具行在 preset 里
 dsh --profile dsh-automation-suite --dump-config | Select-String "engineering-context|tia-openness-v17-min/tools|engineering-graph/tools"
@@ -189,7 +196,7 @@ dsh --profile dsh-automation-suite --dump-config
 ```
 
 输出以 **7 个插件行**结尾（6 个本地插件 + 公共的 `dsh-opencode-go`）。行数基线见根 `AGENTS.md` §4 的权威表
-（本蓝图加上两个 preset 与 `dsh-opencode-go` 后已重测）。
+（本蓝图加上三个 preset 与 `dsh-opencode-go` 后已重测）。
 
 > ⚠️ `start-env.ps1` 只在 profile 目录**尚不存在**时从蓝图拷贝 `cordis.patch.yml`
 > （`if (-not (Test-Path $manifest))`）。所以改完蓝图后要让它生效，得 `-Reset` 重建，

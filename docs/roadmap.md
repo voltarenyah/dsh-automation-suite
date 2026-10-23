@@ -140,16 +140,24 @@
 | 图谱这一步是**软的**：服务缺席 / 引擎未构建 / 引擎不可达 → 只报"图谱未建成"，工作流仍成功；引擎拒绝 → 逐设备 code + remediation | ✅ | `src/knowledge-graph.ts`；`test/04-knowledge-graph.test.mjs`（12 项缝级用例，含四种降级与归一化） |
 | 目标路径全部由插件推导（工具参数里**没有路径**）+ `realpath` 包含性校验（不串味） | ✅ | `src/config.ts`、`src/paths.ts`、`src/scope.ts`；`test/01-paths.test.mjs`（含兄弟目录同前缀、`..` 逃逸） |
 | 目录名安全化：TIA 的项目名 → 单段目录名（非法字符、尾点、Windows 保留设备名、超长） | ✅ | `src/paths.ts`（`folderName`）；`test/01-paths.test.mjs` |
-| `.gitignore` 只追加：缺则创建（带注释头）、有则补上缺的那行（`tia/`、`knowledge/**/*.db*`）、两行都在则不动 | ✅ | `src/tools/create-project.ts`；`test/02-create-project.test.mjs` |
+| `.gitignore` 只追加：缺则创建（带注释头）、有则补上缺的那行（`tia/`、`knowledge/**/*.db*`、`.dsh/local/`）、三行都在则不动 | ✅ | `src/tools/create-project.ts`；`test/02-create-project.test.mjs` |
 | TIA 侧失败可分辨：`tia_access_unavailable` / `tia_controller_not_running` / `tia_project_not_open` / `save_failed` / `rebuild_failed` / `tia_unreachable`，且说明"哪一半已落盘" | ✅ | `src/errors.ts`、`src/tools/create-project.ts`；`test/02-create-project.test.mjs` |
-| 工具面一个，结果有界（列表封顶 20、细节封顶 40 行；被拒对象逐条给） | ✅ | `src/tools/outcome.ts`；`test/03-plugin.test.mjs`（真实运行时的 schema 校验） |
+| 工具面三个，结果有界（列表封顶 20、细节封顶 40 行；被拒对象逐条给） | ✅ | `src/tools/outcome.ts`；`test/03-plugin.test.mjs`（真实运行时的 schema 校验） |
+| **版本管理取证（控制器侧，S0/S1）**：`PlcChecksum` 读 `PlcChecksumProvider.Software`；`SyncScan` 自己遍历全部块/类型/标签表，与上一版 evidence 逐对象比对指纹/归一化哈希，只把差异导出到 STAGE 并写下版 `_evidence.json` | ✅ 单测 + 真机通过 | 接口插件 `controller/OperationsSync.cs`、`controller/Evidence.cs`、`src/access.ts`（`readPlcChecksum` / `syncScan`）；控制器自测 17 项（含 3 项 evidence）+ `test/08-access-service.test.mjs` 4 项；`matrix:build` 操作 27 / 工具 26。真机：checksum `C0 01 C3 13 58 AC 0E 50`；全量扫描 1155 块 / 215 类型 / 7 标签表、1376 文件 / 74.8 MB / **121–231 s**（TIA 缓存冷热差异）；**1 块变化的慢路径 48.3 s**（导出 1 块 + 7 标签表 = 8 文件）；同账本 `unchanged` **1.6–3.0 s**；同一 `SyncScan` 调用还增量维护 `_manifest.json`（改名自 `_tia-openness-manifest.json`，无时间戳/绝对路径，标签表只提升真正变化的那张） |
+| **版本管理消费侧（S2）**：`project_status` 只读状态（证据账本 / 清单 / git / 锁 / nextAction）；`project_sync` checksum 快路径 → 慢路径 → STAGE → SOURCE → 锁内一次提交 | ✅ 单测；完整真机链路待跑 | 本包 `src/tools/status.ts`、`src/tools/sync.ts`、`src/sync.ts`、`src/evidence.ts`、`src/git.ts`、`src/lock.ts`、`src/device.ts`；`test/09-status-sync.test.mjs`（21 项）。真实提交带 `Tia-Op` / `Tia-Checksum` / `Tia-State` / `Tia-Manifest` trailer；`unchanged` 不产生提交；失败的扫描也清 STAGE |
+| **B1 工具面与 git 底座**：`auditor` preset（create/status/sync + 只读文件，无 pwsh/TIA 原子工具/git/图谱/diff）；git 的 12 个模型工具拆到 `dsh-tool-git/tools` 只挂 Leader；`gitContext` 服务按显式根目录解析（无 `repoDir`/`workDir`）；checksum 30s 缓存只服务计划 | ✅ | 蓝图 + `packages/dsh-tool-git`（51 项）+ 上下文（87 项）；`gitContext` 服务 `isRepository` / `repoRoot` / `create` / `init` + bound `run`/`status`/`head`/`commit` |
+| **B2 一次性导入**：`create_engineering_project` 在无外仓时初始化 git 并提交 baseline；未编译先拒绝；一次 `SyncScan(adopt_existing:true)` 把已导出的文件采纳为 evidence，不再二次导出；`.gitattributes` 固定 XML 行尾 | ✅ 单测 | 控制器 `adopt_existing`/`data.adopted`（自测 18/18，TIA 102 项）；上下文 110 项；`create` 不再需要模型猜 git 参数 |
+| **B3 差异与新鲜度**：`project_diff` 块级结构差异（Leader/Expert，不开放 Auditor）；图谱 sidecar 以 PLC checksum 报 `fresh/stale/unknown` | ✅ 单测 | 上下文 110 项；图谱 128 项；`project_diff` 13 项 + 新鲜度 5 项；Auditor 无 diff 行 |
+| **B4 图谱增量**：引擎 `Update` 替换变更组件 + 一跳依赖闭包、删除被删组件，单事务；`knowledge_update` 工具；`project_sync(refresh_knowledge:true)` 按变更类型/数量选增量或全量，失败只警告 | ✅ 单测 + 引擎自测 | 引擎 128 项（含 Update/删除/拒绝码/回滚）；上下文 110 项；类型/标签表/超 20 文件走全量 |
 
-### 缺口（P2–P3）
+### 缺口（P3 起）
 
 | 缺口 | 影响 | 备注 |
 |---|---|---|
-| ~~**没有版本层**~~ → **已删除**（D22） | 版本化交给用户自己的 git（workspace 就是普通仓库） | 原 `eng_version` + `src/git.ts` 一并删除；`.ap17` 仍由 `.gitignore` 的 `tia/` 挡在库外，图谱库由 `knowledge/**/*.db*`（含 SQLite 旁挂文件）挡住，规则由新工具维护 |
-| **没有变更检测** | 期望一（识别工程文件是否被更改）与 D6/D9 的工作循环都未落地 | P2；**前置都已就绪，而且缝 A 现在有真实消费者**：`create_engineering_project` 已在调 `engineeringAccess`；指纹可得性由**用户在另一代码库**验证过（**用户侧证据，不是本仓实测**） |
+| ~~**没有版本层**~~ → **已删除**（D22） | 版本化交给用户自己的 git（workspace 就是普通仓库） | 原 `eng_version` + 旧的 `src/git.ts` 一并删除；现在的版本管理是 `project_sync` 的"TIA → SOURCE → 一次提交"（D26），`.ap17` 仍由 `.gitignore` 的 `tia/` 挡在库外，图谱库由 `knowledge/**/*.db*` 挡住，锁/STAGE 由 `.dsh/local/` 挡住 |
+| **没有变更检测** | 期望一（识别工程文件是否被更改）与 D6/D9 的工作循环都未落地 | **S2 已接**：checksum 快路径 + 账本慢路径 + `project_sync` 提交；**S3 尚未做**：DRAFT/REMOTE 与逐块指纹锁。指纹可得性由**用户在另一代码库**验证过（**用户侧证据，不是本仓实测**） |
+| **S2 的真机链路还没整跑** | 单测里 `SyncScan` 是假服务，真实链路只验过控制器侧与 git 侧两段 | 需要：打开源项目 → `create_engineering_project` → `project_status(verify:true)` → 改一块 → `project_sync(dry_run:false)` → 看 `git log`/`git show`。注意可见窗口打开 68–197 s、慢路径 48.3 s，会话超时要留够 |
+| ~~**`PlcChecksum` / `SyncScan` 尚未在真机跑通**~~ → ✅ **2026-10-22 真机验证通过** | `PlcChecksum` 返回 `C0 01 C3 13 58 AC 0E 50`（3.2 s）；`SyncScan` 全量：1155 块 / 215 类型 / 7 标签表，1376 文件 / 74.8 MB / 230.7 s，1 个不可导出（`FOB_SAFETY`）；同账本第二次 `unchanged` 3.0 s；`CloseProject` 7.9 s | **headless 的坑**：2026-10-21 `with_window:false` 在同一工程上 600 s 未返回；可见窗口 68–79 s 成功。S2 的打开路径应沿用可见窗口或复用已开会话，不要默认 headless |
 | **没有变更台账** | 期望二（「待办清单」式上下文）未落地 | P3；状态目录随注册表删除后**路径待定**（该包 D22） |
 | **没有随包 skill** | D4 三问目前写在工具描述里，没有随包知识库 | P3（与项目级 skill / A12 一起做） |
 | ~~**`adopt` 只做字节复制**~~ | ✅ **已解决** | 改为经缝 A 的 `saveProjectAs`（TIA 自己的另存）；旧的字节复制工具已删除（D22） |

@@ -9,7 +9,7 @@ DSH 插件（**浏览器半侧**）：在 dsh-web 的**右侧栏**增加一个 *
 
 ## 它做什么
 
-- 列 `source/` 找到 device 目录，读每个 device 的 `_tia-openness-manifest.json`（**整文件** `readBytes`，
+- 列 `source/` 找到 device 目录，读每个 device 的 `_manifest.json`（**整文件** `readBytes`，
   一次往返；不用按行分页的 `read`——17 464 行要 4 页）；
 - 把 `blocks[]` 的每条对象**平铺**成一行：类型徽章、名称、编号、语言、大小、写后校验标记；
   **不渲染** `group` 的目录层级；
@@ -80,7 +80,7 @@ content 里（内置的 `@session` 引用用的是同一个事件，见它的 `p
   （`conversation.user.text.node` 座位 + 一条 `order: 5` 的 userText 规则），
   否则文件语法会把它当成一个打不开的文件。输入框里不渲染 chip（输入机只认 pick 产生的 chip），
   就是普通文本，用户还能自己改。
-- 解析在宿主、复用 `src/model.ts` 的 `parseManifest`：读 `<cwd>/source/*/_tia-openness-manifest.json`，
+- 解析在宿主、复用 `src/model.ts` 的 `parseManifest`：读 `<cwd>/source/*/_manifest.json`，
   按名字**精确匹配**、再**大小写不敏感**匹配。结果按 `source/` 绝对路径缓存，
   **只有名字没命中时才重读一次**——刚导出的块能认到，打错字也不会每步扫一遍目录。
   实测 777 KB 清单首次 **16 ms**、命中缓存 **120 µs**。

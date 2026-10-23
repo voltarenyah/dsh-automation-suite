@@ -3,7 +3,7 @@
  * exporter wrote under `source/`, plus the objects it refused.
  *
  * Data path: list `source/` for devices, then read each device's
- * `_tia-openness-manifest.json` in one `readBytes` call (773 KB for a 1376-object
+ * `_manifest.json` in one `readBytes` call (773 KB for a 1376-object
  * export, well under the 32 MiB whole-file cap). The manifest is the only place
  * `simaticType` exists, which is why the type filter needs it, and the only place
  * the refused objects are named at all. Directory layout is never rendered: the

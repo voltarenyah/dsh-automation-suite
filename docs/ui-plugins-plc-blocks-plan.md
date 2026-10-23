@@ -17,7 +17,7 @@
 原方案打算"纯目录树、不解析清单"。现在要**按 simaticType 筛选**，而 `simaticType`（`FB` / `FC` / `OB` /
 `InstanceDB` / `GlobalDB` / `ArrayDB` / `PlcStruct` / `PlcTagTable`）**只存在于清单里**：
 
-- `source/<device>/_tia-openness-manifest.json` 每条对象带
+- `source/<device>/_manifest.json` 每条对象带
   `name / group / file / bytes / sha256 / category / simaticType / declaredName / declaredNumber /
   programmingLanguage / verified`（实测：1376 条、773 KB、17 464 行、缩进 JSON）；
 - 文件名/目录名里没有类型信息（`blocks/…/SCP_IN/SCP_IN.xml` 只能看出是块）。
@@ -110,7 +110,7 @@ root = joinPath(cwd, 'source')
 
 1) list(sessionId, root, signal)            → device 目录列表（type === 'directory'）
 2) 每个 device（首次展开/首次筛选时按需）：
-   readBytes(sessionId, joinPath(deviceDir, '_tia-openness-manifest.json'), {}, signal)
+   readBytes(sessionId, joinPath(deviceDir, '_manifest.json'), {}, signal)
    → TextDecoder → JSON.parse
 3) 平铺：manifest.blocks[] 每条 → 一行 Row
 ```
@@ -371,7 +371,7 @@ actions.openResource(resourceAddress(sessionId, relativeUnder(cwd, row.file)))
 | 项 | 实现 | 验收 |
 |---|---|---|
 | **输入框只出现记号** | 菜单项「在对话里提及」→ `insertMention()`：从会话作用域取 `conversation` 服务，`conversation.input.for(actx)` 拿到该会话的输入机，用 `actions.captureInsertion()` + `actions.insertText()` 在**光标处**插入 `@'SCP_IN'`（草稿非空且不以换行结尾时先补一个换行，让它单独成段），然后 `focus()` | 真实页面（1377 行清单）实测：右键 `SCP_IN` → 点菜单项 → 输入框出现 `@'SCP_IN'`、焦点回到输入框；连点两次得到两行；先手打一句再点，句子保留、记号落到下一行 |
-| **模型收到引用信息** | 宿主半侧新增 `agent/pre-step` 监听（`prepend: true` + `await next()`，与内置 `@session` 引用同一手法）：只处理 `source.kind === 'user'` 的消息，用 `mentionNames()` 找出记号，按 `cwd` 读 `source/*/_tia-openness-manifest.json`（复用 `parseManifest`）解析成一行行 `[plc-block] key="value"`，作为**一个额外的 text block** 追在那条消息后面。选择追加 block 而不是新建消息：不需要新的消息种类，消息形状就是普通的 user message | 对**真实 777 KB 清单**跑宿主监听：`@'SCP_IN'` → `type="FB" number="1001" language="SCL" file="source/Sino_PEI/blocks/…/SCP_IN.xml"`；`@'FOB_SAFETY'`（拒导）→ `export="refused"` + TIA 原文原因；`@'No_Such_Block'` → `found="false"`；首次 16 ms，命中缓存 120 µs |
+| **模型收到引用信息** | 宿主半侧新增 `agent/pre-step` 监听（`prepend: true` + `await next()`，与内置 `@session` 引用同一手法）：只处理 `source.kind === 'user'` 的消息，用 `mentionNames()` 找出记号，按 `cwd` 读 `source/*/_manifest.json`（复用 `parseManifest`）解析成一行行 `[plc-block] key="value"`，作为**一个额外的 text block** 追在那条消息后面。选择追加 block 而不是新建消息：不需要新的消息种类，消息形状就是普通的 user message | 对**真实 777 KB 清单**跑宿主监听：`@'SCP_IN'` → `type="FB" number="1001" language="SCL" file="source/Sino_PEI/blocks/…/SCP_IN.xml"`；`@'FOB_SAFETY'`（拒导）→ `export="refused"` + TIA 原文原因；`@'No_Such_Block'` → `found="false"`；首次 16 ms，命中缓存 120 µs |
 | **对话记录里的 chip** | 注册一条 `order: 5` 的 userText 规则（`uiConversation.userText.register`）+ `conversation.user.text.node` 座位的渲染器。**必须**抢在文件语法（`order: 30`）之前，否则 `@'SCP_IN'` 会被当成一个打不开的文件路径 | 单测覆盖语法（`nextMention` 的 span/边界/空引号），渲染座位与文件 chip 同级 |
 | **拒导对象** | 菜单项禁用（与「打开源文件」一致）；手打这个记号仍会解析成 `export="refused"` 一行，留作逃生口 | 拒导行右键：两项都 disabled，下方一行说明原因 |
 | **缓存与失败** | 按 `source/` 绝对路径缓存清单；**只有名字没命中时**才重读一次（刚导出的块能认到，打错字不会每步扫目录）。读不到清单/目录不存在只写一条 warn，消息原样发出 | `host.test.mjs`：缓存命中时不重读、未命中重读一次、异常不改变决策 |

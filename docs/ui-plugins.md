@@ -291,7 +291,7 @@ export function apply(ctx: ClientContext): void {
 ├── source/
 │   ├── _dsh-engineering-context.json             ← 索引：这棵树属于哪个工程 + 每台设备的清单路径
 │   └── <device>/
-│       ├── _tia-openness-manifest.json           ← **唯一**的清单：三类对象都在里面
+│       ├── _manifest.json           ← **唯一**的清单：三类对象都在里面
 │       ├── blocks/<组路径>/<块目录>/<块>.xml
 │       ├── types/<组路径>/<类型>.xml
 │       └── tag_tables/<表>.xml
