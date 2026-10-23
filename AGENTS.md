@@ -69,13 +69,13 @@ DSH 的解析机制有两条独立路径，**两者都靠包名**：
 
 | 位置 | 是什么 |
 |---|---|
-| `profile/dsh-automation-suite/cordis.patch.yml` | 政策层本体：`- id: system-prompt`（全局 persona）、`- id: agent-preset-registry`（默认 preset = `leader`）、`- insert: - id: preset-leader`（主 agent preset，政策文本在它的 persona 行里）、`- insert: - id: preset-expert`（子 agent preset）、`- id: engineering-context`（`disabled: true`，整行搬进 `leader`） |
+| `profile/dsh-automation-suite/cordis.patch.yml` | 政策层本体：`- id: system-prompt`（全局 persona）、`- id: agent-preset-registry`（默认 preset = `leader`）、`- insert: - id: preset-leader`（主 agent preset，政策文本在它的 persona 行里）、`- insert: - id: preset-auditor`（版本管理会话的 preset）、`- insert: - id: preset-expert`（子 agent preset）、`- id: engineering-context`（`disabled: true`，整行搬进 `leader` 与 `auditor`） |
 | 同上文件头部注释 | 为什么必须整份重述 preset、工具面为什么按 preset 分发、升级 DSH 后怎么重新生成 |
-| `profile/dsh-automation-suite/README.md` | 「发行版政策层」「两个 preset：`leader` 与 `expert`」两节：机理、验收、演示命令 |
+| `profile/dsh-automation-suite/README.md` | 「发行版政策层」「三个 preset：`leader`、`auditor` 与 `expert`」两节：机理、验收、演示命令 |
 | 根 `README.md` §8.1 / §11 | 用户向说明与验收行数 |
 
-**要改政策文字，只改三处 block scalar**（全局 `personaPrefix`/`personaSuffix`、`preset-leader`
-的 persona、`preset-expert` 的 persona）。
+**要改政策文字，只改四处 block scalar**（全局 `personaPrefix`/`personaSuffix`、`preset-leader`
+的 persona、`preset-auditor` 的 persona、`preset-expert` 的 persona）。
 
 四条会**静默出错**的注意事项（都已实测，别凭直觉改）：
 
@@ -241,7 +241,7 @@ dsh --profile dsh-automation-suite --dump-config
 |---|---|
 | `dsh --profile web --dump-config`（官方组合，本机当前） | **1229** |
 | `dsh --profile web --patch profile/dsh-automation-suite/cordis.patch.yml --dump-config` | **1847** |
-| 按蓝图物化的 profile：`dsh --profile dsh-automation-suite --dump-config` | **待下次 start-env 重测**（B1–B4 后的物化 profile 尚未重建） |
+| 按蓝图物化的 profile：`dsh --profile dsh-automation-suite --dump-config` | **1880**（B1–B4 后重测：政策层 1847 + 物化目录里应用回写的 3 行 —— `ui-settings-general` 与两个 `requestTimeoutMs: 900000`） |
 
 > ⚠️ 旧基线 **1235 / 1471 / 1477** 已作废：同一天重测时官方 `web` 组合本身就少了几十行
 > （不是本仓改动 —— 那三条命令的第一条不含本仓任何文件）。别拿新旧数值互相解释，用自己那次跑出来的三个数

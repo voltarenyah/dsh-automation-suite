@@ -117,12 +117,12 @@ DSH 的工具可见性是**按声明作用域**解析的（`dsh-tools` 的 `view
 
 ## 发行版政策层：往系统提示词里注入发行版规矩
 
-`cordis.patch.yml` 里的四块（全局 `system-prompt` persona、`preset-leader`、`preset-expert`、
-`agent-preset-registry`）把发行版的政策文本注入到 **system 角色**的提示词里。
+`cordis.patch.yml` 里的五块（全局 `system-prompt` persona、`preset-leader`、`preset-auditor`、
+`preset-expert`、`agent-preset-registry`）把发行版的政策文本注入到 **system 角色**的提示词里。
 **纯配置，没有任何插件代码**，改文字不用重新构建。
 
-**要改政策文本，只改文件里那三处 block scalar**（全局的 `personaPrefix`/`personaSuffix`、
-`preset-leader` 的 persona、`preset-expert` 的 persona）。
+**要改政策文本，只改文件里那四处 block scalar**（全局的 `personaPrefix`/`personaSuffix`、
+`preset-leader` 的 persona、`preset-auditor` 的 persona、`preset-expert` 的 persona）。
 文件头部注释记录了另外两种改法：把它换成中文、以及给四个内置 preset 各加一条 `disabled: true`
 把政策锁死（不许切回无政策的 preset）。
 
