@@ -69,7 +69,7 @@ DSH 的解析机制有两条独立路径，**两者都靠包名**：
 
 | 位置 | 是什么 |
 |---|---|
-| `profile/dsh-automation-suite/cordis.patch.yml` | 政策层本体：`- id: system-prompt`（全局 persona）、`- id: agent-preset-registry`（默认 preset = `leader`）、`- insert: - id: preset-leader`（主 agent preset，政策文本在它的 persona 行里）、`- insert: - id: preset-auditor`（版本管理会话的 preset）、`- insert: - id: preset-expert`（子 agent preset）、`- id: engineering-context`（`disabled: true`，整行搬进 `leader` 与 `auditor`） |
+| `profile/dsh-automation-suite/cordis.patch.yml` | 政策层本体：`- id: system-prompt`（全局 persona）、`- id: agent-preset-registry`（默认 preset = `leader`）、`- insert: - id: preset-leader`（主 agent preset，政策文本在它的 persona 行里）、`- insert: - id: preset-auditor`（版本管理 preset；`subagent.allowedAgentPresets` 含它，所以 leader 能派它跑慢活）、`- insert: - id: preset-expert`（子 agent preset）、`- id: engineering-context`（`disabled: true`；三个入口分开挂：`.`→`auditor`、`/diff`→`auditor`+`expert`、`/status`→`leader`，见 D30） |
 | 同上文件头部注释 | 为什么必须整份重述 preset、工具面为什么按 preset 分发、升级 DSH 后怎么重新生成 |
 | `profile/dsh-automation-suite/README.md` | 「发行版政策层」「三个 preset：`leader`、`auditor` 与 `expert`」两节：机理、验收、演示命令 |
 | 根 `README.md` §8.1 / §11 | 用户向说明与验收行数 |
@@ -239,9 +239,9 @@ dsh --profile dsh-automation-suite --dump-config
 
 | 命令 | 行数 |
 |---|---|
-| `dsh --profile web --dump-config`（官方组合，本机当前） | **1229** |
-| `dsh --profile web --patch profile/dsh-automation-suite/cordis.patch.yml --dump-config` | **1857** |
-| 按蓝图物化的 profile：`dsh --profile dsh-automation-suite --dump-config` | **1896**（D29 后重测：政策层 1857 + 物化目录里应用回写的 3 行 —— `ui-settings-general` 与两个 `requestTimeoutMs: 900000`） |
+| `dsh --profile web --dump-config`（官方组合，本机当前） | **1235** |
+| `dsh --profile web --patch profile/dsh-automation-suite/cordis.patch.yml --dump-config` | **2003** |
+| 按蓝图物化的 profile：`dsh --profile dsh-automation-suite --dump-config` | **2036**（D30 后重测：政策层 2003 + 物化目录里应用回写的 3 行 —— `ui-settings-general` 与两个 `requestTimeoutMs: 900000`；D30 相对 D29 的 +140 行全部是 persona 文本） |
 
 > ⚠️ 旧基线 **1235 / 1471 / 1477** 已作废：同一天重测时官方 `web` 组合本身就少了几十行
 > （不是本仓改动 —— 那三条命令的第一条不含本仓任何文件）。别拿新旧数值互相解释，用自己那次跑出来的三个数
@@ -259,9 +259,10 @@ dsh --profile <临时 profile> --dump-config     # 含你的插件行 = 通过�
 强于 `--dump-config` 的一条：`dsh --profile <p> --dump-config-schema`，若输出里出现该插件的
 Config 字段（如 `opennessDir`，或 git 插件的 `destructivePolicy`），说明模块被**真实 import
 并读取了 schema**。注意该命令本身在未装任何插件的 `web` profile 上也返回 exit 1 —— 那几条
-`unrecognized Loader tree carrier` 错误落在 `dsh-agent-preset` 行上，**每个 preset 行一条**：
-官方 `web` 是 4 条（`/186`–`/189`），本套件 profile 是 **6 条**（多出 `/194`、`/195`，即
-本蓝图插入的 `preset-leader` 与 `preset-expert`），与插件无关，**不要**把它当成插件问题去查。
+`unrecognized Loader tree carrier` 错误落在 `dsh-agent-preset` 行上，**每个 preset 行两条**
+（行本身 + 它内部的 `cordis:group`）：官方 `web` 实测 **8 条**，本套件 profile 实测 **14 条**
+（多出 6 条 = 本蓝图插入的 `preset-leader` / `preset-auditor` / `preset-expert`），与插件无关，
+**不要**把它当成插件问题去查。D30 增加 `preset-auditor` 前后都是 14 条（改动前后各测过一次）。
 
 ---
 

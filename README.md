@@ -92,7 +92,7 @@
 | 名称 | 对应层 | 负责什么 | 现状 |
 |---|---|---|---|
 | **工控软件接口插件族**<br>（以 TIA 为例即 `tia-openness`；按**软件版本 × 能力层级**切分：V17/V18… × **min/std/pro**） | ① 接入层 | 与工控软件对接、**读写工程对象**；为后续分析提供**素材**与**验证工具**；并**附带文档**说清每个能力"何时调用 / 怎么调用 / 调用后的数据怎么用" | 🟡 已有 **V17 × min**（定位是验证基础功能） |
-| **工程上下文插件** | 作用域（横向） | 管住用户的**多个 TIA 项目 × 多个分支 × 多个历史版本**；对工程对象做优化适配（路径内容、变更识别与跟进）；用**「待办清单」式工具承载工程变更上下文**，在合适的时候交给 LLM 辅助判断用户意图；版本间变更明确易读、工程对象可交叉关联 | 🟡 部分实现（3 个工具：`create_engineering_project` / `project_status` / `project_sync`；TIA → SOURCE 的 checksum+指纹同步与一次提交已通，73 项单测；DRAFT/REMOTE 与变更台账未做；**已登记进蓝图**，见 [`packages/dsh-engineering-context/docs/`](packages/dsh-engineering-context/docs/)） |
+| **工程上下文插件** | 作用域（横向） | 管住用户的**多个 TIA 项目 × 多个分支 × 多个历史版本**；对工程对象做优化适配（路径内容、变更识别与跟进）；用**「待办清单」式工具承载工程变更上下文**，在合适的时候交给 LLM 辅助判断用户意图；版本间变更明确易读、工程对象可交叉关联 | 🟡 部分实现（4 个工具：`create_engineering_project` / `project_status` / `project_sync` / `project_commit`；TIA → SOURCE 的 checksum+指纹同步已通，**同步与提交分两步**，116 项单测；DRAFT/REMOTE 与变更台账未做；**已登记进蓝图**，见 [`packages/dsh-engineering-context/docs/`](packages/dsh-engineering-context/docs/)） |
 | **工程知识图谱插件** | ② 语义层 | **准确翻译 XML 中的 PLC 语法**（兼容性强）：解析工程源文件 → **建立图数据库** → 暴露接口给出工程细节 | 🟡 部分实现（引擎 + 协议 + 8 个工具 + `knowledgeGraph` 服务，104 项单测；**已登记进蓝图**，并被族 2 的工作流调用） |
 
 插件不再编号：**只有接口插件族是"一族多成员"**（成员 = 软件版本 × 能力层级），工程上下文插件与
@@ -170,7 +170,7 @@ PLC 对象增删改、监视表与软件单元、F 相关服务、编译与关�
 | 插件 | 目标 | 状态 |
 |---|---|---|
 | **工控软件接口插件族** | 把工控软件暴露的能力整体变成 LLM 的能力范围（含配套文档） | 🟡 **V17 × min**（块·UDT·标签表）；std/pro 能力层级与 V18+ 待补 |
-| **工程上下文插件** | 管住"现在谈的是哪个工程、它在 workspace 的哪里、它和 TIA 是否一致" | 🟡 **部分实现**：3 个工具（73 项单测）—— `create_engineering_project` 把 TIA 打开的工程另存进 workspace、读源文件树、经【缝 B】逐设备触发知识图谱建库；`project_status` 只读账本/清单/git/锁并给出下一步；`project_sync` 用 PLC checksum 快路径 + 逐对象指纹/归一化哈希慢路径，只把差异提升进 SOURCE 并做一次路径限定的 git 提交。图谱缺席/引擎未构建只报"图谱未建成"，不让流程失败。DRAFT/REMOTE 与变更台账未做。P0 的工程注册表与 P1 的内部 git 版本层**已删除**（该包 D22；现行版本管理见 D26）。**已登记进蓝图**（`--dump-config` 行数见根 `AGENTS.md` §4，DSH 0.2.1-rc.2） |
+| **工程上下文插件** | 管住"现在谈的是哪个工程、它在 workspace 的哪里、它和 TIA 是否一致" | 🟡 **部分实现**：4 个工具（116 项单测）—— `create_engineering_project` 把 TIA 打开的工程另存进 workspace、读源文件树、经【缝 B】逐设备触发知识图谱建库；`project_status` 只读账本/清单/git/锁并给出下一步；`project_sync` 用 PLC checksum 快路径 + 逐对象指纹/归一化哈希慢路径，只把差异提升进 SOURCE，**不再提交**；`project_commit` 用调用方给的信息把这次同步提交成历史（`message` 必填、默认只给计划、插件补 trailer）。**同步与提交分两步**是为了让"变了什么"先被读到、提交信息由人确认（D30）；`project_diff` 走独立入口。图谱缺席/引擎未构建只报"图谱未建成"，不让流程失败。DRAFT/REMOTE 与变更台账未做。P0 的工程注册表与 P1 的内部 git 版本层**已删除**（该包 D22；现行版本管理见 D26）。**已登记进蓝图**（`--dump-config` 行数见根 `AGENTS.md` §4，DSH 0.2.1-rc.2） |
 | **工程知识图谱插件** | 准确翻译 XML 中的 PLC 语法，XML → 图数据库 → 按需给出工程细节 | 🟡 **部分实现**：Simatic ML → 图 → SQLite 已通（7 个真实 fixture 出 72 节点 / 153 边，覆盖 15 种节点种类），引擎协议 + 8 个工具 + `knowledgeGraph` 服务（111 项单测，含经真实引擎的端到端）；**被族 2 的 `create_engineering_project` 调用**（该包 D25）。`knowledge_workspace` 让模型自己读到库路径、`knowledge_query` 的 `db_path` 因此可省略，四个下钻工具（search / block / network / variable usage，TS 侧固定 SQL，零 C# 改动）把程序逻辑读成有界答复（**D24** 两阶段）。**新鲜度/增量、兼容层未做**。**已登记进蓝图** |
 
 逐项进度、缺口与验收口径见 [`docs/roadmap.md`](docs/roadmap.md)；
@@ -186,7 +186,7 @@ PLC 对象增删改、监视表与软件单元、F 相关服务、编译与关�
 |---|---|---|---|
 | `@voltarenyah/dsh-tia-openness-v17-min` | 插件 bundle | 0.1.0 | **三个 Loader 行**：宿主行 = TIA 控制器子进程 + `engineeringAccess` 服务 + 随包 skill；`/tools` 行 = **26 个工具**：工程生命周期与工程数据 8（`create_project` / `save_project` / `archive_project` / `project_info` / `project_languages` / `project_texts` / `update_project` / `portal_settings`）、PLC 设备数据 9（`list_plc_objects` / `create_plc_objects` / `delete_plc_objects` / `write_tags` / `set_block_attributes` / `protect_blocks` / `generate_source` / `watch_and_force_tables` / `software_units`）、F 相关 3（`safety_status` / `set_safety_settings` / `safety_signatures`）、块读写主线 5 + `controller_status`；`/commands` 行 = **7 个 `/tia-…` 斜线指令**（`open` / `save` / `compile` / `close` / `info` / `find` / `status`，绕过模型直接在对话框执行）。工具行由 preset 声明（`leader` 有、`expert` 没有）；命令行独立于工具行，只 inject `commands` + `tiaOpennessRuntime`。v0.2 的 20 个新操作**尚未在真实项目上验证**（见该包 `docs/VERIFICATION-PLAN.md`）；控制器白名单另有 2 个**服务专用**操作（`PlcChecksum` / `SyncScan`，供工程上下文插件做版本取证，不注册模型工具），操作总数 27。2026-10-22 真机验证：`PlcChecksum` 3.2 s；`SyncScan` 全量 1376 文件 / 121–231 s，同账本第二次 `unchanged` 1.6–3.0 s，1 块变化的慢路径 48.3 s（导出 1 块 + 7 标签表）；可见窗口打开工程 68–197 s（headless 会挂） |
 | `dsh-tool-git` | 插件 bundle（vendor） | 0.1.3 | **12 个工具**：`git_status` / `git_diff` / `git_log` / `git_branch` / `git_stage` / `git_commit` / `git_stash` / `git_show` / `git_fetch` / `git_pull` / `git_remote` / `git_checkout`；外加破坏性命令闸门与 **`gitContext` 服务**。模型面工具已拆到 `dsh-tool-git/tools`，**只挂 `leader`**；`auditor` / `expert` 看不到。服务按显式根目录解析，模型不再传 `repoDir` |
-| `@voltarenyah/dsh-engineering-context` | 插件 bundle | 0.1.0 | **3 个工具**：`create_engineering_project`（把 TIA 当前打开的工程另存进 `<workspace>/tia/<workspace 名>/`、把源文件树重建到 `<workspace>/source/<device>/`，再经【缝 B】逐设备调用图谱插件的 `knowledgeGraph.ingestDevice`）、`project_status`（只读：哪个 PLC、账本/清单在不在、git 状态、锁、下一步动作）、`project_sync`（TIA → STAGE → SOURCE → 一次 git 提交；默认只给计划）。同步的相等性来自 **PLC 级 checksum**（快路径）+ **逐对象指纹/归一化哈希**（慢路径）：账本 `source/<device>/_evidence.json` 是权威、`_manifest.json` 是派生清单，两份文档由**同一次 `SyncScan` 调用**写出；STAGE 与锁落在 `<workspace>/.dsh/local/`（不进 git），`.gitignore` 只追加 `tia/`、`knowledge/**/*.db*`、`.dsh/local/` 三行。**未实现**：DRAFT/REMOTE 与逐块指纹锁（S3）、变更台账。**已删除**：P0 的工程注册表（`_dsh-eng/projects.json`）与 P1 的内部 git 版本层，以及 `eng_status` / `eng_project` / `eng_scope` / `eng_version` 四个工具（该包 D22；版本管理口径见 D26）。**没有宿主面资源，所以整行搬进 `leader` 与 `auditor` 两个 preset** |
+| `@voltarenyah/dsh-engineering-context` | 插件 bundle | 0.1.0 | **4 个工具、三个 Loader 入口**：`.`（`create_engineering_project` 把 TIA 当前打开的工程另存进 `<workspace>/tia/<workspace 名>/`、把源文件树重建到 `<workspace>/source/<device>/`、再经【缝 B】逐设备调用图谱插件的 `knowledgeGraph.ingestDevice`；`project_status` 只读：哪个 PLC、账本/清单在不在、git 状态、锁、下一步动作；`project_sync` TIA → STAGE → SOURCE，**不提交**；`project_commit` 用调用方给的信息提交设备目录，`message` 必填、默认只给计划）、`/diff`（`project_diff`：块级结构差异，支持 `to: "WORKTREE"`）、`/status`（只有 `project_status`）。同步的相等性来自 **PLC 级 checksum**（快路径）+ **逐对象指纹/归一化哈希**（慢路径）：账本 `source/<device>/_evidence.json` 是权威、`_manifest.json` 是派生清单，两份文档由**同一次 `SyncScan` 调用**写出；STAGE 与锁落在 `<workspace>/.dsh/local/`（不进 git），`.gitignore` 只追加 `tia/`、`knowledge/**/*.db*`、`.dsh/local/` 三行。提交信息尾部由插件追加 `Tia-Op` / `Tia-Checksum` / `Tia-State` trailer。**同步与提交分成两步**（D30）：`project_sync` 只写树并返回 `pending.paths` + `pending.suggestedMessage`，`project_commit` 才写历史。**未实现**：DRAFT/REMOTE 与逐块指纹锁（S3）、变更台账。**已删除**：P0 的工程注册表与 P1 的内部 git 版本层，以及 `eng_status` / `eng_project` / `eng_scope` / `eng_version` 四个工具（该包 D22）。**没有宿主面资源**：`.` 只挂 `auditor`，`/diff` 挂 `auditor` + `expert`，`/status` 只挂 `leader` |
 | `@voltarenyah/dsh-engineering-graph` | 插件 bundle | 0.1.0 | **两个 Loader 行**：宿主行 = C# 引擎子进程 + `knowledgeGraph` 服务（供族 2 的 `create_engineering_project` 逐设备调用）；`/tools` 行 = **9 个工具**：5 个共享工具（`knowledge_workspace` / `knowledge_schema` / `knowledge_ingest` / `knowledge_update` / `knowledge_query`）+ 4 个下钻工具（`knowledge_search` / `knowledge_block` / `knowledge_network` / `knowledge_variable_usage`，TS 侧固定 SQL，零 C# 改动）。`knowledge_update` 是增量入口：按 `source_components` 替换变更组件并重扫一跳依赖闭包，整批一个事务；没有 provenance / 超上限 / 类型或标签表变化时由调用方回退全量。`includeIngest: false` 去掉两个写工具，`includeDrilldown` 三档（`none` / `inspect` / `all`）：`leader` 用 `inspect`、`expert` 用 `all`—— Simatic ML XML → 属性图 → SQLite，引擎以 net8 子进程运行（`engine/`）。**纯 SCL 块按 `REGION` 分段**（**D27**）。`knowledge_workspace` 不碰引擎：它读会话工作目录，报出工程身份、每台设备的库路径/大小/mtime、`device_dir` 与 **graphFreshness**（sidecar checksum vs `_evidence.json`），所以 `knowledge_query` 的 `db_path` 可以省略（单库自动解析，零库/多库拒绝并给候选，**D24**）。**未实现**：按需下钻工具（某个变量用法）、兼容层。数据库位置与目录约定见 [`docs/roadmap.md`](docs/roadmap.md) §4 |
 | `dsh-ui-plc-source` | 插件 bundle（**浏览器半侧 + 一个宿主 pre-step 监听**） | 0.1.0 | **一个 Loader 行 + 一个右侧栏 tab 类型**：在 dsh-web 右侧栏（Files / Terminal / Browser 之后）增加 **PLC Blocks**。读 `<workspace>/source/<device>/_manifest.json`，把每个对象**平铺**成一行（类型徽章 / 名称 / 编号 / 语言 / 大小 / 写后校验标记），可按 **device** 与 **simaticType** 筛选、按名称或编号搜索；TIA 拒绝导出的对象（`failures[]`）同样列成一行（标「拒绝」、可悬停看原因）。**单击是选中**（选中态暂不触发动作），**右键菜单**里才打开源文件（走既有文档预览）或「在对话里提及」（把 `@'块名'` 插进输入框；宿主半侧在 `agent/pre-step` 把该块的 device/类型/编号/语言/文件路径补进 prompt）。筛选/搜索/选中/滚动位置与已读数据放在 slot store 里，切走再切回不丢、也不重读清单。**界面文字跟随 DSH 的语言设置**（设置 → 通用 → 语言，中/英），切换时不用刷新，已打开的 tab chip 也会变。宿主半侧只做这件事（`agent/pre-step` 监听，无工具、无子进程）；清单不可读时该 device 退回目录列举。可行性与机制见 [`docs/ui-plugins.md`](docs/ui-plugins.md)，本插件的计划与验收见 [`docs/ui-plugins-plc-blocks-plan.md`](docs/ui-plugins-plc-blocks-plan.md) |
 | `dsh-ui-tia-console` | 插件 bundle（**仅浏览器半侧**） | 0.1.0 | **一个 Loader 行 + 输入框上方的 TIA 控制台**：显示「无项目 / 正在打开 / 已打开 · 项目名 / 正在保存 / 正在编译（已用时长）/ 正在关闭 / 不可用」，并直接提供 **打开 / 保存 / 编译 / 关闭 / 刷新** 五个按钮。按钮 dispatch 现有 `/tia-*` 指令，状态从会话的 `command/*`、`tool/*` 事件折叠而来 —— 模型调用、斜线指令、按钮三种触发都实时反映；空会话也可见（它挂在 `conversation.input.dock`，不依赖时间线）。刷新用 `/tia-info` 与控制器对齐。带展开面板（项目路径、最近编译、最近错误、最近结果）。**Step 1 边界**：状态按会话折叠，其他会话或外部关闭 TIA 后需点刷新校准；全局状态服务是下一步。 |
@@ -194,13 +194,20 @@ PLC 对象增删改、监视表与软件单元、F 相关服务、编译与关�
 | `scripts/start-env.ps1` | 启动器 | — | 一条命令完成"物化 profile + 装插件 + 起服务 + 带 token 开浏览器" |
 | `scripts/clean-build.mjs` | 工具 | — | 只清理 `lib/`、`dist/`，遇链接只 unlink、不递归下降 |
 
-主 agent（`leader`）名下有本发行版自己的 **49 个工具**（TIA 26 + git 12 + 工程上下文 3
-+ `project_diff` + 图谱 7），全部在同一个会话里可用 —— 例如"改完这个块，顺便把导出目录提交一下"；另有内置 `standard`
-自带的那批（fs / 检索 / skills / todo / web / present / subagent …）。
+主 agent（`leader`）名下有本发行版自己的 **44 个工具**（TIA 26 + git 12 + 工程上下文 `project_status` 1
++ 图谱 5，`includeDrilldown: inspect` 且 `includeIngest: false`），全部在同一个会话里可用 ——
+例如"改完这个块，编译一下"；另有内置 `standard` 自带的那批（fs / 检索 / skills / todo / web / present / subagent …）。
+它**不再持有** `create_engineering_project` / `project_sync` / `project_commit` / `project_diff` /
+`knowledge_ingest`：这五个是分钟级的版本任务，只在 `auditor` 名下（D30）。
 
-版本管理会话（`auditor`）只声明 **9 个工具**：工程上下文 3（`create_engineering_project` /
-`project_status` / `project_sync`）、只读文件 4（`read` / `read_image` / `glob` / `grep`）、
-`ask_user`、`todo`。它**没有** `pwsh`、TIA 原子工具、git、`knowledge_*`、`project_diff`、subagent。
+版本管理子 agent（`auditor`）声明 **18 个工具**：工程上下文 4（`create_engineering_project` /
+`project_status` / `project_sync` / `project_commit`）、`project_diff` 1、图谱 5（`includeIngest: true`、
+`includeDrilldown: none`：`knowledge_workspace` / `knowledge_schema` / `knowledge_query` /
+`knowledge_ingest` / `knowledge_update`）、只读文件 4（`read` / `read_image` / `glob` / `grep`）、
+`ask_user_question`、`todo_write`、通信 2（`send_message` / `interrupt_agent`）。
+它**没有** `pwsh`、TIA 原子工具、git、图谱下钻、`subagent`。
+⚠️ 子 agent 调 `ask_user_question` 拿不到 answerer（宿主只为 root agent 提供），
+所以"提交前问用户"由它把方案 `send_message` 给 leader、leader 去问、再把答复发回。
 
 子 agent（`expert`）自己的 preset 只声明 **15 个**（图谱 7：`knowledge_workspace` / `knowledge_schema` /
 `knowledge_query` + 四个下钻工具；`project_diff`；只读文件 2：`read` / `read_image`；检索 2：`glob` / `grep`；
@@ -536,8 +543,8 @@ plugin_manager(action: "install_bundle", target: "C:\\Users\\Ansel\\dsh-automati
 |---|---|
 | `- id: system-prompt` | 覆盖全局 persona（管**非 preset** 的 agent） |
 | `- id: agent-preset-registry` | 把新会话的默认 preset 指到 `leader` |
-| `- insert: - id: preset-leader` | **主 agent**：内置 `standard` 的工具清单原样 + 工程工具行（TIA / git / 上下文 / 图谱）+ 政策文本 |
-| `- insert: - id: preset-auditor` | **版本管理**：工程上下文 3 + 只读文件 + `ask_user`/`todo`；无 shell、无 TIA 原子工具、无 git |
+| `- insert: - id: preset-leader` | **主 agent**：内置 `standard` 的工具清单原样 + 编辑与检查面（TIA / git / `project_status` / 图谱检查面）+ 政策文本；**不含**版本工作流 |
+| `- insert: - id: preset-auditor` | **版本管理（leader 派它跑慢活）**：工程上下文 4（含 `project_commit`）+ `project_diff` + 图谱 5（含 ingest）+ 只读文件 + `ask_user`/`send_message`/`todo`；无 shell、无 TIA 原子工具、无 git |
 | `- insert: - id: preset-expert` | **子 agent**：只读的工程知识专家（图谱发现 + 查询 + 四个下钻工具 + 只读文件检索 + `send_message`） |
 
 **要改政策文字，只改四处 block scalar**（全局 `personaPrefix`/`personaSuffix`、`preset-leader`
@@ -546,11 +553,11 @@ plugin_manager(action: "install_bundle", target: "C:\\Users\\Ansel\\dsh-automati
 
 #### 两层 agent 为什么这样切
 
-目的只有一个：**拆上下文**。主 agent 管工程层级的事（开工程、导出、改块、提交），
-子 agent 钻进具体代码问题（调用链、变量读写、某个网段到底做什么），各自在自己的窗口里推理，
-只有结论回流。
+目的只有一个：**拆上下文与拆时长**。主 agent 管对话和编辑环（开工程、导入/导出、改块、编译），
+`auditor` 管版本流水线（创建、同步、差异、提交、图谱刷新）这些分钟级的活，`expert` 钻进具体代码问题，
+各自在自己的窗口里推理，只有结论回流。
 
-- **派发**：主 agent 用 `subagent` 工具派给 `expert`（preset 由配置钉死：`agentPreset: expert`）。
+- **派发**：主 agent 用 `subagent` 工具派给 `expert` 或 `auditor`（`allowedAgentPresets` 就是这两个 id）。
   工具立刻返回 `started subagent <id>`，**不等待**；子 agent 结束时宿主把它的收尾文本作为一条
   notice 写回主会话。
 - **用户插话**：父会话 header 的「后代数」触发器 → 目录树 → 点一行在主区打开、或点行尾箭头

@@ -940,3 +940,71 @@ region 上下文、以及 `test/13-scl-segmentation.test.mjs`：用真实引擎�
 
 **教训**：写进 policy 的每一步都必须先问"执行它的 agent 有没有这个工具？"；反过来，给 agent 一个
 "归因工具"的断言（"工具做不到 X"）必须有复核路径，否则一次空结果会污染整条委派链。
+## D30 · 版本管理必须真的派出去：`auditor` 作为子 agent 可用 + sync/commit 两步 + lead 不再握慢工具 ✅
+
+**背景**：2026-10-23 的现场会话（`session-b788de08`，3 h 43 min / 12 轮）里，用户发现
+"新增的 Auditor 从没被调用过"：创建工程、三次提交、两次差异分析全是 `leader` 自己做的。
+复盘（同一份会话记录）定位到四条结构性原因，没有一条是"模型忘了"：
+
+1. **调用路径不存在**：`subagent` 的 `agent_preset` 枚举只有 `expert`——`auditor` 根本不是可派的
+   子 preset，只是"用户手动开新会话时可能选中"的一个 session preset；而 leader 的系统提示词里
+   `auditor` 出现 **0 次**。
+2. **职责被 persona 抢走**：leader 原文写着 "fingerprint and version it, run the git tools … None of
+   that is delegated"，与 auditor 的 charter（owns the baseline / drift / sync / commit）直接矛盾。
+3. **职责被工具吸干**：`create_engineering_project` 自己就建库 + 提交基线，`project_sync` 自己就
+   扫描 + 导出 + **提交**。auditor 剩下能干的只有"决定何时调用"，而 leader 顺手就调了。
+4. **就算派了也交不出差异**：auditor 没有 `project_diff`、没有 git，charter 还禁止它读 XML ——
+   用户期望的"差异分析"按章程不属于它。
+
+同一会话里还暴露两个次生问题：**审查被做成了提交**（用户说"你看看是否成立"，leader 先
+`compile_plc` 再 `project_sync(dry_run:false)`，结论还没出口改动已经进历史）；以及**提交信息无语义**
+（`project_sync` 没有 message 入参，三个提交全是 `sync: Sino_PEI — 1 changed, …`，`git log` 无法回溯）。
+
+**决定**
+
+1. **`auditor` 成为可派的子 preset**：`tool-subagent` 的 `allowedAgentPresets` = `[expert, auditor]`
+   （默认仍是 `expert`）。它仍可由用户直接开成会话——两种入口共用同一份 preset。
+2. **版本工作流只有 auditor 有**：`dsh-engineering-context` 拆成三个入口——
+   `.`（create/status/sync/commit）只挂 `auditor`；`/diff` 挂 `auditor` + `expert`；新增
+   `/status`（只有 `project_status`）只挂 `leader`。`knowledge_ingest` 随图谱行一起从 leader 移走
+   （auditor 用 `includeIngest: true, includeDrilldown: none`）。leader 保留 TIA 26 + git 12 + 图谱检查面 5
+   + `project_status` 1 = **44** 个自有工具；auditor **18** 个；expert 不变（15+1）。
+   ⇒ 这条是**结构性**的：不是"leader 应该少干"，而是"leader 干不了"。
+3. **sync 与 commit 分成两步**：`project_sync(dry_run:false)` 只写 SOURCE 与账本、返回
+   `pending.paths` + `pending.suggestedMessage`，**不提交**；新增 `project_commit(message, dry_run)`，
+   `message` 必填（空消息被拒，`invalid_commit_message`），默认只给计划，提交时由插件追加
+   `Tia-Op` / `Tia-Checksum` / `Tia-State` trailer。没有账本时拒绝（`not_synced`）。
+   选两步而不是加一个 `commit:false` 开关：状态里原本就有 `nextAction: commit`，脏树是**一个状态**，
+   提交是**一个动作**；一个工具同时"写树 + 写历史"永远无法在两者之间停下来给人看。
+4. **提交信息由 auditor 生成、用户确认后落库**：auditor 的路径是 `sync` → `project_diff(to:"WORKTREE")`
+   → 起草信息 → 经 leader 问用户 → `project_commit(dry_run:false)`。
+   **子 agent 没有 ask_user answerer**（宿主只为 root agent 提供，`dsh-user-questions` 的注释
+   写明"an owned child has no human answerer and would block forever"），所以确认只能经 leader 中转；
+   auditor 的 `ask_user_question` 只在它作为顶层会话时有用。persona 把这条写死，避免"派出去就没人问"。
+5. **XML 编辑纪律写进 leader persona**：只改目标块**自己**导出的 XML；禁止拿 A 的导出整块改名覆盖 B
+   （包括"先证明两者相同"这条捷径）——`import_blocks(override)` 换的是整块，任何未枚举的差异都会
+   跟着进去，而 `project_diff` 看不出来。
+
+**后果**
+
+- `leader` 的派发文案必须明确"何时派、派给谁、返回值怎么用"，否则工具拿掉了它只会说"我没有这个工具"。
+- 决策里新增一条跨角色的确认链路（auditor → leader → 用户 → leader → auditor）。它多一次往返，
+  换来的是"提交前一定有人看过差异"。
+- `project_diff` 的入口注释与测试反了：原先断言"Auditor 必须**没有** diff、Leader 必须有"，现在反过来。
+
+**验证**
+
+- 包内 **116 项**（原 110 + 新增 6 项 `project_commit`：计划不写盘、只提交设备目录、无账本拒绝、
+  空消息拒绝、trailer 不重复、干净树不报错）；全仓 `pnpm -r test` 全绿（TIA 101/102、
+  git 51、上下文 116、图谱 128、ui-plc-source 47、ui-tia-console 22）。
+- 蓝图 `--dump-config` exit 0：`leader-engineering-status` 存在、`leader-project-diff` 消失、
+  `auditor-project-diff` / `auditor-graph-tools`（`includeIngest: true, includeDrilldown: none`）出现，
+  `tool-subagent.allowedAgentPresets` 含 `auditor`。
+- 行数基线更新：web+patch **1863 → 2003**；物化 profile **1896 → 2036**（增量全部是 persona 文本）。
+
+**未做（下一步）**
+
+- 真机链路未跑：需要重启 App，让 leader 对一次 `project_sync` 派 auditor，并观察
+  "sync → diff → 问用户 → commit"四步真的按顺序发生。
+- `compile_plc` 仍在 leader 手里（编辑环的一部分，且 TIA 工具行没有按工具裁剪的配置项）。
+  如果实测 compile 成为主要阻塞，再给 TIA 包加一个只含 `compile_plc` 的入口行。

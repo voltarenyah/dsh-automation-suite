@@ -56,21 +56,30 @@
 
 ## 三个 preset：`leader`、`auditor` 与 `expert`
 
-本蓝图声明三个 preset，默认（新会话）是 `leader`：
+本蓝图声明三个 preset，默认（新会话）是 `leader`。`auditor` 与 `expert` 都是**子 agent preset**：
+`subagent` 工具的 `allowedAgentPresets` 就是这两个 id，leader 用 `agent_preset: auditor` 或
+`agent_preset: expert` 分派；`auditor` 也可以由用户直接开成会话（它有 `ask_user_question` 通道）。
 
 | preset | 谁用 | 工具面 |
 |---|---|---|
-| **`leader`** | 主 agent | 内置 `standard` 的全部工具 + 本发行版五个工程工具行（TIA 26、工程上下文 3、`project_diff`、图谱 7 `includeDrilldown: inspect`、git 12） |
-| **`auditor`** | 版本管理会话 | `create_engineering_project` / `project_status` / `project_sync`、只读 `read`/`read_image`/`glob`/`grep`、`ask_user`、`todo`、`time-context`、`compaction` |
-| **`expert`** | 子 agent（`subagent` 工具默认挂它） | **只读**：图谱 `knowledge_workspace` / `knowledge_schema` / `knowledge_query` + 四个下钻工具（`includeIngest: false, includeDrilldown: all`）、`project_diff`、`read`/`read_image`/`glob`/`grep`、`send_message`/`interrupt_agent`、`ask_user_question`（读源码审批，D29）、`time-context`、`compaction` |
+| **`leader`** | 主 agent | 内置 `standard` 的全部工具 + **编辑与检查面**：TIA 26、工程上下文 `project_status` 1、图谱 5（`includeIngest: false, includeDrilldown: inspect`）、git 12。**没有** create / sync / commit / diff / ingest（D30） |
+| **`auditor`** | 版本管理子 agent（leader 派它跑慢活） | 工程上下文 4（`create_engineering_project` / `project_status` / `project_sync` / `project_commit`）+ `project_diff` + 图谱 5（`includeIngest: true, includeDrilldown: none`）+ 只读 `read`/`read_image`/`glob`/`grep` + `ask_user_question` + `send_message`/`interrupt_agent` + `todo` + `time-context` + `compaction` |
+| **`expert`** | 子 agent（`subagent` 的默认 preset） | **只读**：图谱 `knowledge_workspace` / `knowledge_schema` / `knowledge_query` + 四个下钻工具（`includeIngest: false, includeDrilldown: all`）、`project_diff`、`read`/`read_image`/`glob`/`grep`、`send_message`/`interrupt_agent`、`ask_user_question`（读源码审批，D29）、`time-context`、`compaction` |
 
-`auditor` **没有**：`pwsh`/`bash`、TIA 26 个原子工具、git、`knowledge_*`、`project_diff`、
-`subagent`。它的职责是导入基线、判断漂移、同步 SOURCE、提交、报图谱新鲜度；**不解释块内逻辑为什么改**
+`auditor` **没有**：`pwsh`/`bash`、TIA 26 个原子工具（import/compile 是 leader 的编辑环）、
+git 12 个工具（提交只走 `project_commit`）、图谱下钻（它只报状态，不读逻辑）、`subagent`。
+它的职责是导入基线、判断漂移、同步 SOURCE、**说清楚"变了什么"（`project_diff`）**、
+**生成提交信息并在用户确认后提交**、报并刷新图谱新鲜度；**不解释块内逻辑为什么改**
 （那是 Leader/Expert 的职责）。
 
 `expert` **没有**：任何 TIA 操作工具、git、工程上下文工作流、`pwsh`、`jobs`、`schedule`、
-`goal`、`plan`、`web`、`todo`、`ask_user`、`skill`。它也不掌握 `knowledge_ingest`（整库重建是
-主 agent 建工程流程的一部分）。
+`goal`、`plan`、`web`、`todo`、`skill`。它也不掌握 `knowledge_ingest`（整库重建是
+auditor 版本流程的一部分）。
+
+> ⚠️ **子 agent 的 `ask_user_question` 拿不到答案**：宿主只为 root agent 提供 answerer，
+> 被拥有的子会话调用会以 `NO_PROVIDER` 失败。所以"提交前问用户"必须经 leader 中转：
+> auditor 用 `send_message` 把差异摘要 + 提交信息推给 leader，leader 用 `ask_user_question`
+> 问用户，再把答复发回去。policy（二者的人格文本）与这条链路是配套的。
 
 ### 工具面按 preset 分发（方案 A 的落地）
 
@@ -82,8 +91,10 @@ DSH 的工具可见性是**按声明作用域**解析的（`dsh-tools` 的 `view
 - **模型面工具行由 preset 声明**：`@voltarenyah/dsh-tia-openness-v17-min/tools`、
   `@voltarenyah/dsh-engineering-graph/tools`、`dsh-tool-git/tools`。哪个 preset 写了这一行，
   它名下的 agent 才有这些工具。
-- **`dsh-engineering-context` 没有宿主面资源**，所以它的行整个搬进 `leader` 与 `auditor`，
-  宿主面那份 `disabled: true`（否则三个工具会落在全局层被所有 agent 继承）。
+- **`dsh-engineering-context` 没有宿主面资源**，所以它的三个入口由 preset 分开挂：
+  `.`（create/status/sync/commit）只给 `auditor`，`/diff` 给 `auditor` 与 `expert`，
+  `/status` 只给 `leader`；宿主面那份 `disabled: true`（否则这些工具会落在全局层被所有 agent 继承）。
+  这个拆分本身是政策（D30）：**版本工作流只有 auditor 有**，leader 想创建/同步/看差异/提交，只能派发。
 
 ⇒ 一个会话能用哪些工程工具，取决于它的 preset。切到没有声明这些行的内置 preset
 （`standard` / `minimal` / …）时，**这些工具不存在**——这是有意的，不是故障。
@@ -143,9 +154,9 @@ DSH 的工具可见性是**按声明作用域**解析的（`dsh-tools` 的 `view
 
 因此本文件里的 `preset-leader` 与上游 `standard` 的 **22 条**顶层子插件行**逐项等价**（id、name、顺序、
 `disabled`/`group`/`isolate`/`config` 全部相同），只在三处不同：persona 行、id/order/名称，
-以及**多出的工程工具行**（`leader-engineering-context` / `leader-tia-tools` / `leader-git-tools` /
+以及**多出的工程工具行**（`leader-engineering-status` / `leader-tia-tools` / `leader-git-tools` /
 `leader-tia-commands` / `leader-graph-tools`）。
-`preset-auditor` 是版本管理的专用小清单（context 3 + 只读 fs + ask_user/todo + 压缩），
+`preset-auditor` 是版本管理的专用清单（context 4 + diff + 图谱 5 + 只读 fs + ask_user/send_message/todo + 压缩），
 `preset-expert` 是只读知识专家的极小清单；两者都不与上游对齐——它们要的正是"少"。
 升级 DSH 后上游若改了 `standard`，`preset-leader` 这份副本**不会**自动跟随，需要按文件头注释重新生成；
 `preset-auditor` / `preset-expert` 只需核对它们引用的那几个包名是否还在。
