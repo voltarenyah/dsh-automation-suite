@@ -344,3 +344,50 @@ manifest.json     # name / cpuType / communication / ip / subnetMask / gateway /
 | `simulation_tags` | 恢复后做业务验证 |
 
 **边界**：snapshot/resume 只保存运行实例，不替代 TIA 工程源文件与 git 版本管理；许可证仍按 PLCSIM 许可执行。
+
+## 11. 交接清单（下一会话从这里开始）
+
+### 11.1 已交付并验证
+
+- TIA 侧（本包，33 操作 / 32 工具，`npm run check` 全绿）：
+  `adopt_open_project`、`online_targets`、`online_connect` / `online_status` / `online_disconnect(force)`、
+  `download`（dry_run 默认、confirm 真下、physical 目标再要 `confirm_real_device`）。
+- 真实验证过的路径：
+  - **V17 + TCP/IP**（`Siemens PLCSIM Virtual Ethernet Adapter`）：adopt 1.2 s、GoOnline 4.4 s、
+    软件下载 `Success` / 0 error；
+  - **V20 + Softbus**（`PLCSIM`）：adopt → force offline → 软件下载 `Success` / 0 error，
+    消息含 `Certificate configuration` / `Hardware configuration` / `Connection configuration`；
+  - **V20 + TCP/IP**：连续两次下载 `Success`。
+- 前置条件（缺一不可）：工程给目标 PLC **配子网 + 唯一 IP**；首次连接在 **TIA UI 接受自签名证书**；
+  **adopt UI 已打开的工程**（Openness 答不了证书弹窗）。
+
+### 11.2 本机当前状态
+
+- PLCSIM Softbus 实例可能已随本会话后台任务结束而消失；重启方式：
+  `node %TEMP%\tia-v20-spike\keep-instance.mjs "plc_1.profinet interface_1" 192.168.1.50 softbus`
+  （TCP/IP 则把最后的 `softbus` 去掉；脚本会一直持有实例，Ctrl+C 或 kill 即 `POWER_OFF + UNREGISTER`）。
+- 临时资产（**都不在仓库里**）：`%TEMP%\tia-v20-spike`（V20 临时控制器 / V20 工程 / 各探针脚本）、
+  `%TEMP%\plcsim-spike`（Keeper、PLCSIM API）、`%TEMP%\*.log`（各次运行的完整日志）。
+- TIA V17 工程：`C:\Users\Ansel\Documents\Automation\V17\AgentAssistProgramming\TestPLCExportDemo\TestPLCExportDemo.ap17`
+- V20 工程副本：`%TEMP%\tia-v20-spike\project\TestPLCExportDemo_Single\TestPLCExportDemo_V20.ap20`
+
+### 11.3 待办（按优先级）
+
+1. **V17 hardware 下载**（`options=hardware` / `both`）——目前只验过软件；
+2. **真实 PLC 验证**（`confirm_real_device=true`）——虚拟实例不覆盖这条闸门；
+3. **`upload`（StationUploadProvider）/ `compare_online`（PlcSoftware.CompareToOnline）**——S3 未实现；
+4. 上述通过后，把矩阵里 `Downloading hardware and software components…` 从“部分”改成“已适配”。
+
+### 11.4 复跑一次 V17 下载（命令级）
+
+```powershell
+# 1) 实例（如已存在可跳过）
+node $env:TEMP\tia-v20-spike\keep-instance.mjs "plc_1.profinet interface_1" 192.168.1.50 tcpip
+
+# 2) TIA UI 打开 V17 工程并接受一次证书（人工）
+
+# 3) 控制器：adopt → force offline → dry_run → confirm
+#    参考脚本：$env:TEMP\tia-v20-spike\v17-adopt-download2.mjs
+```
+
+注意：控制器 exe 重建后哈希变化，**第一次 attach 可能超时一次**，重试即通过（见 §10.4）。

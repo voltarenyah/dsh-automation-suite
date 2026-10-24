@@ -22,3 +22,6 @@ controller/bin/*.pdb
 
 # Logs written by test-profile/test-dsh-load.ps1.
 test-profile/logs/
+
+# Build leftovers: the compiler writes <exe>.inuse-<pid> while the exe is running.
+*.inuse-*
