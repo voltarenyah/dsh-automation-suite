@@ -380,6 +380,8 @@
             name: '@voltarenyah/dsh-engineering-context/status'
           - id: leader-tia-tools
             name: '@voltarenyah/dsh-tia-openness-v17-min/tools'
+          - id: leader-plcsim-tools
+            name: '@voltarenyah/dsh-plcsim-advanced/tools'
           - id: leader-git-tools
             name: dsh-tool-git/tools
           - id: leader-tia-commands

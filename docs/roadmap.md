@@ -329,6 +329,7 @@
 - **更多 TIA 版本**：V18+（受管环境还有应用白名单问题）、V16（D3：第二个版本到来时抽 core 包）；
 - **更多工程对象**：硬件组态、HMI、库、多用户、在线下载/上传与比较（按 D1 的维度分组，由 D31 决定装配）；
 - **其它厂商的工程软件**：**当前只规划 Rockwell，其他厂商暂无计划**（D11）；
+- **仿真 / 运行态**：S7-PLCSIM Advanced 的接入评估与方案见 [`simulation-plcsim-advanced.md`](simulation-plcsim-advanced.md)（提案：独立插件 `dsh-plcsim-advanced`，**运行侧 MVP 已 E2E 验证**：人工 TIA 下载 → RUN → 51 标签 → Bool 读写；Softbus、API 4.0；**Openness 直连下载仍失败**：V17/V18 无 API，V20 有 API 但 `DownloadProvider` 在连接阶段失败；**未排期、未改状态**）；
 - **跨项目视角**：把多个项目的工程上下文放在一起比较与复用。
 
 ---

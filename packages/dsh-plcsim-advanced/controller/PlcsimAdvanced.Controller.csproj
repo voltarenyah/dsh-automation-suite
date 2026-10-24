@@ -1,0 +1,41 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    PLCSIM Advanced controller.
+
+    Targets .NET Framework 4.8 / x64 because the PLCSIM Advanced API is a
+    .NET Framework library. The API assembly is referenced from the user's
+    installation (API\4.0) and is never copied next to this executable:
+    CopyLocal/Private is false, and Program.InstallResolver loads it from the
+    api-dir argument at run time. This keeps the Siemens binary out of the package.
+  -->
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net48</TargetFramework>
+    <AssemblyName>PlcsimAdvanced.Controller</AssemblyName>
+    <RootNamespace>PlcsimAdvanced.Controller</RootNamespace>
+    <LangVersion>7.3</LangVersion>
+    <Platforms>x64</Platforms>
+    <PlatformTarget>x64</PlatformTarget>
+    <Prefer32Bit>false</Prefer32Bit>
+    <Nullable>disable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+    <Deterministic>true</Deterministic>
+    <DebugType>portable</DebugType>
+    <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
+    <NoWarn>$(NoWarn);CS1591</NoWarn>
+    <PlcsimApiDir Condition="'$(PlcsimApiDir)' == ''">C:\Program Files (x86)\Common Files\Siemens\PLCSIMADV\API\4.0</PlcsimApiDir>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Reference Include="Siemens.Simatic.Simulation.Runtime.Api.x64">
+      <HintPath>$(PlcsimApiDir)\Siemens.Simatic.Simulation.Runtime.Api.x64.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="System.Web.Extensions" />
+  </ItemGroup>
+
+</Project>

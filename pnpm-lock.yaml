@@ -34,6 +34,15 @@ importers:
         specifier: ^5.6.0
         version: 5.9.3
 
+  packages/dsh-plcsim-advanced:
+    devDependencies:
+      '@types/node':
+        specifier: ^22.10.0
+        version: 22.20.5
+      typescript:
+        specifier: ^5.6.0
+        version: 5.9.3
+
   packages/dsh-tia-openness-v17-min:
     devDependencies:
       '@types/node':
@@ -84,6 +93,9 @@ importers:
       '@voltarenyah/dsh-engineering-graph':
         specifier: workspace:^
         version: link:../../packages/dsh-engineering-graph
+      '@voltarenyah/dsh-plcsim-advanced':
+        specifier: workspace:^
+        version: link:../../packages/dsh-plcsim-advanced
       '@voltarenyah/dsh-tia-openness-v17-min':
         specifier: workspace:^
         version: link:../../packages/dsh-tia-openness-v17-min

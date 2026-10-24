@@ -1,0 +1,27 @@
+# Build output of src/. This IS part of the deliverable: the loader imports
+# lib/index.js, so the plugin runs without a build step. Rebuild with
+# `npm run build`.
+# (nothing ignored here on purpose)
+
+# Local development links to the DeepSeek Harness runtime packages, created by
+# scripts/link-dsh-runtime.mjs. They are never shipped: an installed plugin
+# resolves @deepseek-ai/* from the profile's runtime resolution.
+node_modules/
+
+# C# controller build output. controller/bin IS part of the deliverable (the
+# plugin cannot run without the executable), so only the intermediate folders are
+# ignored; rebuild it with `npm run build:controller`.
+controller/obj/
+controller/bin/*.pdb
+
+# Test and scratch output.
+*.log
+.tools/ref/
+.tools/probe*.mjs
+.tools/leak-probe.mjs
+
+# Logs written by test-profile/test-dsh-load.ps1.
+test-profile/logs/
+
+# npm writes this; the workspace uses pnpm.
+package-lock.json
