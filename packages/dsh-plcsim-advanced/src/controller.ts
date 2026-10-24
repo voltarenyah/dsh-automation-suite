@@ -52,6 +52,10 @@ export interface ControllerOptions {
   exePath: string
   apiDir: string
   storageRoot: string
+  networkMode: 'softbus' | 'tcpip'
+  showControlPanel: boolean
+  controlPanelPath: string
+  keepInstancesOnUnload: boolean
   requestTimeoutMs: number
   startupTimeoutMs: number
   shutdownGraceMs: number
@@ -262,6 +266,14 @@ export class ControllerProcess {
       this.#options.apiDir,
       '--storage-root',
       this.#options.storageRoot,
+      '--network-mode',
+      this.#options.networkMode,
+      '--show-control-panel',
+      String(this.#options.showControlPanel),
+      '--control-panel',
+      this.#options.controlPanelPath,
+      '--keep-on-exit',
+      String(this.#options.keepInstancesOnUnload),
     ]
     this.#starting = new Promise<ReadyFrame>((resolve, reject) => {
       const child = spawn(this.#options.exePath, [...args], { stdio: ['pipe', 'pipe', 'pipe'] })

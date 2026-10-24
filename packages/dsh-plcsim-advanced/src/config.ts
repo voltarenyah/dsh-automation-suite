@@ -7,9 +7,18 @@
  * path chosen for this plugin. TCP/IP will be an explicit opt-in later.
  */
 
+import { join } from 'node:path'
+
 import Schema from '@deepseek-ai/schemastery'
 
 import { defaultApiDir, defaultStorageRoot } from './controller.js'
+
+export type NetworkMode = 'softbus' | 'tcpip'
+
+function defaultControlPanelPath(): string {
+  const base = process.env['ProgramFiles(x86)'] ?? 'C:\\Program Files (x86)'
+  return join(base, 'Siemens', 'Automation', 'PLCSIMADV', 'bin', 'Siemens.Simatic.PlcSim.Advanced.UserInterface.exe')
+}
 
 export interface PluginConfig {
   /** Absolute path of the C# controller; empty means the bundled binary. */
@@ -18,6 +27,14 @@ export interface PluginConfig {
   apiDir: string
   /** Root under which instance storage directories are created. */
   storageRoot: string
+  /** Default communication interface when an instance does not pass one. */
+  networkMode: NetworkMode
+  /** Start the PLCSIM Advanced Control Panel when the first instance is created. */
+  showControlPanel: boolean
+  /** Control Panel executable. */
+  controlPanelPath: string
+  /** Leave instances running when the plugin controller unloads. */
+  keepInstancesOnUnload: boolean
   requestTimeoutMs: number
   startupTimeoutMs: number
   shutdownGraceMs: number
@@ -30,6 +47,10 @@ export const configDefaults: PluginConfig = {
   controllerPath: '',
   apiDir: defaultApiDir(),
   storageRoot: defaultStorageRoot(),
+  networkMode: 'softbus',
+  showControlPanel: true,
+  controlPanelPath: defaultControlPanelPath(),
+  keepInstancesOnUnload: true,
   requestTimeoutMs: 120_000,
   startupTimeoutMs: 30_000,
   shutdownGraceMs: 5_000,
@@ -42,6 +63,10 @@ export const Config = Schema.object({
   controllerPath: Schema.string().default(configDefaults.controllerPath),
   apiDir: Schema.string().default(configDefaults.apiDir),
   storageRoot: Schema.string().default(configDefaults.storageRoot),
+  networkMode: Schema.string().default(configDefaults.networkMode),
+  showControlPanel: Schema.boolean().default(configDefaults.showControlPanel),
+  controlPanelPath: Schema.string().default(configDefaults.controlPanelPath),
+  keepInstancesOnUnload: Schema.boolean().default(configDefaults.keepInstancesOnUnload),
   requestTimeoutMs: Schema.natural().default(configDefaults.requestTimeoutMs),
   startupTimeoutMs: Schema.natural().default(configDefaults.startupTimeoutMs),
   shutdownGraceMs: Schema.natural().default(configDefaults.shutdownGraceMs),
@@ -63,12 +88,20 @@ function flag(value: unknown, fallback: boolean): boolean {
   return typeof value === 'boolean' ? value : fallback
 }
 
+function networkMode(value: unknown, fallback: NetworkMode): NetworkMode {
+  return value === 'softbus' || value === 'tcpip' ? value : fallback
+}
+
 export function resolveConfig(config: Partial<PluginConfig> | undefined): PluginConfig {
   const source: Partial<PluginConfig> = config ?? {}
   return {
     controllerPath: text(source.controllerPath, configDefaults.controllerPath),
     apiDir: text(source.apiDir, configDefaults.apiDir),
     storageRoot: text(source.storageRoot, configDefaults.storageRoot),
+    networkMode: networkMode(source.networkMode, configDefaults.networkMode),
+    showControlPanel: flag(source.showControlPanel, configDefaults.showControlPanel),
+    controlPanelPath: text(source.controlPanelPath, configDefaults.controlPanelPath),
+    keepInstancesOnUnload: flag(source.keepInstancesOnUnload, configDefaults.keepInstancesOnUnload),
     requestTimeoutMs: positive(source.requestTimeoutMs, configDefaults.requestTimeoutMs, 1_000),
     startupTimeoutMs: positive(source.startupTimeoutMs, configDefaults.startupTimeoutMs, 1_000),
     shutdownGraceMs: positive(source.shutdownGraceMs, configDefaults.shutdownGraceMs, 0),

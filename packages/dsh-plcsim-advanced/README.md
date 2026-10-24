@@ -4,35 +4,59 @@ DSH plugin for **S7-PLCSIM Advanced**: manage local simulated PLC instances and
 exchange tags through the PLCSIM Advanced runtime API. It is the runtime half of
 the suite's simulation capability.
 
-> **Status: runtime MVP, E2E verified.** Instance lifecycle, RUN/STOP/reset and
-> tag I/O work. On 2026-10-24 a **manual TIA UI download** into an API-created
-> Softbus CPU1511 instance was verified end-to-end: RUN, **51 tags** listed,
-> `Btn_ForwardCommand` read/write, and `CylinderIsMovingForward` observed to
-> change. **Program loading is not implemented here**: TIA V17 Openness has no
-> `TargetForSoftware` / `PlcSimulationAdvanced` API; TIA V20 has it, but
-> `DownloadProvider.Download` still fails at `Connect to module PLC_1 failed`
-> before any download callback. The route is therefore **manual download once +
-> this plugin for the runtime**, pending an Openness fix; see
-> [`docs/simulation-plcsim-advanced.md`](../../docs/simulation-plcsim-advanced.md)
-> §10.8.
+> **Status: runtime MVP, E2E verified.** Instance lifecycle, TCP/IP or Softbus,
+> RUN/STOP/reset and tag I/O work. The proven workflow with the TIA plugin is
+> **TIA `online_targets` → create a TCP/IP instance at the project IP → power on →
+> TIA `adopt_open_project` / `online_disconnect(force)` / `download` → read tags**.
+> Openness download needs two one-time prerequisites on the TIA side: the project
+> PLC must have a subnet and unique IP, and the first connection must accept the
+> self-signed certificate in the TIA UI. The complete handoff workflow is
+> [packages/dsh-tia-openness-v17-min/docs/HANDOFF-PLCSIM-DOWNLOAD.md](../dsh-tia-openness-v17-min/docs/HANDOFF-PLCSIM-DOWNLOAD.md).
 
 ## What it does
 
 | Tool | Actions | Notes |
 |---|---|---|
-| `simulation_status` | read-only | API/Runtime version, licence, managed instances |
-| `simulation_instance` | `list` / `create` / `power_on` / `power_off` / `remove` | `power_off` and `remove` need `confirm=true` |
+| `simulation_status` | read-only | API/Runtime version, licence, instances with name/comm/IP/state |
+| `simulation_instance` | `list` / `create` / `power_on` / `power_off` / `remove` | `create` takes `name`, `cpu_type`, `communication`, `ip`; `power_on` applies the IP suite; `power_off`/`remove` need `confirm=true` |
 | `simulation_run` | `state` / `run` / `stop` / `reset` | write actions need `confirm=true` |
 | `simulation_tags` | `list` / `read` / `write` | `list` capped (default 200); `write` needs `confirm=true` |
 
+Coordinates the TIA side needs are returned directly: `name`, `communication`,
+`ip`, `subnetMask`, `gateway`, `state`, `cpuType`, `license`.
+
 The controller speaks one JSON object per line over stdio and holds the PLCSIM
-Runtime Manager API client. Instances live exactly as long as the controller:
-unloading the plugin powers them off and unregisters them.
+Runtime Manager API client. Instances are kept running when the plugin unloads
+(`keepInstancesOnUnload`, default true); `remove` is the explicit cleanup.
+
+## Proven workflow with the TIA plugin
+
+1. **TIA `online_targets`** — read the target PLC's configured IP/subnet and the
+   available PC interfaces (TCP/IP uses `Siemens PLCSIM Virtual Ethernet Adapter`).
+2. **`simulation_instance(action=create, name="<PROFINET device name>",
+   cpu_type="1511", communication="tcpip", ip="<project IP>")`** — creates the
+   instance and opens the PLCSIM Advanced Control Panel (`showControlPanel`,
+   default true). The CPU family must match the project CPU.
+3. **`simulation_instance(action=power_on, name=..., ip="<project IP>")`** —
+   powers on and applies the IP suite. The instance should be `STOP` and list an
+   IP matching the project.
+4. **TIA `adopt_open_project`** — attach to the already-open TIA UI project. If
+   the certificate has not been accepted yet, the user accepts it once in the TIA
+   UI on the first connection.
+5. **TIA `online_disconnect(force=true)`** — drop any online state left by the UI.
+6. **TIA `download(dry_run=true)` → `download(confirm=true,
+   options="software")`** — verify the target, then download.
+7. **`simulation_run(action=run, confirm=true)`** and **`simulation_tags`** —
+   confirm the program is running and exercise inputs/outputs.
+
+The two plugins never call each other; the agent passes the coordinates between
+them.
 
 ## Safety
 
-- **Softbus only** (`networkMode` is fixed to the PLCSIM default): local PC/VM
-  communication, no route to real hardware.
+- Default communication is **Softbus** (local only); the Openness workflow
+  explicitly opts into **TCP/IP** to match the project IP. TCP/IP uses the PLCSIM
+  virtual adapter, not a physical adapter mapping.
 - Power-off/remove and every write require `confirm=true`.
 - The plugin never loads a program and never writes a TIA project.
 
@@ -46,6 +70,10 @@ block.
 | `controllerPath` | `''` | bundled `controller/bin/PlcsimAdvanced.Controller.exe` |
 | `apiDir` | `C:\Program Files (x86)\Common Files\Siemens\PLCSIMADV\API\4.0` | API assembly folder; never copied into the package |
 | `storageRoot` | `%TEMP%\dsh-plcsim` | root of per-instance storage directories |
+| `networkMode` | `softbus` | default when `create` does not pass `communication`; the download workflow passes `tcpip` |
+| `showControlPanel` | `true` | start the PLCSIM Advanced Control Panel on the first create |
+| `controlPanelPath` | PLCSIM Advanced `bin\...UserInterface.exe` | Control Panel executable |
+| `keepInstancesOnUnload` | `true` | leave instances running when the plugin unloads; `remove` cleans up |
 | `requestTimeoutMs` | `120000` | per-operation deadline |
 | `startupTimeoutMs` | `30000` | ready-handshake deadline |
 | `shutdownGraceMs` | `5000` | graceful controller shutdown |
@@ -85,7 +113,7 @@ src/
   config.ts           Config schema and defaults
   runtime-service.ts  the internal seam between the two rows
 controller/
-  Program.cs          stdio controller, API 4.0 adapter
+  Program.cs          stdio controller, API 4.0 adapter, TCP/IP + IP suite, UI
   build.ps1           builds controller/bin and runs --self-test
   bin/                prebuilt exe (no Siemens API DLL)
 test/                 node:test protocol + tool forwarding

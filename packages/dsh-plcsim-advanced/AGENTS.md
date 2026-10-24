@@ -7,12 +7,12 @@ root `AGENTS.md`.
 ## 1. Scope
 
 - This package is the **runtime half** of the simulation capability: PLCSIM
-  Advanced instance lifecycle, RUN/STOP/reset and tag I/O.
-- It is **not** a program loader. TIA V17/V18 Openness has no
-  `TargetForSoftware` / `PlcSimulationAdvanced` API (V19+ only), so an Openness
-  download to a fresh instance fails. Do not add a fake `download`/`load` tool
-  here; the program-load route is a separate decision in
-  `docs/simulation-plcsim-advanced.md` §10.
+  Advanced instance lifecycle, TCP/IP or Softbus, RUN/STOP/reset and tag I/O.
+- It is **not** a program loader. The TIA Openness plugin owns the download; the
+  proven flow needs the project PLC to have a subnet/IP and the first connection
+  certificate accepted once in the TIA UI, then `adopt_open_project` +
+  `online_disconnect(force)` + `download`. Do not add a fake `download`/`load`
+  tool here.
 - The plugin never writes a TIA project and never talks to TIA Portal.
 
 ## 2. Version and API policy
@@ -25,8 +25,14 @@ root `AGENTS.md`.
 - Reference the API assembly with `Private=false` / `CopyLocal=false` and load it
   from `apiDir` via the controller's `AssemblyResolve`. **Never** copy a Siemens
   DLL into `controller/bin` or the npm package.
-- Softbus is the only network mode in this MVP. TCP/IP is an explicit opt-in for
-  later; do not expose physical adapter mapping.
+- TCP/IP and Softbus are both supported. On API 4.0 the switch is
+  `IInstance.CommunicationInterface` **before** `PowerOn`; the IP suite is applied
+  with `SetIPSuite(0, …)` **after** `PowerOn`. Do not expose physical adapter
+  mapping; TCP/IP is for the PLCSIM virtual adapter.
+- The first `create` starts the PLCSIM Advanced Control Panel by default
+  (`showControlPanel`); keep it enabled so the user can see name/IP/comm/state.
+- `keepInstancesOnUnload` defaults to true. The explicit cleanup is the
+  `remove` action, not plugin unload.
 
 ## 3. Two Loader rows
 
@@ -55,6 +61,7 @@ instance.
 
 - `power_off` / `remove` require `confirm=true`.
 - Every tag write requires `confirm=true`; the list is capped.
-- Instances are unregistered when the controller exits; do not promise
-  persistence across DSH restarts.
-- Do not silently fall back to a different instance or storage root.
+- Softbus remains the default; TCP/IP is passed explicitly for the Openness
+  workflow and must match the project IP. Do not add physical adapter mapping.
+- `keepInstancesOnUnload` defaults to true; `remove` is the explicit cleanup.
+  Do not silently fall back to a different instance or storage root.

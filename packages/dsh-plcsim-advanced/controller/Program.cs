@@ -1,6 +1,7 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Globalization;
 using System.IO;
 using System.Reflection;
@@ -22,14 +23,35 @@ namespace PlcsimAdvanced.Controller
 
     internal sealed class PlcsimRuntime
     {
+        private sealed class InstanceSettings
+        {
+            public string Ip;
+            public string SubnetMask = "255.255.255.0";
+            public string Gateway = "0.0.0.0";
+            public string Communication = "softbus";
+        }
+
         private readonly Dictionary<string, IInstance> _instances =
             new Dictionary<string, IInstance>(StringComparer.OrdinalIgnoreCase);
 
-        private readonly string _storageRoot;
+        private readonly Dictionary<string, InstanceSettings> _settings =
+            new Dictionary<string, InstanceSettings>(StringComparer.OrdinalIgnoreCase);
 
-        public PlcsimRuntime(string storageRoot)
+        private readonly string _storageRoot;
+        private readonly string _defaultCommunication;
+        private readonly bool _showControlPanel;
+        private readonly string _controlPanelPath;
+        private readonly bool _keepOnExit;
+
+        public PlcsimRuntime(
+            string storageRoot, string defaultCommunication, bool showControlPanel,
+            string controlPanelPath, bool keepOnExit)
         {
             _storageRoot = storageRoot;
+            _defaultCommunication = defaultCommunication;
+            _showControlPanel = showControlPanel;
+            _controlPanelPath = controlPanelPath;
+            _keepOnExit = keepOnExit;
         }
 
         public static object Probe()
@@ -70,7 +92,7 @@ namespace PlcsimAdvanced.Controller
                 list.Add(Describe(pair.Value));
             }
             data["instances"] = list;
-            data["networkMode"] = "Softbus";
+            data["networkMode"] = _defaultCommunication;
             return data;
         }
 
@@ -86,9 +108,26 @@ namespace PlcsimAdvanced.Controller
                 {
                     throw new ControllerException("instance_exists", "A PLCSIM instance named '" + name + "' already exists.");
                 }
-                IInstance instance = SimulationRuntimeManager.RegisterInstance(name);
+                ECPUType cpu = ParseCpuType(Text(p, "cpu_type"));
+                IInstance instance = cpu == ECPUType.CPU1500_Unspecified
+                    ? SimulationRuntimeManager.RegisterInstance(name)
+                    : SimulationRuntimeManager.RegisterInstance(cpu, name);
                 instance.StoragePath = Path.Combine(_storageRoot, SafeName(name));
+
+                string communication = NormalizeCommunication(Text(p, "communication") ?? _defaultCommunication);
+                instance.CommunicationInterface = communication == "tcpip"
+                    ? ECommunicationInterface.TCPIP
+                    : ECommunicationInterface.Softbus;
+
+                _settings[name] = new InstanceSettings
+                {
+                    Communication = communication,
+                    Ip = Text(p, "ip"),
+                    SubnetMask = Text(p, "subnet_mask") ?? "255.255.255.0",
+                    Gateway = Text(p, "gateway") ?? "0.0.0.0",
+                };
                 _instances[name] = instance;
+                if (_showControlPanel) EnsureControlPanel();
                 return Describe(instance);
             }
 
@@ -96,6 +135,15 @@ namespace PlcsimAdvanced.Controller
             if (action == "power_on")
             {
                 existing.PowerOn(20000);
+                InstanceSettings settings = SettingsFor(name);
+                string ip = Text(p, "ip") ?? settings.Ip;
+                if (!string.IsNullOrEmpty(ip))
+                {
+                    settings.Ip = ip;
+                    settings.SubnetMask = Text(p, "subnet_mask") ?? settings.SubnetMask;
+                    settings.Gateway = Text(p, "gateway") ?? settings.Gateway;
+                    ApplyIpSuite(existing, settings);
+                }
                 return Describe(existing);
             }
             if (action == "power_off")
@@ -108,6 +156,7 @@ namespace PlcsimAdvanced.Controller
                 try { existing.PowerOff(20000); } catch (Exception) { }
                 try { existing.UnregisterInstance(); } catch (Exception) { }
                 _instances.Remove(name);
+                _settings.Remove(name);
                 return new Dictionary<string, object> { { "name", name }, { "removed", true } };
             }
             throw new ControllerException("invalid_action", "Unknown instance action '" + action + "'.");
@@ -198,13 +247,97 @@ namespace PlcsimAdvanced.Controller
 
         public void Dispose()
         {
-            foreach (var pair in _instances)
+            if (!_keepOnExit)
             {
-                try { pair.Value.PowerOff(20000); } catch (Exception) { }
-                try { pair.Value.UnregisterInstance(); } catch (Exception) { }
+                foreach (var pair in _instances)
+                {
+                    try { pair.Value.PowerOff(20000); } catch (Exception) { }
+                    try { pair.Value.UnregisterInstance(); } catch (Exception) { }
+                }
             }
             _instances.Clear();
+            _settings.Clear();
             try { SimulationRuntimeManager.Shutdown(); } catch (Exception) { }
+        }
+
+        private InstanceSettings SettingsFor(string name)
+        {
+            InstanceSettings settings;
+            if (!_settings.TryGetValue(name, out settings))
+            {
+                settings = new InstanceSettings();
+                _settings[name] = settings;
+            }
+            return settings;
+        }
+
+        private static ECPUType ParseCpuType(string value)
+        {
+            if (string.IsNullOrEmpty(value) || string.Equals(value, "unspecified", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(value, "1500", StringComparison.OrdinalIgnoreCase))
+            {
+                return ECPUType.CPU1500_Unspecified;
+            }
+            switch (value.Trim().ToLowerInvariant())
+            {
+                case "1511": return ECPUType.CPU1511;
+                case "1513": return ECPUType.CPU1513;
+                case "1515": return ECPUType.CPU1515;
+                case "1516": return ECPUType.CPU1516;
+                case "1517": return ECPUType.CPU1517;
+                case "1518": return ECPUType.CPU1518;
+                default:
+                    throw new ControllerException("invalid_cpu_type", "Unknown CPU type '" + value
+                        + "'. Use 1511/1513/1515/1516/1517/1518/unspecified.");
+            }
+        }
+
+        private static string NormalizeCommunication(string value)
+        {
+            string normalized = (value ?? "softbus").Trim().ToLowerInvariant();
+            if (normalized != "softbus" && normalized != "tcpip")
+            {
+                throw new ControllerException("invalid_communication", "Unknown communication '" + value
+                    + "'. Use 'softbus' or 'tcpip'.");
+            }
+            return normalized;
+        }
+
+        private static void ApplyIpSuite(IInstance instance, InstanceSettings settings)
+        {
+            try
+            {
+                var suite = new SIPSuite4
+                {
+                    IPAddress = new SIP { IPString = settings.Ip },
+                    SubnetMask = new SIP { IPString = settings.SubnetMask },
+                    DefaultGateway = new SIP { IPString = settings.Gateway },
+                };
+                instance.SetIPSuite(0, suite, false);
+            }
+            catch (Exception ex)
+            {
+                throw new ControllerException("ip_configuration_failed",
+                    "Setting the instance IP to " + settings.Ip + " failed: " + ex.Message);
+            }
+        }
+
+        private void EnsureControlPanel()
+        {
+            if (string.IsNullOrEmpty(_controlPanelPath) || !File.Exists(_controlPanelPath)) return;
+            try
+            {
+                if (Process.GetProcessesByName("Siemens.Simatic.PlcSim.Advanced.UserInterface").Length > 0) return;
+                Process.Start(new ProcessStartInfo
+                {
+                    FileName = _controlPanelPath,
+                    UseShellExecute = true,
+                });
+            }
+            catch (Exception)
+            {
+                // The instance still runs headless when the UI cannot start.
+            }
         }
 
         private IInstance RequireInstance(string name)
@@ -299,7 +432,7 @@ namespace PlcsimAdvanced.Controller
             }
         }
 
-        private static Dictionary<string, object> Describe(IInstance instance)
+        private Dictionary<string, object> Describe(IInstance instance)
         {
             var row = new Dictionary<string, object>();
             row["name"] = instance.Name;
@@ -309,6 +442,33 @@ namespace PlcsimAdvanced.Controller
             row["comm"] = instance.CommunicationInterface.ToString();
             row["license"] = instance.LicenseStatus.ToString();
             try { row["storagePath"] = instance.StoragePath; } catch (Exception) { }
+
+            InstanceSettings settings;
+            _settings.TryGetValue(instance.Name, out settings);
+            row["networkMode"] = settings == null
+                ? (string.Equals(instance.CommunicationInterface.ToString(), "TCPIP", StringComparison.OrdinalIgnoreCase)
+                    ? "tcpip" : "softbus")
+                : settings.Communication;
+            try
+            {
+                string[] ips = instance.ControllerIP;
+                if (ips != null && ips.Length > 0 && !string.IsNullOrEmpty(ips[0])) row["ip"] = string.Join(",", ips);
+            }
+            catch (Exception) { }
+            if (!row.ContainsKey("ip") && settings != null && !string.IsNullOrEmpty(settings.Ip))
+            {
+                row["ip"] = settings.Ip;
+            }
+            try
+            {
+                SIPSuite4[] suites = instance.ControllerIPSuite4;
+                if (suites != null && suites.Length > 0)
+                {
+                    row["subnetMask"] = suites[0].SubnetMask.IPString;
+                    row["gateway"] = suites[0].DefaultGateway.IPString;
+                }
+            }
+            catch (Exception) { }
             return row;
         }
 
@@ -362,11 +522,24 @@ namespace PlcsimAdvanced.Controller
                 Environment.GetFolderPath(Environment.SpecialFolder.CommonProgramFilesX86),
                 "Siemens", "PLCSIMADV", "API", "4.0");
             string storageRoot = Path.Combine(Path.GetTempPath(), "dsh-plcsim");
+            string defaultCommunication = "softbus";
+            bool showControlPanel = true;
+            string controlPanelPath = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86),
+                "Siemens", "Automation", "PLCSIMADV", "bin",
+                "Siemens.Simatic.PlcSim.Advanced.UserInterface.exe");
+            bool keepOnExit = true;
             bool selfTest = false;
             for (int i = 0; i < args.Length; i++)
             {
                 if (args[i] == "--api-dir" && i + 1 < args.Length) apiDir = args[++i];
                 else if (args[i] == "--storage-root" && i + 1 < args.Length) storageRoot = args[++i];
+                else if (args[i] == "--network-mode" && i + 1 < args.Length) defaultCommunication = args[++i];
+                else if (args[i] == "--show-control-panel" && i + 1 < args.Length)
+                    showControlPanel = string.Equals(args[++i], "true", StringComparison.OrdinalIgnoreCase);
+                else if (args[i] == "--control-panel" && i + 1 < args.Length) controlPanelPath = args[++i];
+                else if (args[i] == "--keep-on-exit" && i + 1 < args.Length)
+                    keepOnExit = string.Equals(args[++i], "true", StringComparison.OrdinalIgnoreCase);
                 else if (args[i] == "--self-test") selfTest = true;
                 else if (args[i] == "--version")
                 {
@@ -383,7 +556,8 @@ namespace PlcsimAdvanced.Controller
                 return SelfTest(serializer, apiDir);
             }
 
-            var runtime = new PlcsimRuntime(storageRoot);
+            var runtime = new PlcsimRuntime(
+                storageRoot, defaultCommunication, showControlPanel, controlPanelPath, keepOnExit);
             var ready = new Dictionary<string, object>
             {
                 { "type", "ready" },

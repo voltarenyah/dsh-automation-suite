@@ -1,22 +1,26 @@
 # PLCSIM Advanced 接入评估：从「静态编译验证」到「动态运行验证」
 
-> **状态**：评估报告（提案 + Phase 0 实测），2026-10-24 · Phase 0 代码已改并验证到下载调用 · 未改路线图状态
-> **本轮已拍板（用户，2026-10-24）**：独立插件 · 默认 **Softbus** · 范围只做「PLC 程序动态下载执行」。
-> **本轮新增结论**：PLCSIM API 不存在「V7 排他」——V7 Runtime 能驱动 API 3.0–7.0 的客户端；按 **API 4.0** 编译可覆盖 PLCSIM Advanced **4.0–7.0**。因此包名**不带版本号**，推荐 `@voltarenyah/dsh-plcsim-advanced`。
-> **Phase 0 结果（2026-10-24 实测）**：目标解析已解耦并通过；但 **TIA V17 Openness 没有下载到 PLCSIM 的 API**——`Siemens.Engineering.dll` 中不存在 `TargetForSoftware` / `PlcSimulationAdvanced`，`DownloadProvider.Download` 报 `Connect to module PLC_1 failed`。本机 V20 安装的 PublicAPI **V19/V20 有这两个类型，V17/V18 没有**。自主下载因此必须走 **TIA V19+/V20**（V20 与 PLCSIM V7 代际配对），或退回「人工在 TIA UI 下载一次」。详见 §10。
-> **一句话（更新）**：API/实例/标签可用，TIA V17 也能看到 Softbus 的 `PLCSIM`；但 **V17 Openness 缺的是「下载到仿真 CPU」这一 API 本身**，不是目标解析或 GoOnline 顺序问题。
+> **状态**：评估报告（2026-10-24 定稿）· **全链路已跑通** · 需要两次一次性人工前置 · 未改路线图状态
+> **已拍板（用户，2026-10-24）**：独立插件 · 默认 **Softbus** · 范围只做「PLC 程序动态下载执行」。
+> **API 兼容结论**：PLCSIM API 不存在「V7 排他」——V7 Runtime 能驱动 API 3.0–7.0 的客户端；按 **API 4.0** 编译可覆盖 PLCSIM Advanced **4.0–7.0**。因此包名**不带版本号**，推荐 `@voltarenyah/dsh-plcsim-advanced`。
+> **定稿更新（2026-10-24）**：V17 控制器 + PLCSIM Advanced V7（**TCP/IP**）+ TIA V17 工程的下载已实测跑通；根因不是 API 缺失，而是**工程 PLC 未配子网/IP** + **首次连接未在 TIA UI 接受自签名证书**。V17/V18 确实没有 `TargetForSoftware`，但 V17 路径不需要它；V20 路径也已由另一个会话验证。**§10.7/§10.8 的“Openness 失败”结论作废**，以 §10.9 + 交接文档为准。
+> **一句话（定稿）**：程序能通过 Openness 下载到 PLCSIM，但**不是全无人工**——项目级配一次子网/IP，设备级在 TIA UI 接受一次证书，之后 `adopt_open_project` + `download` 可重复执行。
 
 ---
 
 ## 0. 结论
 
-1. **API 与运行时可行；程序下载在 V17 Openness 不可行。**
-   - 本机 PLCSIM Advanced V7.0 的 API 可初始化、建实例、上电到 STOP，`LicenseStatus=OK`；按 **API 4.0** 编译的程序也能驱动 V7 Runtime（`Version=0x70000`），API 4.1 同样通过。
-   - TIA Portal V17 在 **Softbus 实例运行起来之后**，会在 `PN/IE` 下暴露 `PLCSIM` 虚拟接口（`kind=virtual`，target `1 X1`），与现有 `online_targets` 的判定一致。
-2. **阻塞点已从代码收敛到产品 API**：Phase 0 已把 `Download` 与 `_onlineSession` 解耦，直连目标解析成功（`targetSource=download_property`）；但 V17 的 `DownloadProvider` 没有「仿真 CPU」目标类型，实际下载报 `Connect to module PLC_1 failed`。二进制核对：V17/V18 PublicAPI 无 `TargetForSoftware`/`PlcSimulationAdvanced`，V19/V20 有。**这不是再改几行解析就能解决的**。
-3. **已定：独立插件；名字不带版本号。** V7 Runtime 对 API 3.0–7.0 全部可用（本轮实测）；按 API 4.0 编译覆盖 4.0–7.0，且 4.0/4.1 正是 TIA V17 的代际配对（V7 是 V20 代际）。推荐 `@voltarenyah/dsh-plcsim-advanced`；只有将来出现真正不兼容的 API 代际，才加 `-vN` 或拆第二构建。
-4. **工作量（修订）**：Phase 0 已执行（1 天）；下一步取决于版本路线——**V20 路线**需新增 V20 Openness 成员/下载器并把工作区副本升级到 V20（估 3–5 天验证 + 5–8 天 MVP）；**人工下载路线**只需仿真插件的运行/标签部分（5–8 天），但不是全自动。
-5. **已定范围**：只做「PLC 程序动态下载执行」；HMI/SCADA、SIMIT、工艺仿真、真实硬件、F 程序、S7-1200 均排除。仍需拍板：**TIA 版本/项目升级路线**、标签写入门禁、实例持久化、API 基线是否锁 4.0。
+1. **可行，且已实测跑通**：V17 控制器 + PLCSIM Advanced V7（TCP/IP）+ TIA V17 工程，`adopt_open_project` → `download` → RUN → 标签读写全部成功。
+   - 本机 PLCSIM Advanced V7.0 的 API 可初始化、建实例、上电，`LicenseStatus=OK`；按 **API 4.0** 编译的程序驱动 V7 Runtime 通过。
+   - 下载使用 **TCP/IP + `Siemens PLCSIM Virtual Ethernet Adapter`**；Softbus 仍可用于纯本机在线，但不是这条下载链路的成功路径。
+2. **两个一次性前置，缺一不可**：
+   - **项目级**：给要下载的 PLC 分配子网 + 唯一 IP（实测不配时连 TIA UI 都下不了）；
+   - **设备级**：首次连接在 TIA UI 接受自签名证书（Openness 无该委托，headless 必败）；
+   - 之后用 `adopt_open_project` 接管 UI 打开的工程，`online_disconnect(force=true)` 清残留在线态，再 `download`。
+   - 因此这不是“全自动无人值守”，但**每次下载不需要人工**。
+3. **已定：独立插件；名字不带版本号。** V7 Runtime 对 API 3.0–7.0 全部可用（本轮实测）；按 API 4.0 编译覆盖 4.0–7.0。推荐 `@voltarenyah/dsh-plcsim-advanced`；只有将来出现真正不兼容的 API 代际，才加 `-vN` 或拆第二构建。
+4. **工作量（定稿）**：Phase 0 与运行侧 MVP 均已落地；本轮补齐 PLCSIM 插件的 **TCP/IP + 指定 IP + Control Panel + 坐标查询**。剩余：把工作流写成随包 skill/E2E 回归、硬件下载与真实 PLC 仍属未验范围。
+5. **已定范围**：只做「PLC 程序动态下载执行」；HMI/SCADA、SIMIT、工艺仿真、真实硬件、F 程序、S7-1200 均排除。
 
 ---
 
@@ -310,7 +314,7 @@ packages/dsh-plcsim-advanced/
 | 工具 | 动作 | 默认 | 关键返回 | 失败码 |
 |---|---|---|---|---|
 | `simulation_status` | 只读 | — | 安装/API 版本、Runtime 版本、许可、实例列表、网络模式、控制器状态 | `plcsim_not_installed` / `runtime_unavailable` |
-| `simulation_instance` | `create` / `power_on` / `power_off` / `remove` / `list` | 只读 `list`；写动作需 `confirm` | 实例名、ID、状态、CPU、IP、通信接口、存储路径 | `instance_exists` / `license_unavailable` / `storage_path_in_use` |
+| `simulation_instance` | `create` / `power_on` / `power_off` / `remove` / `list` | 只读 `list`；写动作需 `confirm`；`create` 默认带 Control Panel | 实例名、ID、状态、CPU、communication、ip/subnet/gateway、存储路径；`create` 接收 `cpu_type` / `communication` / `ip`，`power_on` 应用 IP | `instance_exists` / `invalid_cpu_type` / `invalid_communication` / `ip_configuration_failed` / `storage_path_in_use` |
 | `simulation_run` | `run` / `stop` / `reset` | `stop` 之外的写动作需 `confirm` | 状态迁移、耗时 | `instance_not_running` / `program_not_loaded`（`IsEmpty`） |
 | `simulation_tags` | `list` / `read` / `write` | `list`/`read` 只读；`write` 需 `confirm`，且默认最多 N 个标签 | 标签名/类型/区域/值；截断与总数 | `tag_not_found` / `tag_type_mismatch` / `tag_list_stale` |
 | `simulation_time`（v2） | `get` / `set_scale` / `set_system_time` | 只读 `get`；`set_*` 需 `confirm` | 缩放因子、虚拟系统时间 | `wrong_argument` |
@@ -323,31 +327,36 @@ packages/dsh-plcsim-advanced/
 - 只给 `leader`；`expert`/`auditor` 不给（仿真能改运行态，属高危面）。
 - 若以后要只读预览，再拆一个 `includeReadOnly` 开关给 auditor；v1 不做。
 
-### 4.6 关键工作流（v1 的「一条正确路径」）
+### 4.6 关键工作流（定稿的「一条正确路径」）
 
 ```
-1. update_project        # 若工程未开「编译时支持仿真」，先写属性并重编译
-2. simulation_instance   # create + power_on（默认 Softbus）
-3. online_targets        # 此时应出现 PLCSIM（virtual, 1 X1）
-4. download              # Phase 0 后：允许直接解析 DownloadProvider.Configuration，不要求 online_connect
-5. simulation_run        # run（首次下载后可能已在 RUN，先读 state）
-6. simulation_tags       # read 输出 / write 输入；必要时先 update_tag_list
-7. simulation_instance   # power_off + remove（或留给下一轮）
+1. online_targets        # TIA：读目标 PLC 的离线 IP/子网 + PC 接口
+2. simulation_instance   # PLCSIM：create (tcpip, cpu_type, name=PROFINET 设备名, ip=工程 IP) → power_on
+3. adopt_open_project    # TIA：接管 UI 已打开的工程（证书信任的会话）
+4. online_disconnect     # TIA：force=true，清 UI 残留在线态
+5. download              # TIA：dry_run 核对 → confirm=true, options=software
+6. simulation_run        # PLCSIM：run（首次下载后可能已在 RUN，先读 state）
+7. simulation_tags       # PLCSIM：read 输出 / write 输入；必要时先 update_tag_list
+8. simulation_instance   # 结束时保持运行（默认）；需要清理才 power_off + remove
 ```
 
-**Phase 0 必须改的那一处（TIA 插件）**：
+**两个一次性前置**（缺一不可）：
 
-- `controller/OperationsOnline.cs:627-634`：把「必须有 `_onlineSession`」改成「会话可选」。
-- `:656-657`：改为从 `provider.Configuration` 解析 `mode → pcInterface → targetInterface/address`，新增可选参数 `mode` / `pc_interface` / `pc_interface_number` / `target_interface` / `address`。
-- 保留 `confirm` / `confirm_real_device` 门禁：`kind=virtual` 仍要求 `confirm=true`，物理接口仍要求 `confirm_real_device=true`；有会话时仍校验 device 一致。
-- 更新 `src/tools.ts` 的 `download` 参数与 `packages/dsh-tia-openness-v17-min/docs/PROTOCOL.md`，并补一条真机验收。
-- **这是 TIA 插件的能力扩展，不是仿真插件的职责**；仿真插件只负责把实例准备好。
+- **项目级**：给要下载的 PLC 分配子网 + 唯一 IP；不配时连 TIA UI 都下不了。
+- **设备级**：首次连接在 TIA UI 接受自签名证书（Openness 无该委托，headless 必败）。
+
+**Phase 0 / 后续已落地的改动**：
+
+- `Download` 不再强制 `_onlineSession`，支持 `pc_interface` / `target_interface` / `address` / `target_address`；
+- TIA 侧新增 `AdoptOpenProject` 与 `online_disconnect(force=true)`；
+- PLCSIM 侧新增 TCP/IP + 指定 IP + Control Panel + 坐标查询；
+- 下载仍是 `dry_run` 默认 + `confirm` + 物理设备 `confirm_real_device` 三档闸门。
 
 ### 4.7 安全与门禁
 
 | 风险 | 默认 | 放行条件 |
 |---|---|---|
-| 误连真实设备 | **Softbus**（本机/VM 内） | 显式 `networkMode=tcpip` + `allowTcpIp=true`；v1 不开放物理网卡映射 |
+| 误连真实设备 | **默认 Softbus**（本机/VM 内）；Openness 工作流显式 `tcpip` + 工程 IP | TCP/IP 只用 PLCSIM 虚拟网卡；不开放物理网卡映射 |
 | 误写运行态 | 标签写默认拒绝，需 `confirm=true` | 单次调用显式确认；批量写有上限 |
 | 误断电/删实例 | `power_off`/`remove` 需 `confirm=true` | 显式确认；`remove` 先 `power_off` |
 | 许可耗尽 | 创建前读 `LicenseStatus`；无许可直接拒绝 | 用户装许可或接受 trial 限制 |
@@ -358,41 +367,47 @@ packages/dsh-plcsim-advanced/
 
 ## 5. 验收口径
 
-### 5.1 Phase 0（必须先过）
+### 5.1 Phase 0（已通过，2026-10-24）
 
-在一台装有 TIA V17 + PLCSIM Advanced 的机器上，用小型演示工程（本机可用 `TestPLCExportDemo.ap17`）完成：
+在一台装有 TIA V17 + PLCSIM Advanced 的机器上，用小型演示工程完成：
 
-1. 建 Softbus 实例，上电到 STOP，`LicenseStatus=OK`。
-2. TIA `online_targets` 出现 `PLCSIM`（virtual）。
-3. **不调用 `online_connect`**，直接 `download(options=both, confirm=true)` 到该实例。
-4. 下载后 `simulation_run(run)` 到 RUN；`UpdateTagList` 能列出标签；读一个 Bool、写一个 Bool 并读回。
-5. `power_off` + `remove` + 控制器退出；无 TIA/PLCSIM/控制器残留进程。
-6. 记录：下载耗时、标签数量、`UpdateTagList` 耗时、错误码；若失败，区分「未组态」「网段不匹配」「F 程序」「CPU 不支持」。
+1. **TIA `online_targets`**：目标 PLC 必须有子网 + 唯一 IP；记录 `pc_interface`
+   （TCP/IP 用 `Siemens PLCSIM Virtual Ethernet Adapter`）和 `target_interface=1 X1`。
+2. **PLCSIM `simulation_instance(create, tcpip, cpu_type=1511, name=<PROFINET 设备名>,
+   ip=<工程 IP>)` → `power_on`**：实例 STOP、`LicenseStatus=OK`，返回 IP/communication/state。
+3. **TIA UI 打开工程并接受一次自签名证书**，然后 `adopt_open_project` 接管。
+4. **TIA `online_disconnect(force=true)`**：清掉 UI 残留在线态。
+5. **TIA `download(dry_run=true)` → `download(confirm=true, options="software")`**：
+   `state=Success`、`errorCount=0`。
+6. **PLCSIM `simulation_run(run)` + `simulation_tags`**：RUN、标签可读、Bool 读写。
+7. 结束时保持实例运行（默认）；需要清理才 `power_off` + `remove`。
 
-**通过标准**：第 3–5 步全部成功；第 3 步失败时，必须能给出可复现的错误码与下一步，而不是「大概不行」。
+**通过标准**：第 2–6 步全部成功，且第 3/4 步的人工前置可复述。
 
-> **2026-10-24 实测结果**：V17 在第 3 步失败，根因不是目标解析，而是 V17 Openness 没有 `TargetForSoftware` / `PlcSimulationAdvanced`（见 §10）。本节第 3–6 步需改到 **V19+/V20** 再执行；V17 只能走人工下载。
+> **2026-10-24 实测**：全流程通过。关键不是 API 缺失，而是**证书 + 工程子网/IP**两个一次性前置；详见 §10.9。
 
 ### 5.2 MVP
 
 - `--self-test` 覆盖 NDJSON、白名单、JSON、门禁；不依赖 PLCSIM。
 - 控制器级测试用 fake `IPlcsimRuntime`（不装 PLCSIM 也能跑）。
-- 一条真实 E2E 测试（手动/标记 skip）：建实例→下载→RUN→读写→清理。
+- 一条真实 E2E 测试（手动/标记 skip）：建实例 → TIA adopt/download → RUN → 读写 → 清理。
 - `pnpm -r build` / `typecheck` / `test` 全绿；`dsh --profile … --dump-config` 出现两行（宿主 + `/tools`），`--dump-config-schema` 能读到本插件 Config。
 - 文档三问（何时调用/怎么调用/结果怎么用）写进工具 description + 随包 skill。
 
+> 运行侧已 E2E 通过（RUN、51 标签、Bool 读写）；Openness 下载的两次一次性人工前置是验收的一部分，不能当作 headless 失败。
+
 ---
 
-## 6. 分阶段计划
+## 6. 分阶段计划（定稿）
 
 | 阶段 | 工作 | 产出 | 估算 | 退出条件 |
 |---|---|---|---|---|
-| **Phase 0** | 改 TIA `Download` 为「会话可选 + 自解析目标」；建 Softbus 实例；直连下载；RUN；读写一个标签 | 已改代码 + 单测；真机结论：V17 API 不支持 | **1 天（已执行）** | ❌ 第 3 步被 V17 API 边界阻断，见 §10 |
-| **Phase 1** | 新插件骨架、控制器、`status`/`instance`/`run` + `tags(list/read)`、配置、preset、测试、文档 | 可安装的 MVP 包 | **5–8 天** | 四个工具可用；单测 + 配置验收 |
-| **Phase 2** | `tags(write)`、批量上限、写入门禁、运行态证据落盘 | 能施加输入/观察输出的闭环 | **3–5 天** | 标签写入 + 证据 E2E |
+| **Phase 0** | TIA `Download` 解耦 + 直连目标；PLCSIM TCP/IP/IP；`adopt_open_project`；证书/子网前置 | 全链路跑通 | **已完成** | 5.1 全过（§10.9） |
+| **Phase 1** | 新插件骨架、控制器、`status`/`instance`/`run` + `tags(list/read)`、配置、preset、测试、文档 | 可安装的 MVP 包 | **已完成** | 四个工具可用；单测 + 配置验收 |
+| **Phase 2** | `tags(write)`、批量上限、写入门禁、运行态证据落盘 | 能施加输入/观察输出的闭环 | **已完成** | 标签写入 + 证据 E2E（51 标签实测） |
 | **Phase 3**（v2） | `simulationAccess`、版本台账联动、时间缩放/冻结、按地址 I/O、归档/多实例 | 与其他插件联动 | **4–6 天** | 版本台账能引用一次运行证据 |
 
-> 估算按现有 TIA 插件的骨架与测试模式推得；不含 PLCSIM 许可采购、TIA 版本升级、CI 机器准备。Phase 0 若发现 TIA V17 不能下载到 V7 实例，备选是 TIA V20（本机已装）或 PLCSIM Advanced 4.x，需重新估 1–2 天。
+> 运行侧插件本轮已补 TCP/IP + 指定 IP + Control Panel + 坐标查询；剩余是 skill/E2E 回归、硬件下载与真实 PLC 验证。
 
 ---
 
@@ -400,27 +415,27 @@ packages/dsh-plcsim-advanced/
 
 | # | 风险 | 影响 | 缓解 | 状态 |
 |---|---|---|---|---|
-| R1 | **全新实例不能先 GoOnline** | 现有下载流程不可用 | Phase 0 已把下载与会话解耦；但 V17 仍缺 `TargetForSoftware`（见 R2/§10） | 已定位；V17 不可修 |
-| R2 | **V17 Openness 没有 PLCSIM 下载 API**（`TargetForSoftware`/`PlcSimulationAdvanced` 在 V19+ 才有） | V17 无法全自动下载到 PLCSIM | 走 TIA V20（代际配对）或人工下载；V17 不再投入 | **已证实** |
+| R1 | 全新实例不能直接 `GoOnline` | 旧下载流程不可用 | 用 `adopt_open_project` 接管 UI 工程；`online_disconnect(force=true)` 清残留 | ✅ 已解决（§10.9） |
+| R2 | **首次连接需在 TIA UI 接受自签名证书**；工程 PLC 需子网/唯一 IP | 未接受时 `Connect to module … failed` / `configurations: []` | 两次一次性人工前置；之后下载不需要人工 | ✅ 已解决（有前置） |
 | R3 | 许可（每许可 2 实例；trial；TIA Test Suite 限制） | 客户机上建实例失败/自动关机 | 创建前读 `LicenseStatus`；文档写清许可要求；trial 明确告警 | 本机 OK，客户未知 |
-| R4 | Softbus / TCP/IP 选择 | 选错则不可达，或误连真实设备 | 默认 Softbus；TCP/IP 显式开启；不做物理网卡映射 | ✅ 已定 |
-| R5 | 工程与实例 IP/子网不一致 | TCP/IP 不可达 | v1 不用 TCP/IP；若用，先校验网段/实例 IP | 已见实例 |
+| R4 | Softbus / TCP/IP 选择 | 选错则不可达，或误连真实设备 | 默认 Softbus；Openness 工作流显式 TCP/IP + 工程 IP；不做物理网卡映射 | ✅ 已定 |
+| R5 | 工程与实例 IP/子网不一致 | TCP/IP 不可达 | 先 `online_targets` 读 IP，再按同一 IP 建实例；不一致时先修工程 | ✅ 已实现 |
 | R6 | API 版本漂移（4.0 vs 7.0） | 新特性不可用/绑定错误 | 4.0 基线；运行时检查 `Version`；7.0-only 特性用反射或第二构建 | ✅ 已定建议 |
 | R7 | 构建机没有 PLCSIM | CI 构建失败 | 提交 `controller/bin`；CI 不构建控制器；开发机构建 | 可规避 |
 | R8 | API DLL 再分发 | 合规问题 | 不复制 DLL；`CopyLocal=false`；随包 notices | 必须遵守 |
 | R9 | 多会话/多实例并发 | 实例互相顶掉 | 实例名前缀 + owner；v1 每 workspace 1 实例；同名拒绝 | 设计待定 |
-| R10 | 控制器退出导致实例消失 | 无法跨 DSH 重启保留 | v1 明确「重启即重建」；v2 归档/取回 | 已定建议 |
+| R10 | 控制器退出导致实例消失 | 无法跨 DSH 重启保留 | `keepInstancesOnUnload` 默认保留；跨重启归档留 v2 | ✅ 已实现（尽力） |
 | R11 | F 程序 / S7-1200 | 无法下载/仿真 | 明确排除；工具给 `unsupported_cpu` / `f_program_not_downloadable` | 已定建议 |
 | R12 | 标签表语义（HMI-visible 默认、50 万上限、未知类型丢弃） | 模型以为「没这个标签」 | 先 `list` 再 `read`；`UpdateTagList` 后读状态；文档写清过滤参数 | 手册已载 |
 | R13 | 工程未开「编译时支持仿真」 | 下载被拒 | `update_project` 写入并重编译；E2E 前置检查 `isSimulationDuringBlockCompilationEnabled` | 已有工具 |
 | R14 | 下载会掉在线会话 | 后续状态读取失败 | 下载后重新 `online_status`/重连；仿真侧只看 `OperatingState` | 已知 |
-| R15 | V20 路线需要把工作区副本从 V17 升级到 V20 | 工程版本分裂；V17 插件不能再打开该副本 | 源 `.ap17` 保持不动；副本放 `simulation/`；升级是显式动作 | ⬜ 待拍板 |
+| R15 | 硬件下载 / 真实 PLC 未验 | 不能承诺产线行为 | 本次只验软件下载；硬件/真实 PLC 仍为矩阵“部分” | ⬜ 明确边界 |
 
-**必须在 Phase 0 回答的三个问题**：
+**Phase 0 的三个问题（已回答）**：
 
-1. 直连 `DownloadProvider.Download` 能否把硬件+软件下载到**未组态**的 Softbus 实例？
-2. 下载后 `Run()` 能否进入 RUN，`UpdateTagList` 能否列出 `DB_CylinderHMI` 的 Bool 标签？
-3. 如果失败，根因是「未组态」「固件不匹配」「F 程序」还是「接口不匹配」？
+1. 直连 `DownloadProvider.Download` 能否下载到**未组态**的 Softbus 实例？——不能直接；需要 UI 接受证书 + `adopt_open_project`，且工程 PLC 要有子网/唯一 IP。成功后走 TCP/IP。
+2. 下载后能否 RUN + 列出标签？——能；实测 RUN、**51 个标签**、`Btn_ForwardCommand` 读写、`CylinderIsMovingForward` 变化。
+3. 根因是「未组态」「固件不匹配」「F 程序」还是「接口不匹配」？——是**证书信任 + 工程子网/IP**；不是固件或 API 缺失。
 
 ---
 
@@ -430,14 +445,14 @@ packages/dsh-plcsim-advanced/
 |---|---|---|---|
 | 1 | simulation 的范围 | **只做 PLC 程序动态下载执行**；SIMIT/HMI/工艺仿真另立 | ✅ 已定（用户） |
 | 2 | 插件边界 | **独立插件**，不塞进 TIA 控制器 | ✅ 已定（用户） |
-| 3 | 默认网络模式 | **Softbus**；TCP/IP 显式开启且不做物理映射 | ✅ 已定（用户） |
-| 4 | 包名 | **`@voltarenyah/dsh-plcsim-advanced`**；不带版本号；备选 `dsh-simulation-plcsim-advanced` | ✅ 推荐，待确认 |
-| 5 | 标签写入 | **默认只读；写需 `confirm=true`** | ⬜ 待定 |
-| 6 | 实例持久化 | **不持久化；DSH 重启即重建**；归档留 v2 | ⬜ 待定 |
+| 3 | 默认网络模式 | **默认 Softbus**；Openness 下载工作流显式 `tcpip` + 工程 IP，不做物理网卡映射 | ✅ 已定（用户 + 实测） |
+| 4 | 包名 | **`@voltarenyah/dsh-plcsim-advanced`**；不带版本号；备选 `dsh-simulation-plcsim-advanced` | ✅ 已按此创建 |
+| 5 | 标签写入 | **默认只读；写需 `confirm=true`** | ✅ 已实现 |
+| 6 | 实例持久化 | **不持久化；DSH 重启即重建**；`keepInstancesOnUnload` 只在插件卸载时保留 | ⬜ 待定（跨重启归档留 v2） |
 | 7 | F / S7-1200 | **明确排除** | ✅ 技术排除（PLCSIM 不支持 S7-1200；Openness 不支持 F 下载） |
-| 8 | API 基线 | **4.0**（覆盖 4.0–7.0；V7 实测；4.1/5.0/6.0 按手册预期） | ✅ 推荐，待确认 |
-| 9 | Phase 0 | **已执行**：Download 解耦 + 直连解析 + 单测；V17 下载被 API 边界阻断（§10） | ✅ 已执行，结论见 §10 |
-| 10 | **TIA 版本 / 项目升级** | **A：V20 + PLCSIM V7（工作区副本升级到 V20）**；B：人工下载一次；C：V17 自动不可行 | ⬜ **待拍板（当前阻塞）** |
+| 8 | API 基线 | **4.0**（覆盖 4.0–7.0；V7 实测；4.1/5.0/6.0 按手册预期） | ✅ 已实现 |
+| 9 | Phase 0 | **已跑通**：V17 控制器 + PLCSIM V7 TCP/IP + `adopt_open_project` + `download`；两次一次性人工前置 | ✅ 已执行（§10.9） |
+| 10 | TIA 版本 / 项目升级 | **V17 + adopt 定稿**；V20 路径已由另一会话验证；**无需升级工程** | ✅ 已定（另一会话实测） |
 
 ---
 
@@ -503,35 +518,35 @@ packages/dsh-plcsim-advanced/
 - 因此不是「先上线还是先下载」的顺序问题，也不是 CPU 族、实例名或 IP 的问题；`target_address` 重载只能解决「特定 IP」，不能替代「目标为仿真 CPU」。
 - 本机 Openness 在多次启停后还出现握手超时（`EngineeringSecurityException`），`target_address` 分支未完成实测；这不影响上面的 API 边界结论。
 
-### 10.4 路线
+### 10.4 路线（历史决策，结论已由 §10.9 修正）
 
 | 路线 | 做法 | 优点 | 代价 | 结论 |
 |---|---|---|---|---|
-| **A. TIA V20 + PLCSIM V7** | 新增 V20 Openness 成员/下载器；把**工作区副本**升级到 V20；仿真插件消费 | 代际配对；V20 有 `TargetForSoftware`；可全自动 | 项目版本分裂；新成员/构建；升级不可逆（仅副本） | ✅ 推荐（若必须全自动） |
-| B. V17 + 人工下载一次 | 仿真插件建实例；用户在 TIA UI 点 Download；插件接管 RUN/标签 | 不升级项目；改动最小 | 非全自动，不适合无人值守 | 🟡 过渡/演示 |
-| C. 保持 V17 自动 | 继续在 V17 Openness 里找路径 | 无 | 产品 API 不存在 | ❌ 不可行 |
+| **A. V17 + adopt（定稿）** | TIA UI 打开工程并接受一次证书 → `adopt_open_project` → `online_disconnect(force)` → `download`；PLCSIM 侧 TCP/IP + 工程 IP | 不升级工程；每次下载不需要人工 | 两次一次性人工前置（子网/IP、证书）；非无人值守首跑 | ✅ **已跑通（§10.9）** |
+| B. TIA V20 + PLCSIM V7 | 新增 V20 成员/下载器；工作区副本升级 | 代际配对；V20 有 `TargetForSoftware` | 项目版本分裂；新成员/构建 | 🟡 备选（另一会话已验 V20 两次成功） |
+| C. 人工下载一次 | 用户 UI Download，插件接管 RUN/标签 | 改动最小 | 非全自动 | 🟡 当时的过渡方案，已被 A 取代 |
 
-### 10.5 需要拍板
+### 10.5 需要拍板（历史，已由 §10.9 回答）
 
-1. 是否接受把**工作区副本**升级到 V20（源 `.ap17` 保持不动）？
-2. 若接受：V20 能力放哪——新增 `dsh-tia-openness-v20-min` 成员，还是在仿真插件里放一个最小 V20 下载器？前者符合架构，后者快但破坏「接口插件族是唯一工程写入者」。
-3. 若不接受：是否接受「人工在 TIA UI 下载一次」作为 v1 的显式前置步骤？
-4. `target_address` 分支是否还要在 V20 上复验（推荐要）。
+> 结论已定：**V17 + adopt 工作流**；不需要升级工程。以下是当时未决问题的存档。
 
-> **结论**：**在 V17-only 前提下，PLCSIM Advanced 的「动态下载执行」不可全自动实现**。这不是插件实现细节，而是 Openness V17 的 API 边界；V20 路线是唯一能保持全自动的方案。
+1. ~~是否接受把工作区副本升级到 V20~~ → 不需要，V17 路径已跑通。
+2. ~~V20 能力放哪~~ → 暂不需要 V20 成员；V20 路径由另一会话验证，未进蓝图。
+3. ~~是否接受人工下载~~ → 不需要每次人工；接受两次一次性前置即可。
+4. ~~`target_address` 是否在 V20 复验~~ → 已由另一会话的 adopt 工作流覆盖；不再是阻塞项。
 
 ### 10.6 运行侧 MVP 已落地（2026-10-24）
 
 - 新包 `packages/dsh-plcsim-advanced`：宿主行（控制器 + `plcsimRuntime` 缝）+ `/tools` 行（4 个工具），默认 Softbus，编译基线 PLCSIM API **4.0**。
 - 工具：`simulation_status` / `simulation_instance` / `simulation_run` / `simulation_tags`；`power_off`/`remove`/`run`/`stop`/`reset`/标签写都要求 `confirm=true`。
 - 控制器：net48/x64，`--self-test` 通过；实测 `create → power_on (Stop) → tags list 0 → remove`，许可 `OK`，无残留进程。
-- 构建/测试：控制器 **0 warning / 0 error**；插件 `npm run build` / `typecheck` 通过；`node --test` **8 pass**。
+- 构建/测试：控制器 **0 warning / 0 error**；插件 `npm run build` / `typecheck` 通过；`node --test` **9 pass**（本轮新增 TCP/IP 坐标转发）。
 - 蓝图：`dsh.profile.bundles` 已加本包，`preset-leader` 已声明 `leader-plcsim-tools`；`--dump-config-schema` 能读到 `apiDir` / `storageRoot`。
-- **程序加载仍未完成**：本包 README 与工具描述都明确「不加载程序」；在 V20 / 人工下载决策之前，只能用已含程序的实例。
+- **程序加载由 TIA 插件 + adopt 工作流完成**；本包只负责运行态，不加载程序。本轮已补 **TCP/IP + 指定 IP + Control Panel + 坐标查询 + keepInstancesOnUnload**。
 
-### 10.7 V20 临时副本 spike（2026-10-24，结论已由 §10.8 修正）
+### 10.7 V20 临时副本 spike（2026-10-24，结论已由 §10.9 修正）
 
-> **修正**：黑色加载屏是 V20 的安全确认，只有本机用户可以点。用户手动确认后，V20 正常启动、`.ap17` 副本在 55 s 内升级为 `.ap20` 并打开；§10.7 原先“V20 启动不可用”的结论**作废**。真实的 V20 Openness 下载结果见 §10.8。
+> **修正**：黑色加载屏是 V20 的安全确认，只有本机用户可以点。用户手动确认后，V20 正常启动、`.ap17` 副本在 55 s 内升级为 `.ap20` 并打开；§10.7 原先“V20 启动不可用”的结论**作废**。真实的下载结果见 §10.9。
 
 为验证 A 路线，把 V17 控制器**复制到临时目录**（不改仓库、不改源工程），只改三处：`TiaPortalMajorVersion=20`、`OpennessReferencePackageVersion=20.0.1744190253`、`TargetForSoftware` 回调选择 `PlcSimulationAdvanced`。
 
@@ -540,7 +555,9 @@ packages/dsh-plcsim-advanced/
 - 打开工程：安全确认点掉后，V20 TIA 在 **55 s** 内完成 `.ap17 → .ap20` 升级并打开（`projectName=TestPLCExportDemo_V20`）。
 - **真实下载仍失败**：见 §10.8。
 
-### 10.8 人工下载 + 运行侧 E2E（2026-10-24，成功）
+### 10.8 人工下载 + 运行侧 E2E（2026-10-24，历史对照）
+
+> **结论已被 §10.9 取代**：本节只证明实例/工程/RUN/标签是通的；当时 Openness 失败是因为**没有接受证书、没有 adopt UI 工程、工程 PLC 未配子网/IP**，不是 Openness 不可用。
 
 在 V20 工程已打开、API 创建的 Softbus 实例 `PLC_1`（CPU **1511**，与工程 `6ES7 511-1AK02-0AB0/V2.9` 匹配）已上电到 STOP 的条件下，用户用 TIA UI 完成一次 Download：
 
@@ -553,5 +570,50 @@ packages/dsh-plcsim-advanced/
 **结论**：
 
 - **B 路线（人工在 TIA UI 下载一次）已验证可用**：运行侧 MVP 的实例/RUN/标签读写全部真实跑通。
-- **Openness 直连下载仍然失败**：V20 的 `DownloadProvider.Download` 在 CPU1511、实例名 `PLC_1`、`target_address=192.168.0.1` 下仍报 `Connect to module PLC_1 failed`，且下载回调一次都没触发（`configurations: []`）；`DownloadProvider.Configuration` 只暴露 `PLCSIM → 1 X1`，没有实例级目标。
-- 因此当前可交付的是「人工下载一次 + 插件接管运行态」；全自动 Openness 下载需要继续研究目标选择（或等 Siemens 支持），不应把它当成已完成。
+- **Openness 直连下载当时仍失败**：V20 的 `DownloadProvider.Download` 在 CPU1511、实例名 `PLC_1`、`target_address=192.168.0.1` 下仍报 `Connect to module PLC_1 failed`，且下载回调一次都没触发（`configurations: []`）；`DownloadProvider.Configuration` 只暴露 `PLCSIM → 1 X1`，没有实例级目标。
+- 当时可交付的是「人工下载一次 + 插件接管运行态」；这个结论已在 §10.9 被更正。
+
+### 10.9 定稿：证书 + adopt 工作流（2026-10-24）
+
+另一个会话拿到本文证据后，把流程跑通并更新了交接文档
+[`packages/dsh-tia-openness-v17-min/docs/HANDOFF-PLCSIM-DOWNLOAD.md`](../packages/dsh-tia-openness-v17-min/docs/HANDOFF-PLCSIM-DOWNLOAD.md)。结论如下：
+
+**根因不是 API 缺失**：
+
+- V17/V18 确实没有 `TargetForSoftware`，但 V17 路径不需要它；
+- 失败的两个真实原因是：
+  1. **工程 PLC 未分配子网/唯一 IP**（连 TIA UI 都下不了）；
+  2. **首次连接未在 TIA UI 接受自签名证书**（Openness 无该委托，headless 必败）。
+- 接受证书后，用 `adopt_open_project` 接管 UI 已打开的工程、`online_disconnect(force=true)` 清残留在线态，再 `download` 即可。
+
+**实测**（交接文档 §0/§9，另一个会话）：
+
+- V17 控制器 + PLCSIM Advanced V7（**TCP/IP**）+ TIA V17 工程：`AdoptOpenProject` 1.2 s →
+  `OnlineDisconnect force` → `Download` software `state=Success` / `errorCount=0` → `OnlineConnect` 4.4 s → 断开；
+- V20 路径另有两次连续成功；
+- 两个一次性人工前置：项目级配子网/IP、设备级首次接受证书；之后每次下载不需要人工。
+- 硬件下载与真实 PLC 仍未验；`download` 在矩阵里仍是“部分”。
+
+**对 PLCSIM 插件的要求（已在本轮落地）**：
+
+- 支持 **TCP/IP + 指定 IP**（`communication="tcpip"`、`ip=<工程 IP>`；`SetIPSuite` 在上电后应用）；
+- 实例坐标返回 `name` / `communication` / `ip` / `subnetMask` / `gateway` / `state`；
+- 首次 `create` 默认启动 **PLCSIM Advanced Control Panel**，能看到实例/状态/许可证；
+- 实例默认在插件卸载后保持运行（`keepInstancesOnUnload`），`remove` 才是显式清理；
+- CPU 族可指定（`cpu_type=1511` 等），与工程 CPU 对齐。
+
+**编排**（agent 侧，两个插件互不调用）：
+
+```
+TIA online_targets
+  → PLCSIM simulation_instance(create, name=PROFINET device name, cpu_type=1511,
+      communication="tcpip", ip=<project IP>)
+  → PLCSIM simulation_instance(power_on, name=..., ip=<project IP>)
+  → TIA adopt_open_project
+  → TIA online_disconnect(force=true)
+  → TIA download(dry_run=true) → download(confirm=true, options="software")
+  → PLCSIM simulation_run(run, confirm=true) / simulation_tags(...)
+```
+
+**边界**：这不是“无人值守全自动”。第一次需要人工配子网/IP、接受证书；之后可重复执行。  
+**旧结论作废**：§10.7 的“V20 启动不可用”、§10.8 的“Openness 直连下载仍失败”均不再是当前结论。

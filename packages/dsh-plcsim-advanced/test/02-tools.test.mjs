@@ -61,6 +61,42 @@ test('simulation_instance lists by default and forwards create', async () => {
   assert.deepEqual(calls[1], { operation: 'Instance', params: { action: 'create', name: 'PLC_1' } })
 })
 
+test('simulation_instance forwards the TCP/IP coordinates for the download workflow', async () => {
+  const { byName, calls } = harness()
+  await byName.get('simulation_instance').execute(
+    {
+      action: 'create',
+      name: 'plc_1.profinet interface_1',
+      cpu_type: '1511',
+      communication: 'tcpip',
+      ip: '192.168.0.1',
+      subnet_mask: '255.255.255.0',
+      gateway: '192.168.0.254',
+    },
+    {},
+  )
+  await byName.get('simulation_instance').execute(
+    { action: 'power_on', name: 'plc_1.profinet interface_1', ip: '192.168.0.1' },
+    {},
+  )
+  assert.deepEqual(calls[0], {
+    operation: 'Instance',
+    params: {
+      action: 'create',
+      name: 'plc_1.profinet interface_1',
+      cpu_type: '1511',
+      communication: 'tcpip',
+      ip: '192.168.0.1',
+      subnet_mask: '255.255.255.0',
+      gateway: '192.168.0.254',
+    },
+  })
+  assert.deepEqual(calls[1], {
+    operation: 'Instance',
+    params: { action: 'power_on', name: 'plc_1.profinet interface_1', ip: '192.168.0.1' },
+  })
+})
+
 test('simulation_instance refuses power_off/remove without confirm and sends nothing', async () => {
   const { byName, calls } = harness()
   const result = await byName.get('simulation_instance').execute({ action: 'remove', name: 'PLC_1' }, {})

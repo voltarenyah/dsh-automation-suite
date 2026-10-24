@@ -97,8 +97,10 @@ function renderValue(value, verbose) {
         lines.push(`Controller payload:\n${JSON.stringify(outcome.data, null, 2)}`);
     return lines.filter((line) => line.length > 0).join('\n');
 }
-const INPUT_HINT = 'PLCSIM Advanced runtime tools manage an existing local simulation: instance lifecycle, RUN/STOP, and tag I/O. ' +
-    'They do not load a program. On TIA V17 Openness there is no PLCSIM download API; see the package docs.';
+const INPUT_HINT = 'PLCSIM Advanced runtime tools manage a local simulation: instance lifecycle, RUN/STOP, and tag I/O. They do not ' +
+    'load a program; the TIA plugin downloads into the instance. Proven workflow: TIA online_targets -> create a ' +
+    'tcpip instance with the same CPU/IP -> power_on -> TIA adopt_open_project / online_disconnect(force) / download ' +
+    '-> read tags. The first connection needs the self-signed certificate accepted once in the TIA UI.';
 export function registerTools(ctx, dependencies) {
     const { verbose } = dependencies;
     const registered = [];
@@ -123,16 +125,32 @@ export function registerTools(ctx, dependencies) {
     register(defineTool({
         name: 'simulation_instance',
         description: 'Manage PLCSIM Advanced instances: list (default), create, power_on, power_off or remove. Creating an ' +
-            'instance registers it and assigns its storage directory; power_on starts the simulated CPU. power_off and ' +
-            'remove require confirm=true because they stop or unregister a running simulation. ' +
-            'The instance runs on Softbus (local only) and cannot reach real hardware. ' + INPUT_HINT,
+            'instance registers it, picks the CPU family and communication interface, and starts the Control Panel ' +
+            '(configurable). power_on starts the simulated CPU; when ip is given, the instance IP suite is applied after ' +
+            'power-on. Use communication="tcpip" + the project IP for the Openness download workflow (the proven path); ' +
+            'use "softbus" only for local-only work. power_off and remove require confirm=true. list returns the ' +
+            'coordinates the TIA side needs: name, communication, ip, state, CPU and licence. Instances stay running ' +
+            'when the plugin unloads by default (keepInstancesOnUnload); remove explicitly cleans up. ' + INPUT_HINT,
         parameters: {
             action: {
                 type: 'string',
                 enum: ['list', 'create', 'power_on', 'power_off', 'remove'],
                 description: "Action to perform; defaults to 'list'.",
             },
-            name: { type: 'string', description: 'Instance name (required for everything except list).' },
+            name: { type: 'string', description: 'Instance name (required for everything except list). Convention: the CPU PROFINET device name.' },
+            cpu_type: {
+                type: 'string',
+                enum: ['unspecified', '1511', '1513', '1515', '1516', '1517', '1518'],
+                description: 'CPU family for create; must match the project CPU (e.g. 1511) for a download.',
+            },
+            communication: {
+                type: 'string',
+                enum: ['softbus', 'tcpip'],
+                description: "Communication interface for create; defaults to the plugin's networkMode. Use 'tcpip' for the Openness download workflow.",
+            },
+            ip: { type: 'string', description: 'IPv4 address for the instance (TCP/IP). Pass the project CPU IP read from online_targets.' },
+            subnet_mask: { type: 'string', description: 'Subnet mask for ip (default 255.255.255.0).' },
+            gateway: { type: 'string', description: 'Default gateway for ip (default 0.0.0.0).' },
             confirm: { type: 'boolean', description: 'Must be true for power_off and remove.' },
         },
         output: {
@@ -147,6 +165,16 @@ export function registerTools(ctx, dependencies) {
             const params = { action };
             if (args.name !== undefined)
                 params['name'] = args.name;
+            if (args.cpu_type !== undefined)
+                params['cpu_type'] = args.cpu_type;
+            if (args.communication !== undefined)
+                params['communication'] = args.communication;
+            if (args.ip !== undefined)
+                params['ip'] = args.ip;
+            if (args.subnet_mask !== undefined)
+                params['subnet_mask'] = args.subnet_mask;
+            if (args.gateway !== undefined)
+                params['gateway'] = args.gateway;
             return asJsonOutcome(await runOperation(dependencies, 'Instance', params, exec.signal));
         },
     }));
