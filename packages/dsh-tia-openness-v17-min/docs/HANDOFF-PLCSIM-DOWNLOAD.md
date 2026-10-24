@@ -267,8 +267,10 @@ Security error. The operation has timed out.`），重试即通过。矩阵里
 1. **顺序**：先 `online_targets`（TIA 侧读工程 IP），再建实例（PLCSIM 侧用同一 IP）。
 2. **实例名**：用 CPU 的 PROFINET 设备名（如 `plc_1.profinet interface_1`）；TCP/IP 下不是硬性要求，
    但作为约定便于对照。
-3. **接口**：TCP/IP → `Siemens PLCSIM Virtual Ethernet Adapter`；Softbus → `PLCSIM`。
-   两侧不需要共享这个字符串，由 agent 把 TIA 侧枚举出来的值传给下载调用即可。
+3. **接口按 TIA 版本选**（2026-10-24 实测）：
+   - **V17：只有 TCP/IP**（`Siemens PLCSIM Virtual Ethernet Adapter`）——Softbus 接口在 Openness 里根本不出现；
+   - **V20：TCP/IP 与 Softbus（`PLCSIM`）都在**，两条都通，Softbus 下载实测 `state=Success`、0 error。
+   两侧不需要共享这个字符串：agent 以 TIA 侧 `online_targets` 枚举出来的值为准。
 4. **失败沟通**：TIA 侧的错误码是稳定契约（`download_unavailable` / `online_session_required` /
    `download_failed` / `online_mode_conflict` …），PLCSIM 侧只需报告实例状态；agent 据此判断是
    “实例没起”还是“证书没接受/工程没子网”。

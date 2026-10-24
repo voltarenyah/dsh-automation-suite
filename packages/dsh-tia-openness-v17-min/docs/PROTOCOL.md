@@ -494,6 +494,12 @@ that dialog, so a controller that opened the project itself — headless or in t
 UI process — fails with Connect to module … failed and never reaches a
 download configuration callback. Adopt the project from the UI
 (AdoptOpenProject) after that one acceptance and downloads run normally.
+**Transport choice depends on the TIA version (measured 2026-10-24):** V17 does
+not expose a Softbus interface to Openness at all — the only PLCSIM endpoint is
+`Siemens PLCSIM Virtual Ethernet Adapter` (TCP/IP), and that path works. V20
+exposes both the TCP/IP adapter and `PLCSIM` (Softbus); a Softbus download through
+`PLCSIM` returned `state=Success` with 0 errors. Earlier Softbus failures were the
+missing certificate acceptance, not the transport.
 **V17 limits that are not negotiable:** F-activated PLCs cannot be downloaded
 through Openness at all (`download_unavailable`, limitation R16 in the coverage
 matrix), and a download triggers a compilation — an inconsistent project aborts

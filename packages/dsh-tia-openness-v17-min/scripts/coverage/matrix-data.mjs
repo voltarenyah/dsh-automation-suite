@@ -869,7 +869,7 @@ export const SECTIONS = [
           'F 激活的 PLC 不支持该 API（R16）。2026-10-24 实测（V20 + PLCSIM Advanced V7 + TCP/IP）：根因是首次连接要接受 PLC 自签名证书，' +
           '这是 UI 决策、Openness 没有对应委托（TlsVerificationConfiguration 只挂在 FingerprintDataProvider 上），' +
           '所以自开工程的控制器一律在 connect 阶段失败且回调不触发；用 adopt 接管 UI 已信任的会话后连续两次下载成功（0 error）。' +
-          'V17 控制器同路径未实测，故仍记部分。',
+          'V17 控制器同路径未实测，故仍记部分。传输选择按版本：V17 只暴露 TCP/IP，V20 还有 Softbus（PLCSIM），V20 Softbus 下载实测成功。',
       },
       'Running and stopping PLC': {
         status: 'none',
