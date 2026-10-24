@@ -20,6 +20,7 @@
 | 6 | TIA 插件 | `compile_plc`（可选，下载本身会编译）→ `download(dry_run=true)` 核对目标 → `download(confirm=true, options=software)` | `state=Success`、`errorCount=0` |
 | 7 | TIA 插件 | `online_connect` → `online_status` → `online_disconnect`（可选，用于确认可上线/取终态） | `Online` → `Offline` |
 | 8 | PLCSIM 插件 | 保持实例运行；可选：读标签做业务验证（如 `Btn_ForwardCommand`） | 实例 `RUN`、标签可读 |
+| 9 | PLCSIM 插件 | 首次成功后 `snapshot`；**下一次直接 `resume`**，不再走 2–7 | `resume` 返回 `state=RUN`、标签可读（§11） |
 
 **谁编排**：由 suite 里的 agent（leader）按上表调用两个插件的工具。**两个插件互不调用**，
 唯一共享的是「目标坐标」：`mode=PN/IE`、`pc_interface`（TCP/IP 用
@@ -260,6 +261,7 @@ Security error. The operation has timed out.`），重试即通过。矩阵里
   `RUN/STOP`、许可证状态；API 创建的实例也应出现在 Control Panel 列表里；
 - 提供坐标查询：`name`、`communication`、`ip`、`state`，供 agent 填给 TIA 侧；
 - 可选的业务验证：标签读写（例如 `Btn_ForwardCommand` / `CylinderIsMovingForward`）；
+- 结束时不自动关实例；首次成功后负责 `snapshot`，后续负责 `resume`（§11）；
 - 结束时**保持实例运行**（除非用户明确要求关掉）。
 
 ### 10.3 两侧的衔接契约
@@ -284,3 +286,61 @@ Security error. The operation has timed out.`），重试即通过。矩阵里
 | `EngineeringSecurityException: Security error. The operation has timed out.` | V17 Openness 白名单里没有当前 exe 的哈希（重建后哈希变了） | 首次 attach 重试一次；仍失败则管理员更新 `HKLM\…\Openness\17.0\Whitelist` |
 | `online_mode_conflict` | TIA 还被 UI 占在线 | 先 `online_disconnect(force=true)` |
 | 实例不可 ping / 状态 `Off` | 实例没启动或已 PowerOff | PLCSIM 侧重启实例后重试第 2–4 步 |
+
+## 11. 非初次仿真：快速复用上次实例（2026-10-24 定稿）
+
+**目标**：第一次仿真需要 TIA 下载 + 证书/子网前置；**后续仿真不要再走 TIA 下载**，直接从上次成功实例的存档启动。
+
+### 11.1 流程
+
+首次（§0.1 第 1–8 步）成功后：
+
+```jsonc
+simulation_instance({ "action": "snapshot", "name": "PLC_1", "snapshot": "cylinder-baseline" })
+```
+
+后续每次：
+
+```jsonc
+simulation_instance({ "action": "resume", "name": "PLC_1", "snapshot": "cylinder-baseline", "run": true })
+```
+
+`resume` 的三条路径（按优先级）：
+
+1. 实例仍在 Runtime Manager 里 → `CreateInterface(name)` 直接 attach，必要时上电/RUN；
+2. 实例不在了 → 复制 snapshot 的 `storage/` 目录到新实例，注册、上电、按 manifest 恢复 CPU/通信/IP，可选 RUN；
+3. 旧 snapshot 没有 `storage/` → 回退 `RetrieveStorage(instance.zip)`。
+
+**不再调用 TIA 的 `online_targets` / `adopt` / `download`**；TIA 只在首次仿真时参与。
+
+### 11.2 存档内容
+
+默认 `<workspace>/.dsh/simulation/<snapshot>/`：
+
+```text
+instance.zip      # ArchiveStorage(): 程序 + 硬件配置 + retentive 数据
+storage/          # Virtual SIMATIC Memory Card 的目录副本（快速 resume 用）
+manifest.json     # name / cpuType / communication / ip / subnetMask / gateway / createdAt / hasStorage
+```
+
+- `snapshot` 使用官方 `ArchiveStorage`；实例必须 **OFF** 且至少 `PowerOn` 过一次；
+- 如果 snapshot 时实例在 RUN，插件会短暂断电、归档、恢复原状态（RUN 会恢复）；
+- 快照与创建它的 PLCSIM Advanced 大版本绑定，跨大版本不要直接复用；
+- `.dsh/simulation/` 已加入 `.gitignore`，是本地运行产物，不是工程源文件。
+
+### 11.3 Softbus / TCP/IP 选择（定稿）
+
+- **V17**：Openness 只枚举 TCP/IP（`Siemens PLCSIM Virtual Ethernet Adapter`）；Softbus 接口不出现。V17 首次下载必须用 `communication="tcpip"` + 工程 IP。
+- **V20**：TCP/IP 与 Softbus（`PLCSIM`）都可用，Softbus 下载实测 `state=Success`、0 error。
+- `resume` 用 snapshot 里记录的 `communication`；不要求重新读 TIA。若换网络模式，显式传 `communication`/`ip` 覆盖。
+
+### 11.4 工具面
+
+| 工具 action | 用途 |
+|---|---|
+| `simulation_instance(snapshot)` | 首次成功后保存 |
+| `simulation_instance(resume)` | **后续默认入口**：attach 或快速恢复并启动 |
+| `simulation_instance(restore)` | 显式从某个 snapshot 新建；`fast=false` 强制走 ZIP |
+| `simulation_tags` | 恢复后做业务验证 |
+
+**边界**：snapshot/resume 只保存运行实例，不替代 TIA 工程源文件与 git 版本管理；许可证仍按 PLCSIM 许可执行。

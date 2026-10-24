@@ -18,7 +18,7 @@ the suite's simulation capability.
 | Tool | Actions | Notes |
 |---|---|---|
 | `simulation_status` | read-only | API/Runtime version, licence, instances with name/comm/IP/state |
-| `simulation_instance` | `list` / `create` / `power_on` / `power_off` / `remove` / `snapshot` / `restore` | `create` takes `name`, `cpu_type`, `communication`, `ip`; `power_on` applies the IP suite; `snapshot` saves a ZIP; `restore` recreates from one; `power_off`/`remove` need `confirm=true` |
+| `simulation_instance` | `list` / `create` / `power_on` / `power_off` / `remove` / `snapshot` / `restore` / `resume` | `create` takes `name`, `cpu_type`, `communication`, `ip`; `power_on` applies the IP suite; `snapshot` saves a ZIP + fast storage; `resume` reuses it; `power_off`/`remove` need `confirm=true` |
 | `simulation_run` | `state` / `run` / `stop` / `reset` | write actions need `confirm=true` |
 | `simulation_tags` | `list` / `read` / `write` | `list` capped (default 200); `write` needs `confirm=true` |
 
@@ -66,29 +66,35 @@ This writes under `snapshotRoot`:
 ```text
 .dsh/simulation/cylinder-baseline/
   instance.zip      # ArchiveStorage(): program + hardware + retentive data
+  storage/          # fast copy of the Virtual SIMATIC Memory Card
   manifest.json     # name, cpuType, communication, ip, subnetMask, gateway, createdAt
 ```
 
-`snapshot` uses the official `IInstance.ArchiveStorage(zip)`; the instance must
-have been powered on at least once. If it is running, the plugin briefly powers
-it off, archives, then restores its previous state (RUN is resumed).
+`snapshot` uses the official `IInstance.ArchiveStorage(zip)` plus a directory
+copy for the fast path; the instance must have been powered on at least once. If
+it is running, the plugin briefly powers it off, archives, then restores its
+previous state (RUN is resumed).
 
-Next time, create a new instance directly from the ZIP:
+Next time, use the **fast resume** path — no TIA, no download:
 
 ```jsonc
 simulation_instance({
-  "action": "restore",
-  "name": "PLC_1-next",
-  "snapshot": "cylinder-baseline",
+  "action": "resume",
+  "name": "PLC_1",
+  "snapshot": "cylinder-baseline",   // optional; defaults to name
   "run": true
 })
 ```
 
-`restore` uses `RetrieveStorage(zip)`, applies the CPU/communication/IP from the
-manifest (or explicit parameters), powers on, and optionally switches to RUN.
-It does not need TIA or a new download. `snapshot`/`restore` are the only
-persistence mechanism; the per-instance `storageRoot` directory is a working
-copy, not the deliverable.
+`resume` is the recommended non-first-run entry:
+
+1. if the instance is still registered/running, attach with `CreateInterface`;
+2. otherwise copy the snapshot's `storage/` directory (fast), register, power on,
+   apply the manifest CPU/communication/IP, optionally RUN;
+3. if an older snapshot has no `storage/`, fall back to `RetrieveStorage(zip)`.
+
+`restore` remains available when you want an explicit new instance from a
+snapshot; `fast=false` forces the ZIP path.
 
 > Snapshots are local artifacts: keep `snapshotRoot` out of git (the default
 > `.dsh/simulation/` is ignored by the repository). A snapshot is tied to the
@@ -96,9 +102,10 @@ copy, not the deliverable.
 
 ## Safety
 
-- Default communication is **Softbus** (local only); the Openness workflow
-  explicitly opts into **TCP/IP** to match the project IP. TCP/IP uses the PLCSIM
-  virtual adapter, not a physical adapter mapping.
+- Default communication is **Softbus**; the Openness workflow explicitly opts
+  into **TCP/IP** to match the project IP. Softbus is only exposed by TIA V20;
+  V17 Openness shows TCP/IP only. TCP/IP uses the PLCSIM virtual adapter, not a
+  physical adapter mapping.
 - Power-off/remove and every write require `confirm=true`.
 - The plugin never loads a program and never writes a TIA project.
 

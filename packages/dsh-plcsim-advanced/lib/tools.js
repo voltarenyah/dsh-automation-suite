@@ -124,19 +124,21 @@ export function registerTools(ctx, dependencies) {
     }));
     register(defineTool({
         name: 'simulation_instance',
-        description: 'Manage PLCSIM Advanced instances: list (default), create, power_on, power_off, remove, snapshot or restore. ' +
-            'Creating an instance registers it, picks the CPU family and communication interface, and starts the Control ' +
-            'Panel (configurable). power_on starts the simulated CPU; when ip is given, the instance IP suite is applied ' +
-            'after power-on. Use communication="tcpip" + the project IP for the Openness download workflow (the proven ' +
-            'path); use "softbus" only for local-only work. snapshot archives the program/hardware/retentive data as a ZIP ' +
-            'under snapshotRoot (the instance is briefly stopped if needed); restore creates a new instance from that ZIP ' +
-            'and powers it on. power_off and remove require confirm=true. list returns the coordinates the TIA side needs: ' +
-            'name, communication, ip, state, CPU and licence. Instances stay running when the plugin unloads by default ' +
+        description: 'Manage PLCSIM Advanced instances: list (default), create, power_on, power_off, remove, snapshot, restore or ' +
+            'resume. Creating an instance registers it, picks the CPU family and communication interface, and starts the ' +
+            'Control Panel (configurable). power_on starts the simulated CPU; when ip is given, the instance IP suite is ' +
+            'applied after power-on. Use communication="tcpip" + the project IP for the Openness download workflow (the ' +
+            'proven path); Softbus only exists in TIA V20 (V17 exposes TCP/IP only). snapshot archives the program/' +
+            'hardware/retentive data as a ZIP plus a fast storage copy under snapshotRoot (the instance is briefly ' +
+            'stopped if needed); restore recreates from a snapshot; resume is the non-first-run fast path: it attaches ' +
+            'to a still-running instance, otherwise restores the fast storage copy (ZIP fallback) and powers it on. ' +
+            'power_off and remove require confirm=true. list returns the coordinates the TIA side needs: name, ' +
+            'communication, ip, state, CPU and licence. Instances stay running when the plugin unloads by default ' +
             '(keepInstancesOnUnload); remove explicitly cleans up. ' + INPUT_HINT,
         parameters: {
             action: {
                 type: 'string',
-                enum: ['list', 'create', 'power_on', 'power_off', 'remove', 'snapshot', 'restore'],
+                enum: ['list', 'create', 'power_on', 'power_off', 'remove', 'snapshot', 'restore', 'resume'],
                 description: "Action to perform; defaults to 'list'.",
             },
             name: { type: 'string', description: 'Instance name (required for everything except list). Convention: the CPU PROFINET device name.' },
@@ -153,9 +155,10 @@ export function registerTools(ctx, dependencies) {
             ip: { type: 'string', description: 'IPv4 address for the instance (TCP/IP). Pass the project CPU IP read from online_targets.' },
             subnet_mask: { type: 'string', description: 'Subnet mask for ip (default 255.255.255.0).' },
             gateway: { type: 'string', description: 'Default gateway for ip (default 0.0.0.0).' },
-            snapshot: { type: 'string', description: 'Snapshot name (under snapshotRoot) for snapshot, or a name/absolute ZIP path for restore.' },
+            snapshot: { type: 'string', description: 'Snapshot name (under snapshotRoot) for snapshot, or a name/absolute ZIP path for restore/resume.' },
             overwrite: { type: 'boolean', description: 'True to replace an existing snapshot with the same name (default false).' },
-            run: { type: 'boolean', description: 'For restore: true to switch the restored instance to RUN after power-on (default false).' },
+            run: { type: 'boolean', description: 'For restore/resume: true to switch the instance to RUN after power-on (default false for restore, true for resume).' },
+            fast: { type: 'boolean', description: 'For restore: prefer the snapshot storage copy (fast) over the ZIP; default true, falls back to the ZIP.' },
             confirm: { type: 'boolean', description: 'Must be true for power_off and remove.' },
         },
         output: {
@@ -186,6 +189,8 @@ export function registerTools(ctx, dependencies) {
                 params['overwrite'] = args.overwrite;
             if (args.run !== undefined)
                 params['run'] = args.run;
+            if (args.fast !== undefined)
+                params['fast'] = args.fast;
             return asJsonOutcome(await runOperation(dependencies, 'Instance', params, exec.signal));
         },
     }));

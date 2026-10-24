@@ -107,6 +107,10 @@ test('simulation_instance forwards snapshot and restore actions', async () => {
     { action: 'restore', name: 'PLC_2', snapshot: 'before-change', run: true },
     {},
   )
+  await byName.get('simulation_instance').execute(
+    { action: 'resume', name: 'PLC_2', snapshot: 'before-change', run: true, fast: true },
+    {},
+  )
   assert.deepEqual(calls[0], {
     operation: 'Instance',
     params: {
@@ -123,6 +127,16 @@ test('simulation_instance forwards snapshot and restore actions', async () => {
       name: 'PLC_2',
       snapshot: 'before-change',
       run: true,
+    },
+  })
+  assert.deepEqual(calls[2], {
+    operation: 'Instance',
+    params: {
+      action: 'resume',
+      name: 'PLC_2',
+      snapshot: 'before-change',
+      run: true,
+      fast: true,
     },
   })
 })

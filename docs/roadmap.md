@@ -329,7 +329,7 @@
 - **更多 TIA 版本**：V18+（受管环境还有应用白名单问题）、V16（D3：第二个版本到来时抽 core 包）；
 - **更多工程对象**：硬件组态、HMI、库、多用户、在线下载/上传与比较（按 D1 的维度分组，由 D31 决定装配）；
 - **其它厂商的工程软件**：**当前只规划 Rockwell，其他厂商暂无计划**（D11）；
-- **仿真 / 运行态**：S7-PLCSIM Advanced 的接入评估与方案见 [`simulation-plcsim-advanced.md`](simulation-plcsim-advanced.md)（提案：独立插件 `dsh-plcsim-advanced`；**全链路已跑通**：TIA V17 + PLCSIM V7 TCP/IP，`adopt_open_project` → `download` → RUN → 51 标签 → Bool 读写；**两次一次性人工前置**：工程 PLC 配子网/IP、TIA UI 接受首次证书；运行侧插件已补 TCP/IP/IP/Control Panel/坐标；**未排期、未改状态**）；
+- **仿真 / 运行态**：S7-PLCSIM Advanced 的接入评估与方案见 [`simulation-plcsim-advanced.md`](simulation-plcsim-advanced.md)（提案：独立插件 `dsh-plcsim-advanced`；**全链路已跑通**：TIA V17 + PLCSIM V7 TCP/IP，`adopt_open_project` → `download` → RUN → 51 标签 → Bool 读写；**两次一次性人工前置**：工程 PLC 配子网/IP、TIA UI 接受首次证书；**后续快速复用**：首次成功后 `snapshot`，下次 `resume` 直接启动（无需 TIA/重下）；Softbus 仅 V20 可用（V17 Openness 只枚举 TCP/IP）；**未排期、未改状态**）；
 - **跨项目视角**：把多个项目的工程上下文放在一起比较与复用。
 
 ---

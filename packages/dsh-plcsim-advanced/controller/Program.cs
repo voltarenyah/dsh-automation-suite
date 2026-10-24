@@ -134,6 +134,7 @@ namespace PlcsimAdvanced.Controller
             }
 
             if (action == "restore") return Restore(p);
+            if (action == "resume") return Resume(p);
 
             IInstance existing = RequireInstance(name);
             if (action == "snapshot") return Snapshot(existing, p);
@@ -174,11 +175,13 @@ namespace PlcsimAdvanced.Controller
             string directory = Path.Combine(_snapshotRoot, SafeName(snapshotName));
             string zip = Path.Combine(directory, "instance.zip");
             string manifestPath = Path.Combine(directory, "manifest.json");
-            if (File.Exists(zip) && !overwrite)
+            string storageDirectory = Path.Combine(directory, "storage");
+            if ((File.Exists(zip) || Directory.Exists(directory)) && !overwrite)
             {
                 throw new ControllerException("snapshot_exists",
-                    "A snapshot already exists at " + zip + "; pass overwrite=true to replace it.");
+                    "A snapshot already exists at " + directory + "; pass overwrite=true to replace it.");
             }
+            if (overwrite && Directory.Exists(storageDirectory)) DeleteDirectory(storageDirectory);
             Directory.CreateDirectory(directory);
             if (overwrite)
             {
@@ -189,10 +192,25 @@ namespace PlcsimAdvanced.Controller
             EOperatingState original = instance.OperatingState;
             bool wasOff = original == EOperatingState.Off;
             bool wasRunning = original == EOperatingState.Run;
+            bool hasStorage = false;
+            string storageError = null;
             try
             {
                 if (!wasOff) instance.PowerOff(20000);
                 instance.ArchiveStorage(zip);
+                try
+                {
+                    string sourceStorage = instance.StoragePath;
+                    if (!string.IsNullOrEmpty(sourceStorage) && Directory.Exists(sourceStorage))
+                    {
+                        CopyDirectory(sourceStorage, storageDirectory);
+                        hasStorage = true;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    storageError = ex.Message;
+                }
             }
             catch (Exception ex)
             {
@@ -223,8 +241,10 @@ namespace PlcsimAdvanced.Controller
                 { "gateway", settings.Gateway },
                 { "createdAt", DateTime.UtcNow.ToString("o") },
                 { "sourceStoragePath", instance.StoragePath },
-                { "sourceState", instance.OperatingState.ToString() }
+                { "sourceState", instance.OperatingState.ToString() },
+                { "hasStorage", hasStorage }
             };
+            if (storageError != null) manifest["storageError"] = storageError;
             File.WriteAllText(manifestPath, new JavaScriptSerializer().Serialize(manifest));
 
             return new Dictionary<string, object>
@@ -233,6 +253,7 @@ namespace PlcsimAdvanced.Controller
                 { "snapshotPath", directory },
                 { "archive", zip },
                 { "manifest", manifestPath },
+                { "fastStorage", hasStorage ? storageDirectory : null },
                 { "sizeBytes", new FileInfo(zip).Length },
                 { "state", instance.OperatingState.ToString() }
             };
@@ -246,11 +267,14 @@ namespace PlcsimAdvanced.Controller
                 throw new ControllerException("instance_exists", "A PLCSIM instance named '" + name + "' already exists.");
             }
             string snapshotArg = Text(p, "snapshot") ?? name;
-            string zip = ResolveSnapshotPath(snapshotArg);
-            if (!File.Exists(zip))
+            string directory = ResolveSnapshotDirectory(snapshotArg);
+            string zip = Path.Combine(directory, "instance.zip");
+            string fastStorage = Path.Combine(directory, "storage");
+            bool useFast = Bool(p, "fast", true) && Directory.Exists(fastStorage);
+            if (!useFast && !File.Exists(zip))
             {
                 throw new ControllerException("snapshot_not_found",
-                    "No snapshot archive at " + zip + ". Use action=snapshot first, or pass an absolute zip path.");
+                    "No snapshot at " + directory + ". Use action=snapshot first, or pass an absolute zip path.");
             }
 
             Dictionary<string, object> manifest = ReadManifest(zip);
@@ -267,7 +291,9 @@ namespace PlcsimAdvanced.Controller
                 : SimulationRuntimeManager.RegisterInstance(cpu, name);
             try
             {
-                instance.StoragePath = Path.Combine(_storageRoot, SafeName(name));
+                string targetStorage = Path.Combine(_storageRoot, SafeName(name));
+                if (useFast) CopyDirectory(fastStorage, targetStorage);
+                instance.StoragePath = targetStorage;
                 instance.CommunicationInterface = communication == "tcpip"
                     ? ECommunicationInterface.TCPIP
                     : ECommunicationInterface.Softbus;
@@ -278,7 +304,7 @@ namespace PlcsimAdvanced.Controller
                     SubnetMask = subnetMask,
                     Gateway = gateway,
                 };
-                instance.RetrieveStorage(zip);
+                if (!useFast) instance.RetrieveStorage(zip);
                 _instances[name] = instance;
             }
             catch (Exception ex)
@@ -294,18 +320,68 @@ namespace PlcsimAdvanced.Controller
             if (Bool(p, "run", false)) instance.Run(10000);
 
             Dictionary<string, object> row = Describe(instance);
-            row["restoredFrom"] = zip;
+            row["restoredFrom"] = useFast ? fastStorage : zip;
+            row["fast"] = useFast;
             return row;
         }
 
-        private string ResolveSnapshotPath(string value)
+        private object Resume(IDictionary<string, object> p)
         {
-            if (Path.IsPathRooted(value) || value.EndsWith(".zip", StringComparison.OrdinalIgnoreCase))
+            string name = RequireName(p);
+            IInstance existing;
+            if (_instances.TryGetValue(name, out existing))
             {
-                return Path.GetFullPath(value);
+                return ResumeInstance(existing, p);
             }
-            string directory = Path.Combine(_snapshotRoot, SafeName(value));
-            return Path.Combine(directory, "instance.zip");
+            try
+            {
+                existing = SimulationRuntimeManager.CreateInterface(name);
+                _instances[name] = existing;
+                InstanceSettings settings = SettingsFor(name);
+                settings.Communication = string.Equals(
+                    existing.CommunicationInterface.ToString(), "TCPIP", StringComparison.OrdinalIgnoreCase)
+                    ? "tcpip" : "softbus";
+                try
+                {
+                    string[] ips = existing.ControllerIP;
+                    if (ips != null && ips.Length > 0) settings.Ip = ips[0];
+                }
+                catch (Exception) { }
+                return ResumeInstance(existing, p);
+            }
+            catch (Exception)
+            {
+                // Not registered in the Runtime Manager: fall back to the snapshot.
+            }
+
+            Dictionary<string, object> restoreParams = new Dictionary<string, object>(p);
+            if (!restoreParams.ContainsKey("snapshot")) restoreParams["snapshot"] = name;
+            if (!restoreParams.ContainsKey("run")) restoreParams["run"] = true;
+            return Restore(restoreParams);
+        }
+
+        private object ResumeInstance(IInstance instance, IDictionary<string, object> p)
+        {
+            if (instance.OperatingState == EOperatingState.Off) instance.PowerOn(20000);
+            if (Bool(p, "run", true) && instance.OperatingState != EOperatingState.Run) instance.Run(10000);
+            Dictionary<string, object> row = Describe(instance);
+            row["resumed"] = true;
+            row["resumedFrom"] = "attached";
+            return row;
+        }
+
+        private string ResolveSnapshotDirectory(string value)
+        {
+            if (Path.IsPathRooted(value))
+            {
+                if (Directory.Exists(value)) return Path.GetFullPath(value);
+                return Path.GetFullPath(Path.GetDirectoryName(value) ?? value);
+            }
+            if (value.EndsWith(".zip", StringComparison.OrdinalIgnoreCase))
+            {
+                return Path.GetFullPath(Path.GetDirectoryName(value) ?? value);
+            }
+            return Path.Combine(_snapshotRoot, SafeName(value));
         }
 
         private static Dictionary<string, object> ReadManifest(string zip)
@@ -670,6 +746,36 @@ namespace PlcsimAdvanced.Controller
             if (!p.TryGetValue(key, out value) || value == null) return fallback;
             try { return Convert.ToBoolean(value, CultureInfo.InvariantCulture); }
             catch (Exception) { return fallback; }
+        }
+
+        private void DeleteDirectory(string path)
+        {
+            string full = Path.GetFullPath(path);
+            string root = Path.GetFullPath(_snapshotRoot);
+            if (!full.StartsWith(root, StringComparison.OrdinalIgnoreCase))
+            {
+                throw new ControllerException("invalid_snapshot_path", "Refusing to delete outside snapshotRoot: " + full);
+            }
+            if ((File.GetAttributes(full) & FileAttributes.ReparsePoint) != 0)
+            {
+                Directory.Delete(full, false);
+                return;
+            }
+            Directory.Delete(full, true);
+        }
+
+        private static void CopyDirectory(string source, string destination)
+        {
+            Directory.CreateDirectory(destination);
+            foreach (string file in Directory.GetFiles(source))
+            {
+                File.Copy(file, Path.Combine(destination, Path.GetFileName(file)), true);
+            }
+            foreach (string child in Directory.GetDirectories(source))
+            {
+                if ((File.GetAttributes(child) & FileAttributes.ReparsePoint) != 0) continue;
+                CopyDirectory(child, Path.Combine(destination, Path.GetFileName(child)));
+            }
         }
 
         private static string SafeName(string name)

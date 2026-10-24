@@ -69,11 +69,14 @@ instance.
 ## 6. Persistence
 
 - `snapshot` / `restore` use the official `IInstance.ArchiveStorage(zip)` /
-  `RetrieveStorage(zip)`, not a raw directory copy. The archive contains the
+  `RetrieveStorage(zip)`; the ZIP is the portable archive and contains the
   program, hardware configuration and retentive data.
 - `ArchiveStorage`/`RetrieveStorage` require the instance to be **OFF**;
   `ArchiveStorage` also requires the instance to have been powered on at least
   once. The snapshot action preserves the previous RUN/STOP state.
+- `snapshot` also writes a `storage/` copy for the fast path. `resume` attaches to
+  a still-registered instance (`CreateInterface`) or copies `storage/`; it falls
+  back to `RetrieveStorage(zip)` for old snapshots.
 - Snapshots live under `snapshotRoot` (`<workspace>/.dsh/simulation` by default)
-  as `<name>/instance.zip` + `manifest.json`; keep them out of git and do not
-  copy a snapshot across incompatible PLCSIM Advanced versions.
+  as `<name>/instance.zip` + `<name>/storage/` + `manifest.json`; keep them out
+  of git and do not copy a snapshot across incompatible PLCSIM Advanced versions.
