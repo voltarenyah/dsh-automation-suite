@@ -179,7 +179,7 @@ test('controller_status never talks to the controller and hides the captured out
   const verboseValue = await byName['controller_status'].execute({ include_controller_output: true }, {})
   assert.deepEqual(verboseValue.data.stderrTail, ['a stderr line'])
 
-  assert.equal(context.definitions.length, 31)
+  assert.equal(context.definitions.length, 32)
 })
 
 test('only whitelisted operations ever reach the controller', async (t) => {
@@ -588,6 +588,11 @@ test('the plugin works without a built controller, because the stub answers', as
 test('the online tools forward exactly their documented parameters', async (t) => {
   const { calls, byName } = await harness(t)
 
+  await byName['adopt_open_project'].execute({}, {})
+  assert.deepEqual(calls[0].operation, 'AdoptOpenProject')
+  assert.deepEqual(calls[0].params, { with_window: true })
+  calls.length = 0
+
   await byName['online_targets'].execute({}, {})
   assert.deepEqual(calls[0].operation, 'OnlineTargets')
   assert.deepEqual(calls[0].params, { include_offline_nodes: true, max_items: 200, with_window: false })
@@ -628,11 +633,14 @@ test('the online tools forward exactly their documented parameters', async (t) =
 
   await byName['online_disconnect'].execute({}, {})
   assert.deepEqual(calls[5].operation, 'OnlineDisconnect')
-  assert.deepEqual(calls[5].params, { with_window: false })
+  assert.deepEqual(calls[5].params, { force: false, with_window: false })
+
+  await byName['online_disconnect'].execute({ device_name: 'PLC_1', force: true }, {})
+  assert.deepEqual(calls[6].params, { force: true, with_window: false, device_name: 'PLC_1' })
 
   await byName['download'].execute({ device_name: 'PLC_1' }, {})
-  assert.deepEqual(calls[6].operation, 'Download')
-  assert.deepEqual(calls[6].params, {
+  assert.deepEqual(calls[7].operation, 'Download')
+  assert.deepEqual(calls[7].params, {
     device_name: 'PLC_1',
     dry_run: true,
     confirm: false,
@@ -643,7 +651,7 @@ test('the online tools forward exactly their documented parameters', async (t) =
   })
 
   await byName['download'].execute({ device_name: 'PLC_1', confirm: true, confirm_real_device: true, options: 'both', password: 'p' }, {})
-  assert.deepEqual(calls[7].params, {
+  assert.deepEqual(calls[8].params, {
     device_name: 'PLC_1',
     dry_run: true,
     confirm: true,
@@ -666,7 +674,7 @@ test('the online tools forward exactly their documented parameters', async (t) =
     },
     {},
   )
-  assert.deepEqual(calls[8].params, {
+  assert.deepEqual(calls[9].params, {
     device_name: 'PLC_1',
     dry_run: true,
     confirm: false,

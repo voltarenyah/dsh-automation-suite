@@ -44,6 +44,7 @@ export const OPERATIONS = [
     'SafetyStatus',
     'SetSafetySettings',
     'SafetySignatures',
+    'AdoptOpenProject',
     'OnlineTargets',
     'OnlineConnect',
     'OnlineStatus',

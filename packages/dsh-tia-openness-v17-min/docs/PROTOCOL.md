@@ -282,6 +282,44 @@ data, not a tool failure.
 `data`: `projectName`, `projectPath`, `saved`, `isModifiedBeforeClose`, `closed`,
 `portalClosed`.
 
+### `AdoptOpenProject`
+
+Takes over the project the TIA Portal UI already has open instead of opening
+one by path. This is not a convenience: **the first connection to an S7-1500
+requires accepting its self-signed certificate**, and that prompt is a UI
+decision with no Openness delegate (`TlsVerificationConfiguration` only reaches
+`FingerprintDataProvider`, and `DownloadCertificate` carries no property to
+answer). A headless TIA therefore refuses with `Connect to module … failed`
+*before* any download configuration callback runs. The UI session that accepted
+the certificate can be adopted, and download/online then run from the controller.
+
+| param | type | default | meaning |
+|---|---|---|---|
+| `with_window` | bool | `true` | kept for symmetry with `OpenProject`; adoption always uses the visible instance |
+
+`data`: `projectName`, `projectPath`, `adopted`, `withUserInterface`,
+`isModified`, `plcSoftware`, `blockSummary`, `hint`.
+
+The adopted project stays owned by the UI: controller shutdown does **not**
+close it, and `CloseProject` is the only way to close it from the controller.
+Fails with `project_not_open` when no TIA instance is running or it holds no
+project.
+
+**Measured on V17 (2026-10-24):** with the V17 UI project open, `AdoptOpenProject`
+took 1.2 s; `OnlineConnect` reached `Online` in 4.4 s; `Download` (software)
+returned `state=Success` with 0 errors; `OnlineDisconnect` returned `Offline`.
+The project must be assigned to a subnet with a unique IP — without it even the
+TIA UI cannot download. Operational note: after rebuilding the controller
+executable its file hash changes, and the first attach to a running TIA V17 can
+time out for a few minutes until TIA whitelists the new binary
+(`HKLM\SOFTWARE\Siemens\Automation\Openness\17.0\Whitelist\<exe>`); a retry then
+succeeds.
+**Measured (2026-10-24, TIA V20 + PLCSIM Advanced V7, TCP/IP):** `download`
+against a project adopted from the UI succeeded twice in a row
+(`state=Success`, 0 errors, blocks loaded), while opening the same project by
+path — headless or in the same UI process — always failed with
+`Connect to module … failed` and zero callbacks. The certificate was accepted in
+the UI once, beforehand.
 ### `OnlineTargets`
 
 Read-only discovery of how the open project can be reached online. Requires an
@@ -436,6 +474,26 @@ provider reports `Offline` afterwards the controller forgets the session and
 sets `sessionEnded=true`; a direct download with no session reports
 `sessionState="not_connected"` and no `sessionEnded`.
 
+**Measured against PLCSIM Advanced V7 (2026-10-24):** the jump to a simulated CPU
+does not work from Openness, although the TIA Portal UI downloads to the very
+same instance. The target resolves (PN/IE → PLCSIM → 1 X1,
+	argetSource=download_property) and then Download fails at
+Connect to module … failed **before** either delegate runs
+(configurations: []), so the callback policy is not the obstacle. V17/V18
+Siemens.Engineering.dll do not contain TargetForSoftware /
+PlcSimulationAdvanced; V19/V20 do, and a V20 controller that answers
+TargetForSoftwareSelections.PlcSimulationAdvanced fails identically. Softbus and
+TCP/IP mode both fail, with the instance named PLC_1 or exactly like the CPU's
+PROFINET device name, and GoOnline to the same instance fails as well
+("Changing to online mode failed"). Until a V20 run with a single PLC on an
+assigned subnet succeeds, treat "Openness download to PLCSIM Advanced" as
+**unavailable in this environment**, and use the UI for the first download.
+**Certificate precondition (measured):** the first connection to a PLC needs the
+UI to accept the device's self-signed certificate. Openness has no delegate for
+that dialog, so a controller that opened the project itself — headless or in the
+UI process — fails with Connect to module … failed and never reaches a
+download configuration callback. Adopt the project from the UI
+(AdoptOpenProject) after that one acceptance and downloads run normally.
 **V17 limits that are not negotiable:** F-activated PLCs cannot be downloaded
 through Openness at all (`download_unavailable`, limitation R16 in the coverage
 matrix), and a download triggers a compilation — an inconsistent project aborts
@@ -476,7 +534,8 @@ it, so compile first.
 | `download_target_required` | no session and no explicit target | pass `pc_interface` + `target_interface` (or `address`) |
 | `download_target_mismatch` | the resolution failed or `ApplyConfiguration` returned false | inspect `details.available`, or reconnect with `OnlineConnect` |
 | `confirmation_required`, `real_device_confirmation_required` | `confirm` / `confirm_real_device` missing | pass them explicitly for a real download |
-| `download_failed` | `Download` threw or a callback hit an unknown configuration | inspect `details.configurations` and `details.exceptionType` |
+| `download_failed` | `Download` threw or a callback hit an unknown configuration | inspect `details.configurations` and `details.exceptionType`; if it is `Connect to module … failed` with an empty list, adopt the UI project after accepting the PLC certificate |
+| `online_mode_conflict` | `ApplyConfiguration` was refused because TIA still considers the session online | `online_disconnect` (a failed `GoOnline` can leave that state) and retry |
 | `online_configuration_not_applied` | `ApplyConfiguration` returned false | pick another interface/slot |
 | `internal_error` | unexpected exception | `error.details.exceptionType` |
 

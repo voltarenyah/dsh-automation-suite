@@ -53,7 +53,7 @@ test('the controller is started lazily and terminated when the plugin unloads', 
   const statusTool = captureStatusTool(harness)
 
   // `apply` pre-warms the process; either way the tools are registered first.
-  assert.equal(harness.registered().length, 31)
+  assert.equal(harness.registered().length, 32)
 
   const ready = await waitFor(
     async () => {
@@ -85,7 +85,7 @@ test('unloading is idempotent and removes every registration it made', async (t)
   // A path that cannot exist makes the host row warn and never spawn anything,
   // so this test is independent of the process probes above.
   const { harness } = await withTools(t, { controllerPath: 'C:\\does\\not\\exist\\controller.exe' })
-  assert.equal(harness.registered().length, 31)
+  assert.equal(harness.registered().length, 32)
   const statusTool = captureStatusTool(harness)
 
   await harness.unload()

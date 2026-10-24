@@ -158,7 +158,9 @@ namespace TiaOpennessV17Min.Controller
                 case OperationCatalog.SafetySignatures:
                     return SafetySignatures(parameters, log, changes, progress);
 
-                // Online surface: discovery plus the controller-held session.
+                // Online surface: adoption, discovery and the controller-held session.
+                case OperationCatalog.AdoptOpenProject:
+                    return AdoptOpenProject(parameters, log, changes, progress);
                 case OperationCatalog.OnlineTargets:
                     return OnlineTargets(parameters, log, changes, progress);
                 case OperationCatalog.OnlineConnect:

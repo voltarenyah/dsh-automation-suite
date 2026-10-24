@@ -1,11 +1,51 @@
 # HANDOFF — PLCSIM Advanced 下载：现状、证据与下一步
 
-> 交接对象：实现 TIA Openness `download`（S2）的会话 `session-62702b0e-…`。
-> 交接时间：2026-10-24。写这份 brief 的会话已完成 PLCSIM 运行侧 E2E，但没有完成 Openness 直连下载。
-> **边界**：本 brief 只覆盖 `packages/dsh-tia-openness-v17-min`。不要改
-> `packages/dsh-plcsim-advanced`、`docs/simulation-plcsim-advanced.md` —— 那是另一个会话的交付物。
+> **状态（2026-10-24 定稿）：工作流已跑通。** V17 控制器 + PLCSIM Advanced V7
+> （TCP/IP）+ TIA V17 工程，全链路实测通过（见 §0、§9）；V20 侧另有两次连续成功（§8）。
+> 本文先给现行工作流与分工，再保留历史证据。
+
+## 0. 现行工作流（定稿）
+
+### 0.1 一句话触发与步骤
+
+用户在 suite 里说「**启动仿真环境并把 PLC 下载到虚拟 PLC**」时，按下面顺序串：
+
+| # | 执行方 | 动作 | 成败判据 |
+|---|---|---|---|
+| 1 | TIA 插件 | `online_targets`：读工程里目标 PLC 的**离线 IP / 子网**，以及本机可用 PC 接口（含 PLCSIM 虚拟网卡） | 目标 PLC 有子网 + 唯一 IP；否则先补工程（见 0.2） |
+| 2 | PLCSIM 插件 | 创建并启动实例，**IP 用第 1 步读到的地址**，**实例名 = CPU 的 PROFINET 设备名**，**默认带 UI 窗口** | 返回 `state=RUN/STOP`、IP、通信方式、许可证 |
+| 3 | TIA 插件 | `adopt_open_project`：接管 UI 里已打开的工程（工程必须先在 TIA UI 打开） | `adopted=true` |
+| 4 | TIA 插件 | `online_disconnect(force=true)`：清掉 UI 残留在线的状态 | `state=Offline` |
+| 5 | 人工（仅首次） | TIA 弹出「PLC_1 证书不可信」→ 点 **Connect** | 之后同一会话不再弹 |
+| 6 | TIA 插件 | `compile_plc`（可选，下载本身会编译）→ `download(dry_run=true)` 核对目标 → `download(confirm=true, options=software)` | `state=Success`、`errorCount=0` |
+| 7 | TIA 插件 | `online_connect` → `online_status` → `online_disconnect`（可选，用于确认可上线/取终态） | `Online` → `Offline` |
+| 8 | PLCSIM 插件 | 保持实例运行；可选：读标签做业务验证（如 `Btn_ForwardCommand`） | 实例 `RUN`、标签可读 |
+
+**谁编排**：由 suite 里的 agent（leader）按上表调用两个插件的工具。**两个插件互不调用**，
+唯一共享的是「目标坐标」：`mode=PN/IE`、`pc_interface`（TCP/IP 用
+`Siemens PLCSIM Virtual Ethernet Adapter`，Softbus 用 `PLCSIM`）、`target_interface=1 X1`、
+`address=实例/工程 IP`。
+
+### 0.2 人工介入次数
+
+- **项目级一次性**：给要下载的 PLC **分配子网 + 唯一 IP**（实测：不配则连 TIA UI 都下不了）。
+- **设备级一次性**：首次连接时在 TIA UI 接受自签名证书（Openness 无该委托，headless 必败）。
+- **每次下载**：不需要人工；`download(confirm=true)` 是 agent 参数，只有**真实 PLC** 才额外要
+  `confirm_real_device=true`（防止误下到产线）。
+
+所以虚拟 PLC 的常态是 **2 次人工**（都只发生一次：配子网、接受证书）；项目已具备时是 **0 次**。
+
+### 0.3 终态
+
+- **PLCSIM 实例**：`RUN`，程序已加载（下载日志逐块 `loaded successfully`），IP 与工程一致，UI 可见。
+- **TIA Portal**：工程仍由 UI 打开（接管后控制器退出**不**关它）；无在线会话（`online_status`
+  返回 `connected=false`），除非显式保持在线。
+- **控制器**：无残留在线会话；下载结果 `state=Success`、`errorCount=0`；`data.messages` 与
+  `data.configurations` 可回溯。
+- **业务验证**：实例标签可读（PLCSIM 侧工具），可确认程序真的在跑。
 
 ## 1. 你已经完成什么（来自你的会话记录）
+
 
 - `Download`（S2）：`online_connect` 会话前置、dry-run/confirm/`confirm_real_device` 三档闸门、
   回调安全策略、`DownloadResult` 消息树、`configurations`、下载后会话清理。
@@ -121,3 +161,124 @@
   `PROTOCOL.md`、覆盖矩阵和 README，不再把它标为“待实测”。
 - 不要修改 `packages/dsh-plcsim-advanced`；运行侧已经 E2E 通过，归另一个会话。
 - 编辑 TIA 包前先 `claim_files`，完成后 `release_files`，避免与另一个会话撞车。
+
+## 7. 本轮结果（2026-10-24 晚，接手会话）
+
+**结论：握手没过去。** 本机 Openness 对 PLCSIM Advanced V7 实例既不能 GoOnline
+也不能下载，但 TIA UI 能下载同一实例。复现脚本与日志都在 `%TEMP%`。
+
+新增证据：
+
+- **工程侧事实**：两个 CPU 的 X1 节点都是 `192.168.0.1/255.255.255.0`，
+  **没有分配到任何子网**（`OnlineTargets` 的 `subnets` 为空，两个节点落在
+  `unmatchedNodes`）；PN 设备名是 `plc_1.profinet interface_1` /
+  `plc_2.profinet interface_1`。
+- **实例命名对齐**（Softbus，实例名 `plc_1.profinet interface_1`）后仍失败：
+  GoOnline 0.5 s 内 `Changing to online mode failed`；不先连、直接 Download
+  仍在 connect 阶段 `Connect to module PLC_1 failed`，回调 `configurations: []`。
+- **TCP/IP 模式**（虚拟网卡 `192.168.1.240/24`，实例 `192.168.1.1/24`，接口
+  `Siemens PLCSIM Virtual Ethernet Adapter` 在 Openness 里可见）同样失败：
+  GoOnline 10 s 后 `Changing to online mode failed`。
+- **半在线状态**：失败的 GoOnline 会让 TIA 认为仍在线，随后 Download 的
+  `ApplyConfiguration` 报 `The operation is not permitted in online mode`。
+  已在控制器修复：连接失败时补 `GoOffline`；Download 把该异常映射为
+  `online_mode_conflict`（新错误码，已写入 PROTOCOL）。
+
+仍未排除的假设：**工程没给 CPU 分配子网**。若继续 V20 路线，应先建
+「单 PLC + 已分配子网（PN/IE_1）」的工程再试；若那也失败，即可按 §6 判定
+“Openness 无法 target PLCSIM Advanced”，不必再猜。
+
+## 8. 后续突破（2026-10-24 晚，同一会话）
+
+**根因找到：首次连接要先在 TIA UI 里接受 PLC 的自签名证书。**
+
+- UI 弹窗：`Establish connection to device — "PLC_1" might not be a trustworthy device.
+  The device uses an unknown, self-signed certificate.` → Connect / Abort。
+- Openness **没有**回答这个弹窗的委托：`TlsVerificationConfiguration` 只挂在
+  `FingerprintDataProvider.GetFingerprintData` 上，`DownloadCertificate` 也没有
+  可写的选择属性。所以**自开工程**的控制器（headless 或同一 UI 进程里 `OpenProject`）
+  一律在 connect 阶段失败：`Connect to module … failed`，`configurations: []`。
+- 用户点过一次 Connect 之后，**adopt UI 已打开的工程**再下载即可成功：
+  连续两次 `state=Success`、0 error、逐块 `loaded successfully`（V20 +
+  PLCSIM Advanced V7 + TCP/IP + 单 PLC + `PN/IE_1` + CPU/实例同 IP `192.168.1.50`）。
+
+**因此工作流定为：**
+
+1. 人工在 TIA UI 打开工程，首次连接/下载并接受证书（每个新设备/新工程一次）；
+2. 控制器 `adopt_open_project` 接管这个 UI 会话（接管后退出**不**关闭工程）；
+3. `online_disconnect` → `download`（dry_run 默认，confirm 才真下）→ `online_status`。
+
+代码：`AdoptOpenProject`（33 操作 / 32 工具），协议见 `docs/PROTOCOL.md`
+的 `AdoptOpenProject` 与 “Certificate precondition”，矩阵 download 条已按此改写。
+V17 控制器走同一路径，但**尚未实测**（成功数据来自 V20 spike）。
+
+## 9. V17 端到端验证（2026-10-24 20:03）
+
+用仓库里的 **V17 控制器**（不是 V20 spike）对用户已打开的 V17 工程
+（`C:\Users\Ansel\Documents\Automation\V17\AgentAssistProgramming\TestPLCExportDemo\TestPLCExportDemo.ap17`）
+跑通：
+
+| 步骤 | 结果 |
+|---|---|
+| `AdoptOpenProject` | 1.2 s，2 个 PLC（station_1 / station_2） |
+| `OnlineDisconnect force=true` | `Offline`（清掉 UI 的在线态） |
+| `Download` dry_run | `targetSource=download_property`，`Siemens PLCSIM Virtual Ethernet Adapter → 1 X1` |
+| `Download` software | **`state=Success`，0 error，逐块 loaded** |
+| `OnlineConnect` | 4.4 s → `Online`，`OnlineStatus` 读回 `Online`，断开回 `Offline` |
+
+两个操作前置条件（缺一不可）：
+
+1. **工程里给要下载的 PLC 配置子网和唯一 IP** —— 用户实测，连 TIA UI 下载都要求；
+2. **首次连接要在 UI 接受自签名证书**；之后 adopt UI 打开的工程，Openness 才连得上。
+
+V17 特有坑：attach 运行中的 TIA 会走 Openness 防火墙/白名单。控制器 exe 重建后
+哈希变化，**第一次 attach 可能卡住几分钟后超时**（`EngineeringSecurityException:
+Security error. The operation has timed out.`），重试即通过。矩阵里
+`Establishing or disconnecting…`、`Determining the status…`、`Assigning PC interface`
+已从「部分」改为「已适配」；download 仍是「部分」（只验了软件下载，硬件/真实 PLC 未验）。
+
+## 10. 分工与衔接（按现行工作流）
+
+### 10.1 TIA 插件侧（本包 `dsh-tia-openness-v17-min`）负责
+
+| 能力 | 工具 / 操作 | 状态 |
+|---|---|---|
+| 读工程侧目标（离线 IP / 子网 / 可用的 PC 接口与 slot） | `online_targets` / `OnlineTargets` | ✅ 已适配（P） |
+| 接管 UI 已打开的工程（证书信任的会话） | `adopt_open_project` / `AdoptOpenProject` | ✅ 已适配（P） |
+| 清掉 UI 留在线状态 | `online_disconnect(force=true)` | ✅ 已适配（P） |
+| 上线 / 状态 / 下线 | `online_connect` / `online_status` / `online_disconnect` | ✅ 已适配（P，PLCSIM 实测） |
+| 编译 | `compile_plc` | ✅ |
+| 软件下载（含 dry-run、confirm、回调、结果树） | `download` / `Download` | ✅ 软件已验证；硬件/真实 PLC 未验（矩阵“部分”） |
+| 上传 / 在线比较 | `upload` / `compare_online` | ⬜ 未实现（S3） |
+
+**不负责**：实例的创建/启停/标签读写；不依赖 PLCSIM 插件是否安装。
+
+### 10.2 PLCSIM 插件侧（`packages/dsh-plcsim-advanced`，另一会话）负责
+
+- 实例生命周期：register / power on / run / stop / power off / unregister；
+- **实例默认带 UI 窗口运行**（用户要求）：能看到实例名、IP、通信方式（Softbus/TCP/IP）、
+  `RUN/STOP`、许可证状态；API 创建的实例也应出现在 Control Panel 列表里；
+- 提供坐标查询：`name`、`communication`、`ip`、`state`，供 agent 填给 TIA 侧；
+- 可选的业务验证：标签读写（例如 `Btn_ForwardCommand` / `CylinderIsMovingForward`）；
+- 结束时**保持实例运行**（除非用户明确要求关掉）。
+
+### 10.3 两侧的衔接契约
+
+1. **顺序**：先 `online_targets`（TIA 侧读工程 IP），再建实例（PLCSIM 侧用同一 IP）。
+2. **实例名**：用 CPU 的 PROFINET 设备名（如 `plc_1.profinet interface_1`）；TCP/IP 下不是硬性要求，
+   但作为约定便于对照。
+3. **接口**：TCP/IP → `Siemens PLCSIM Virtual Ethernet Adapter`；Softbus → `PLCSIM`。
+   两侧不需要共享这个字符串，由 agent 把 TIA 侧枚举出来的值传给下载调用即可。
+4. **失败沟通**：TIA 侧的错误码是稳定契约（`download_unavailable` / `online_session_required` /
+   `download_failed` / `online_mode_conflict` …），PLCSIM 侧只需报告实例状态；agent 据此判断是
+   “实例没起”还是“证书没接受/工程没子网”。
+
+### 10.4 已知坑（都会在日志里留下可识别的签名）
+
+| 现象 | 根因 | 处理 |
+|---|---|---|
+| `Connect to module … failed` + `configurations: []` | 首次连接未接受自签名证书（Openness 无该委托） | 在 TIA UI 打开工程并点一次 Connect，然后 `adopt_open_project` |
+| 同上，且工程/实例 IP 不一致或未分配子网 | 工程没给 PLC 配子网（连 UI 也下不了） | 工程侧补子网 + 唯一 IP，重启实例对齐 |
+| `EngineeringSecurityException: Security error. The operation has timed out.` | V17 Openness 白名单里没有当前 exe 的哈希（重建后哈希变了） | 首次 attach 重试一次；仍失败则管理员更新 `HKLM\…\Openness\17.0\Whitelist` |
+| `online_mode_conflict` | TIA 还被 UI 占在线 | 先 `online_disconnect(force=true)` |
+| 实例不可 ping / 状态 `Off` | 实例没启动或已 PowerOff | PLCSIM 侧重启实例后重试第 2–4 步 |

@@ -418,6 +418,18 @@ namespace TiaOpennessV17Min.Controller
                 return result;
             }
 
+            // A failed GoOnline leaves TIA Portal in a half-online state: every
+            // later ApplyConfiguration then fails with "not permitted in online
+            // mode". Release it here so the next attempt starts clean.
+            try
+            {
+                target.Provider.GoOffline();
+            }
+            catch (Exception)
+            {
+                // Nothing to release.
+            }
+
             result.Add("message", failure == null
                 ? "The connection did not reach OnlineState.Online within " + timeoutMs + " ms."
                 : failure.Message);
@@ -455,10 +467,50 @@ namespace TiaOpennessV17Min.Controller
         private JsonObject OnlineDisconnect(JsonArgs p, DiagnosticLog log, ChangeLog changes, IProgressSink progress)
         {
             JsonObject data = new JsonObject();
+            bool force = p.Bool("force", false);
+            string requestedDevice = p.String("device_name", null);
             if (_onlineSession == null)
             {
+                if (!force)
+                {
+                    data.Add("connected", false);
+                    data.Add("note", "There is no online session to disconnect.");
+                    return data;
+                }
+
+                // The UI (or a previous controller) may hold the online state on
+                // the adopted project; the download path cannot reconfigure while
+                // TIA reports "online mode".
+                string deviceName = string.IsNullOrEmpty(requestedDevice)
+                    ? throw new ControllerException(
+                        "invalid_params",
+                        "'device_name' is required when force=true and the controller holds no session.")
+                    : requestedDevice;
+                Device targetDevice = _host.FindDevice(deviceName);
+                DeviceItem cpu = OpennessHost.FindCpuItem(targetDevice);
+                OnlineProvider provider = cpu == null ? null : OpennessHost.FindOnlineProvider(cpu);
+                if (provider == null)
+                {
+                    throw new ControllerException(
+                        "online_unavailable",
+                        "The CPU of " + Text.Quote(deviceName) + " returned no OnlineProvider.",
+                        JsonObject.Of("device", deviceName));
+                }
+                OnlineState forcedState;
+                try
+                {
+                    provider.GoOffline();
+                    forcedState = provider.State;
+                }
+                catch (Exception ex)
+                {
+                    throw OpennessHost.OpennessFailure("online_disconnect_failed",
+                        "TIA refused to go offline for " + Text.Quote(deviceName) + ": " + ex.Message, ex);
+                }
                 data.Add("connected", false);
-                data.Add("note", "There is no online session to disconnect.");
+                data.Add("device", targetDevice.Name);
+                data.Add("state", forcedState.ToString());
+                data.Add("forced", true);
                 return data;
             }
             string device = _onlineSession.Device;
@@ -510,6 +562,23 @@ namespace TiaOpennessV17Min.Controller
             Disconnect();
         }
 
+
+        // ---------------------------------------------------- AdoptOpenProject
+
+        /// <summary>
+        /// Adopt the project the TIA Portal UI already has open. Needed for the
+        /// first connection to a PLC: the self-signed-certificate prompt is a UI
+        /// decision that Openness cannot answer, so the trusted session must come
+        /// from the UI and be taken over here.
+        /// </summary>
+        private JsonObject AdoptOpenProject(JsonArgs p, DiagnosticLog log, ChangeLog changes, IProgressSink progress)
+        {
+            JsonObject data = _host.AdoptOpenProject(progress);
+            changes.Add("adopt", JsonObject.ReadString(data, "projectName", null), "adopted",
+                "the project stays owned by the TIA Portal UI");
+            log.Info("Adopted the project open in the TIA Portal UI.");
+            return data;
+        }
         // ---------------------------------------------------------------- Download
 
         /// <summary>
@@ -758,9 +827,27 @@ namespace TiaOpennessV17Min.Controller
             // it is not — which is exactly the fresh-PLCSIM case.
             if (string.Equals(targetSource, "download_property", StringComparison.Ordinal))
             {
-                bool applied = target.Slot != null
-                    ? target.Configuration.ApplyConfiguration(target.Slot)
-                    : target.Configuration.ApplyConfiguration(target.AddressConfig);
+                bool applied;
+                try
+                {
+                    applied = target.Slot != null
+                        ? target.Configuration.ApplyConfiguration(target.Slot)
+                        : target.Configuration.ApplyConfiguration(target.AddressConfig);
+                }
+                catch (Exception ex)
+                {
+                    // "The operation is not permitted in online mode." A previous
+                    // GoOnline that failed can leave TIA Portal in that state.
+                    throw new ControllerException(
+                        "online_mode_conflict",
+                        "TIA Portal refused to apply the download target: " + ex.Message
+                            + " Disconnect (online_disconnect) or reconnect before retrying.",
+                        JsonObject.Of(
+                            "device", deviceName,
+                            "mode", target.Mode,
+                            "pcInterface", target.PcInterface.Name,
+                            "exceptionType", ex.GetType().FullName));
+                }
                 if (!applied)
                 {
                     throw new ControllerException(

@@ -2195,6 +2195,33 @@ export function registerTools(ctx: Context, dependencies: ToolDependencies): str
 
   register(
     defineTool({
+      name: 'adopt_open_project',
+      description:
+        'Take over the project that the TIA Portal UI already has open, instead of opening one by path. Use it when ' +
+        'the first connection to a PLC has to be made from the UI anyway: the "trust this self-signed certificate" ' +
+        'dialog is a UI decision that Openness has no delegate for (TlsVerificationConfiguration is only reachable ' +
+        'from FingerprintDataProvider), so a headless TIA refuses the connection before any download configuration ' +
+        'runs. Adopting the UI session keeps that trust and lets download/online run from the controller. The ' +
+        'project stays owned by the UI: shutdown does not close it, and close_project is the only way to close it ' +
+        'from here. Maps to the AdoptOpenProject operation. Fails with project_not_open (no TIA instance, or no ' +
+        'project open in it).',
+      parameters: {
+        with_window: { type: 'boolean', description: 'Kept for symmetry with open_project; adoption always uses the visible instance that owns the project.' },
+      },
+      output: {
+        schema: OUTCOME_SCHEMA,
+        render: (_args, value) => [{ type: 'text', text: renderValue(value, verbose) }],
+      },
+      async execute(args, exec) {
+        return asJsonOutcome(
+          await runOperation(dependencies, 'AdoptOpenProject', { with_window: args.with_window ?? true }, exec.signal),
+        )
+      },
+    }),
+  )
+
+  register(
+    defineTool({
       name: 'online_targets',
       description:
         'Discover how the open project can be reached online. Returns every PLC device with its configured ' +
@@ -2314,6 +2341,8 @@ export function registerTools(ctx: Context, dependencies: ToolDependencies): str
         'connected — the result then reports connected=false with a note. Maps to the OnlineDisconnect ' +
         'operation. Fails with project_not_open only.',
       parameters: {
+        device_name: { type: 'string', description: 'Device whose online state should be dropped when force=true and the controller holds no session.' },
+        force: { type: 'boolean', description: 'True to call GoOffline on the device even when the controller holds no session — needed after adopting a UI project that is still online.' },
         with_window: { type: 'boolean', description: 'True to go offline through a visible TIA Portal instance; false (the default) uses the headless one.' },
       },
       output: {
@@ -2321,9 +2350,9 @@ export function registerTools(ctx: Context, dependencies: ToolDependencies): str
         render: (_args, value) => [{ type: 'text', text: renderValue(value, verbose) }],
       },
       async execute(args, exec) {
-        return asJsonOutcome(
-          await runOperation(dependencies, 'OnlineDisconnect', { with_window: args.with_window ?? false }, exec.signal),
-        )
+        const params: JsonRecord = { force: args.force ?? false, with_window: args.with_window ?? false }
+        if (args.device_name !== undefined) params['device_name'] = args.device_name
+        return asJsonOutcome(await runOperation(dependencies, 'OnlineDisconnect', params, exec.signal))
       },
     }),
   )

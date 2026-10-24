@@ -866,7 +866,10 @@ export const SECTIONS = [
           '已接线未实测：download 操作走 DownloadProvider.Download(IConfiguration, 双回调, DownloadOptions)，' +
           'dry_run 默认只解析目标，confirm=true 才真下、kind=physical 还要 confirm_real_device=true；' +
           '回调按固定策略回答停机/密码/一致下载等配置，DownloadOptions 用 None / Hardware / Software 组合。' +
-          'F 激活的 PLC 不支持该 API（R16），也没有设备可验，故记部分。',
+          'F 激活的 PLC 不支持该 API（R16）。2026-10-24 实测（V20 + PLCSIM Advanced V7 + TCP/IP）：根因是首次连接要接受 PLC 自签名证书，' +
+          '这是 UI 决策、Openness 没有对应委托（TlsVerificationConfiguration 只挂在 FingerprintDataProvider 上），' +
+          '所以自开工程的控制器一律在 connect 阶段失败且回调不触发；用 adopt 接管 UI 已信任的会话后连续两次下载成功（0 error）。' +
+          'V17 控制器同路径未实测，故仍记部分。',
       },
       'Running and stopping PLC': {
         status: 'none',
@@ -894,27 +897,28 @@ export const SECTIONS = [
         note: '未适配：设备级在线比较，与软件比较共用 Compare 命名空间；需在线（P）。',
       },
       'Establishing or disconnecting the online connection to the PLC': {
-        status: 'partial',
+        status: 'done',
         pre: ['P'],
         note:
-          '已接线未实测：online_connect / online_disconnect（OperationsOnline.cs）解析目标后 ApplyConfiguration，' +
-          '再 GoOnline() 并轮询 State 到 OnlineState.Online（已处理 NotReachable / Protected / Incompatible 与超时），' +
-          '会话由控制器持有；V17 另有 SetPlcMasterSecret / ResetPlcMasterSecret 未接。没有真实 PLC 或 PLCSIM 实例可验，故记部分。',
+          '已验证（V17 + PLCSIM Advanced V7 TCP/IP，adopt UI 工程后）：online_connect 4.4 s 到 OnlineState.Online，' +
+          'online_status 读回 Online，online_disconnect 回到 Offline；失败的 GoOnline 会补 GoOffline，避免 TIA 停在半在线。' +
+          '首次连设备必须先在 TIA UI 接受自签名证书（Openness 无该委托，headless 必败），见 PROTOCOL 的 Certificate precondition。' +
+          'V17 另有 SetPlcMasterSecret / ResetPlcMasterSecret 未接；真实 PLC 未验（P）。',
       },
       'Assigning PC interface': {
-        status: 'partial',
+        status: 'done',
         pre: ['P'],
         note:
-          '已接线未实测：online_connect 的 pc_interface / pc_interface_number / target_interface / address 参数' +
-          '直接对应 ConfigurationMode.PcInterfaces.Find(name, number) → ConfigurationTargetInterface.Find(slot)，' +
-          'address 走 ConfigurationSubnet.Addresses；online_targets 把可选项列全（含 kind=virtual/physical）。未实测。',
+          '已验证（V17 + PLCSIM）：online_connect 用 pc_interface / pc_interface_number / target_interface 选中' +
+          '「Siemens PLCSIM Virtual Ethernet Adapter → 1 X1」并成功上线；online_targets 把这些组合连同 kind（virtual/physical）' +
+          '和子网地址一次列全，调用方据此选择。',
       },
       'Determining the status of a PLC': {
-        status: 'partial',
+        status: 'done',
         pre: ['P'],
         note:
-          '已接线未实测：online_status 读控制器持有会话的 OnlineProvider.State（OnlineState 七个值），' +
-          '并回报会话的目标与占用者；离线状态下不会去连接。未在真实 PLC/PLCSIM 上验证状态迁移的时间行为。',
+          '已验证（V17 + PLCSIM）：online_status 在读控制器会话时返回 state=Online / ok=true，断开后 connected=false；' +
+          '值域是 OnlineState 七个值，读的是实时 State，不会触发连接。',
       },
       'Accessing parameters of an online connection': {
         status: 'partial',

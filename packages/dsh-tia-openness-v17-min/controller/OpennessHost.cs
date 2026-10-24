@@ -76,6 +76,7 @@ namespace TiaOpennessV17Min.Controller
         private readonly DiagnosticLog _log;
         private TiaPortal _portal;
         private Project _project;
+        private bool _adoptedProject;
         private bool _disposed;
 
         public OpennessHost(DiagnosticLog log)
@@ -263,6 +264,45 @@ namespace TiaOpennessV17Min.Controller
             return data;
         }
 
+
+        /// <summary>
+        /// Take over the project that is already open in the attached TIA Portal
+        /// instance instead of opening one by path. A TIA Portal holds one project
+        /// at a time, and the UI may already own it — which is also the only way to
+        /// pass the "trust this self-signed PLC certificate" prompt: Openness has
+        /// no delegate for it (TlsVerificationConfiguration is only reachable from
+        /// FingerprintDataProvider), so a headless instance cannot accept it and
+        /// the connection is refused before any download configuration runs.
+        /// </summary>
+        public JsonObject AdoptOpenProject(IProgressSink progress)
+        {
+            if (_project == null)
+            {
+                EnsurePortal(true, progress);
+                if (_portal.Projects.Count == 0)
+                {
+                    throw new ControllerException(
+                        "project_not_open",
+                        "The attached TIA Portal instance has no open project to adopt.",
+                        JsonObject.Of("hint", "Open the project in the TIA Portal UI first, or use OpenProject with a path."));
+                }
+                _project = _portal.Projects[0];
+                _adoptedProject = true;
+            }
+
+            JsonObject data = new JsonObject();
+            data.Add("projectName", SafeProjectName());
+            data.Add("projectPath", SafeProjectPath());
+            data.Add("adopted", true);
+            data.Add("withUserInterface", true);
+            data.Add("isModified", SafeIsModified());
+            data.Add("plcSoftware", DescribePlcSoftware());
+            data.Add("blockSummary", DescribeBlockSummary());
+            data.Add("hint",
+                "The project stays owned by the TIA Portal UI: this controller will not close it on shutdown. "
+                + "Call CloseProject only if the project should really be closed.");
+            return data;
+        }
         private string NormalizeExistingFile(string path, string parameterName)
         {
             if (string.IsNullOrWhiteSpace(path))
@@ -1476,7 +1516,7 @@ namespace TiaOpennessV17Min.Controller
             if (_disposed) return;
             _disposed = true;
 
-            if (_project != null)
+            if (_project != null && !_adoptedProject)
             {
                 try
                 {
