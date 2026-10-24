@@ -120,8 +120,11 @@ namespace TiaOpennessV17Min.Controller
             // have a changed block, a changed type or a changed tag table (V17
             // clears the checksum on every software edit). It also requires a usable
             // manifest: a missing/broken manifest is a view that has to be rebuilt,
-            // even when the engineering state is unchanged.
+            // even when the engineering state is unchanged. A ledger written before
+            // F-signatures were recorded also forces one scan, so the signatures are
+            // backfilled instead of being reported as "unchanged but absent".
             if (previous != null
+                && previous.SafetyRecorded
                 && !rebuildManifest
                 && string.Equals(previous.PlcChecksum, checksum, StringComparison.Ordinal)
                 && string.Equals(previous.Software, software.SoftwareName, StringComparison.OrdinalIgnoreCase))
@@ -146,6 +149,10 @@ namespace TiaOpennessV17Min.Controller
             Dictionary<string, EvidenceObject> current = new Dictionary<string, EvidenceObject>(StringComparer.Ordinal);
             IndexFingerprinted(stageDir, blockPlan,
                 delegate (int index) { return OpennessHost.FingerprintsOf(blocks[index].Block, log); }, current);
+            // F blocks: the fingerprints above prove "something in the block
+            // changed"; the F-signature is the safety-acceptance value and the only
+            // evidence for the F-OB that TIA refuses to export.
+            AttachSafetySignatures(blocks, current, log);
             IndexFingerprinted(stageDir, typePlan,
                 delegate (int index) { return OpennessHost.FingerprintsOf(types[index].Type, log); }, current);
             for (int i = 0; i < tablePlan.Count; i++)
@@ -171,22 +178,10 @@ namespace TiaOpennessV17Min.Controller
             }
 
             // An object that was unexportable and has not changed stays unexportable:
-            // re-exporting a ProDiag / Safety block would fail on every scan. It is
-            // retried as soon as its fingerprint changes (or, for a tag table, on
-            // every scan, because a tag table has no fingerprint to compare).
-            if (previous != null)
-            {
-                foreach (KeyValuePair<string, EvidenceObject> pair in current)
-                {
-                    EvidenceObject before;
-                    if (!previous.Objects.TryGetValue(pair.Key, out before)) continue;
-                    if (before.State == EvidenceDocument.StatePresent) continue;
-                    if (!string.Equals(before.Signature, pair.Value.Signature, StringComparison.Ordinal)) continue;
-                    pair.Value.State = before.State;
-                    pair.Value.Reason = before.Reason;
-                    if (!string.IsNullOrEmpty(before.Path)) pair.Value.Path = before.Path;
-                }
-            }
+            // re-exporting a ProDiag / Safety block would fail on every scan. The
+            // fingerprint is compared on its own: an F-signature recorded later must
+            // not make an old unexportable entry look changed.
+            RetainUnexportable(previous, current);
 
             // Which block / type objects need an export? Tag tables always do: they
             // have no fingerprint, so the only way to know whether one changed is to
@@ -302,6 +297,7 @@ namespace TiaOpennessV17Min.Controller
             next.Device = software.DeviceName;
             next.Software = software.SoftwareName;
             next.PlcChecksum = checksum;
+            next.SafetyRecorded = true;
             foreach (KeyValuePair<string, EvidenceObject> pair in current)
             {
                 next.Objects[pair.Key] = pair.Value;
@@ -353,6 +349,7 @@ namespace TiaOpennessV17Min.Controller
             data.Add("checksum", checksum);
             data.Add("unchanged", false);
             data.Add("counts", counts);
+            data.Add("safety", SafetySummary(next, previous));
             data.Add("changed", ObjectRows(delta.Changed, previous, current, true));
             data.Add("added", ObjectRows(delta.Added, previous, current, false));
             data.Add("removed", RemovedRows(delta.Removed, previous));
@@ -708,6 +705,7 @@ namespace TiaOpennessV17Min.Controller
             data.Add("checksum", checksum);
             data.Add("unchanged", true);
             data.Add("counts", counts);
+            data.Add("safety", SafetySummary(previous, null));
             data.Add("changed", new List<JsonObject>());
             data.Add("added", new List<JsonObject>());
             data.Add("removed", new List<JsonObject>());
@@ -717,6 +715,140 @@ namespace TiaOpennessV17Min.Controller
             // The fast path requires a previous ledger, so nothing can be adopted here.
             data.Add("adopted", 0);
             return data;
+        }
+
+        /// <summary>
+        /// Record the F-signature of every block that could be a safety block.
+        ///
+        /// <see cref="OpennessHost.MayBeSafetyBlock"/> filters on the fail-safe
+        /// programming language (or "is an OB"), which kept the probe to 83 of the
+        /// 1155 blocks of the reference project. The filter is only an economy: the
+        /// provider stays authoritative, so a null service means "not part of the
+        /// safety program" and a signature of 0 means "no valid signature".
+        /// </summary>
+        private void AttachSafetySignatures(List<BlockRef> blocks, Dictionary<string, EvidenceObject> current,
+            DiagnosticLog log)
+        {
+            int probed = 0;
+            int fBlocks = 0;
+            foreach (BlockRef reference in blocks)
+            {
+                if (!OpennessHost.MayBeSafetyBlock(reference.Block)) continue;
+                probed++;
+
+                string key = EvidenceDocument.KeyOf(EvidenceDocument.CategoryBlocks,
+                    reference.GroupPath, reference.Name);
+                EvidenceObject entry;
+                if (!current.TryGetValue(key, out entry)) continue;
+
+                JsonObject signature = _host.DescribeSafetySignature(reference.Block);
+                entry.IsSafetyBlock = JsonObject.ReadBool(signature, "isFBlock", false);
+                if (!entry.IsSafetyBlock)
+                {
+                    entry.SafetySignatureType = null;
+                    entry.SafetySignatureValue = null;
+                    entry.SafetySignatureError = null;
+                    continue;
+                }
+
+                fBlocks++;
+                entry.SafetySignatureType = JsonObject.ReadString(signature, "signatureType", "BlockOfflineSignature");
+                entry.SafetySignatureValue = ReadUnsignedLong(signature["value"]);
+                entry.SafetySignatureError = JsonObject.ReadString(signature, "reason", null);
+            }
+
+            log.Info("Safety: " + fBlocks + " F-block signature(s) recorded after probing " + probed
+                + " candidate block(s).");
+        }
+
+        /// <summary>
+        /// The safety view of a ledger: the F-block count, how many of them have no
+        /// valid signature (value 0), and which signatures differ from the previous
+        /// ledger.
+        ///
+        /// It deliberately includes unexportable F blocks: the safety system OB
+        /// that TIA refuses to export is exactly the object whose F-signature is the
+        /// only change evidence, so it must be reported here even though it never
+        /// appears under <c>changed</c>.
+        /// </summary>
+        private static JsonObject SafetySummary(EvidenceDocument document, EvidenceDocument previous)
+        {
+            int fBlocks = 0;
+            int zero = 0;
+            List<JsonObject> changed = new List<JsonObject>();
+            List<string> keys = new List<string>(document.Objects.Keys);
+            keys.Sort(StringComparer.Ordinal);
+            foreach (string key in keys)
+            {
+                EvidenceObject entry = document.Objects[key];
+                if (!entry.IsSafetyBlock) continue;
+                fBlocks++;
+                if (entry.SafetySignatureValue.HasValue && entry.SafetySignatureValue.Value == 0UL) zero++;
+
+                // A ledger that predates F-signatures has nothing to compare
+                // against; the scan backfills it instead of reporting 55 changes.
+                if (previous == null || !previous.SafetyRecorded) continue;
+                EvidenceObject before;
+                if (!previous.Objects.TryGetValue(key, out before)) continue;
+                if (string.Equals(before.SafetySignatureKey, entry.SafetySignatureKey, StringComparison.Ordinal)) continue;
+
+                JsonObject row = new JsonObject();
+                row.Add("key", entry.Key);
+                row.Add("name", entry.Name);
+                if (!string.IsNullOrEmpty(entry.GroupPath)) row.Add("group", entry.GroupPath);
+                row.Add("before", before.SafetySignatureValue.HasValue ? (object)before.SafetySignatureValue.Value : null);
+                row.Add("after", entry.SafetySignatureValue.HasValue ? (object)entry.SafetySignatureValue.Value : null);
+                changed.Add(row);
+            }
+
+            JsonObject summary = new JsonObject();
+            summary.Add("signatureType", "BlockOfflineSignature");
+            summary.Add("fBlockCount", fBlocks);
+            summary.Add("zeroSignatureCount", zero);
+            summary.Add("changed", changed);
+            return summary;
+        }
+
+        /// <summary>Reads a JSON number as an unsigned 64-bit F-signature value.</summary>
+        private static ulong? ReadUnsignedLong(object raw)
+        {
+            if (raw == null) return null;
+            if (raw is ulong) return (ulong)raw;
+            try
+            {
+                return Convert.ToUInt64(raw, CultureInfo.InvariantCulture);
+            }
+            catch (Exception)
+            {
+                return null;
+            }
+        }
+
+        /// <summary>
+        /// An object that was unexportable and has not changed stays unexportable:
+        /// re-exporting a ProDiag / Safety block would fail on every scan. It is
+        /// retried as soon as its fingerprint changes (or, for a tag table, on every
+        /// scan, because a tag table has no fingerprint to compare).
+        ///
+        /// Only <see cref="EvidenceObject.FingerprintPart"/> is compared. Comparing
+        /// the full <see cref="EvidenceObject.Signature"/> would make an F-block that
+        /// was unexportable in a ledger written before F-signatures existed look
+        /// "changed" (the old row has no safety fields), and the object would be
+        /// re-exported — and then recorded as present without a file.
+        /// </summary>
+        internal static void RetainUnexportable(EvidenceDocument previous, Dictionary<string, EvidenceObject> current)
+        {
+            if (previous == null) return;
+            foreach (KeyValuePair<string, EvidenceObject> pair in current)
+            {
+                EvidenceObject before;
+                if (!previous.Objects.TryGetValue(pair.Key, out before)) continue;
+                if (before.State == EvidenceDocument.StatePresent) continue;
+                if (!string.Equals(before.FingerprintPart, pair.Value.FingerprintPart, StringComparison.Ordinal)) continue;
+                pair.Value.State = before.State;
+                pair.Value.Reason = before.Reason;
+                if (!string.IsNullOrEmpty(before.Path)) pair.Value.Path = before.Path;
+            }
         }
 
         private void IndexFingerprinted(string stageRoot, List<ExportPlanItem> plan,

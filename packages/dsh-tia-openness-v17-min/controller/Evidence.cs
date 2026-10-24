@@ -29,11 +29,33 @@ namespace TiaOpennessV17Min.Controller
         public Dictionary<string, string> Fingerprint;
         public string ContentHash;
 
+        // ------------------------------------------------------- F-signatures
+
         /// <summary>
-        /// The value compared between two ledgers: the full fingerprint for a
-        /// block / PLC type, the normalized content hash for a tag table.
+        /// True when TIA returned a <c>SafetySignatureProvider</c> for this
+        /// object. The provider is authoritative: a block of an F-CPU that is
+        /// not part of the safety program gets none, and an F-block always does.
         /// </summary>
-        public string Signature
+        public bool IsSafetyBlock;
+
+        /// <summary>The kind of signature, e.g. <c>BlockOfflineSignature</c>.</summary>
+        public string SafetySignatureType;
+
+        /// <summary>
+        /// The signature value. <c>0</c> is a valid state ("no valid signature
+        /// yet" or "a change invalidated it"); <c>null</c> means the object is
+        /// not an F-block, which is why presence and value are separate.
+        /// </summary>
+        public ulong? SafetySignatureValue;
+
+        /// <summary>Why reading the signature failed, when it did.</summary>
+        public string SafetySignatureError;
+
+        /// <summary>
+        /// The fingerprint part of the change signature: the full fingerprint for
+        /// a block / PLC type, the normalized content hash for a tag table.
+        /// </summary>
+        public string FingerprintPart
         {
             get
             {
@@ -42,6 +64,38 @@ namespace TiaOpennessV17Min.Controller
                     return ContentHash ?? string.Empty;
                 }
                 return EvidenceDocument.FingerprintSignature(Fingerprint);
+            }
+        }
+
+        /// <summary>
+        /// The F-signature as one comparable token, empty for a non-F object.
+        /// The provider's presence is part of it, so "became an F-block" and
+        /// "stopped being one" are changes even when the fingerprints agree.
+        /// </summary>
+        public string SafetySignatureKey
+        {
+            get
+            {
+                if (!IsSafetyBlock) return string.Empty;
+                return (SafetySignatureType ?? string.Empty)
+                    + "|" + (SafetySignatureValue.HasValue
+                        ? SafetySignatureValue.Value.ToString(CultureInfo.InvariantCulture)
+                        : "-")
+                    + (string.IsNullOrEmpty(SafetySignatureError) ? string.Empty : "|error");
+            }
+        }
+
+        /// <summary>
+        /// The value compared between two ledgers: the fingerprint (or content
+        /// hash) plus the F-signature of safety blocks.
+        /// </summary>
+        public string Signature
+        {
+            get
+            {
+                string fingerprint = FingerprintPart;
+                if (!IsSafetyBlock) return fingerprint;
+                return fingerprint + "\nF:" + SafetySignatureKey;
             }
         }
 
@@ -56,6 +110,10 @@ namespace TiaOpennessV17Min.Controller
             copy.State = State;
             copy.Reason = Reason;
             copy.ContentHash = ContentHash;
+            copy.IsSafetyBlock = IsSafetyBlock;
+            copy.SafetySignatureType = SafetySignatureType;
+            copy.SafetySignatureValue = SafetySignatureValue;
+            copy.SafetySignatureError = SafetySignatureError;
             if (Fingerprint != null)
             {
                 copy.Fingerprint = new Dictionary<string, string>(Fingerprint, StringComparer.Ordinal);
@@ -121,6 +179,16 @@ namespace TiaOpennessV17Min.Controller
         public string Software;
         public string PlcChecksum;
         public string StateId;
+
+        /// <summary>
+        /// True when the scan that wrote this ledger asked
+        /// <c>SafetySignatureProvider</c> for the blocks that could be safety
+        /// blocks. A ledger written before F-signatures existed lacks the flag;
+        /// the fast path then re-scans once to backfill instead of pretending
+        /// the missing signatures are unchanged.
+        /// </summary>
+        public bool SafetyRecorded;
+
         public readonly Dictionary<string, EvidenceObject> Objects =
             new Dictionary<string, EvidenceObject>(StringComparer.Ordinal);
         public readonly List<EvidenceTombstone> Tombstones = new List<EvidenceTombstone>();
@@ -164,6 +232,11 @@ namespace TiaOpennessV17Min.Controller
         /// whose key is gone is removed — the caller may only write a tombstone when
         /// the current listing was complete, which it always is here because the
         /// controller enumerates the composition itself instead of a capped list.
+        ///
+        /// A ledger written before F-signatures were recorded has no safety fields.
+        /// For that first scan the fingerprint decides, so upgrading the controller
+        /// does not report every F-block as changed; the new ledger then carries the
+        /// signatures and later scans compare them too.
         /// </summary>
         public static EvidenceDelta Compare(EvidenceDocument previous, IDictionary<string, EvidenceObject> current)
         {
@@ -176,10 +249,12 @@ namespace TiaOpennessV17Min.Controller
                     delta.Added.Add(pair.Key);
                     continue;
                 }
-                if (!string.Equals(before.Signature, pair.Value.Signature, StringComparison.Ordinal))
+                bool changed = !string.Equals(before.FingerprintPart, pair.Value.FingerprintPart, StringComparison.Ordinal);
+                if (!changed && previous.SafetyRecorded)
                 {
-                    delta.Changed.Add(pair.Key);
+                    changed = !string.Equals(before.SafetySignatureKey, pair.Value.SafetySignatureKey, StringComparison.Ordinal);
                 }
+                if (changed) delta.Changed.Add(pair.Key);
             }
 
             if (previous != null)
@@ -233,6 +308,7 @@ namespace TiaOpennessV17Min.Controller
             document.Software = root.String("software", null);
             document.PlcChecksum = root.String("plcChecksum", null);
             document.StateId = root.String("stateId", null);
+            document.SafetyRecorded = root.Bool("safetyRecorded", false);
 
             JsonArgs objects = root.Object("objects");
             foreach (string key in objects.Keys)
@@ -288,7 +364,30 @@ namespace TiaOpennessV17Min.Controller
             entry.Path = item.String("path", null);
             entry.ContentHash = item.String("contentHash", null);
             entry.Fingerprint = ReadFingerprint(item.Object("fingerprint"));
+            entry.IsSafetyBlock = item.Bool("isSafetyBlock", false);
+            JsonArgs safety = item.Object("safetySignature");
+            entry.SafetySignatureType = safety.String("type", null);
+            entry.SafetySignatureValue = ReadUnsignedLong(safety.Raw("value"));
+            entry.SafetySignatureError = safety.String("reason", null);
             return entry;
+        }
+
+        /// <summary>
+        /// Reads the F-signature value without letting a malformed ledger carry a
+        /// huge or negative number into the comparison.
+        /// </summary>
+        private static ulong? ReadUnsignedLong(object raw)
+        {
+            if (raw == null) return null;
+            if (raw is ulong) return (ulong)raw;
+            try
+            {
+                return Convert.ToUInt64(raw, CultureInfo.InvariantCulture);
+            }
+            catch (Exception)
+            {
+                return null;
+            }
         }
 
         private static Dictionary<string, string> ReadFingerprint(JsonArgs fingerprint)
@@ -318,6 +417,7 @@ namespace TiaOpennessV17Min.Controller
             JsonObject root = new JsonObject();
             root.Add("schemaVersion", SchemaVersion);
             root.Add("hashAlgo", HashAlgorithm);
+            root.Add("safetyRecorded", SafetyRecorded);
             root.Add("device", Device);
             root.Add("software", Software);
             root.Add("plcChecksum", PlcChecksum);
@@ -376,6 +476,15 @@ namespace TiaOpennessV17Min.Controller
                 item.Add("fingerprint", fingerprint);
             }
             if (!string.IsNullOrEmpty(entry.ContentHash)) item.Add("contentHash", entry.ContentHash);
+            if (entry.IsSafetyBlock)
+            {
+                item.Add("isSafetyBlock", true);
+                JsonObject safety = new JsonObject();
+                safety.Add("type", entry.SafetySignatureType ?? "BlockOfflineSignature");
+                if (entry.SafetySignatureValue.HasValue) safety.Add("value", entry.SafetySignatureValue.Value);
+                if (!string.IsNullOrEmpty(entry.SafetySignatureError)) safety.Add("reason", entry.SafetySignatureError);
+                item.Add("safetySignature", safety);
+            }
             if (entry.State != StatePresent)
             {
                 item.Add("state", entry.State);

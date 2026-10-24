@@ -196,11 +196,20 @@ the changed objects (plus every tag table, which has no fingerprint) into
 | `export_options` | enum | `with_defaults` | `none` \| `with_defaults` \| `with_read_only` |
 
 `data`: `device`, `software`, `checksum`, `unchanged`, `counts{blocks,types,
-tagTables,changed,added,removed,unexportable}`, `changed[]`, `added[]`,
-`removed[]`, `unexportable[]{key,category,name,group,reason}`, `stage{root,
-evidence,manifest,files}`, `manifestRebuilt`, `adopted`, `stateId`. When the
-checksum matches the ledger the operation returns `unchanged: true` with
-`stage: null` and enumerates nothing.
+tagTables,changed,added,removed,unexportable}`, `safety{signatureType,
+fBlockCount,zeroSignatureCount,changed[]{key,name,group,before,after}}`,
+`changed[]`, `added[]`, `removed[]`, `unexportable[]{key,category,name,group,
+reason}`, `stage{root,evidence,manifest,files}`, `manifestRebuilt`, `adopted`,
+`stateId`. When the checksum matches the ledger the operation returns
+`unchanged: true` with `stage: null` and enumerates nothing.
+
+Safety blocks carry an F-signature (`SafetySignatureProvider`,
+`BlockOfflineSignature`) in the ledger and in the comparison. A ledger written
+before that field existed lacks `safetyRecorded`; the first scan with the new
+controller backfills the signatures without reporting the F blocks as changed
+(fingerprints alone decide that once), and every later scan compares the
+signatures too. `safety.changed` also reports F-signatures of unexportable
+blocks, which never appear under `changed`.
 
 `adopted` counts the objects taken from the source tree instead of exported; such
 files already exist, so they are not part of `stage.files` (which stays the

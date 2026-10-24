@@ -652,15 +652,23 @@ TIA（权威，二进制，不进 git）
 {
   "schemaVersion": 1,
   "hashAlgo": "xml-norm-v1",              // NormalizeXmlForHash 的标识，不含时间
+  "safetyRecorded": true,                 // 本次扫描记录过 F 签名；旧账本缺此字段
   "device": "Sino_PEI",
   "software": "Sino_PEI",
   "plcChecksum": "C0 01 C3 13 58 AC 0E 50",  // PlcChecksumProvider.Software
-  "stateId": "…",                          // 由对象 key + 指纹/哈希推出的稳定摘要
+  "stateId": "…",                          // 由对象 key + 指纹/哈希 + F 签名推出的稳定摘要
   "objects": {
     "block||010_Cell||FB_Motor": {
       "category": "block", "name": "FB_Motor", "group": "010_Cell",
       "path": "blocks/010_Cell/FB_Motor.xml",   // 相对 device 目录
       "fingerprint": { "Code": "…", "Comments": "…", "Interface": "…" }
+    },
+    "block||000_SAFETY_TASK||FB_Safety": {
+      "category": "block", "name": "FB_Safety", "group": "000_SAFETY_TASK",
+      "path": "blocks/000_SAFETY_TASK/FB_Safety.xml",
+      "fingerprint": { "Code": "…" },
+      "isSafetyBlock": true,                    // provider 非 null 才是 F 块
+      "safetySignature": { "type": "BlockOfflineSignature", "value": 2712773270 }
     },
     "tag_table||||DB_Tags": {
       "category": "tag_table", "name": "DB_Tags", "group": null,
@@ -669,8 +677,10 @@ TIA（权威，二进制，不进 git）
     }
   },
   "unexportable": [
-    { "key": "block||||FOB_SAFETY", "category": "block", "name": "FOB_SAFETY",
-      "group": null, "reason": "…" }             // 存在但导不出来：保留上一次的文件
+    { "key": "block||000_SAFETY_TASK||FOB_SAFETY", "category": "block", "name": "FOB_SAFETY",
+      "group": "000_SAFETY_TASK", "reason": "…",  // 存在但导不出来：保留上一次的文件
+      "isSafetyBlock": true,
+      "safetySignature": { "type": "BlockOfflineSignature", "value": 3234695618 } }
   ],
   "tombstones": [
     { "key": "block||010_Cell||FB_Old", "category": "block", "name": "FB_Old",
@@ -683,6 +693,10 @@ TIA（权威，二进制，不进 git）
 > 自带 `<DocumentInfo><Created>`，重新导出就会变（[`MANIFEST-GAP-ANALYSIS.md`](../../dsh-tia-openness-v17-min/docs/MANIFEST-GAP-ANALYSIS.md) §3）。
 > 所以 `project_sync` 只把清单当**清单**：回答"磁盘上现在有什么、多大、是否可读"，
 > 从不回答"变没变"。相等性只来自 `_evidence.json`。
+
+> **F 签名**：安全块的 `safetySignature` 也计入相等性（`value: 0` = 尚无有效签名）。导不出的 F-OB
+> （如 `FOB_SAFETY`）没有文件可 diff，F 签名就是它唯一的变更证据；旧账本没有 `safetyRecorded` 时
+> 第一次同步只比指纹，不会把升级误报成"所有 F 块都变了"。
 
 ### 8.3 清单 `source/<device>/_manifest.json`（✅ 已实现）
 

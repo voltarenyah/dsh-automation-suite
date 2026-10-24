@@ -36,6 +36,8 @@ namespace TiaOpennessV17Min.Controller
                 Check(checks, ref ok, "args_rejects_unknown_enum", ArgsRejectsUnknownEnum);
                 Check(checks, ref ok, "evidence_roundtrip", delegate { EvidenceRoundTrip(workDirectory); });
                 Check(checks, ref ok, "evidence_diff", EvidenceDiff);
+                Check(checks, ref ok, "evidence_safety_signature", EvidenceSafetySignature);
+                Check(checks, ref ok, "evidence_unexportable_retained", EvidenceUnexportableRetained);
                 Check(checks, ref ok, "evidence_xml_normalization", EvidenceXmlNormalization);
                 Check(checks, ref ok, "manifest_adoption", delegate { ManifestAdoptionCheck(workDirectory); });
                 Check(checks, ref ok, "result_frame_shape", ResultFrameShape);
@@ -280,8 +282,12 @@ namespace TiaOpennessV17Min.Controller
             document.Device = "PLC_1";
             document.Software = "PLC_1";
             document.PlcChecksum = "CHK-1";
+            document.SafetyRecorded = true;
             EvidenceObject block = EvidenceObjectFor(EvidenceDocument.CategoryBlocks, "010_Cell", "FB_Motor", "code-a");
             block.Path = "blocks/010_Cell/FB_Motor.xml";
+            block.IsSafetyBlock = true;
+            block.SafetySignatureType = "BlockOfflineSignature";
+            block.SafetySignatureValue = 3234695618UL;
             document.Objects[block.Key] = block;
             EvidenceObject table = EvidenceObjectFor(EvidenceDocument.CategoryTagTables, null, "Tags_1", "sha256:table-a");
             table.Path = "tag_tables/Tags_1.xml";
@@ -303,6 +309,12 @@ namespace TiaOpennessV17Min.Controller
             RequireEqual("CHK-1", loaded.PlcChecksum, "the checksum survived the round trip");
             RequireEqual("2", loaded.Objects.Count.ToString(), "both objects survived the round trip");
             RequireEqual("code-a", loaded.Objects[block.Key].Fingerprint["Code"], "the fingerprint survived the round trip");
+            Require(loaded.Objects[block.Key].IsSafetyBlock, "the F-block flag survived the round trip");
+            RequireEqual("BlockOfflineSignature", loaded.Objects[block.Key].SafetySignatureType,
+                "the F-signature type survived the round trip");
+            Require(loaded.Objects[block.Key].SafetySignatureValue == 3234695618UL,
+                "the F-signature value survived the round trip");
+            Require(loaded.SafetyRecorded, "the safety-recorded flag survived the round trip");
             RequireEqual("sha256:table-a", loaded.Objects[table.Key].ContentHash, "the tag table hash survived the round trip");
             RequireEqual("1", loaded.Tombstones.Count.ToString(), "the tombstone survived the round trip");
             RequireEqual(document.StateId, loaded.StateId, "the state id survived the round trip");
@@ -332,6 +344,84 @@ namespace TiaOpennessV17Min.Controller
             RequireEqual(added.Key, delta.Added[0], "the added object is FC_New");
             RequireEqual("1", delta.Removed.Count.ToString(), "one object was removed");
             RequireEqual(old.Key, delta.Removed[0], "the removed object is FB_Old");
+        }
+
+        /// <summary>
+        /// A ledger written before F-signatures existed has no safety fields.
+        /// Backfilling them must not report every F-block as changed (the upgrade
+        /// would otherwise look like a project-wide edit); once both ledgers carry
+        /// signatures, a different value is a real change.
+        /// </summary>
+        private static void EvidenceSafetySignature()
+        {
+            EvidenceObject before = EvidenceObjectFor(EvidenceDocument.CategoryBlocks, "000_SAFETY", "FB_Safety", "code-s");
+            EvidenceObject after = EvidenceObjectFor(EvidenceDocument.CategoryBlocks, "000_SAFETY", "FB_Safety", "code-s");
+            after.IsSafetyBlock = true;
+            after.SafetySignatureType = "BlockOfflineSignature";
+            after.SafetySignatureValue = 100UL;
+
+            EvidenceDocument oldLedger = new EvidenceDocument();
+            oldLedger.SafetyRecorded = false;
+            oldLedger.Objects[before.Key] = before;
+
+            Dictionary<string, EvidenceObject> current = new Dictionary<string, EvidenceObject>(StringComparer.Ordinal);
+            current[after.Key] = after;
+
+            EvidenceDelta backfill = EvidenceDocument.Compare(oldLedger, current);
+            RequireEqual("0", backfill.Changed.Count.ToString(),
+                "backfilling F-signatures into an old ledger is not a content change");
+
+            EvidenceDocument signed = new EvidenceDocument();
+            signed.SafetyRecorded = true;
+            EvidenceObject signedBefore = EvidenceObjectFor(EvidenceDocument.CategoryBlocks, "000_SAFETY", "FB_Safety", "code-s");
+            signedBefore.IsSafetyBlock = true;
+            signedBefore.SafetySignatureType = "BlockOfflineSignature";
+            signedBefore.SafetySignatureValue = 100UL;
+            signed.Objects[signedBefore.Key] = signedBefore;
+
+            EvidenceDelta unchanged = EvidenceDocument.Compare(signed, current);
+            RequireEqual("0", unchanged.Changed.Count.ToString(), "the same F-signature is not a change");
+
+            EvidenceObject signatureChanged = EvidenceObjectFor(EvidenceDocument.CategoryBlocks, "000_SAFETY", "FB_Safety", "code-s");
+            signatureChanged.IsSafetyBlock = true;
+            signatureChanged.SafetySignatureType = "BlockOfflineSignature";
+            signatureChanged.SafetySignatureValue = 101UL;
+            current[signatureChanged.Key] = signatureChanged;
+
+            EvidenceDelta changed = EvidenceDocument.Compare(signed, current);
+            RequireEqual("1", changed.Changed.Count.ToString(), "a different F-signature is a change");
+        }
+
+        /// <summary>
+        /// An unexportable F-block from a ledger written before F-signatures existed
+        /// must stay unexportable on the backfill scan: the fingerprints are equal and
+        /// only the newly recorded signature differs, so comparing the full signature
+        /// would silently turn it into a present object without a file.
+        /// </summary>
+        private static void EvidenceUnexportableRetained()
+        {
+            EvidenceDocument previous = new EvidenceDocument();
+            previous.SafetyRecorded = false;
+            EvidenceObject gone = EvidenceObjectFor(EvidenceDocument.CategoryBlocks, "000_SAFETY_TASK", "FOB_SAFETY", "code-s");
+            gone.State = EvidenceDocument.StateUnexportable;
+            gone.Reason = "The export of block 'FOB_SAFETY' is not permitted.";
+            gone.Path = "blocks/000_SAFETY_TASK/FOB_SAFETY.xml";
+            previous.Objects[gone.Key] = gone;
+
+            Dictionary<string, EvidenceObject> current = new Dictionary<string, EvidenceObject>(StringComparer.Ordinal);
+            EvidenceObject now = EvidenceObjectFor(EvidenceDocument.CategoryBlocks, "000_SAFETY_TASK", "FOB_SAFETY", "code-s");
+            now.IsSafetyBlock = true;
+            now.SafetySignatureType = "BlockOfflineSignature";
+            now.SafetySignatureValue = 3234695618UL;
+            current[now.Key] = now;
+
+            OpennessOperations.RetainUnexportable(previous, current);
+            RequireEqual(EvidenceDocument.StateUnexportable, current[now.Key].State,
+                "an unexportable F-block stays unexportable when only its signature is new");
+            RequireEqual("The export of block 'FOB_SAFETY' is not permitted.", current[now.Key].Reason,
+                "the reason is carried forward");
+            RequireEqual("blocks/000_SAFETY_TASK/FOB_SAFETY.xml", current[now.Key].Path,
+                "the path is carried forward");
         }
 
         private static void EvidenceXmlNormalization()

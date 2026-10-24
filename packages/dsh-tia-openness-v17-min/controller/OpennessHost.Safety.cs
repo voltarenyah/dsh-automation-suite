@@ -289,6 +289,50 @@ namespace TiaOpennessV17Min.Controller
         }
 
         /// <summary>
+        /// A cheap "worth asking" filter before
+        /// <c>GetService&lt;SafetySignatureProvider&gt;()</c>.
+        ///
+        /// V17 has no single <c>IsFBlock</c> attribute. What it does expose is the
+        /// programming language: fail-safe blocks report one of the <c>F_*</c>
+        /// members (<c>F_LAD</c>, <c>F_FBD</c>, <c>F_STL</c>, <c>F_DB</c>, their
+        /// library variants and <c>F_CALL</c>). Measured on the reference project
+        /// this catches 54 of its 55 safety blocks; the remaining one is the
+        /// safety system OB <c>FOB_SAFETY</c>, which is an OB whose language is
+        /// SCL. Every OB is therefore probed too — a PLC only has a handful.
+        ///
+        /// The filter only saves provider calls on the ~1000 standard blocks. It
+        /// never decides that a block <em>is</em> an F-block: the provider's
+        /// answer (null or a signature) stays authoritative, as the manual
+        /// documents.
+        /// </summary>
+        public static bool MayBeSafetyBlock(PlcBlock block)
+        {
+            if (block == null) return false;
+            try
+            {
+                switch (block.ProgrammingLanguage)
+                {
+                    case ProgrammingLanguage.F_STL:
+                    case ProgrammingLanguage.F_LAD:
+                    case ProgrammingLanguage.F_FBD:
+                    case ProgrammingLanguage.F_DB:
+                    case ProgrammingLanguage.F_LAD_LIB:
+                    case ProgrammingLanguage.F_FBD_LIB:
+                    case ProgrammingLanguage.F_CALL:
+                        return true;
+                    default:
+                        break;
+                }
+            }
+            catch (Exception)
+            {
+                // A block that cannot even report its language is worth the probe.
+                return true;
+            }
+            return block is OB;
+        }
+
+        /// <summary>
         /// The F-signature of one block. A block whose
         /// <c>SafetySignatureProvider</c> is null is not an F-block (or not a
         /// block of an F-CPU S7-1200/1500), which is reported rather than treated

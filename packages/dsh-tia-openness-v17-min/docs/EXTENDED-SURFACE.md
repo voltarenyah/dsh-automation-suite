@@ -430,11 +430,21 @@ import → `{action, imported:[{file, name}], committed, dryRun}`
 比对口径：
 
 - 块 / PLC 类型：`FingerprintProvider` 的全部面，逐面比较；
+- 安全块：在上面之外再记 `SafetySignatureProvider` 的 `BlockOfflineSignature`。先按块属性预筛
+  （`ProgrammingLanguage` 是 `F_*`，或对象是 OB——`FOB_SAFETY` 这类安全系统 OB 的语言是 SCL），
+  只对候选块问 provider；provider 为 null 即非 F 块，返回值 0 表示"尚无有效签名"。
+  这些签名参与变化判定，并且**包括导不出的 F 块**：`FOB_SAFETY` 没有文件可导出，F 签名是它唯一的变更证据；
 - 标签表：没有指纹，**每次都导出**后比较归一化内容哈希（去掉 `<DocumentInfo>`、统一换行，
   `hashAlgo = xml-norm-v1`）；
 - 删除：当前枚举里不存在即写墓碑；被 TIA 拒绝导出的对象只进 `unexportable`，绝不当作删除。
 
-`data`：`{ device, software, checksum, unchanged, counts{blocks,types,tagTables,changed,added,removed,unexportable}, changed[], added[], removed[], unexportable[], stage{root,evidence,manifest,files}, manifestRebuilt, adopted, stateId }`。
+账本里的 F 签名是**追加字段**（`safetyRecorded` + 每个 F 块的 `isSafetyBlock` / `safetySignature`），
+`schemaVersion` 仍为 1。旧账本没有 `safetyRecorded`，因此升级后的第一次同步会强制走一次扫描把签名补上，
+但**不会**把 55 个 F 块报成变更——这一次只用指纹判定，之后的同步才比较 F 签名。
+
+`data`：`{ device, software, checksum, unchanged, counts{blocks,types,tagTables,changed,added,removed,unexportable}, safety{signatureType,fBlockCount,zeroSignatureCount,changed[]}, changed[], added[], removed[], unexportable[], stage{root,evidence,manifest,files}, manifestRebuilt, adopted, stateId }`。
+`safety.changed[]` 是两版账本之间 F 签名变化的块（`{key,name,group,before,after}`），与文件是否变化无关，
+所以落在 `unexportable` 里的 F 块也会出现在这里。
 `checksum` 与账本一致时直接返回 `unchanged:true`、`stage:null`，**不枚举、不导出**。
 同一调用会在 `stage_dir` 写 `_evidence.json`（账本）与 `_manifest.json`（清单）：
 未变化对象从上一版清单原样带过来，只有归一化内容真的变了的标签表才进入 STAGE；
@@ -442,5 +452,9 @@ import → `{action, imported:[{file, name}], committed, dryRun}`
 真机实测（`PEI_SinoARP_SWT2`，1155 块，2026-10-22）：`unchanged` **1.6–3.0 s**；
 1 块变化 **48.3 s**（导出 1 块 + 7 个标签表 = 8 文件，清单优化前）；全量 **121–231 s / 1376 文件**。
 枚举 + 全部指纹约 30 s，是固定成本；变化块越多，导出时间越长。
+2026-10-24 在 `SWT2_PEI_FJib_Hold`（F-CPU，1155 块 / 55 个 F 块）复测：旧账本补签名 **91 s**、
+`changed=0`（回填不误报）、`fBlockCount=55 / zeroSignatureCount=10`，`FOB_SAFETY` 留在
+`unexportable` 且带 `safetySignature`；之后同一账本的快路径 **4 s / unchanged**。
+F 签名只对候选块（`F_*` 语言或 OB）探测，额外开销是一次枚举里多几十次 `GetService`。
 错误码：`checksum_unavailable` `evidence_invalid` `evidence_version_mismatch`
 `evidence_device_mismatch` `project_not_open`。

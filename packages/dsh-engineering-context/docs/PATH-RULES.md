@@ -80,14 +80,16 @@ title，没有就用目录名）：它确定、在打开任何工程之前就知
 | 字段 | 含义 |
 |---|---|
 | `schemaVersion` / `hashAlgo` | 固定 `1` / `xml-norm-v1`；不含时间戳 |
+| `safetyRecorded` | `true` 表示这次扫描记录过 F 块的 `SafetySignatureProvider` 签名；旧账本没有该字段，升级后的第一次同步会强制补扫一次 |
 | `device` / `software` / `plcChecksum` | 这份账本对应的 PLC 与 `PlcChecksumProvider.Software` |
-| `stateId` | 由对象 key + 指纹/哈希推出的稳定摘要（提交信息里的 `Tia-State`） |
-| `objects.<key>` | `category` / `name` / `group` / `path`（相对 device 目录）/ `fingerprint`（块、UDT）/ `contentHash`（标签表） |
-| `unexportable[]` | 存在但 TIA 导不出的对象；同步时**保留旧文件**，绝不因为导不出就删 |
+| `stateId` | 由对象 key + 指纹/哈希 + F 签名推出的稳定摘要（提交信息里的 `Tia-State`） |
+| `objects.<key>` | `category` / `name` / `group` / `path`（相对 device 目录）/ `fingerprint`（块、UDT）/ `contentHash`（标签表）；F 块另有 `isSafetyBlock: true` 与 `safetySignature{type,value}` |
+| `unexportable[]` | 存在但 TIA 导不出的对象；同步时**保留旧文件**，绝不因为导不出就删。F-OB（如 `FOB_SAFETY`）也在这里，F 签名是它唯一的变更证据 |
 | `tombstones[]` | 真正消失的对象；同步时据此删除对应的旧 XML |
 
 **相等性只来自这里**：checksum 相同且账本可用 → 快路径 `unchanged`；checksum 不同 → 慢路径逐对象
-比指纹/哈希，只导出差异。路径是**相对 device 目录**的，所以整棵树可以跨机器 diff。
+比指纹/哈希，F 块再比 `safetySignature`（value `0` = 尚无有效签名），只导出差异。路径是**相对 device 目录**的，
+所以整棵树可以跨机器 diff。旧账本缺 `safetyRecorded` 时不做"F 块全都变了"的误判：那一次只比指纹。
 
 ### 2.2 `source/<device>/_manifest.json`：派生清单
 

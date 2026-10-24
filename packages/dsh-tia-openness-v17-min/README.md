@@ -379,7 +379,7 @@ commit `b5c7041`）**逐字**打进包里，并注册成模型可见的**一个*
 | `readTiaSession()` | `ProjectInfo` | 控制器在不在 + TIA 开着哪个项目 + 设备清单；**从不启动控制器** |
 | `rebuildSource(root, opts)` | `ProjectInfo` + 每 device 两次 `ExportBlocks` | **`<root>/<device>/{blocks,types,tag_tables}/…` 的布局由它定死**；被 TIA 拒绝的对象逐条回报 |
 | `readPlcChecksum()` | `PlcChecksum` | 读 `PlcChecksumProvider.Software`；空值以 `checksum_unavailable` 回报（未编译/改动后未再编译） |
-| `syncScan(query)` | `SyncScan` | 用上一版 evidence 账本逐对象比对指纹/标签表哈希，只把差异导出到 STAGE，**同一调用**写下 `_evidence.json` 与 `_manifest.json`；checksum 一致时直接返回 `unchanged`。`adoptExisting: true` 是首次建账本的捷径：无上一版账本、清单可用时，逐条校验清单里的文件（相对路径在 `sourceRoot` 内、`verified`、sha256 一致），能对上的**直接采信为证据而不重导出**，数量回在 `adopted` |
+| `syncScan(query)` | `SyncScan` | 用上一版 evidence 账本逐对象比对指纹/标签表哈希，并记录 F 块的 `SafetySignatureProvider` 签名（只对 `F_*` 语言或 OB 预筛后问 provider；F-OB 也能跟踪），只把差异导出到 STAGE，**同一调用**写下 `_evidence.json` 与 `_manifest.json`；checksum 一致时直接返回 `unchanged`。旧账本没有 F 签名时会先补扫一次且不误报变更。`adoptExisting: true` 是首次建账本的捷径：无上一版账本、清单可用时，逐条校验清单里的文件（相对路径在 `sourceRoot` 内、`verified`、sha256 一致），能对上的**直接采信为证据而不重导出**，数量回在 `adopted` |
 
 - **与工具走同一条路径**：每个方法都构造与对应工具**相同**的操作与参数、复用 `runOperation`，
   所以模型面与服务面不会在默认值或错误形状上互相漂移。
@@ -672,7 +672,7 @@ docs/KNOWLEDGE-BASE.md 知识库在哪、为什么不放 docs/、怎么更新（
 docs/FUNCTIONAL-TEST.md 真实项目功能测试步骤
 docs/verification.md    section 8 验证清单逐条核对 + 待人工验证步骤
 docs/decisions.md       技术取舍记录（被否方案与理由）
-docs/coverage-matrix.html  折叠式能力覆盖矩阵（生成物，随代码更新；见 scripts/coverage/）
+docs/coverage-matrix.html  折叠式能力覆盖矩阵（生成物，随代码更新；可按能力主题筛选；见 scripts/coverage/）
 scripts/link-dsh-runtime.mjs  本地开发/测试用：把运行时包链到 node_modules
 scripts/dsh-runtime-cache.mjs 从已安装 app 的 app.asar 抽取运行时闭包到 <DSH_HOME>/plugin-runtime
 scripts/asar-read.mjs         最小 asar 读取器（供上一条使用）
@@ -703,6 +703,9 @@ scripts/knowledge/build-skills.mjs  知识库同步（联网重取上游）与�
   在线下载/上传/比较、库与主副本、多用户、HMI、OPC UA、工程图形删除、只读/UMAC 打开、
   力表的创建与删除（V17 无相应 API，见限制 R15）。完整的逐条覆盖情况见
   [`docs/coverage-matrix.html`](docs/coverage-matrix.html)（随代码自动重新生成）。
+  页面顶部「能力主题」可按扩展主线一键筛选现有子集（如「在线与下载」，13 条能力；R/H 冗余站与
+  PC System 已按 2026-10-24 口径显式排除并记在 `excluded` 里），
+  主题定义在 `scripts/coverage/matrix-data.mjs` 的 `SCOPES`，加一条即多一个筛选入口。
   PLC 类型与标签表可以被导入，但块的读回验证覆盖不到它们（会给出 warning）。
 - **v0.2 的 20 个操作尚未在真实项目上验证**：已实现、编译、单测通过，但真实 TIA Portal 行为
   （尤其是 `archive_project` 的取回、`project_texts` 的 xlsx 往返、`software_units` 需要支持
