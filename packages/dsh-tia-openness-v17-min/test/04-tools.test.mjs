@@ -179,7 +179,7 @@ test('controller_status never talks to the controller and hides the captured out
   const verboseValue = await byName['controller_status'].execute({ include_controller_output: true }, {})
   assert.deepEqual(verboseValue.data.stderrTail, ['a stderr line'])
 
-  assert.equal(context.definitions.length, 26)
+  assert.equal(context.definitions.length, 31)
 })
 
 test('only whitelisted operations ever reach the controller', async (t) => {
@@ -583,4 +583,100 @@ test('a transport failure stays a thrown error instead of a successful-looking o
 test('the plugin works without a built controller, because the stub answers', async () => {
   // Guards against tests that silently depend on the real executable.
   assert.equal(typeof controllerAvailable, 'boolean')
+})
+
+test('the online tools forward exactly their documented parameters', async (t) => {
+  const { calls, byName } = await harness(t)
+
+  await byName['online_targets'].execute({}, {})
+  assert.deepEqual(calls[0].operation, 'OnlineTargets')
+  assert.deepEqual(calls[0].params, { include_offline_nodes: true, max_items: 200, with_window: false })
+
+  await byName['online_targets'].execute({ device_name: 'PLC_1', include_offline_nodes: false }, {})
+  assert.deepEqual(calls[1].params, { include_offline_nodes: false, max_items: 200, with_window: false, device_name: 'PLC_1' })
+
+  await byName['online_connect'].execute(
+    { device_name: 'PLC_1', pc_interface: 'PLCSIM Virtual Eth. Adapter', target_interface: '1 X1' },
+    {},
+  )
+  assert.deepEqual(calls[2].operation, 'OnlineConnect')
+  assert.deepEqual(calls[2].params, {
+    device_name: 'PLC_1',
+    mode: 'PN/IE',
+    pc_interface_number: 1,
+    timeout_ms: 60000,
+    replace: false,
+    with_window: false,
+    pc_interface: 'PLCSIM Virtual Eth. Adapter',
+    target_interface: '1 X1',
+  })
+
+  await byName['online_connect'].execute({ device_name: 'PLC_1', address: '192.168.0.10', expect_kind: 'virtual' }, {})
+  assert.deepEqual(calls[3].params, {
+    device_name: 'PLC_1',
+    mode: 'PN/IE',
+    pc_interface_number: 1,
+    timeout_ms: 60000,
+    replace: false,
+    with_window: false,
+    address: '192.168.0.10',
+    expect_kind: 'virtual',
+  })
+
+  await byName['online_status'].execute({}, {})
+  assert.deepEqual(calls[4].params, { with_window: false })
+
+  await byName['online_disconnect'].execute({}, {})
+  assert.deepEqual(calls[5].operation, 'OnlineDisconnect')
+  assert.deepEqual(calls[5].params, { with_window: false })
+
+  await byName['download'].execute({ device_name: 'PLC_1' }, {})
+  assert.deepEqual(calls[6].operation, 'Download')
+  assert.deepEqual(calls[6].params, {
+    device_name: 'PLC_1',
+    dry_run: true,
+    confirm: false,
+    confirm_real_device: false,
+    options: 'software',
+    max_messages: 200,
+    with_window: false,
+  })
+
+  await byName['download'].execute({ device_name: 'PLC_1', confirm: true, confirm_real_device: true, options: 'both', password: 'p' }, {})
+  assert.deepEqual(calls[7].params, {
+    device_name: 'PLC_1',
+    dry_run: true,
+    confirm: true,
+    confirm_real_device: true,
+    options: 'both',
+    max_messages: 200,
+    with_window: false,
+    password: 'p',
+  })
+
+  // A fresh PLCSIM instance has no online session: the download target must be
+  // resolvable from DownloadProvider.Configuration on its own.
+  await byName['download'].execute(
+    {
+      device_name: 'PLC_1',
+      pc_interface: 'PLCSIM',
+      target_interface: '1 X1',
+      mode: 'PN/IE',
+      pc_interface_number: 1,
+    },
+    {},
+  )
+  assert.deepEqual(calls[8].params, {
+    device_name: 'PLC_1',
+    dry_run: true,
+    confirm: false,
+    confirm_real_device: false,
+    options: 'software',
+    max_messages: 200,
+    with_window: false,
+    mode: 'PN/IE',
+    pc_interface: 'PLCSIM',
+    pc_interface_number: 1,
+    target_interface: '1 X1',
+  })
 })

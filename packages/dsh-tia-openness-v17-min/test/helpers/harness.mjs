@@ -76,6 +76,11 @@ export const EXPECTED_TOOLS = [
   'safety_status',
   'set_safety_settings',
   'safety_signatures',
+  'online_targets',
+  'online_connect',
+  'online_status',
+  'online_disconnect',
+  'download',
   'controller_status',
 ]
 

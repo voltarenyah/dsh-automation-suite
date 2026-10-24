@@ -80,6 +80,7 @@ namespace TiaOpennessV17Min.Controller
 
         public void Dispose()
         {
+            DisposeOnline();
             _host.Dispose();
         }
 
@@ -156,6 +157,18 @@ namespace TiaOpennessV17Min.Controller
                     return SetSafetySettings(parameters, log, changes, progress);
                 case OperationCatalog.SafetySignatures:
                     return SafetySignatures(parameters, log, changes, progress);
+
+                // Online surface: discovery plus the controller-held session.
+                case OperationCatalog.OnlineTargets:
+                    return OnlineTargets(parameters, log, changes, progress);
+                case OperationCatalog.OnlineConnect:
+                    return OnlineConnect(parameters, log, changes, progress);
+                case OperationCatalog.OnlineStatus:
+                    return OnlineStatus(parameters, log, changes, progress);
+                case OperationCatalog.OnlineDisconnect:
+                    return OnlineDisconnect(parameters, log, changes, progress);
+                case OperationCatalog.Download:
+                    return Download(parameters, log, changes, progress);
                 default:
                     // Unreachable: the catalog admitted the name above.
                     throw new ControllerException("unsupported_operation", "Unhandled operation " + Text.Quote(operation) + ".");

@@ -153,6 +153,7 @@ namespace TiaOpennessV17Min.Controller
                 "ListPlcObjects", "CreatePlcObjects", "DeletePlcObjects", "WriteTags", "SetBlockAttributes",
                 "ProtectBlocks", "GenerateSource", "WatchAndForceTables", "SoftwareUnits",
                 "SafetyStatus", "SetSafetySettings", "SafetySignatures",
+                "OnlineTargets", "OnlineConnect", "OnlineStatus", "OnlineDisconnect", "Download",
                 "PlcChecksum", "SyncScan",
             };
             RequireEqual(expected.Length.ToString(), all.Count.ToString(), "the whitelist size");

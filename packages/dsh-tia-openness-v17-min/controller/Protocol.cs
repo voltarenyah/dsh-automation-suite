@@ -77,6 +77,14 @@ namespace TiaOpennessV17Min.Controller
         public const string SetSafetySettings = "SetSafetySettings";
         public const string SafetySignatures = "SafetySignatures";
 
+        // Online surface (OperationsOnline.cs). Discovery is read-only; the
+        // session operations are stateful and share one controller-held session.
+        public const string OnlineTargets = "OnlineTargets";
+        public const string OnlineConnect = "OnlineConnect";
+        public const string OnlineStatus = "OnlineStatus";
+        public const string OnlineDisconnect = "OnlineDisconnect";
+        public const string Download = "Download";
+
         private static readonly string[] Names =
         {
             OpenProject, ExportBlocks, ImportBlocks, CompilePlc, CloseProject,
@@ -85,6 +93,7 @@ namespace TiaOpennessV17Min.Controller
             ListPlcObjects, CreatePlcObjects, DeletePlcObjects, WriteTags, SetBlockAttributes, ProtectBlocks,
             GenerateSource, WatchAndForceTables, SoftwareUnits,
             SafetyStatus, SetSafetySettings, SafetySignatures,
+            OnlineTargets, OnlineConnect, OnlineStatus, OnlineDisconnect, Download,
             PlcChecksum, SyncScan,
         };
 

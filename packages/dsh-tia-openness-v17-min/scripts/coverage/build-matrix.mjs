@@ -25,7 +25,7 @@ import { existsSync, readFileSync, readdirSync, statSync, writeFileSync } from '
 import { dirname, join, relative, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-import { AMBIGUOUS_NAMES, COMPILE, PRECONDITIONS, REFUSALS, SECTIONS, STATUS, TOOL_GAPS } from './matrix-data.mjs'
+import { AMBIGUOUS_NAMES, COMPILE, PRECONDITIONS, REFUSALS, SCOPES, SECTIONS, STATUS, TOOL_GAPS } from './matrix-data.mjs'
 
 const REPO = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..')
 const SOURCES = join(REPO, 'docs', 'coverage-matrix.sources.json')
@@ -397,11 +397,98 @@ function flatten(rows) {
   const flat = []
   const visit = (row, depth, parentId) => {
     const id = String(flat.length)
-    flat.push({ ...row, id, depth, parentId })
+    flat.push({ ...row, id, depth, parentId, scopes: new Set() })
     for (const child of row.children) visit(child, depth + 1, id)
   }
   for (const row of rows) visit(row, 1, '')
   return flat
+}
+
+/**
+ * Assigns the curated capability scopes (matrix-data `SCOPES`) to the flattened
+ * rows and to their ancestors, so the page can filter the matrix by extension
+ * theme instead of by keyword.
+ *
+ * Every scope item is an exact (manual section, leaf title) pair. One that no
+ * longer resolves is an error: the scope is a claim about the manual, and a
+ * manual update must break the build rather than silently shrink the theme.
+ */
+function applyScopes(flat) {
+  const errors = []
+  const byId = new Map(flat.map((row) => [row.id, row]))
+  const leaves = new Map()
+  for (const row of flat) {
+    if (row.children.length > 0) continue
+    if (row.section === undefined || row.section === null) continue
+    leaves.set(`${row.section.path.join(PATH_SEP)}\u0000${row.title}`, row)
+  }
+
+  const seen = new Set()
+  const resolved = []
+  for (const scope of SCOPES) {
+    if (seen.has(scope.id)) {
+      errors.push(`SCOPES 里的主题 id 重复：${scope.id}`)
+      continue
+    }
+    seen.add(scope.id)
+    const sectionPath = scope.section.join(PATH_SEP)
+    const marked = new Set()
+    const groups = []
+    for (const group of scope.groups ?? []) {
+      const members = []
+      for (const title of group.titles ?? []) {
+        const row = leaves.get(`${sectionPath}\u0000${title}`)
+        if (row === undefined) {
+          errors.push(
+            `主题「${scope.label}」的条目在 ${sectionPath.replace(PATH_SEP, ' / ')} 下找不到："${title}"` +
+              '（手册换版或标题改写后需要更新 matrix-data.mjs 的 SCOPES）',
+          )
+          continue
+        }
+        row.scopes.add(scope.id)
+        marked.add(row)
+        members.push(row.title)
+      }
+      groups.push({ label: group.label, titles: members })
+    }
+
+    // Deliberately excluded items are still resolved, so the exclusion stays
+    // honest: it is a dated decision about real manual rows, not a silent gap.
+    const excluded = []
+    for (const item of scope.excluded ?? []) {
+      const row = leaves.get(`${sectionPath}\u0000${item.title}`)
+      if (row === undefined) {
+        errors.push(
+          `主题「${scope.label}」的排除条目在 ${sectionPath.replace(PATH_SEP, ' / ')} 下找不到："${item.title}"`,
+        )
+        continue
+      }
+      if (marked.has(row)) {
+        errors.push(`主题「${scope.label}」的条目既在 groups 又在 excluded 里："${item.title}"`)
+        continue
+      }
+      excluded.push({ title: row.title, reason: item.reason ?? '' })
+    }
+    const counts = { total: 0, done: 0, partial: 0, none: 0, na: 0 }
+    for (const row of marked) {
+      counts.total++
+      if (row.status in counts) counts[row.status]++
+    }
+    if (counts.total === 0) errors.push(`主题「${scope.label}」一条能力也没解析到，等于空筛选`)
+    resolved.push({ ...scope, counts, groups, excluded })
+  }
+
+  // A scope on a leaf also belongs to every branch that contains it, otherwise
+  // filtering would hide the path that leads to the surviving rows.
+  for (let i = flat.length - 1; i >= 0; i--) {
+    const row = flat[i]
+    if (row.parentId === '') continue
+    const parent = byId.get(row.parentId)
+    if (parent === undefined) continue
+    for (const id of row.scopes) parent.scopes.add(id)
+  }
+
+  return { scopes: resolved, errors, warnings: [] }
 }
 
 /** Namespaces referenced by at least one type, per namespace. */
@@ -621,9 +708,11 @@ function renderRow(row, api, nsUsage) {
     ? '<span class="dash">—</span>'
     : `<span class="tip note" tabindex="0" data-tip="${esc(note)}">${esc(short(note))}</span>`
 
+  const scopeAttr = row.scopes === undefined || row.scopes.size === 0 ? '' : ` data-scope="${esc([...row.scopes].join(' '))}"`
+
   return (
     `<tr class="${classes.join(' ')}" id="r${row.id}" data-id="${row.id}" data-parent="${esc(row.parentId)}" data-depth="${row.depth}" ` +
-    `data-status="${esc(row.status ?? 'na')}" data-title="${esc(row.title.toLowerCase())}" data-cli="${row.exposed === false ? '1' : '0'}"` +
+    `data-status="${esc(row.status ?? 'na')}" data-title="${esc(row.title.toLowerCase())}" data-cli="${row.exposed === false ? '1' : '0'}"${scopeAttr}` +
     `${row.depth >= 3 ? ' hidden' : ''}>` +
     `<td class="c-caret">${caret}</td>` +
     `<td class="c-name">${nameCell}</td>` +
@@ -673,8 +762,49 @@ function renderLegend() {  const pre = Object.entries(PRECONDITIONS)
   )
 }
 
+/**
+ * The "capability themes" panel: what each curated scope contains, how much of
+ * it is adapted, and a deep link that opens the page already filtered.
+ */
+function renderScopes(scopes) {
+  if (scopes.length === 0) return ''
+  const items = scopes
+    .map((scope) => {
+      const counts = scope.counts
+      const groups = scope.groups
+        .map((group) => `<span class="chip">${esc(group.label)} <span class="chip-label">${group.titles.length}</span></span>`)
+        .join(' ')
+      const excludedLine =
+        scope.excluded === undefined || scope.excluded.length === 0
+          ? ''
+          : `<div class="scope-excluded">不含：${scope.excluded
+              .map((item) => `${esc(item.title)}${item.reason.length === 0 ? '' : `（${esc(item.reason)}）`}`)
+              .join('；')}</div>`
+      return (
+        `<li>` +
+        `<a href="?scope=${encodeURIComponent(scope.id)}"><b>${esc(scope.label)}</b></a> ` +
+        `<span class="num">${counts.total} 条</span> ` +
+        `<span class="s-mini">已适配 ${counts.done} · 部分 ${counts.partial} · 未适配 ${counts.none} · 不适用 ${counts.na}</span>` +
+        `<div class="scope-summary">${esc(scope.summary ?? '')}</div>` +
+        `<div>${groups}</div>` +
+        excludedLine +
+        `</li>`
+      )
+    })
+    .join('')
+  return (
+    `<div class="panel">` +
+    `<h3>能力主题</h3>` +
+    `<p class="sub" style="margin:0 0 8px">` +
+    `按扩展主线归纳的能力子集，定义在 <code>scripts/coverage/matrix-data.mjs</code> 的 <code>SCOPES</code>；` +
+    `点主题名即按它筛选，也可以勾选工具条里的「主题」。</p>` +
+    `<ul class="scopes-list">${items}</ul>` +
+    `</div>`
+  )
+}
+
 function renderPage(model) {
-  const { flat, api, manual, sources, usage, inventory, nsUsage, summary, warnings, errors } = model
+  const { flat, api, manual, sources, usage, inventory, nsUsage, summary, warnings, errors, scopes } = model
   const rowsHtml = flat.map((row) => renderRow(row, api, nsUsage)).join('\n')
 
   const warningHtml =
@@ -734,6 +864,15 @@ button{font:inherit;font-size:13px;padding:6px 11px;border:1px solid var(--line-
 button:hover{border-color:var(--accent)}
 .filters{display:flex;gap:10px;align-items:center;flex-wrap:wrap;font-size:13px;color:var(--muted)}
 .filters label{display:flex;gap:5px;align-items:center;cursor:pointer}
+.f-label{font-size:12px;letter-spacing:.04em;color:var(--muted)}
+.scopes-filter{padding-top:2px}
+.f-scope{accent-color:var(--accent)}
+.scopes-list{list-style:none;margin:0;padding:0;font-size:13.5px}
+.scopes-list li{padding:9px 0;border-top:1px solid var(--line)}
+.scopes-list li:first-child{border-top:0;padding-top:0}
+.scope-summary{color:var(--muted);font-size:12.5px;margin:2px 0 6px;max-width:120ch}
+.scope-excluded{color:var(--muted);font-size:12.5px;margin-top:6px}
+.s-mini{color:var(--muted);font-size:12px}
 table{width:100%;border-collapse:collapse;background:var(--panel);border:1px solid var(--line);border-radius:10px;overflow:hidden}
 thead th{position:sticky;top:var(--toolbar-h,57px);background:var(--panel);text-align:left;font-size:12px;letter-spacing:.03em;color:var(--muted);padding:9px 10px;border-bottom:1px solid var(--line-strong);white-space:nowrap;z-index:10}
 tbody td{padding:7px 10px;border-bottom:1px solid var(--line);vertical-align:top;font-size:13.5px}
@@ -827,12 +966,15 @@ footer{color:var(--muted);font-size:12.5px;margin-top:26px}
   ${warningHtml}
 </div>
 
+${renderScopes(scopes)}
+
 <div class="toolbar">
   <input type="search" id="q" placeholder="搜索章节或能力名…" aria-label="搜索">
   <div class="filters">
     ${Object.entries(STATUS).map(([key, meta]) => `<label><input type="checkbox" class="f-status" value="${esc(key)}" checked>${esc(meta.label)}</label>`).join('')}
     <label><input type="checkbox" id="f-cli">只看仅 CLI 可达</label>
   </div>
+  ${scopes.length === 0 ? '' : `<div class="filters scopes-filter"><span class="f-label">主题</span>${scopes.map((scope) => `<label class="tip" tabindex="0" data-tip="${esc(scope.summary ?? '')}"><input type="checkbox" class="f-scope" value="${esc(scope.id)}">${esc(scope.label)} <span class="num">${scope.counts.total}</span></label>`).join('')}</div>`}
   <button type="button" id="expand">全部展开</button>
   <button type="button" id="collapse">全部折叠</button>
   <span class="num" id="visible"></span>
@@ -928,6 +1070,19 @@ ${renderLegend()}
     apply();
   }
 
+  var scopeBoxes = Array.prototype.slice.call(document.querySelectorAll('.f-scope'));
+  function activeScopes(){
+    return scopeBoxes.filter(function(c){ return c.checked; }).map(function(c){ return c.value; });
+  }
+  // A row belongs to a scope when any curated item below it does; the build
+  // marks ancestors too, so a theme filter keeps the path to its rows.
+  function inScope(row){
+    var active = activeScopes();
+    if(active.length === 0) return true;
+    var list = ' ' + (row.dataset.scope || '') + ' ';
+    return active.some(function(id){ return list.indexOf(' ' + id + ' ') !== -1; });
+  }
+
   function matches(row){
     var statuses = Array.prototype.filter.call(document.querySelectorAll('.f-status'), function(c){ return c.checked; })
       .map(function(c){ return c.value; });
@@ -936,6 +1091,7 @@ ${renderLegend()}
       if(statuses.indexOf(status) === -1) return false;
     }
     if(document.getElementById('f-cli').checked && row.dataset.cli !== '1') return false;
+    if(!inScope(row)) return false;
     var q = document.getElementById('q').value.trim().toLowerCase();
     if(q.length > 0 && row.dataset.title.indexOf(q) === -1) return false;
     return true;
@@ -944,7 +1100,8 @@ ${renderLegend()}
   function apply(){
     var filtering = document.getElementById('q').value.trim().length > 0
       || document.getElementById('f-cli').checked
-      || document.querySelectorAll('.f-status:not(:checked)').length > 0;
+      || document.querySelectorAll('.f-status:not(:checked)').length > 0
+      || activeScopes().length > 0;
     var keep = {};
     function mark(row){
       var self = matches(row);
@@ -993,7 +1150,16 @@ ${renderLegend()}
     document.getElementById('q').addEventListener(evt, apply);
     document.querySelectorAll('.f-status').forEach(function(c){ c.addEventListener(evt, apply); });
     document.getElementById('f-cli').addEventListener(evt, apply);
+    scopeBoxes.forEach(function(c){ c.addEventListener(evt, apply); });
   });
+
+  // Deep link: ?scope=<id>[,<id>…] opens the page already filtered. The panel
+  // above the table links here, so "只看某个主题" is one click and shareable.
+  var requested = (new URLSearchParams(window.location.search).get('scope') || '')
+    .split(',')
+    .map(function(s){ return s.trim(); })
+    .filter(function(s){ return s.length > 0; });
+  scopeBoxes.forEach(function(c){ if(requested.indexOf(c.value) !== -1) c.checked = true; });
 
   // The sticky table header has to start below the sticky toolbar, whose height
   // depends on how the filters wrap.
@@ -1035,6 +1201,7 @@ function main() {
   const built = buildRows(sourcesFiles, api, usage)
   const checks = consistencyChecks(built.rows, api, usage, sourcesFiles, inventory, nsUsage)
   const flat = flatten(built.rows)
+  const scopeResult = applyScopes(flat)
 
   const summary = { items: 0, done: 0, partial: 0, none: 0, na: 0, uniqueTypes: 0 }
   for (const branch of built.rows) {
@@ -1057,11 +1224,20 @@ function main() {
     inventory,
     nsUsage,
     summary,
-    warnings: [...built.warnings, ...checks.warnings],
-    errors: [...built.errors, ...checks.errors],
+    scopes: scopeResult.scopes,
+    warnings: [...built.warnings, ...scopeResult.warnings, ...checks.warnings],
+    errors: [...built.errors, ...scopeResult.errors, ...checks.errors],
   })
 
-  const findings = [...built.errors, ...checks.errors, ...built.warnings, ...checks.warnings]
+  const findings = [
+    ...built.errors,
+    ...scopeResult.errors,
+    ...checks.errors,
+    ...built.warnings,
+    ...scopeResult.warnings,
+    ...checks.warnings,
+  ]
+  const errorsAll = [...built.errors, ...scopeResult.errors, ...checks.errors]
   if (check) {
     // Line endings are normalized before comparing (see `normalizeEol`): the
     // generated file is LF (`.gitattributes` pins `*.html` to `eol=lf`), but a
@@ -1072,8 +1248,8 @@ function main() {
     if (stale) {
       process.stderr.write(`✗ ${relative(REPO, out)} is stale. Run: npm run matrix:build\n`)
     }
-    for (const finding of findings) process.stderr.write(`  ${checkSeverity(finding, built, checks)} ${finding}\n`)
-    if (stale || built.errors.length + checks.errors.length > 0) process.exitCode = 1
+    for (const finding of findings) process.stderr.write(`  ${checkSeverity(finding, errorsAll)} ${finding}\n`)
+    if (stale || errorsAll.length > 0) process.exitCode = 1
     else process.stdout.write(`✓ ${relative(REPO, out)} is current (${summary.items} 能力条目, ${usage.referenced.size} 类型被引用)\n`)
     return
   }
@@ -1083,14 +1259,14 @@ function main() {
     `Wrote ${relative(REPO, out)}\n` +
       `  能力条目 ${summary.items}（已适配 ${summary.done} / 部分 ${summary.partial} / 未适配 ${summary.none} / 不适用 ${summary.na}）\n` +
       `  Openness 类型 ${usage.referenced.size}/${api.typeCount} 被引用，排除同名 ${usage.excluded.length} 个\n` +
-      `  操作 ${inventory.operations.length}，工具 ${inventory.tools.length}\n` +
+      `  操作 ${inventory.operations.length}，工具 ${inventory.tools.length}，主题 ${scopeResult.scopes.length}\n` +
       findings.map((finding) => `  ! ${finding}\n`).join(''),
   )
-  if (built.errors.length + checks.errors.length > 0) process.exitCode = 1
+  if (errorsAll.length > 0) process.exitCode = 1
 }
 
-function checkSeverity(finding, built, checks) {
-  return built.errors.includes(finding) || checks.errors.includes(finding) ? '✗' : '!'
+function checkSeverity(finding, errors) {
+  return errors.includes(finding) ? '✗' : '!'
 }
 
 main()

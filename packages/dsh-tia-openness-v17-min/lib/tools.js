@@ -2131,6 +2131,196 @@ export function registerTools(ctx, dependencies) {
         },
     }));
     register(defineTool({
+        name: 'online_targets',
+        description: 'Discover how the open project can be reached online. Returns every PLC device with its configured ' +
+            '(offline) address and subnet, every connection mode / PC interface / target slot the local machine ' +
+            'offers, and a grouped view: subnets[].nodes[] lists the device IPs of that subnet while ' +
+            'subnets[].reachableBy[] lists the PC interface and slot that can reach it (kind "virtual" marks the ' +
+            'PLCSIM adapter, anything else is a real network interface). Read-only and safe to call at any time; ' +
+            'no dry_run. Use it to pick the parameters of online_connect, including a real PLC whose address lives ' +
+            'in another subnet. Maps to the OnlineTargets operation. Fails with device_not_found, project_not_open ' +
+            'or openness_unavailable.',
+        parameters: {
+            device_name: { type: 'string', description: 'Restrict discovery to one device. Omit to inspect every device of the project.' },
+            include_offline_nodes: { type: 'boolean', description: 'True (the default) to read each device’s configured IP / subnet mask / subnet; false skips that traversal.' },
+            max_items: { type: 'integer', description: 'Cap on the nodes reported per device (default 200).' },
+            with_window: { type: 'boolean', description: 'True to read through a visible TIA Portal instance; false (the default) uses the headless one.' },
+        },
+        output: {
+            schema: OUTCOME_SCHEMA,
+            render: (_args, value) => [{ type: 'text', text: renderValue(value, verbose) }],
+        },
+        async execute(args, exec) {
+            const params = {
+                include_offline_nodes: args.include_offline_nodes ?? true,
+                max_items: args.max_items ?? 200,
+                with_window: args.with_window ?? false,
+            };
+            if (args.device_name !== undefined)
+                params['device_name'] = args.device_name;
+            return asJsonOutcome(await runOperation(dependencies, 'OnlineTargets', params, exec.signal));
+        },
+    }));
+    register(defineTool({
+        name: 'online_connect',
+        description: 'Establish the online connection to one PLC of the open project and keep it in the controller. ' +
+            'Name the target the way online_targets reports it: mode + pc_interface + pc_interface_number plus ' +
+            'either target_interface (the slot) or address (the PC-side address of the subnet), or address alone. ' +
+            'The connection state is polled until OnlineState.Online or timeout_ms; a state such as NotReachable or ' +
+            'Protected is reported in the result with ok=false, not thrown. The session survives the request — every ' +
+            'later download/compare needs it — and is closed by online_disconnect or controller shutdown. A real ' +
+            'PLC is reached through a physical interface (kind "physical") and a PLCSIM instance through the virtual ' +
+            'one; the result echoes kind so the caller can tell them apart. Not read-only, but it changes nothing in ' +
+            'the project, so there is no dry_run. Maps to the OnlineConnect operation. Fails with ' +
+            'project_not_open, online_unavailable, online_mode_not_found, online_interface_not_found, ' +
+            'online_target_interface_not_found, online_address_not_found, online_target_required, ' +
+            'online_already_connected, online_kind_mismatch or online_configuration_not_applied.',
+        parameters: {
+            device_name: { type: 'string', description: 'Name of the PLC device to connect to (required).' },
+            mode: { type: 'string', description: 'Connection mode; only "PN/IE" exists in practice and it is the default.' },
+            pc_interface: { type: 'string', description: 'Name of the PC interface exactly as reported by online_targets.' },
+            pc_interface_number: { type: 'integer', description: 'Number of the PC interface (default 1).' },
+            target_interface: { type: 'string', description: 'Target slot of that interface (for example "1 X1"), as reported by online_targets.' },
+            address: { type: 'string', description: 'PC-side subnet address to apply, or the only parameter when the interface should be discovered from it.' },
+            timeout_ms: { type: 'integer', description: 'How long to wait for OnlineState.Online (default 60000).' },
+            replace: { type: 'boolean', description: 'True to drop an existing online session instead of failing with online_already_connected.' },
+            expect_kind: {
+                type: 'string',
+                enum: ['virtual', 'physical'],
+                description: 'Fail with online_kind_mismatch unless the resolved PC interface is classified as this kind. Use "virtual" to guarantee a PLCSIM target and "physical" to guarantee a real one; the classification itself is a name heuristic (PLCSIM / Virtual).',
+            },
+            owner: { type: 'string', description: 'Optional label recorded in the session, so a shared controller can say who holds the connection.' },
+            with_window: { type: 'boolean', description: 'True to connect through a visible TIA Portal instance; false (the default) uses the headless one.' },
+        },
+        output: {
+            schema: OUTCOME_SCHEMA,
+            render: (_args, value) => [{ type: 'text', text: renderValue(value, verbose) }],
+        },
+        async execute(args, exec) {
+            const params = {
+                device_name: args.device_name,
+                mode: args.mode ?? 'PN/IE',
+                pc_interface_number: args.pc_interface_number ?? 1,
+                timeout_ms: args.timeout_ms ?? 60000,
+                replace: args.replace ?? false,
+                with_window: args.with_window ?? false,
+            };
+            if (args.pc_interface !== undefined)
+                params['pc_interface'] = args.pc_interface;
+            if (args.target_interface !== undefined)
+                params['target_interface'] = args.target_interface;
+            if (args.address !== undefined)
+                params['address'] = args.address;
+            if (args.expect_kind !== undefined)
+                params['expect_kind'] = args.expect_kind;
+            if (args.owner !== undefined)
+                params['owner'] = args.owner;
+            return asJsonOutcome(await runOperation(dependencies, 'OnlineConnect', params, exec.signal));
+        },
+    }));
+    register(defineTool({
+        name: 'online_status',
+        description: 'Report the controller-held online session: connected, the device and target it was opened with, and ' +
+            'the live OnlineState (Online, NotReachable, Protected, Incompatible, Offline, Connecting, ' +
+            'Disconnecting). Never connects or disconnects. Maps to the OnlineStatus operation; it cannot fail ' +
+            'for a missing project because it reads controller state only.',
+        parameters: {
+            with_window: { type: 'boolean', description: 'True to read through a visible TIA Portal instance; false (the default) uses the headless one.' },
+        },
+        output: {
+            schema: OUTCOME_SCHEMA,
+            render: (_args, value) => [{ type: 'text', text: renderValue(value, verbose) }],
+        },
+        async execute(args, exec) {
+            return asJsonOutcome(await runOperation(dependencies, 'OnlineStatus', { with_window: args.with_window ?? false }, exec.signal));
+        },
+    }));
+    register(defineTool({
+        name: 'online_disconnect',
+        description: 'Close the controller-held online session (GoOffline) and forget it. Safe to call when nothing is ' +
+            'connected — the result then reports connected=false with a note. Maps to the OnlineDisconnect ' +
+            'operation. Fails with project_not_open only.',
+        parameters: {
+            with_window: { type: 'boolean', description: 'True to go offline through a visible TIA Portal instance; false (the default) uses the headless one.' },
+        },
+        output: {
+            schema: OUTCOME_SCHEMA,
+            render: (_args, value) => [{ type: 'text', text: renderValue(value, verbose) }],
+        },
+        async execute(args, exec) {
+            return asJsonOutcome(await runOperation(dependencies, 'OnlineDisconnect', { with_window: args.with_window ?? false }, exec.signal));
+        },
+    }));
+    register(defineTool({
+        name: 'download',
+        description: 'Download to a PLC, either through the online session opened by online_connect or, for a virtual target, ' +
+            'by resolving the download target directly with pc_interface + target_interface (or address). The direct ' +
+            'form is what makes a fresh PLCSIM instance download work: it cannot go online before its first download, ' +
+            'so it has no session to borrow. dry_run defaults to true: it resolves the target, checks the gates and ' +
+            'sends nothing. A real download needs confirm=true, and a device reached through a physical interface ' +
+            '(kind "physical", i.e. a real PLC) additionally needs confirm_real_device=true — two separate "I mean it" ' +
+            'answers. options picks software (default), hardware or both. The two TIA Portal callbacks are answered by ' +
+            'a fixed safe policy (stop modules, consistent download, passwords from password / block_binding_password, ' +
+            'never lower protection, never reset modules) and every configuration TIA asked about is returned in ' +
+            'data.configurations. V17 cannot download to an F-activated PLC at all — the controller refuses with ' +
+            'download_unavailable. Maps to the Download operation. Fails with download_target_required, ' +
+            'download_target_mismatch, online_session_device_mismatch, download_unavailable, confirmation_required, ' +
+            'real_device_confirmation_required, download_failed.',
+        parameters: {
+            device_name: { type: 'string', description: 'PLC device to download to (required).' },
+            dry_run: { type: 'boolean', description: 'True (the default) resolves the target and the gates without calling Download.' },
+            confirm: { type: 'boolean', description: 'Must be true for a real download; false is the safe default.' },
+            confirm_real_device: { type: 'boolean', description: 'Must additionally be true when the target is a physical PLC (kind "physical").' },
+            options: {
+                type: 'string',
+                enum: ['software', 'hardware', 'both'],
+                description: "What to download: 'software' (the default), 'hardware' or 'both'.",
+            },
+            mode: { type: 'string', description: "Connection mode used when resolving a direct target; defaults to 'PN/IE'." },
+            pc_interface: { type: 'string', description: 'PC interface for a direct download target, e.g. "PLCSIM" for a running Softbus instance. Omit to use the online session.' },
+            pc_interface_number: { type: 'integer', description: 'PC interface number for a direct target (default 1).' },
+            target_interface: { type: 'string', description: 'Target slot for a direct target, e.g. "1 X1".' },
+            address: { type: 'string', description: 'PC-side subnet address for a direct target; an alternative to target_interface.' },
+            target_address: { type: 'string', description: 'Specific PLC IP address for the V17 DownloadProvider overload; useful when the instance is reachable at the project IP but not on a Windows subnet.' },
+            password: { type: 'string', description: 'Password for a protected module (module read/write access and the generic download password).' },
+            block_binding_password: { type: 'string', description: 'Password for block binding; falls back to password when omitted.' },
+            max_messages: { type: 'integer', description: 'Cap on the returned result messages (default 200).' },
+            with_window: { type: 'boolean', description: 'True to download through a visible TIA Portal instance; false (the default) uses the headless one.' },
+        },
+        output: {
+            schema: OUTCOME_SCHEMA,
+            render: (_args, value) => [{ type: 'text', text: renderValue(value, verbose) }],
+        },
+        async execute(args, exec) {
+            const params = {
+                device_name: args.device_name,
+                dry_run: args.dry_run ?? true,
+                confirm: args.confirm ?? false,
+                confirm_real_device: args.confirm_real_device ?? false,
+                options: args.options ?? 'software',
+                max_messages: args.max_messages ?? 200,
+                with_window: args.with_window ?? false,
+            };
+            if (args.password !== undefined)
+                params['password'] = args.password;
+            if (args.block_binding_password !== undefined)
+                params['block_binding_password'] = args.block_binding_password;
+            if (args.mode !== undefined)
+                params['mode'] = args.mode;
+            if (args.pc_interface !== undefined)
+                params['pc_interface'] = args.pc_interface;
+            if (args.pc_interface_number !== undefined)
+                params['pc_interface_number'] = args.pc_interface_number;
+            if (args.target_interface !== undefined)
+                params['target_interface'] = args.target_interface;
+            if (args.address !== undefined)
+                params['address'] = args.address;
+            if (args.target_address !== undefined)
+                params['target_address'] = args.target_address;
+            return asJsonOutcome(await runOperation(dependencies, 'Download', params, exec.signal));
+        },
+    }));
+    register(defineTool({
         name: 'controller_status',
         description: 'Report the state of the C# Openness controller subprocess: whether it is running, its process id, the ' +
             'resolved executable path, whether the Openness installation was found, whether the current Windows user is in ' +

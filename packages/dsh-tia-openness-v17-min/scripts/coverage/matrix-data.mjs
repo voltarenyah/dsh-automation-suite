@@ -125,6 +125,12 @@ export const REFUSALS = {
     label: '力表只读',
     text: 'V17 的 PlcForceTableComposition 只有 Import/Find，PlcForceTable 没有 Delete（Siemens.Engineering.dll V17 反射实证）：力表只能靠导入建立或替换，不能经 Openness 创建或删除。',
   },
+  R16: {
+    label: 'F 不可下载',
+    text:
+      '手册 "Downloading hardware and software components to PLC device"：F-activated PLCs are not supported for download operation。' +
+      'F 块本身可以导入导出（见限制 R1），但把整个 F 程序下载到设备没有 Openness API —— F 激活的 CPU 只能走 TIA UI 下载。',
+  },
 }
 
 /** Status codes used by both sections and leaves. */
@@ -626,6 +632,7 @@ export const SECTIONS = [
     path: ['TIA Portal Openness API', 'Functions for accessing the data of a PLC device'],
     api: [
       'Siemens.Engineering.SW',
+      'Siemens.Engineering.Connection',
       'Siemens.Engineering.SW.Blocks',
       'Siemens.Engineering.SW.Blocks.Interface',
       'Siemens.Engineering.SW.Tags',
@@ -638,6 +645,7 @@ export const SECTIONS = [
       'Siemens.Engineering.SW.Supervision',
       'Siemens.Engineering.SW.TechnologicalObjects',
       'Siemens.Engineering.Download',
+      'Siemens.Engineering.Download.Configurations',
       'Siemens.Engineering.Upload',
       'Siemens.Engineering.Online',
       'Siemens.Engineering.Compare',
@@ -655,7 +663,8 @@ export const SECTIONS = [
     note:
       '插件的核心领域，也是手册里最大的章节。块/类型/标签表/外部源/编译这条链之外，已补上块与组的删除、know-how 保护、' +
       'OB 属性写、指纹读取、由块生成源、监视表、软件单元与 F 相关服务（OperationsPlc.cs / OperationsSafety.cs）；' +
-      '下载、上传、在线、比较、保护密码、OPC UA、力表建档等仍未适配。',
+      '下载/上传/在线/在线比较合成「在线与下载」主题（见文件末尾 SCOPES），目前整条主线未适配；' +
+      '保护密码、OPC UA、力表建档同样未适配。',
     leaves: {
       // -- blocks
       Blocks: { status: 'done', note: '已实现：PlcBlockSystemGroup 遍历、单块增删改（list/create/delete/set_block_attributes）。' },
@@ -704,8 +713,8 @@ export const SECTIONS = [
         note:
           '已完成：list_plc_objects(include_fingerprints=true, block_names/type_names=…) 逐块/逐 UDT 调 ' +
           'FingerprintProvider.GetFingerprints()，回报 {id, value}（Code/Comments/Interface/LibraryType/Texts/…）；' +
-          'SyncScan 把整棵块/类型树的指纹与上一版 evidence 账本逐对象比对，只导出差异对象，' +
-          '比较在控制器内部完成，不经过 1000 条列表上限。' +
+          'SyncScan 把整棵块/类型树的指纹与上一版 evidence 账本逐对象比对，并额外记录 F 块的 SafetySignatureProvider 签名，' +
+          '只导出差异对象，比较在控制器内部完成，不经过 1000 条列表上限。' +
           '手册这一条只有读接口——"检测变化"靠调用方比对两次取到的 value，Openness 没有写入/改写指纹的 API；' +
           '标签表按手册不支持指纹。',
       },
@@ -778,8 +787,27 @@ export const SECTIONS = [
         note: '已实现：software_units 的 relation_create / relation_delete（PlcUnitRelationComposition.Create/Find + PlcUnitRelation.Delete）。',
       },
       // -- online / download / upload
-      'Determining the status of a PLC': { status: 'none', pre: ['P'], note: '未适配：需实机在线。' },
-      'Accessing parameters of an online connection': { status: 'none', pre: ['P'], note: '未适配。' },
+      //
+      // 手册把它们放在 PLC 数据章节里，但 API 面其实由 Siemens.Engineering
+      // 的 .Connection / .Online / .Download / .Upload / .Compare 五个命名空间承载。
+      // 这一组同时是文件末尾 SCOPES 里「在线与下载」主题的成员，条目名必须与
+      // 手册 TOC 标题逐字一致（主题解析不到就会构建失败）。
+      'Determining the status of a PLC': {
+        status: 'none',
+        pre: ['P'],
+        note:
+          '未适配：在线状态读 OnlineProvider.State（OnlineState 七个值：Connecting / Disconnecting / Incompatible / ' +
+          'NotReachable / Offline / Online / Protected）；provider 从 CPU 设备项（DeviceItemClassifications.CPU）' +
+          'GetService 取，需可达设备（P）。',
+      },
+      'Accessing parameters of an online connection': {
+        status: 'none',
+        pre: ['P'],
+        note:
+          '未适配：连接编址在 Siemens.Engineering.Connection（ConfigurationAddress.Address/Name、ConfigurationSubnet、' +
+          'ConfigurationGateway）；入口是 provider.Configuration（ConnectionConfiguration）与 ConfigurationTargetInterface.Addresses，' +
+          '需可达设备（P）。',
+      },
       'Accessing fingerprint for quick station compare': {
         status: 'none',
         pre: ['P'],
@@ -789,24 +817,139 @@ export const SECTIONS = [
           'GetFingerprintData(ConfigurationAddress, OnlineConfigurationDelegate) 需要 PN/IE 接口 + 设备 IP，' +
           '即必须有可达的真实设备（手册写 "PLC is offline" 但地址是连设备用的），纯离线工程无法验证。',
       },
-      'Accessing CM DP as DP slave and transfer area': { status: 'none', pre: ['P'], note: '未适配。' },
-      'Setting PLC online of R/H system': { status: 'none', pre: ['P'], note: '未适配。' },
-      'Accessing software container from primary PLC of R/H system': { status: 'none', pre: ['P'], note: '未适配。' },
-      'Downloading PLCs of R/H System': { status: 'none', pre: ['P'], note: '未适配。' },
-      'Functions for downloading data to PLC device': { status: 'none', pre: ['P'], note: '未适配。' },
-      'Downloading PC System': { status: 'none', pre: ['P'], note: '未适配。' },
-      'Downloading hardware and software components to PLC device': { status: 'none', pre: ['P'], note: '未适配。' },
-      'Running and stopping PLC': { status: 'none', pre: ['P'], note: '未适配。' },
-      'Uploading hardware, software and files to PLC device': { status: 'none', pre: ['P'], note: '未适配。' },
-      'Comparing PLC software': { status: 'none', pre: ['P'], note: '未适配：PlcSoftware.CompareToOnline 存在但需实机。' },
-      'Comparing PLC hardware': { status: 'none', pre: ['P'], note: '未适配。' },
-      'Establishing or disconnecting the online connection to the PLC': { status: 'none', pre: ['P'], note: '未适配。' },
-      'Assigning PC interface': { status: 'none', pre: ['P'], note: '未适配。' },
-      'Supporting callbacks': { status: 'none', pre: ['P', 'D'], note: '未适配。' },
+      'Accessing CM DP as DP slave and transfer area': {
+        status: 'none',
+        pre: ['P'],
+        note: '未适配：属 DP 组态/传输区（DpOperatingMode 等硬件面），不在在线会话的调用链上，未列入「在线与下载」主题。',
+      },
+      'Setting PLC online of R/H system': {
+        status: 'none',
+        pre: ['P'],
+        note:
+          '未适配：冗余站走 RHOnlineProvider 的 GoOnlineToPrimary / GoOnlineToBackup / GoOffline，' +
+          '状态分 PrimaryState / BackupState；需冗余 PLC（P）。2026-10-24 口径：R/H 站不在「在线与下载」主题内，暂不实现。',
+      },
+      'Accessing software container from primary PLC of R/H system': {
+        status: 'none',
+        pre: ['P'],
+        note:
+          '未适配：冗余主站的软件容器访问，与 RHOnlineProvider 的 PrimaryState 同一条路径；需冗余 PLC（P）。' +
+          '2026-10-24 口径：R/H 站不在「在线与下载」主题内，暂不实现。',
+      },
+      'Downloading PLCs of R/H System': {
+        status: 'none',
+        pre: ['P'],
+        note:
+          '未适配：RHDownloadProvider.DownloadToPrimary / DownloadToBackup，参数与 DownloadProvider.Download 相同' +
+          '（多一个 ConfigurationAddress 重载）；需冗余 PLC（P）。2026-10-24 口径：R/H 站不在「在线与下载」主题内，暂不实现。',
+      },
+      'Functions for downloading data to PLC device': {
+        status: 'none',
+        pre: ['P'],
+        note:
+          '未适配（手册的分组条目，本身不是 API）：下载的具名动作在下面几条。本主题只收 PLC 侧 —— ' +
+          'Downloading hardware and software components / Running and stopping PLC / Supporting callbacks；' +
+          'PC System 与 R/H 已排除。',
+      },
+      'Downloading PC System': {
+        status: 'none',
+        pre: ['P'],
+        note:
+          '未适配：PC 站（WinCC 等）下载，与 PLC 下载共用 DownloadProvider，差别在目标站类别与 DownloadOptions；' +
+          '需可达设备（P）。2026-10-24 口径：PC System 不在「在线与下载」主题内，暂不实现。',
+      },
+      'Downloading hardware and software components to PLC device': {
+        status: 'partial',
+        pre: ['P'],
+        reject: ['R16'],
+        note:
+          '已接线未实测：download 操作走 DownloadProvider.Download(IConfiguration, 双回调, DownloadOptions)，' +
+          'dry_run 默认只解析目标，confirm=true 才真下、kind=physical 还要 confirm_real_device=true；' +
+          '回调按固定策略回答停机/密码/一致下载等配置，DownloadOptions 用 None / Hardware / Software 组合。' +
+          'F 激活的 PLC 不支持该 API（R16），也没有设备可验，故记部分。',
+      },
+      'Running and stopping PLC': {
+        status: 'none',
+        pre: ['P'],
+        note:
+          '未适配：Openness 没有独立的 Run/Stop API（PlcSoftware 只有 CompareTo / CompareToOnline）——' +
+          'PLC 启停是下载配置里的选项：Download.Configurations 的 StartModules / StopModules / StartBackupModules / ' +
+          'StopHSystem / TurnOffSequence / WaitOnReboot。',
+      },
+      'Uploading hardware, software and files to PLC device': {
+        status: 'none',
+        pre: ['P'],
+        note:
+          '未适配：StationUploadProvider.StationUpload(ConfigurationAddress, UploadConfigurationDelegate) 返回 UploadResult' +
+          '（State / Messages / UploadedStation）；需可达设备（P）。',
+      },
+      'Comparing PLC software': {
+        status: 'none',
+        pre: ['P'],
+        note: '未适配：PlcSoftware.CompareToOnline 返回 Siemens.Engineering.Compare.CompareResult（RootElement / ComparisonResult），需先在线（P）。',
+      },
+      'Comparing PLC hardware': {
+        status: 'none',
+        pre: ['P'],
+        note: '未适配：设备级在线比较，与软件比较共用 Compare 命名空间；需在线（P）。',
+      },
+      'Establishing or disconnecting the online connection to the PLC': {
+        status: 'partial',
+        pre: ['P'],
+        note:
+          '已接线未实测：online_connect / online_disconnect（OperationsOnline.cs）解析目标后 ApplyConfiguration，' +
+          '再 GoOnline() 并轮询 State 到 OnlineState.Online（已处理 NotReachable / Protected / Incompatible 与超时），' +
+          '会话由控制器持有；V17 另有 SetPlcMasterSecret / ResetPlcMasterSecret 未接。没有真实 PLC 或 PLCSIM 实例可验，故记部分。',
+      },
+      'Assigning PC interface': {
+        status: 'partial',
+        pre: ['P'],
+        note:
+          '已接线未实测：online_connect 的 pc_interface / pc_interface_number / target_interface / address 参数' +
+          '直接对应 ConfigurationMode.PcInterfaces.Find(name, number) → ConfigurationTargetInterface.Find(slot)，' +
+          'address 走 ConfigurationSubnet.Addresses；online_targets 把可选项列全（含 kind=virtual/physical）。未实测。',
+      },
+      'Determining the status of a PLC': {
+        status: 'partial',
+        pre: ['P'],
+        note:
+          '已接线未实测：online_status 读控制器持有会话的 OnlineProvider.State（OnlineState 七个值），' +
+          '并回报会话的目标与占用者；离线状态下不会去连接。未在真实 PLC/PLCSIM 上验证状态迁移的时间行为。',
+      },
+      'Accessing parameters of an online connection': {
+        status: 'partial',
+        pre: ['P'],
+        note:
+          '已接线未实测：online_targets 枚举 Modes → PcInterfaces(Name/Number) → TargetInterfaces、' +
+          'Subnets/Addresses/Gateways，并用 NetworkInterface.Nodes 的 Address / SubnetMask / ConnectedSubnet ' +
+          '把工程内 PLC 的离线 IP 按网段分组，给出「哪个 PC 接口能到哪个网段」；不能设置/改写这些参数。',
+      },
+      'Supporting callbacks': {
+        status: 'none',
+        pre: ['P', 'D'],
+        note:
+          '未适配：V17 的交互面只有三个委托（DownloadConfigurationDelegate、UploadConfigurationDelegate、' +
+          'OnlineConfigurationDelegate），下载时每个需要用户决策的步骤都以 Download.Configurations 下的类型回传；' +
+          '不实现它们就只能走默认选择。',
+      },
       // -- protection / security / misc
-      'Protecting PLC through password': { status: 'none', note: '未适配（块级 know-how 保护已适配，见上）。' },
-      'Handling PLC block binding passwords': { status: 'none', note: '未适配。' },
-      'Access level setting': { status: 'none', note: '未适配。' },
+      'Protecting PLC through password': {
+        status: 'none',
+        note:
+          '未适配：PLC 密码在下载期提供 —— Download.Configurations 的 PlcMasterSecretPassword / ModuleReadAccessPassword / ' +
+          'ModuleWriteAccessPassword（均 SetPassword(SecureString)）；在线侧另有 OnlineProvider.SetPlcMasterSecret。' +
+          '块级 know-how 保护已适配（见上），与这里不是同一套。',
+      },
+      'Handling PLC block binding passwords': {
+        status: 'none',
+        note:
+          '未适配：下载回调用 Download.Configurations.BlockBindingPassword 收集块绑定密码；' +
+          '手册单列是因为它既不是 PLC 主密钥也不是块 know-how 保护密码。',
+      },
+      'Access level setting': {
+        status: 'none',
+        note: '未适配：访问级别属保护设置属性面（与密码同章），不在在线/下载调用链上，未列入「在线与下载」主题。',
+      },
       'Setting a display password': { status: 'none', note: '未适配。' },
       'Functions for accessing PLC service': {
         status: 'done',
@@ -912,19 +1055,21 @@ export const SECTIONS = [
     api: ['Siemens.Engineering.Safety'],
     compile: 'yes',
     pre: ['P'],
-    reject: ['R1'],
+    reject: ['R1', 'R16'],
     default: 'none',
     note:
       'F 相关：safety_status 读 GlobalSettings（取自 TiaPortal.GetService）、SafetyAdministration.Settings 与运行时组；' +
-      'set_safety_settings 写手册只有的两个动作；safety_signatures 逐块读 SafetySignatureProvider。' +
-      '注意 F 块本身可以导入导出（见限制 R1），只有 F-system 块不行。',
+      'set_safety_settings 写手册只有的两个动作；safety_signatures 逐块读 SafetySignatureProvider；' +
+      'SyncScan 把 F 签名写进 evidence 账本并参与变化判定（F-OB 导不出来，签名是它唯一的变更证据）。' +
+      '注意 F 块本身可以导入导出（见限制 R1），只有 F-system 块不行；整个 F 程序不能经 Openness 下载（见限制 R16）。',
     leaves: {
       'F-related Openness': {
         status: 'partial',
         pre: ['P'],
         note:
           '部分：三个服务都已接入（GlobalSettings、SafetyAdministration/SafetySettings/SafetyPrintout 未做的只有打印，' +
-          'SafetySignatureProvider），但本机没有 F-CPU 工程可验（P）。',
+          'SafetySignatureProvider）。实机验证：SWT2_PEI_FJib_Hold 是带 F 程序的工程（55 个 F 块，含拒绝导出的 FOB_SAFETY），' +
+          'safety_signatures 与 SyncScan 均已跑通；未做的只剩打印类接口。',
       },
       SafetyModificationsPossible: {
         status: 'done',
@@ -942,8 +1087,10 @@ export const SECTIONS = [
         status: 'done',
         pre: ['P'],
         note:
-          '已实现：safety_signatures 逐块 GetService<SafetySignatureProvider>()，Find(BlockOfflineSignature) 后回报 Type/Value；' +
-          'provider 为 null 即非 F 块（手册明示），按"没有签名"回报而不是报错；签名缺失/失效回报 0。',
+          '已实现并有实机数据：safety_signatures 逐块 GetService<SafetySignatureProvider>()，Find(BlockOfflineSignature) 后回报 Type/Value；' +
+          'provider 为 null 即非 F 块（手册明示），按"没有签名"回报而不是报错；签名缺失/失效回报 0。' +
+          'SyncScan 也把签名写进 evidence 账本（isSafetyBlock + safetySignature），并用"编程语言 F_* 或 OB"预筛后再问 provider；' +
+          '实测 SWT2_PEI_FJib_Hold：1155 块里 55 个 F 块（54 个 F_* 语言 + 1 个 SCL 的 FOB_SAFETY），预筛 0 误判。',
       },
     },
   },
@@ -1121,3 +1268,66 @@ export const AMBIGUOUS_NAMES = {
  * note into a build error instead of letting it go stale.
  */
 export const TOOL_GAPS = []
+
+/**
+ * Capability themes (扩展主线): named subsets of the matrix, used to plan the
+ * next implementation step and to filter the page by theme instead of keyword
+ * (the matrix page renders them as "主题" checkboxes and `?scope=<id>` links).
+ *
+ * Every item is an exact (section, leaf title) pair — a title that no longer
+ * exists under that section is a build error, so a manual update cannot shrink
+ * a theme silently. Adding a theme costs one entry here; `build-matrix.mjs`
+ * resolves the titles against the manual TOC snapshot and does the rest.
+ */
+export const SCOPES = [
+  {
+    id: 'online-download',
+    label: '在线与下载',
+    summary:
+      'TIA 的在线会话（连接/断开、PC 接口、PLC 启停、在线比较）与 PLC 下载、上传合成的一条扩展主线。' +
+      '公共底座是 Siemens.Engineering.Connection 的 IConfiguration + ConfigurationTargetInterface，' +
+      '以及 Online/Download/Upload 三个 ConfigurationDelegate；在线比较另走 Compare 命名空间。' +
+      '整条主线都需要可达的 PLC（前置条件 P）—— 本机用 PLCSIM Advanced 的虚拟实例承担该角色，' +
+      '实例、虚拟网卡与 IP 由 PLCSIM 侧提供，TIA 侧只认"PC 接口 + 目标地址"。' +
+      '按 2026-10-24 的口径，R/H（冗余）与 PC System 不在本主题内，见 excluded。',
+    section: ['TIA Portal Openness API', 'Functions for accessing the data of a PLC device'],
+    groups: [
+      {
+        label: '在线会话',
+        titles: [
+          'Establishing or disconnecting the online connection to the PLC',
+          'Determining the status of a PLC',
+          'Accessing parameters of an online connection',
+          'Assigning PC interface',
+          'Running and stopping PLC',
+          'Accessing fingerprint for quick station compare',
+        ],
+      },
+      {
+        label: '下载',
+        titles: ['Downloading hardware and software components to PLC device'],
+      },
+      {
+        label: '上传',
+        titles: ['Uploading hardware, software and files to PLC device'],
+      },
+      {
+        label: '在线比较',
+        titles: ['Comparing PLC software', 'Comparing PLC hardware'],
+      },
+      {
+        label: '密码与回调',
+        titles: ['Supporting callbacks', 'Protecting PLC through password', 'Handling PLC block binding passwords'],
+      },
+    ],
+    excluded: [
+      { title: 'Setting PLC online of R/H system', reason: '冗余（R/H）站在线，本主题只做单站 PLC' },
+      {
+        title: 'Accessing software container from primary PLC of R/H system',
+        reason: '冗余主站软件容器，随 R/H 站一起排除',
+      },
+      { title: 'Downloading PLCs of R/H System', reason: '冗余站下载（RHDownloadProvider），同上' },
+      { title: 'Downloading PC System', reason: 'PC 站（WinCC 等）下载，不是 PLC 下载' },
+    ],
+  },
+]

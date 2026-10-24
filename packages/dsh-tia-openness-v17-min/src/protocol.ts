@@ -46,6 +46,11 @@ export const OPERATIONS = [
   'SafetyStatus',
   'SetSafetySettings',
   'SafetySignatures',
+  'OnlineTargets',
+  'OnlineConnect',
+  'OnlineStatus',
+  'OnlineDisconnect',
+  'Download',
   'PlcChecksum',
   'SyncScan',
 ] as const
