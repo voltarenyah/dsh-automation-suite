@@ -35,7 +35,7 @@
 | 验证器 | 回答的问题 | 现有/新增 |
 |---|---|---|
 | 静态：TIA 编译 + 写后读回 | 改动成立吗、编译得过吗 | ✅ 已有（TIA 插件） |
-| 动态：PLCSIM 运行 + I/O 观测 | 程序行为对吗、输入变化后输出对吗 | ⬜ 本评估 |
+| 动态：PLCSIM 运行 + I/O 观测 | 程序行为对吗、输入变化后输出对吗 | ✅ 已跑通（本评估 + 插件） |
 
 **它不产出工程语义**，也不管理作用域；它只产出**运行态证据**（状态迁移、标签值、耗时），供模型/工程上下文/版本台账消费。
 
@@ -48,12 +48,13 @@
 - RUN / STOP / Memory Reset。
 - 按标签名读写（Bool/数值/字符串/数组/结构体，按 PLCSIM API 能力）——没有它就无法施加输入、观察输出。
 - 运行态证据（状态、标签快照、耗时）落盘，供后续版本台账引用。
+- **snapshot / restore**：归档程序+硬件+retentive 数据为 ZIP，下次直接还原（§10.10）。
 
 **v2 再评估（不属于本轮范围）**
 
 - 按地址读写 I/O。
 - 虚拟时间缩放、冻结/单步。
-- 归档/取回、多实例、远程 Runtime Manager。
+- 多实例、远程 Runtime Manager。
 - `simulationAccess` 服务与版本台账联动。
 
 **v1 明确排除**
@@ -314,7 +315,7 @@ packages/dsh-plcsim-advanced/
 | 工具 | 动作 | 默认 | 关键返回 | 失败码 |
 |---|---|---|---|---|
 | `simulation_status` | 只读 | — | 安装/API 版本、Runtime 版本、许可、实例列表、网络模式、控制器状态 | `plcsim_not_installed` / `runtime_unavailable` |
-| `simulation_instance` | `create` / `power_on` / `power_off` / `remove` / `list` | 只读 `list`；写动作需 `confirm`；`create` 默认带 Control Panel | 实例名、ID、状态、CPU、communication、ip/subnet/gateway、存储路径；`create` 接收 `cpu_type` / `communication` / `ip`，`power_on` 应用 IP | `instance_exists` / `invalid_cpu_type` / `invalid_communication` / `ip_configuration_failed` / `storage_path_in_use` |
+| `simulation_instance` | `create` / `power_on` / `power_off` / `remove` / `snapshot` / `restore` / `list` | 只读 `list`；写动作需 `confirm`；`create` 默认带 Control Panel | 实例名、ID、状态、CPU、communication、ip/subnet/gateway、存储路径；`create` 接收 `cpu_type` / `communication` / `ip`，`power_on` 应用 IP；`snapshot` 写 ZIP+manifest，`restore` 从 ZIP 新建 | `instance_exists` / `invalid_cpu_type` / `invalid_communication` / `ip_configuration_failed` / `snapshot_exists` / `snapshot_failed` / `snapshot_not_found` / `restore_failed` |
 | `simulation_run` | `run` / `stop` / `reset` | `stop` 之外的写动作需 `confirm` | 状态迁移、耗时 | `instance_not_running` / `program_not_loaded`（`IsEmpty`） |
 | `simulation_tags` | `list` / `read` / `write` | `list`/`read` 只读；`write` 需 `confirm`，且默认最多 N 个标签 | 标签名/类型/区域/值；截断与总数 | `tag_not_found` / `tag_type_mismatch` / `tag_list_stale` |
 | `simulation_time`（v2） | `get` / `set_scale` / `set_system_time` | 只读 `get`；`set_*` 需 `confirm` | 缩放因子、虚拟系统时间 | `wrong_argument` |
@@ -617,3 +618,18 @@ TIA online_targets
 
 **边界**：这不是“无人值守全自动”。第一次需要人工配子网/IP、接受证书；之后可重复执行。  
 **旧结论作废**：§10.7 的“V20 启动不可用”、§10.8 的“Openness 直连下载仍失败”均不再是当前结论。
+
+### 10.10 持久化：snapshot / restore（2026-10-24）
+
+“第一次仿真成功后保存 PLC 实例，下次直接用”已实现，使用 PLCSIM 官方归档 API：
+
+- **snapshot**：`IInstance.ArchiveStorage(zip)`，把**程序 + 硬件配置 + retentive 数据**打成 ZIP，并写 `manifest.json`
+  （name / cpuType / communication / ip / subnetMask / gateway / createdAt）；
+- **restore**：新实例 `RetrieveStorage(zip)`，按 manifest（或显式参数）恢复 CPU/通信/IP，再 `PowerOn`，可选 `Run`；
+- 两个 API 都要求实例 **OFF**；`ArchiveStorage` 还要求实例至少 `PowerOn` 过一次。snapshot 会短暂断电、归档后恢复原状态（RUN 会恢复）；
+- 默认目录 `<workspace>/.dsh/simulation/<snapshot>/`，已加入 `.gitignore`；
+- 实测：用成功工程的存储目录归档（`instance.zip` 约 224 KB）→ 新实例 restore → **41 个 HMI-visible 标签**（`UpdateTagList` 默认过滤）→ 再次 snapshot → 第二次 restore 仍为 41 标签；全量 `IOMCTDB` 列表为 **51 标签**。
+- **不需要 TIA/重新下载**；但快照与创建它的 PLCSIM Advanced 版本绑定，跨大版本不要直接复用。
+
+工具面：`simulation_instance(action="snapshot", name=..., snapshot="baseline")`；
+`simulation_instance(action="restore", name="PLC_1-next", snapshot="baseline", run=true)`。

@@ -35,6 +35,7 @@ export function apply(ctx, config) {
         exePath: resolved.path,
         apiDir: settings.apiDir,
         storageRoot: settings.storageRoot,
+        snapshotRoot: settings.snapshotRoot,
         networkMode: settings.networkMode,
         showControlPanel: settings.showControlPanel,
         controlPanelPath: settings.controlPanelPath,

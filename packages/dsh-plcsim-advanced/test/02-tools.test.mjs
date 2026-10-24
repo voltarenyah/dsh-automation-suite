@@ -97,6 +97,36 @@ test('simulation_instance forwards the TCP/IP coordinates for the download workf
   })
 })
 
+test('simulation_instance forwards snapshot and restore actions', async () => {
+  const { byName, calls } = harness()
+  await byName.get('simulation_instance').execute(
+    { action: 'snapshot', name: 'PLC_1', snapshot: 'before-change', overwrite: true },
+    {},
+  )
+  await byName.get('simulation_instance').execute(
+    { action: 'restore', name: 'PLC_2', snapshot: 'before-change', run: true },
+    {},
+  )
+  assert.deepEqual(calls[0], {
+    operation: 'Instance',
+    params: {
+      action: 'snapshot',
+      name: 'PLC_1',
+      snapshot: 'before-change',
+      overwrite: true,
+    },
+  })
+  assert.deepEqual(calls[1], {
+    operation: 'Instance',
+    params: {
+      action: 'restore',
+      name: 'PLC_2',
+      snapshot: 'before-change',
+      run: true,
+    },
+  })
+})
+
 test('simulation_instance refuses power_off/remove without confirm and sends nothing', async () => {
   const { byName, calls } = harness()
   const result = await byName.get('simulation_instance').execute({ action: 'remove', name: 'PLC_1' }, {})

@@ -38,16 +38,18 @@ namespace PlcsimAdvanced.Controller
             new Dictionary<string, InstanceSettings>(StringComparer.OrdinalIgnoreCase);
 
         private readonly string _storageRoot;
+        private readonly string _snapshotRoot;
         private readonly string _defaultCommunication;
         private readonly bool _showControlPanel;
         private readonly string _controlPanelPath;
         private readonly bool _keepOnExit;
 
         public PlcsimRuntime(
-            string storageRoot, string defaultCommunication, bool showControlPanel,
+            string storageRoot, string snapshotRoot, string defaultCommunication, bool showControlPanel,
             string controlPanelPath, bool keepOnExit)
         {
             _storageRoot = storageRoot;
+            _snapshotRoot = snapshotRoot;
             _defaultCommunication = defaultCommunication;
             _showControlPanel = showControlPanel;
             _controlPanelPath = controlPanelPath;
@@ -131,7 +133,10 @@ namespace PlcsimAdvanced.Controller
                 return Describe(instance);
             }
 
+            if (action == "restore") return Restore(p);
+
             IInstance existing = RequireInstance(name);
+            if (action == "snapshot") return Snapshot(existing, p);
             if (action == "power_on")
             {
                 existing.PowerOn(20000);
@@ -160,6 +165,162 @@ namespace PlcsimAdvanced.Controller
                 return new Dictionary<string, object> { { "name", name }, { "removed", true } };
             }
             throw new ControllerException("invalid_action", "Unknown instance action '" + action + "'.");
+        }
+
+        private object Snapshot(IInstance instance, IDictionary<string, object> p)
+        {
+            string snapshotName = Text(p, "snapshot") ?? Text(p, "label") ?? instance.Name;
+            bool overwrite = Bool(p, "overwrite", false);
+            string directory = Path.Combine(_snapshotRoot, SafeName(snapshotName));
+            string zip = Path.Combine(directory, "instance.zip");
+            string manifestPath = Path.Combine(directory, "manifest.json");
+            if (File.Exists(zip) && !overwrite)
+            {
+                throw new ControllerException("snapshot_exists",
+                    "A snapshot already exists at " + zip + "; pass overwrite=true to replace it.");
+            }
+            Directory.CreateDirectory(directory);
+            if (overwrite)
+            {
+                try { File.Delete(zip); } catch (Exception) { }
+                try { File.Delete(manifestPath); } catch (Exception) { }
+            }
+
+            EOperatingState original = instance.OperatingState;
+            bool wasOff = original == EOperatingState.Off;
+            bool wasRunning = original == EOperatingState.Run;
+            try
+            {
+                if (!wasOff) instance.PowerOff(20000);
+                instance.ArchiveStorage(zip);
+            }
+            catch (Exception ex)
+            {
+                if (!wasOff)
+                {
+                    try { instance.PowerOn(20000); } catch (Exception) { }
+                    if (wasRunning) { try { instance.Run(10000); } catch (Exception) { } }
+                }
+                throw new ControllerException("snapshot_failed",
+                    "Archiving the instance failed: " + ex.Message);
+            }
+
+            if (!wasOff)
+            {
+                instance.PowerOn(20000);
+                if (wasRunning) instance.Run(10000);
+            }
+
+            InstanceSettings settings = SettingsFor(instance.Name);
+            var manifest = new Dictionary<string, object>
+            {
+                { "schemaVersion", 1 },
+                { "name", instance.Name },
+                { "cpuType", instance.CPUType.ToString() },
+                { "communication", settings.Communication },
+                { "ip", settings.Ip },
+                { "subnetMask", settings.SubnetMask },
+                { "gateway", settings.Gateway },
+                { "createdAt", DateTime.UtcNow.ToString("o") },
+                { "sourceStoragePath", instance.StoragePath },
+                { "sourceState", instance.OperatingState.ToString() }
+            };
+            File.WriteAllText(manifestPath, new JavaScriptSerializer().Serialize(manifest));
+
+            return new Dictionary<string, object>
+            {
+                { "name", instance.Name },
+                { "snapshotPath", directory },
+                { "archive", zip },
+                { "manifest", manifestPath },
+                { "sizeBytes", new FileInfo(zip).Length },
+                { "state", instance.OperatingState.ToString() }
+            };
+        }
+
+        private object Restore(IDictionary<string, object> p)
+        {
+            string name = RequireName(p);
+            if (_instances.ContainsKey(name))
+            {
+                throw new ControllerException("instance_exists", "A PLCSIM instance named '" + name + "' already exists.");
+            }
+            string snapshotArg = Text(p, "snapshot") ?? name;
+            string zip = ResolveSnapshotPath(snapshotArg);
+            if (!File.Exists(zip))
+            {
+                throw new ControllerException("snapshot_not_found",
+                    "No snapshot archive at " + zip + ". Use action=snapshot first, or pass an absolute zip path.");
+            }
+
+            Dictionary<string, object> manifest = ReadManifest(zip);
+            string cpuName = Text(p, "cpu_type") ?? Text(manifest, "cpuType") ?? "unspecified";
+            string communication = NormalizeCommunication(
+                Text(p, "communication") ?? Text(manifest, "communication") ?? _defaultCommunication);
+            string ip = Text(p, "ip") ?? Text(manifest, "ip");
+            string subnetMask = Text(p, "subnet_mask") ?? Text(manifest, "subnetMask") ?? "255.255.255.0";
+            string gateway = Text(p, "gateway") ?? Text(manifest, "gateway") ?? "0.0.0.0";
+
+            ECPUType cpu = ParseCpuType(cpuName);
+            IInstance instance = cpu == ECPUType.CPU1500_Unspecified
+                ? SimulationRuntimeManager.RegisterInstance(name)
+                : SimulationRuntimeManager.RegisterInstance(cpu, name);
+            try
+            {
+                instance.StoragePath = Path.Combine(_storageRoot, SafeName(name));
+                instance.CommunicationInterface = communication == "tcpip"
+                    ? ECommunicationInterface.TCPIP
+                    : ECommunicationInterface.Softbus;
+                _settings[name] = new InstanceSettings
+                {
+                    Communication = communication,
+                    Ip = ip,
+                    SubnetMask = subnetMask,
+                    Gateway = gateway,
+                };
+                instance.RetrieveStorage(zip);
+                _instances[name] = instance;
+            }
+            catch (Exception ex)
+            {
+                _settings.Remove(name);
+                try { instance.UnregisterInstance(); } catch (Exception) { }
+                throw new ControllerException("restore_failed", "Restoring the snapshot failed: " + ex.Message);
+            }
+
+            if (_showControlPanel) EnsureControlPanel();
+            instance.PowerOn(20000);
+            if (!string.IsNullOrEmpty(ip)) ApplyIpSuite(instance, _settings[name]);
+            if (Bool(p, "run", false)) instance.Run(10000);
+
+            Dictionary<string, object> row = Describe(instance);
+            row["restoredFrom"] = zip;
+            return row;
+        }
+
+        private string ResolveSnapshotPath(string value)
+        {
+            if (Path.IsPathRooted(value) || value.EndsWith(".zip", StringComparison.OrdinalIgnoreCase))
+            {
+                return Path.GetFullPath(value);
+            }
+            string directory = Path.Combine(_snapshotRoot, SafeName(value));
+            return Path.Combine(directory, "instance.zip");
+        }
+
+        private static Dictionary<string, object> ReadManifest(string zip)
+        {
+            string manifestPath = Path.Combine(Path.GetDirectoryName(zip), "manifest.json");
+            if (!File.Exists(manifestPath)) return new Dictionary<string, object>();
+            try
+            {
+                return new JavaScriptSerializer().Deserialize<Dictionary<string, object>>(
+                    File.ReadAllText(manifestPath));
+            }
+            catch (Exception)
+            {
+                return new Dictionary<string, object>();
+            }
         }
 
         public object Run(IDictionary<string, object> p)
@@ -273,12 +434,18 @@ namespace PlcsimAdvanced.Controller
 
         private static ECPUType ParseCpuType(string value)
         {
-            if (string.IsNullOrEmpty(value) || string.Equals(value, "unspecified", StringComparison.OrdinalIgnoreCase)
-                || string.Equals(value, "1500", StringComparison.OrdinalIgnoreCase))
+            string normalized = (value ?? string.Empty).Trim();
+            if (normalized.StartsWith("CPU", StringComparison.OrdinalIgnoreCase))
+            {
+                normalized = normalized.Substring(3);
+            }
+            if (normalized.Length == 0 || string.Equals(normalized, "unspecified", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(normalized, "1500", StringComparison.OrdinalIgnoreCase)
+                || normalized.StartsWith("1500_", StringComparison.OrdinalIgnoreCase))
             {
                 return ECPUType.CPU1500_Unspecified;
             }
-            switch (value.Trim().ToLowerInvariant())
+            switch (normalized.ToLowerInvariant())
             {
                 case "1511": return ECPUType.CPU1511;
                 case "1513": return ECPUType.CPU1513;
@@ -497,6 +664,14 @@ namespace PlcsimAdvanced.Controller
             catch (Exception) { return fallback; }
         }
 
+        private static bool Bool(IDictionary<string, object> p, string key, bool fallback)
+        {
+            object value;
+            if (!p.TryGetValue(key, out value) || value == null) return fallback;
+            try { return Convert.ToBoolean(value, CultureInfo.InvariantCulture); }
+            catch (Exception) { return fallback; }
+        }
+
         private static string SafeName(string name)
         {
             var builder = new StringBuilder();
@@ -522,6 +697,7 @@ namespace PlcsimAdvanced.Controller
                 Environment.GetFolderPath(Environment.SpecialFolder.CommonProgramFilesX86),
                 "Siemens", "PLCSIMADV", "API", "4.0");
             string storageRoot = Path.Combine(Path.GetTempPath(), "dsh-plcsim");
+            string snapshotRoot = Path.Combine(Environment.CurrentDirectory, ".dsh", "simulation");
             string defaultCommunication = "softbus";
             bool showControlPanel = true;
             string controlPanelPath = Path.Combine(
@@ -534,6 +710,7 @@ namespace PlcsimAdvanced.Controller
             {
                 if (args[i] == "--api-dir" && i + 1 < args.Length) apiDir = args[++i];
                 else if (args[i] == "--storage-root" && i + 1 < args.Length) storageRoot = args[++i];
+                else if (args[i] == "--snapshot-root" && i + 1 < args.Length) snapshotRoot = args[++i];
                 else if (args[i] == "--network-mode" && i + 1 < args.Length) defaultCommunication = args[++i];
                 else if (args[i] == "--show-control-panel" && i + 1 < args.Length)
                     showControlPanel = string.Equals(args[++i], "true", StringComparison.OrdinalIgnoreCase);
@@ -557,7 +734,7 @@ namespace PlcsimAdvanced.Controller
             }
 
             var runtime = new PlcsimRuntime(
-                storageRoot, defaultCommunication, showControlPanel, controlPanelPath, keepOnExit);
+                storageRoot, snapshotRoot, defaultCommunication, showControlPanel, controlPanelPath, keepOnExit);
             var ready = new Dictionary<string, object>
             {
                 { "type", "ready" },

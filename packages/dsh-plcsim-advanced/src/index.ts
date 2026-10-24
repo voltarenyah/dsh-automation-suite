@@ -44,6 +44,7 @@ export function apply(ctx: Context, config?: Partial<PluginConfig>): void {
     exePath: resolved.path,
     apiDir: settings.apiDir,
     storageRoot: settings.storageRoot,
+    snapshotRoot: settings.snapshotRoot,
     networkMode: settings.networkMode,
     showControlPanel: settings.showControlPanel,
     controlPanelPath: settings.controlPanelPath,

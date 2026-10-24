@@ -180,33 +180,38 @@ export function registerTools(ctx: Context, dependencies: ToolDependencies): str
     defineTool({
       name: 'simulation_instance',
       description:
-        'Manage PLCSIM Advanced instances: list (default), create, power_on, power_off or remove. Creating an ' +
-        'instance registers it, picks the CPU family and communication interface, and starts the Control Panel ' +
-        '(configurable). power_on starts the simulated CPU; when ip is given, the instance IP suite is applied after ' +
-        'power-on. Use communication="tcpip" + the project IP for the Openness download workflow (the proven path); ' +
-        'use "softbus" only for local-only work. power_off and remove require confirm=true. list returns the ' +
-        'coordinates the TIA side needs: name, communication, ip, state, CPU and licence. Instances stay running ' +
-        'when the plugin unloads by default (keepInstancesOnUnload); remove explicitly cleans up. ' + INPUT_HINT,
+        'Manage PLCSIM Advanced instances: list (default), create, power_on, power_off, remove, snapshot or restore. ' +
+        'Creating an instance registers it, picks the CPU family and communication interface, and starts the Control ' +
+        'Panel (configurable). power_on starts the simulated CPU; when ip is given, the instance IP suite is applied ' +
+        'after power-on. Use communication="tcpip" + the project IP for the Openness download workflow (the proven ' +
+        'path); use "softbus" only for local-only work. snapshot archives the program/hardware/retentive data as a ZIP ' +
+        'under snapshotRoot (the instance is briefly stopped if needed); restore creates a new instance from that ZIP ' +
+        'and powers it on. power_off and remove require confirm=true. list returns the coordinates the TIA side needs: ' +
+        'name, communication, ip, state, CPU and licence. Instances stay running when the plugin unloads by default ' +
+        '(keepInstancesOnUnload); remove explicitly cleans up. ' + INPUT_HINT,
       parameters: {
         action: {
           type: 'string',
-          enum: ['list', 'create', 'power_on', 'power_off', 'remove'],
+          enum: ['list', 'create', 'power_on', 'power_off', 'remove', 'snapshot', 'restore'],
           description: "Action to perform; defaults to 'list'.",
         },
         name: { type: 'string', description: 'Instance name (required for everything except list). Convention: the CPU PROFINET device name.' },
         cpu_type: {
           type: 'string',
           enum: ['unspecified', '1511', '1513', '1515', '1516', '1517', '1518'],
-          description: 'CPU family for create; must match the project CPU (e.g. 1511) for a download.',
+          description: 'CPU family for create/restore; must match the project CPU (e.g. 1511) for a download.',
         },
         communication: {
           type: 'string',
           enum: ['softbus', 'tcpip'],
-          description: "Communication interface for create; defaults to the plugin's networkMode. Use 'tcpip' for the Openness download workflow.",
+          description: "Communication interface for create/restore; defaults to the plugin's networkMode. Use 'tcpip' for the Openness download workflow.",
         },
         ip: { type: 'string', description: 'IPv4 address for the instance (TCP/IP). Pass the project CPU IP read from online_targets.' },
         subnet_mask: { type: 'string', description: 'Subnet mask for ip (default 255.255.255.0).' },
         gateway: { type: 'string', description: 'Default gateway for ip (default 0.0.0.0).' },
+        snapshot: { type: 'string', description: 'Snapshot name (under snapshotRoot) for snapshot, or a name/absolute ZIP path for restore.' },
+        overwrite: { type: 'boolean', description: 'True to replace an existing snapshot with the same name (default false).' },
+        run: { type: 'boolean', description: 'For restore: true to switch the restored instance to RUN after power-on (default false).' },
         confirm: { type: 'boolean', description: 'Must be true for power_off and remove.' },
       },
       output: {
@@ -227,6 +232,9 @@ export function registerTools(ctx: Context, dependencies: ToolDependencies): str
         if (args.ip !== undefined) params['ip'] = args.ip
         if (args.subnet_mask !== undefined) params['subnet_mask'] = args.subnet_mask
         if (args.gateway !== undefined) params['gateway'] = args.gateway
+        if (args.snapshot !== undefined) params['snapshot'] = args.snapshot
+        if (args.overwrite !== undefined) params['overwrite'] = args.overwrite
+        if (args.run !== undefined) params['run'] = args.run
         return asJsonOutcome(await runOperation(dependencies, 'Instance', params, exec.signal))
       },
     }),

@@ -65,3 +65,15 @@ instance.
   workflow and must match the project IP. Do not add physical adapter mapping.
 - `keepInstancesOnUnload` defaults to true; `remove` is the explicit cleanup.
   Do not silently fall back to a different instance or storage root.
+
+## 6. Persistence
+
+- `snapshot` / `restore` use the official `IInstance.ArchiveStorage(zip)` /
+  `RetrieveStorage(zip)`, not a raw directory copy. The archive contains the
+  program, hardware configuration and retentive data.
+- `ArchiveStorage`/`RetrieveStorage` require the instance to be **OFF**;
+  `ArchiveStorage` also requires the instance to have been powered on at least
+  once. The snapshot action preserves the previous RUN/STOP state.
+- Snapshots live under `snapshotRoot` (`<workspace>/.dsh/simulation` by default)
+  as `<name>/instance.zip` + `manifest.json`; keep them out of git and do not
+  copy a snapshot across incompatible PLCSIM Advanced versions.

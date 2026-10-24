@@ -27,6 +27,8 @@ export interface PluginConfig {
   apiDir: string
   /** Root under which instance storage directories are created. */
   storageRoot: string
+  /** Root under which snapshot ZIPs and manifests are stored. */
+  snapshotRoot: string
   /** Default communication interface when an instance does not pass one. */
   networkMode: NetworkMode
   /** Start the PLCSIM Advanced Control Panel when the first instance is created. */
@@ -47,6 +49,7 @@ export const configDefaults: PluginConfig = {
   controllerPath: '',
   apiDir: defaultApiDir(),
   storageRoot: defaultStorageRoot(),
+  snapshotRoot: join(process.cwd(), '.dsh', 'simulation'),
   networkMode: 'softbus',
   showControlPanel: true,
   controlPanelPath: defaultControlPanelPath(),
@@ -63,6 +66,7 @@ export const Config = Schema.object({
   controllerPath: Schema.string().default(configDefaults.controllerPath),
   apiDir: Schema.string().default(configDefaults.apiDir),
   storageRoot: Schema.string().default(configDefaults.storageRoot),
+  snapshotRoot: Schema.string().default(configDefaults.snapshotRoot),
   networkMode: Schema.string().default(configDefaults.networkMode),
   showControlPanel: Schema.boolean().default(configDefaults.showControlPanel),
   controlPanelPath: Schema.string().default(configDefaults.controlPanelPath),
@@ -98,6 +102,7 @@ export function resolveConfig(config: Partial<PluginConfig> | undefined): Plugin
     controllerPath: text(source.controllerPath, configDefaults.controllerPath),
     apiDir: text(source.apiDir, configDefaults.apiDir),
     storageRoot: text(source.storageRoot, configDefaults.storageRoot),
+    snapshotRoot: text(source.snapshotRoot, configDefaults.snapshotRoot),
     networkMode: networkMode(source.networkMode, configDefaults.networkMode),
     showControlPanel: flag(source.showControlPanel, configDefaults.showControlPanel),
     controlPanelPath: text(source.controlPanelPath, configDefaults.controlPanelPath),

@@ -38,3 +38,6 @@ knowledge/**/*.db*
 *.dshpending
 .dsh-file-claim.audit.jsonl
 .dsh-file-claim.lock
+
+# PLCSIM Advanced snapshots (dsh-plcsim-advanced): local instance archives, not sources.
+.dsh/simulation/

@@ -18,7 +18,7 @@ the suite's simulation capability.
 | Tool | Actions | Notes |
 |---|---|---|
 | `simulation_status` | read-only | API/Runtime version, licence, instances with name/comm/IP/state |
-| `simulation_instance` | `list` / `create` / `power_on` / `power_off` / `remove` | `create` takes `name`, `cpu_type`, `communication`, `ip`; `power_on` applies the IP suite; `power_off`/`remove` need `confirm=true` |
+| `simulation_instance` | `list` / `create` / `power_on` / `power_off` / `remove` / `snapshot` / `restore` | `create` takes `name`, `cpu_type`, `communication`, `ip`; `power_on` applies the IP suite; `snapshot` saves a ZIP; `restore` recreates from one; `power_off`/`remove` need `confirm=true` |
 | `simulation_run` | `state` / `run` / `stop` / `reset` | write actions need `confirm=true` |
 | `simulation_tags` | `list` / `read` / `write` | `list` capped (default 200); `write` needs `confirm=true` |
 
@@ -52,6 +52,48 @@ Runtime Manager API client. Instances are kept running when the plugin unloads
 The two plugins never call each other; the agent passes the coordinates between
 them.
 
+## Persistence: snapshot and restore
+
+After the first successful download/run, save the **whole simulated PLC**
+(program, hardware configuration and retentive data) as a PLCSIM archive ZIP:
+
+```jsonc
+simulation_instance({ "action": "snapshot", "name": "PLC_1", "snapshot": "cylinder-baseline" })
+```
+
+This writes under `snapshotRoot`:
+
+```text
+.dsh/simulation/cylinder-baseline/
+  instance.zip      # ArchiveStorage(): program + hardware + retentive data
+  manifest.json     # name, cpuType, communication, ip, subnetMask, gateway, createdAt
+```
+
+`snapshot` uses the official `IInstance.ArchiveStorage(zip)`; the instance must
+have been powered on at least once. If it is running, the plugin briefly powers
+it off, archives, then restores its previous state (RUN is resumed).
+
+Next time, create a new instance directly from the ZIP:
+
+```jsonc
+simulation_instance({
+  "action": "restore",
+  "name": "PLC_1-next",
+  "snapshot": "cylinder-baseline",
+  "run": true
+})
+```
+
+`restore` uses `RetrieveStorage(zip)`, applies the CPU/communication/IP from the
+manifest (or explicit parameters), powers on, and optionally switches to RUN.
+It does not need TIA or a new download. `snapshot`/`restore` are the only
+persistence mechanism; the per-instance `storageRoot` directory is a working
+copy, not the deliverable.
+
+> Snapshots are local artifacts: keep `snapshotRoot` out of git (the default
+> `.dsh/simulation/` is ignored by the repository). A snapshot is tied to the
+> PLCSIM Advanced version that created it.
+
 ## Safety
 
 - Default communication is **Softbus** (local only); the Openness workflow
@@ -70,6 +112,7 @@ block.
 | `controllerPath` | `''` | bundled `controller/bin/PlcsimAdvanced.Controller.exe` |
 | `apiDir` | `C:\Program Files (x86)\Common Files\Siemens\PLCSIMADV\API\4.0` | API assembly folder; never copied into the package |
 | `storageRoot` | `%TEMP%\dsh-plcsim` | root of per-instance storage directories |
+| `snapshotRoot` | `<workspace>/.dsh/simulation` | root of snapshot ZIPs and manifests |
 | `networkMode` | `softbus` | default when `create` does not pass `communication`; the download workflow passes `tcpip` |
 | `showControlPanel` | `true` | start the PLCSIM Advanced Control Panel on the first create |
 | `controlPanelPath` | PLCSIM Advanced `bin\...UserInterface.exe` | Control Panel executable |
