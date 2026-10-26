@@ -177,6 +177,11 @@ gh release upload v0.1.1 dist/dsh-automation-suite-0.1.1.zip
 
 ## 4. 用户侧安装
 
+> **双击安装**：解压后双击 `install.cmd`（推荐）。直接双击 `install.ps1` 时，文件带着
+> 浏览器的下载标记（MOTW，`ZoneId=3`），而默认的 `RemoteSigned` 策略会拒绝未签名脚本，
+> 窗口一闪就关——错误还没看清。`install.cmd` 用进程级 `-ExecutionPolicy Bypass` 调用脚本，
+> 结束时 `pause`，不会改动机器上的执行策略。
+
 ```powershell
 # 从 Release 下载 zip，解压后：默认装到 dsh-automation-suite-v<version>
 pwsh -NoProfile -File install.ps1

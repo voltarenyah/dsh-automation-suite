@@ -417,7 +417,8 @@ cmd /c rmdir "$env:USERPROFILE\.dsh\profiles\dsh-automation-suite"
 ### 6.3 装发布物（Monorepo 之外）
 
 从 [Releases](https://github.com/voltarenyah/dsh-automation-suite/releases) 下载
-`dsh-automation-suite-<version>.zip`，解压后一条命令装完整份发行版：
+`dsh-automation-suite-<version>.zip`，解压后**双击 `install.cmd`**（推荐；直接双击 `.ps1`
+会被 Windows 的下载标记 + `RemoteSigned` 策略拦截并闪退），或在终端运行：
 
 ```powershell
 pwsh -NoProfile -File install.ps1

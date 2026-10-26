@@ -317,6 +317,28 @@ Write-Host ('upgrade this same profile later with: install.ps1 -Profile ' + $Pro
 `
 writeFileSync(join(outDir, 'install.ps1'), installer.replace('__VERSION__', version).replace('__REPO__', repo).replace('__PROFILE__', defaultProfile))
 
+// Double-clickable entry point. Files extracted from a downloaded zip carry the
+// mark-of-the-web (ZoneId=3), and the default RemoteSigned execution policy then
+// refuses the unsigned install.ps1 with "cannot be loaded ... not digitally
+// signed" - the window closes before anyone can read it. A .cmd is not subject to
+// the execution policy, so this wrapper runs the script with -ExecutionPolicy
+// Bypass (leaving the machine-wide policy untouched) and pauses at the end.
+const installerCmd = String.raw`@echo off
+setlocal
+rem Double-click this file to install. It runs install.ps1 with a per-process
+rem execution-policy bypass, then keeps the window open so errors stay readable.
+set "PS=powershell"
+where pwsh >nul 2>nul
+if %errorlevel%==0 set "PS=pwsh"
+"%PS%" -NoProfile -ExecutionPolicy Bypass -File "%~dp0install.ps1" %*
+set "CODE=%errorlevel%"
+echo.
+if not "%CODE%"=="0" echo install failed with exit code %CODE%.
+pause
+exit /b %CODE%
+`
+writeFileSync(join(outDir, 'install.cmd'), installerCmd)
+
 // ---------------------------------------------------------------------------
 // 5. Report.
 // ---------------------------------------------------------------------------

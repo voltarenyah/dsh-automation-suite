@@ -464,8 +464,9 @@ cmd /c rmdir "$env:USERPROFILE\.dsh\profiles\dsh-automation-suite"
 ### 6.3 Install a release (outside the monorepo)
 
 Download `dsh-automation-suite-<version>.zip` from
-[Releases](https://github.com/voltarenyah/dsh-automation-suite/releases); after unpacking, one
-command installs the whole distribution:
+[Releases](https://github.com/voltarenyah/dsh-automation-suite/releases); after unpacking,
+**double-click `install.cmd`** (recommended — double-clicking the `.ps1` directly hits the
+mark-of-the-web plus the `RemoteSigned` policy and the window closes immediately), or run:
 
 ```powershell
 pwsh -NoProfile -File install.ps1
