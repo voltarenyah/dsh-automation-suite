@@ -9,7 +9,7 @@
   `not-a-bundle`；所以"整套发行版"不能直接 `add`。
 - 本仓选**profile 分发包**：把蓝图的三件套（`package.json` / `cordis.patch.yml` /
   `pnpm-workspace.yaml`）连同插件 tarball 一起发到 GitHub Release，由 `install.ps1`
-  复制到 `<DSH_HOME>/profiles/dsh-automation-suite/` 再跑该 profile 的 pnpm install。
+  复制到 `<DSH_HOME>/profiles/dsh-automation-suite-v<version>/` 再跑该 profile 的 pnpm install。
   它保留**已经验收过的那套组合**，且不依赖 npm 账号。
 - 长期更顺手的形态是**伞形 bundle（umbrella bundle）+ npm 发布**，与官方
   `@deepseek-ai/dsh-experimental-*-profile` 同一套路；它已在本地验证可行，但受两个约束
@@ -91,7 +91,7 @@ pnpm 成功后，插件管理器把**本次新增的直接依赖**里声明了 `
 
 `evaluatePluginCompatibility` 只看两样：包自己的 `engines.dsh`（有就单独决定），否则看
 `peerDependencies` 里的 `@deepseek-ai/dsh*`。不满足会拒绝安装并提示
-`dsh plugin allow-version … --accept-risk`。本仓六个插件目前都没有这两类字段，等于不设闸门；
+`dsh plugin allow-version … --accept-risk`。本仓七个插件目前都没有这两类字段，等于不设闸门；
 伞形包可以显式写 `engines.dsh` 来钉住宿主版本。
 
 ---
@@ -110,7 +110,7 @@ pnpm 成功后，插件管理器把**本次新增的直接依赖**里声明了 `
 
 ```
 dist/release/<version>/
-  assets/*.tgz            六个插件的 tarball（GitHub Release 资产）
+  assets/*.tgz            七个插件的 tarball（GitHub Release 资产）
   profile/package.json    直接依赖 = 每个 tarball 的 Release URL
   profile/cordis.patch.yml 政策层，逐字节复制蓝图
   profile/pnpm-workspace.yaml  nodeLinker: hoisted + allowBuilds
@@ -127,19 +127,19 @@ dist/release/<version>/
 官方"发行版"其实就是伞形 bundle：`@deepseek-ai/dsh-experimental-inspector-profile` 是一个
 声明了 `dsh.bundle.patch` 的包，依赖功能包，patch 里 `insert` 它们的行。本仓也做了原型：
 
-- 把一个 `@voltarenyah/dsh-automation-suite-profile` 装进从 `web` 模板物化的 profile，
-  `--dump-config` **1869 行**，七个插件行、三个 preset、`engineering-context` 的
-  `disabled: true` 全部就位，`--dump-config-schema` 里能看到 `opennessDir` /
-  `destructivePolicy`（模块真的被 import 了）；
+- 把一个 `@voltarenyah/dsh-automation-suite-profile` 装进从 `web` 模板物化的 profile
+  （原型基于当时的六插件版本），`--dump-config` **1869 行**，七个插件行（六个插件 +
+  `dsh-opencode-go`）、三个 preset、`engineering-context` 的 `disabled: true` 全部就位，
+  `--dump-config-schema` 里能看到 `opennessDir` / `destructivePolicy`（模块真的被 import 了）；
 - 但同一份包如果依赖写成 **URL**，装的时候会被 `ERR_PNPM_EXOTIC_SUBDEP` 拒绝；
   要绕过就得在用户 profile 里把 `blockExoticSubdeps` 关掉，或把六个包发布到 npm。
-- 另外它要**复刻**六个 bundle 的插入行与整份政策层，与蓝图是两份会漂移的真相。
+- 另外它要**复刻**每个 bundle 的插入行与整份政策层，与蓝图是两份会漂移的真相。
 
 所以它适合"npm 发布之后"的轻量安装方式，不适合当第一版。
 
 ### 方案 C：npm 发布
 
-六个插件里五个可以按 `@voltarenyah/*` 发布；`dsh-tool-git` **不能**——上游已经占用了这个名字
+七个插件里六个可以按 `@voltarenyah/*` 发布；`dsh-tool-git` **不能**——上游已经占用了这个名字
 和 `0.1.3` 这个版本。三条出路：
 
 1. 改名为 `@voltarenyah/dsh-tool-git`（要同步改 `cordis.patch.yml` 的 `insert[].name`、蓝图的
@@ -154,20 +154,20 @@ dist/release/<version>/
 前提：`packages/*/lib` 已构建（`pnpm -r build`；C# 产物 `controller/bin`、`engine/bin` 已进 git）。
 
 ```powershell
-# 1. 生成发布目录（默认 tag v0.1.0，仓库 voltarenyah/dsh-automation-suite）
-node scripts/build-distribution.mjs
+# 1. 生成发布目录（<version> 同时决定 tag 与默认 profile 名）
+node scripts/build-distribution.mjs --version 0.1.1
 
 # 2. 打一个便于分发的 zip（install.ps1 与 profile/ 必须在一起）
-Compress-Archive -Path dist/release/0.1.0/* -DestinationPath dist/dsh-automation-suite-0.1.0.zip
+Compress-Archive -Path dist/release/0.1.1/* -DestinationPath dist/dsh-automation-suite-0.1.1.zip
 
 # 3. 建 Release 并上传：tarball 必须在 assets 根路径下，URL 才对得上
-gh release create v0.1.0 --title "dsh-automation-suite 0.1.0" --notes "…"
-gh release upload v0.1.0 dist/release/0.1.0/assets/*.tgz
-gh release upload v0.1.0 dist/dsh-automation-suite-0.1.0.zip
+gh release create v0.1.1 --title "dsh-automation-suite 0.1.1" --notes "…"
+gh release upload v0.1.1 dist/release/0.1.1/assets/*.tgz
+gh release upload v0.1.1 dist/dsh-automation-suite-0.1.1.zip
 ```
 
 `profile/package.json` 里的 URL 形如
-`https://github.com/voltarenyah/dsh-automation-suite/releases/download/v0.1.0/<file>.tgz`；
+`https://github.com/voltarenyah/dsh-automation-suite/releases/download/v0.1.1/<file>.tgz`；
 `--base-url` 可以把它们换成一个本地静态服务器，用于发布前自测（见 §5）。
 
 > 升级版本时不要复用同一个 tag 覆盖资产；GitHub Release 的资产名不可重复上传。
@@ -178,23 +178,44 @@ gh release upload v0.1.0 dist/dsh-automation-suite-0.1.0.zip
 ## 4. 用户侧安装
 
 ```powershell
-# 从 Release 下载 zip，解压后：
+# 从 Release 下载 zip，解压后：默认装到 dsh-automation-suite-v<version>
 pwsh -NoProfile -File install.ps1
-# 安装到隔离的 home / 换 profile 名：
-pwsh -NoProfile -File install.ps1 -DshHome C:\temp\dsh-home -Profile my-suite
-# 覆盖同名 profile：
-pwsh -NoProfile -File install.ps1 -Force
+# 安装到隔离的 home：
+pwsh -NoProfile -File install.ps1 -DshHome C:\temp\dsh-home
+# 用固定名字（便于原地升级）：
+pwsh -NoProfile -File install.ps1 -Profile dsh-automation-suite-release
+# 覆盖已存在的 profile（先备份 package.json / cordis.patch.yml）：
+pwsh -NoProfile -File install.ps1 -Profile dsh-automation-suite-release -Force
 ```
 
-脚本只写 `<DshHome>/profiles/<Profile>/` 三个文件，然后调用 DSH 自带的 pnpm 安装插件；
-它不碰日常 `~/.dsh`（除非你显式传 `-DshHome` 或没设 `DSH_HOME`）。
+- **默认 profile 名带版本号**（`dsh-automation-suite-v<version>`）：每次发布一个独立目录，
+  装新版本不会和旧版本或开发版重名。
+- 脚本只写 `<DshHome>/profiles/<Profile>/` 里的文件，然后调用 DSH 自带的 pnpm 安装插件。
+  默认 home 是 `~/.dsh`（设了 `DSH_HOME` 就用它）；要完全隔离请显式传 `-DshHome`。
+- **junction/symlink 一律拒绝**（即使加 `-Force`）：顺着链接写会改到它指向的目录，
+  安装器只提示用 `cmd /c rmdir` 拆链接。
 
-装完启动：
+### 开发版与发布版并存
 
-```powershell
-$env:DSH_HOME = 'C:\Users\<you>\dsh-suite-env'
-& "$env:LOCALAPPDATA\Programs\DeepSeek Harness\resources\runtime\cli\bin\dsh.cmd" --profile dsh-automation-suite
-```
+| 版本 | 默认 profile 名 | 默认 DSH_HOME | 怎么起 |
+|---|---|---|---|
+| 开发版（当前工作树） | `dsh-automation-suite` | `%USERPROFILE%\dsh-suite-env`（`start-env.ps1` 默认） | `pwsh scripts\start-env.ps1 -Restart` |
+| 发布版（Release 资产） | `dsh-automation-suite-v<version>` | `%USERPROFILE%\.dsh` | `install.ps1` 后按打印的命令 |
+
+两者名字与 home 都不同，可以同时运行（换端口即可）。开发版一直在自己的隔离 home 里，
+不会被发布版覆盖；发布版按版本落在日常 home 里，各自独立。
+
+### 升级与回退
+
+- **并存**（推荐用于测试）：直接装新版本，得到新的 `dsh-automation-suite-v<new>`；
+  旧版本 profile 原样保留，用旧的 `--profile` 名仍可启动。
+- **原地升级**：给发布版一个固定名字，重复安装时加 `-Force`：
+  ```powershell
+  pwsh -NoProfile -File install.ps1 -Profile dsh-automation-suite-release -Force
+  ```
+  覆盖前会把该 profile 的 `package.json` 与 `cordis.patch.yml` 备份为 `.bak-<timestamp>`。
+  模型凭据在 `<DshHome>/.credentials.yaml`，不随 profile 覆盖丢失。
+- **回退**：用旧版本的 profile 名启动，或把备份文件改名回去后重跑 `dsh plugin install`。
 
 首次进入仍需自己配模型（设置 → Models 填 API key），与普通 DSH 一致。
 
@@ -203,7 +224,7 @@ $env:DSH_HOME = 'C:\Users\<you>\dsh-suite-env'
 profile 目录里可能有 `link:` 与 pnpm 的 junction，**不要**用会跟进链接的递归删除：
 
 ```powershell
-cmd /c rmdir /s /q "%USERPROFILE%\.dsh\profiles\dsh-automation-suite"
+cmd /c rmdir /s /q "%USERPROFILE%\.dsh\profiles\dsh-automation-suite-v0.1.1"
 ```
 
 ---
@@ -213,23 +234,28 @@ cmd /c rmdir /s /q "%USERPROFILE%\.dsh\profiles\dsh-automation-suite"
 发布前不必发到 GitHub，用本地 HTTP 服务器就能验完整链路：
 
 ```powershell
-node scripts/build-distribution.mjs --base-url http://127.0.0.1:8766 --out dist/release/test
+node scripts/build-distribution.mjs --version 0.1.1 --base-url http://127.0.0.1:8766 --out dist/release/test
 # 另开一个进程，把 assets 目录当作静态站点
-python -m http.server 8766 --bind 127.0.0.1 --directory dist/release/test/0.1.0/assets
+python -m http.server 8766 --bind 127.0.0.1 --directory dist/release/test/0.1.1/assets
 
-pwsh -NoProfile -File dist/release/test/0.1.0/install.ps1 -DshHome C:\temp\dsh-test -Profile suitedist
+# 默认 profile 名为 dsh-automation-suite-v0.1.1
+pwsh -NoProfile -File dist/release/test/0.1.1/install.ps1 -DshHome C:\temp\dsh-test
 ```
 
-实测结果（DSH 0.2.1-rc.2）：
+实测结果（DSH 0.2.1-rc.2，v0.1.1）：
 
 | 检查 | 结果 |
 |---|---|
-| `install.ps1` | 退出 0，六个包 + `dsh-opencode-go` 装上 |
-| `dsh --profile suitedist --dump-config` | **退出 0，1872 行**；7 个插件行、3 个 preset、`engineering-context` 为 `disabled: true`，无 `not found` / 错误 |
-| `dsh --profile suitedist --dump-config-schema` | 退出 1（预期：每个 preset 行一条 `unrecognized Loader tree carrier`，与插件无关）；输出里含 `opennessDir`、`destructivePolicy`，证明插件被真实 import |
+| `install.ps1` | 退出 0，七个包 + `dsh-opencode-go` 装上；profile 为 `dsh-automation-suite-v0.1.1` |
+| 与已存在的 `dsh-automation-suite` 目录并存 | 默认安装不碰它，两个 profile 同时存在 |
+| `--dump-config` | **退出 0，2033 行**；8 个插件行（含 `plcsim-advanced`）、3 个 preset、`engineering-context` 为 `disabled: true`，无 `not found` / 错误 |
+| `--dump-config-schema` | 退出 1（预期：preset 行的 `unrecognized Loader tree carrier`，与插件无关）；输出含 `opennessDir`、`destructivePolicy`，证明插件被真实 import |
+| 显式装到已存在的 profile | 报错并提示 `-Profile` / `-Force`，不写任何文件 |
+| 对 junction 加 `-Force` | 拒绝写入，链接目标里的哨兵文件未被改动 |
+| 对真实 profile 加 `-Force` | 先产生 `package.json.bak-<时间>` / `cordis.patch.yml.bak-<时间>`，再安装 |
 | 启动后 | `Get-Process TiaOpennessV17Min.Controller` 有进程 = TIA 插件 `apply()` 跑过（需 TIA V17） |
 
-> 1872 行是**全新 profile** 的数字；本机日常 profile 的 1880 行基线多了应用回写的设置行，
+> 2033 行是**全新 profile** 的数字；本机日常开发 profile 的 2036 行基线多了应用回写的 3 行设置，
 > 两者不要互相解释。行数只用来发现"整行消失"这类事故。
 
 ---
@@ -241,11 +267,13 @@ pwsh -NoProfile -File dist/release/test/0.1.0/install.ps1 -DshHome C:\temp\dsh-t
   profile 分发没有兼容性闸门（`engines.dsh` 只在 bundle 上生效）；伞形 bundle 可以补。
 - **TIA 部分仅 Windows + TIA V17**，还需要 Openness DLL、.NET Framework 4.8 x64、
   当前用户在 `Siemens TIA Openness` 本地组里。git / UI 插件跨平台。
-- **首次安装有网络依赖**：六个 tarball 来自 GitHub Release（约 14 MiB），
+- **首次安装有网络依赖**：七个 tarball 来自 GitHub Release（约 15 MiB），
   `dsh-opencode-go` 及其依赖来自 npm。
 - **默认超时**：TIA 与知识图谱插件的 `requestTimeoutMs` 默认 300000；大工程要自己调到
   900000（在 profile 的 `cordis.patch.yml` 里覆盖，或用应用的设置页）。
-- 没有自动升级：新版本要重新跑 `install.ps1 -Force`（或手工替换三个文件后 `dsh plugin … install`）。
+- **版本化 profile 会累积**：每个版本一个目录；不需要的旧版本按 §4「卸载」删掉即可。
+  想只保留一个并原地升级，用固定 `-Profile` + `-Force`（会备份两个清单文件）。
+- 没有自动更新检查：升级 = 装新版本（并存），或对固定名字的 profile 重跑 `install.ps1 -Force`。
 
 ---
 

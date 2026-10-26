@@ -50,6 +50,10 @@ const blueprintDir = join(root, 'profile', 'dsh-automation-suite')
 const blueprint = JSON.parse(readFileSync(join(blueprintDir, 'package.json'), 'utf8'))
 const version = args.version ?? blueprint.version ?? '0.1.0'
 const tag = args.tag ?? `v${version}`
+// One profile per release, so installing a newer release never collides with the
+// previous one (and a development profile of the same edition keeps the plain
+// 'dsh-automation-suite' name).
+const defaultProfile = `dsh-automation-suite-v${version}`
 const repo = args.repo ?? 'voltarenyah/dsh-automation-suite'
 const outRoot = resolve(root, args.out ?? 'dist/release')
 const outDir = join(outRoot, version)
@@ -214,11 +218,21 @@ const installer = String.raw`# Install the dsh-automation-suite edition into an 
 #   pwsh -NoProfile -File install.ps1 -Profile my-suite -DshHome C:\temp\dsh-home
 #
 # The profile is a normal DSH profile directory; nothing outside
-# <DshHome>/profiles/<Profile>/ is written. Pass -Force to replace an existing
-# profile of the same name.
+# <DshHome>/profiles/<Profile>/ is written.
+#
+# The default name carries the release version (for example
+# 'dsh-automation-suite-v0.1.1'), so:
+#   - a development profile of the same edition (normally 'dsh-automation-suite'
+#     in the isolated DSH_HOME used by scripts/start-env.ps1) can coexist, and
+#   - installing a newer release never collides with an older one - each release
+#     gets its own profile directory.
+# Pass -Profile to use a stable name instead and upgrade it in place with
+# -Force; the replaced profile's package.json and cordis.patch.yml are backed up
+# next to them before they are overwritten. A junction/symlink is always
+# refused, because writing through one would modify whatever it points at.
 param(
   [string]$DshHome = $(if ($env:DSH_HOME) { $env:DSH_HOME } else { Join-Path $env:USERPROFILE '.dsh' }),
-  [string]$Profile = 'dsh-automation-suite',
+  [string]$Profile = '__PROFILE__',
   [string]$DshExe = '',
   [switch]$Force
 )
@@ -251,12 +265,32 @@ if (-not $DshExe) {
 }
 
 $profileDir = Join-Path $DshHome "profiles\$Profile"
-if ((Test-Path $profileDir) -and -not $Force) {
-  throw "profile '$Profile' already exists at $profileDir; pass -Force to replace it (its settings will be lost)"
-}
-if (Test-Path $profileDir) {
-  # The profile may contain junctions owned by pnpm; remove only the three files
-  # this installer owns and let pnpm prune the rest.
+$existing = Get-Item -LiteralPath $profileDir -Force -ErrorAction SilentlyContinue
+if ($existing) {
+  if (($existing.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0) {
+    $target = if ($existing.Target) { $existing.Target -join ', ' } else { 'unknown target' }
+    $hint = 'Remove the link first with: cmd /c rmdir "' + $profileDir + '"'
+    throw ('refusing to install into ' + $profileDir + ': it is a junction/symlink (-> ' + $target + '). ' +
+      'Writing through it would modify another directory. ' + $hint + ', or choose another -Profile.')
+  }
+  if (-not $Force) {
+    throw ("profile '" + $Profile + "' already exists at " + $profileDir + '. ' +
+      'Release profiles are versioned by default, so installing another release does not collide; ' +
+      'pick another name with -Profile <name>, or pass -Force to replace this profile - ' +
+      'its package.json and cordis.patch.yml are backed up first, but profile-local settings still take effect from the new files.')
+  }
+  # Keep the previous manifests recoverable before the new release overwrites them.
+  # Model credentials live in <DshHome>/.credentials.yaml, not in the profile.
+  $stamp = Get-Date -Format 'yyyyMMdd-HHmmss'
+  foreach ($name in @('package.json', 'cordis.patch.yml')) {
+    $path = Join-Path $profileDir $name
+    if (Test-Path $path) {
+      Copy-Item -LiteralPath $path -Destination ($path + '.bak-' + $stamp) -Force
+    }
+  }
+  # The profile may contain junctions owned by pnpm; remove only the files this
+  # installer owns and let pnpm prune the rest. Never delete the directory itself
+  # with a recursive delete.
   Get-ChildItem -LiteralPath $profileDir -File -Force |
     Where-Object { $_.Name -in @('package.json', 'cordis.patch.yml', 'cordis.yml', 'pnpm-workspace.yaml') } |
     ForEach-Object { Remove-Item -LiteralPath $_.FullName -Force }
@@ -278,8 +312,10 @@ Write-Host ''
 Write-Host 'installed. start it with:'
 Write-Host ('  $env:DSH_HOME = ''' + $DshHome + '''')
 Write-Host ('  & ''' + $DshExe + ''' --profile ' + $Profile)
+Write-Host ''
+Write-Host ('upgrade this same profile later with: install.ps1 -Profile ' + $Profile + ' -Force')
 `
-writeFileSync(join(outDir, 'install.ps1'), installer.replace('__VERSION__', version).replace('__REPO__', repo))
+writeFileSync(join(outDir, 'install.ps1'), installer.replace('__VERSION__', version).replace('__REPO__', repo).replace('__PROFILE__', defaultProfile))
 
 // ---------------------------------------------------------------------------
 // 5. Report.

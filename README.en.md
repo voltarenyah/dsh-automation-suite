@@ -472,10 +472,22 @@ pwsh -NoProfile -File install.ps1
 ```
 
 It copies the profile's three files (`package.json` / `cordis.patch.yml` / `pnpm-workspace.yaml`)
-into `<DSH_HOME>/profiles/dsh-automation-suite/`, then uses DSH's bundled pnpm to install the six
-plugins' tarballs (release assets; the profile uses **direct URL dependencies**, so no npm account is
-needed). See the script header for `-DshHome` / `-Profile` / `-Force`. After installation, start with
-`dsh --profile dsh-automation-suite`.
+into **`<DSH_HOME>/profiles/dsh-automation-suite-v<version>/`** (the default name carries the
+release version), then uses DSH's bundled pnpm to install the seven plugins' tarballs (release
+assets; the profile uses **direct URL dependencies**, so no npm account is needed). The installer
+prints the start command, for example:
+
+```powershell
+dsh --profile dsh-automation-suite-v<version>
+```
+
+**Development and release builds coexist**: the development profile keeps the plain
+`dsh-automation-suite` name (`scripts/start-env.ps1` materializes it in the isolated
+`%USERPROFILE%\dsh-suite-env`), while each release gets its own versioned profile in
+`%USERPROFILE%\.dsh`. Different names and different homes, so both can run at once (use different
+ports). To keep one stable name and upgrade it in place, pass
+`-Profile dsh-automation-suite-release -Force`; the installer backs up that profile's
+`package.json` and `cordis.patch.yml` first. It always refuses to write through a junction/symlink.
 
 To generate the release directory (tarballs + profile + `install.ps1` + sha256 manifest), maintainers
 run:
@@ -487,7 +499,7 @@ node scripts/build-distribution.mjs
 Why the whole distribution cannot be installed with `dsh plugin add`: that command accepts only
 **bundles** carrying `dsh.bundle.patch`, whereas the blueprint declares `dsh.profile.bundles`, so it
 is rejected as `not-a-bundle`. For the option comparison, the two `ERR_PNPM_*` pitfalls, and the
-release and local-verification steps, see [`docs/distribution.md`](docs/distribution.md). The six
+release and local-verification steps, see [`docs/distribution.md`](docs/distribution.md). The seven
 plugins themselves are standard bundles and can still be installed individually with
 `dsh plugin --profile web add <package name or tarball>`.
 
