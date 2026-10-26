@@ -433,9 +433,17 @@ pnpm 安装七个插件的 tarball（Release 资产，profile 里是**直接 URL
 dsh --profile dsh-automation-suite-v<version>
 ```
 
+若启动报 `EADDRINUSE ... 127.0.0.1:3080`，说明 3080 已被别的进程占用（本机实测是 Windows 的
+**IP Helper** 服务），不是 DSH 自己冲突。加 `--port` 换一个即可：
+
+```powershell
+dsh --profile dsh-automation-suite-v<version> --port 3093
+dsh --profile dsh-automation-suite-v<version> --port 0      # 让系统挑空闲端口
+```
+
 **开发版与发布版并存**：开发版用 `dsh-automation-suite`（`scripts/start-env.ps1` 默认在隔离的
 `%USERPROFILE%\dsh-suite-env` 里物化），发布版用带版本号的 profile（默认落在
-`%USERPROFILE%\.dsh`）；两者名字与 home 都不同，可以同时启动（注意换端口）。想用一个固定名字
+`%USERPROFILE%\.dsh`）；两者名字与 home 都不同，可以同时启动（用 `--port` 错开端口）。想用一个固定名字
 原地升级，可显式传 `-Profile dsh-automation-suite-release -Force`——覆盖前会先备份该 profile 的
 `package.json` 与 `cordis.patch.yml`。安装器**拒绝**写入 junction/symlink（避免顺链接改到别处）。
 

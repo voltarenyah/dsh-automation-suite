@@ -482,6 +482,14 @@ prints the start command, for example:
 dsh --profile dsh-automation-suite-v<version>
 ```
 
+If startup fails with `EADDRINUSE ... 127.0.0.1:3080`, port 3080 is held by something else (on
+this machine it is Windows' **IP Helper** service), not by a DSH conflict. Pass `--port`:
+
+```powershell
+dsh --profile dsh-automation-suite-v<version> --port 3093
+dsh --profile dsh-automation-suite-v<version> --port 0      # let the OS pick a free port
+```
+
 **Development and release builds coexist**: the development profile keeps the plain
 `dsh-automation-suite` name (`scripts/start-env.ps1` materializes it in the isolated
 `%USERPROFILE%\dsh-suite-env`), while each release gets its own versioned profile in

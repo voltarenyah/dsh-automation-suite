@@ -200,6 +200,32 @@ pwsh -NoProfile -File install.ps1 -Profile dsh-automation-suite-release -Force
 - **junction/symlink 一律拒绝**（即使加 `-Force`）：顺着链接写会改到它指向的目录，
   安装器只提示用 `cmd /c rmdir` 拆链接。
 
+### 启动与端口
+
+DSH 的 Web 服务默认监听 **3080**。如果启动报：
+
+```
+Error: listen EADDRINUSE: address already in use 127.0.0.1:3080
+```
+
+说明 3080 被别的进程占了——本机实测是 Windows 服务 **IP Helper**（`iphlpsvc`，占用者显示为
+`svchost`），并不是 DSH 自己的另一个实例，关掉开发版 App 也不会释放。用 `Get-NetTCPConnection`
+确认占用者：
+
+```powershell
+Get-NetTCPConnection -State Listen -LocalPort 3080 |
+  ForEach-Object { Get-Process -Id $_.OwningProcess }
+```
+
+然后加 `--port` 换一个端口即可（3092–3100 在本机都空闲）：
+
+```powershell
+& "$env:LOCALAPPDATA\Programs\DeepSeek Harness\resources\runtime\cli\bin\dsh.cmd" `
+  --profile dsh-automation-suite-v<version> --port 3093
+```
+
+`--port 0` 让系统挑空闲端口，启动后按打印的带 token URL 访问。
+
 ### 开发版与发布版并存
 
 | 版本 | 默认 profile 名 | 默认 DSH_HOME | 怎么起 |
