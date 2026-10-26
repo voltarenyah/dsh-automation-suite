@@ -633,11 +633,12 @@ not require a rebuild:
 | `- insert: - id: preset-leader` | **Main agent**: the built-in `standard` tool list verbatim + engineering tool rows (TIA / git / context / graph) + policy text |
 | `- insert: - id: preset-auditor` | **Version management**: engineering context 3 + read-only files + `ask_user`/`todo`; no shell, no TIA atomic tools, no git |
 | `- insert: - id: preset-expert` | **Subagent**: a read-only engineering knowledge expert (graph discovery + query + four drill-down tools + read-only file search + `send_message`) |
+| `- id: preset-standard` … `preset-cordis` | The four built-in modes are `disabled: true` by default; they declare none of the engineering tool rows and would silently drop them, so the picker only offers the three suite presets |
 
 **To change policy text, edit only the four block scalars** (the global `personaPrefix`/`personaSuffix`,
-`preset-leader`'s persona, `preset-auditor`'s persona, and `preset-expert`'s persona). To switch to
-Chinese, or to lock the policy (add `disabled: true` to each of the four built-in presets), the file
-header comments show how.
+`preset-leader`'s persona, `preset-auditor`'s persona, and `preset-expert`'s persona). The file header
+comments show how to switch to Chinese; the four built-in presets are disabled by default (delete those
+four entries to restore the native modes — not recommended).
 
 #### Why the two agent tiers are split this way
 
@@ -682,8 +683,8 @@ immediately, and `personaSuffix` lands at the very end of the prompt.
 >
 > ⚠️ Engineering tools are **dispatched per preset**: the host surface keeps only the
 > controller/engine child processes and services; model-facing tool rows are declared in presets.
-> So switching to a built-in preset that does not declare these rows (`standard` / `minimal` / …)
-> means **TIA, engineering-context, and graph tools do not exist** — this is intentional. See
+> The four built-in presets are disabled by default; if you restore one and switch to it,
+> **TIA, engineering-context, and graph tools do not exist** — this is intentional. See
 > [`docs/decisions.md`](docs/decisions.md) **D23**.
 
 ### 8.2 Plugin configuration

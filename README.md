@@ -561,10 +561,11 @@ plugin_manager(action: "install_bundle", target: "C:\\Users\\Ansel\\dsh-automati
 | `- insert: - id: preset-leader` | **主 agent**：内置 `standard` 的工具清单原样 + 编辑与检查面（TIA / git / `project_status` / 图谱检查面）+ 政策文本；**不含**版本工作流 |
 | `- insert: - id: preset-auditor` | **版本管理（leader 派它跑慢活）**：工程上下文 4（含 `project_commit`）+ `project_diff` + 图谱 5（含 ingest）+ 只读文件 + `ask_user`/`send_message`/`todo`；无 shell、无 TIA 原子工具、无 git |
 | `- insert: - id: preset-expert` | **子 agent**：只读的工程知识专家（图谱发现 + 查询 + 四个下钻工具 + 只读文件检索 + `send_message`） |
+| `- id: preset-standard` … `preset-cordis` | 四个内置模式默认 `disabled: true`；它们不声明工程工具行，切过去会静默丢工具，所以选择器只保留发行版的三个 preset |
 
 **要改政策文字，只改四处 block scalar**（全局 `personaPrefix`/`personaSuffix`、`preset-leader`
-的 persona、`preset-auditor` 的 persona、`preset-expert` 的 persona）。想换成中文、或锁死政策（给四个内置 preset 各加一条
-`disabled: true`），写法都在文件头注释里。
+的 persona、`preset-auditor` 的 persona、`preset-expert` 的 persona）。想换成中文，写法在文件头注释里；
+四个内置 preset 的禁用条目默认已生效（要恢复原生模式，删掉那四条，不推荐）。
 
 #### 两层 agent 为什么这样切
 
@@ -599,8 +600,8 @@ plugin_manager(action: "install_bundle", target: "C:\\Users\\Ansel\\dsh-automati
 > [profile/dsh-automation-suite/README.md](profile/dsh-automation-suite/README.md)。
 >
 > ⚠️ 工程工具**按 preset 分发**：宿主面只留控制器/引擎子进程与服务，模型面工具行写在 preset 里。
-> 所以切到没声明这些行的内置 preset（`standard` / `minimal` / …）时，**TIA、工程上下文、
-> 图谱工具都不存在**——这是有意的。详见 [`docs/decisions.md`](docs/decisions.md) **D23**。
+> 四个内置 preset 默认已禁用；若手动恢复并切过去，**TIA、工程上下文、图谱工具都不存在**——
+> 这是有意的。详见 [`docs/decisions.md`](docs/decisions.md) **D23**。
 
 ### 8.2 插件配置
 

@@ -60,6 +60,10 @@
 `subagent` 工具的 `allowedAgentPresets` 就是这两个 id，leader 用 `agent_preset: auditor` 或
 `agent_preset: expert` 分派；`auditor` 也可以由用户直接开成会话（它有 `ask_user_question` 通道）。
 
+> 四个内置 preset（Standard / PTC / Minimal / Creator）在 `cordis.patch.yml` 里默认
+> `disabled: true`：它们不声明本发行版的工程工具行，切过去会静默丢工具。选择器因此只剩
+> 下面三个；要恢复原生模式，删掉那四条 `- id: preset-*` 即可（不推荐）。
+
 | preset | 谁用 | 工具面 |
 |---|---|---|
 | **`leader`** | 主 agent | 内置 `standard` 的全部工具 + **编辑与检查面**：TIA 26、工程上下文 `project_status` 1、图谱 5（`includeIngest: false, includeDrilldown: inspect`）、git 12。**没有** create / sync / commit / diff / ingest（D30） |
@@ -96,8 +100,8 @@ DSH 的工具可见性是**按声明作用域**解析的（`dsh-tools` 的 `view
   `/status` 只给 `leader`；宿主面那份 `disabled: true`（否则这些工具会落在全局层被所有 agent 继承）。
   这个拆分本身是政策（D30）：**版本工作流只有 auditor 有**，leader 想创建/同步/看差异/提交，只能派发。
 
-⇒ 一个会话能用哪些工程工具，取决于它的 preset。切到没有声明这些行的内置 preset
-（`standard` / `minimal` / …）时，**这些工具不存在**——这是有意的，不是故障。
+⇒ 一个会话能用哪些工程工具，取决于它的 preset。内置 preset 默认已禁用；若手动恢复并切过去，
+这些工具仍然不存在——这是有意的，不是故障。
 
 > ✅ `dsh-tool-git` 的 12 个模型工具已从宿主行拆到 `dsh-tool-git/tools`，只挂 `leader`；
 > `auditor` / `expert` 看不到它们。宿主行保留 `gitContext` 服务与破坏性命令闸门。
@@ -134,8 +138,7 @@ DSH 的工具可见性是**按声明作用域**解析的（`dsh-tools` 的 `view
 
 **要改政策文本，只改文件里那四处 block scalar**（全局的 `personaPrefix`/`personaSuffix`、
 `preset-leader` 的 persona、`preset-auditor` 的 persona、`preset-expert` 的 persona）。
-文件头部注释记录了另外两种改法：把它换成中文、以及给四个内置 preset 各加一条 `disabled: true`
-把政策锁死（不许切回无政策的 preset）。
+四个内置 preset 的 `disabled: true` 默认生效，原因与恢复办法在文件头部注释里；想换成中文也在那里。
 
 ### 为什么必须整份重述 `standard` 的 plugins 列表
 

@@ -60,18 +60,13 @@
 #    记录着旧 id 的会话与独立选过 preset 的子会话无法恢复（docs/decisions.md D23）：
 #    `suite` → `leader` 这一次改名就属于这种情况。
 #
-# ── 想锁死政策（不许切回无政策的 preset）──────────────────────────────────────
-# 给四个内置 preset 各加一条**只改 disabled** 的覆盖补丁即可 —— 不动 config，所以不会
-# 碰到它们各自的工具面：
-#
-#   - id: preset-standard
-#     disabled: true
-#   - id: preset-ptc
-#     disabled: true
-#   - id: preset-minimal
-#     disabled: true
-#   - id: preset-cordis
-#     disabled: true
+# ── 内置 preset 默认禁用（锁死政策）────────────────────────────────────────────
+# 本发行版的工具面与政策只存在于 leader / auditor / expert 三个 preset。切到内置的
+# Standard / PTC / Minimal / Creator 会**静默丢掉** TIA、git、工程上下文与图谱工具
+# （D23：工具面按 preset 声明），所以这里把四个内置 preset 整行禁用。
+# `agentPresets.list()` 只返回已注册的 preset，被禁用的行不会出现在选择器里。
+# 只改 disabled、不动 config，所以不会碰到它们各自的工具面；确实需要原生模式时，
+# 删掉下面四条并在 UI 里重选即可（不推荐，等于放弃发行版政策）。
 #
 # ── 想改政策文本：只改下面四处 block scalar ───────────────────────────────────
 #    （全局 system-prompt、preset-leader 的 persona、preset-auditor 的 persona、
@@ -105,6 +100,17 @@
 - id: agent-preset-registry
   config:
     default: leader
+
+# 内置 preset 默认禁用：选择器里只保留发行版的 leader / auditor / expert。
+# 行 id 由 @deepseek-ai/dsh-web-app 的 presets/*.patch.yml 插入，这里按 id 关掉。
+- id: preset-standard
+  disabled: true
+- id: preset-ptc
+  disabled: true
+- id: preset-minimal
+  disabled: true
+- id: preset-cordis
+  disabled: true
 
 # 子 agent 的并发上限：同时最多 2 个（宿主默认 8）。
 #
