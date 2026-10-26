@@ -151,18 +151,22 @@ dist/release/<version>/
 
 ## 3. 发布步骤（方案 A）
 
+> 正式发布请按 [`releases.md`](releases.md) 的检查清单执行：**先提交内容、再打 tag、再创建
+> Release**。本节只说明产物如何生成与上传；版本台账和 tag 规则见该文件。
+
 前提：`packages/*/lib` 已构建（`pnpm -r build`；C# 产物 `controller/bin`、`engine/bin` 已进 git）。
 
 ```powershell
 # 1. 生成发布目录（<version> 同时决定 tag 与默认 profile 名）
-node scripts/build-distribution.mjs --version 0.1.1
+#    新版本必须显式传 --version；不带时脚本会用最新 tag（等于重建旧版）
+node scripts/build-distribution.mjs --version <x.y.z>
 
 # 2. 打一个便于分发的 zip（install.ps1 与 profile/ 必须在一起）
-Compress-Archive -Path dist/release/0.1.1/* -DestinationPath dist/dsh-automation-suite-0.1.1.zip
+Compress-Archive -Path dist/release/<x.y.z>/* -DestinationPath dist/dsh-automation-suite-<x.y.z>.zip
 
 # 3. 建 Release 并上传：tarball 必须在 assets 根路径下，URL 才对得上
-gh release create v0.1.1 --title "dsh-automation-suite 0.1.1" --notes "…"
-gh release upload v0.1.1 dist/release/0.1.1/assets/*.tgz
+gh release create v<x.y.z> --verify-tag --title "dsh-automation-suite <x.y.z>" --notes-file docs/releases/v<x.y.z>.md
+gh release upload v<x.y.z> dist/release/<x.y.z>/assets/*.tgz
 gh release upload v0.1.1 dist/dsh-automation-suite-0.1.1.zip
 ```
 

@@ -48,8 +48,31 @@ function parseArgs(argv) {
 const args = parseArgs(process.argv.slice(2))
 const blueprintDir = join(root, 'profile', 'dsh-automation-suite')
 const blueprint = JSON.parse(readFileSync(join(blueprintDir, 'package.json'), 'utf8'))
-const version = args.version ?? blueprint.version ?? '0.1.0'
+
+// The distribution version is independent of the plugin versions. When --version
+// is omitted, reuse the latest release tag instead of silently falling back to
+// the blueprint's 0.1.0 (which would rebuild an already-published release).
+function gitTags() {
+  try {
+    return execFileSync('git', ['tag', '--sort=-v:refname'], { cwd: root, encoding: 'utf8' })
+      .trim()
+      .split(/\r?\n/)
+      .filter(Boolean)
+  } catch {
+    return []
+  }
+}
+const tags = gitTags()
+const latestTag = tags.find((name) => /^v\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(name))
+const version = args.version ?? (latestTag === undefined ? undefined : latestTag.slice(1)) ?? blueprint.version ?? '0.1.0'
 const tag = args.tag ?? `v${version}`
+
+if (args.version === undefined && latestTag !== undefined) {
+  process.stdout.write(`build-distribution: no --version; rebuilding latest tag ${latestTag}\n`)
+}
+if (tags.includes(`v${version}`)) {
+  process.stdout.write(`build-distribution: note: tag v${version} already exists; a new release needs a new --version\n`)
+}
 // One profile per release, so installing a newer release never collides with the
 // previous one (and a development profile of the same edition keeps the plain
 // 'dsh-automation-suite' name).
