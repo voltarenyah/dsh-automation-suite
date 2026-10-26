@@ -511,6 +511,10 @@ release and local-verification steps, see [`docs/distribution.md`](docs/distribu
 plugins themselves are standard bundles and can still be installed individually with
 `dsh plugin --profile web add <package name or tarball>`.
 
+Desktop icons, standalone windows, and installers are the next stage; for the design, artifacts,
+failure handling, and phased effort see [`docs/desktop-packaging.md`](docs/desktop-packaging.md)
+(design final, not implemented yet).
+
 ### 6.4 You must configure a model yourself on first entry
 
 After startup, `dsh` prints a **URL with a token** and opens it in the default browser automatically
@@ -1053,6 +1057,7 @@ The differences between `dsh-tool-git` and this repo (package-name policy, runti
 | [`packages/dsh-engineering-context/README.md`](packages/dsh-engineering-context/README.md) | usage, configuration, and development commands of the engineering-context plugin (**S2 implemented**: create + status + sync) |
 | [`packages/dsh-engineering-context/docs/`](packages/dsh-engineering-context/docs/) | the plugin's design and trade-offs: `ARCHITECTURE.md` (core architecture, scope model, version management, tool surface), `PATH-RULES.md` (in-workspace path rules, ledger/manifest), `decisions.md` (numbered decisions D1–D26) |
 | [`docs/distribution.md`](docs/distribution.md) | **Public release and installation**: measured DSH install surface (`dsh plugin` spec forms, bundle reconciliation, patch semantics, two pnpm 11 errors), comparison of three packaging approaches, release steps, and verification records |
+| [`docs/desktop-packaging.md`](docs/desktop-packaging.md) | **Desktop shell and packaging plan (design final, not implemented yet)**: WebView2 window, preinstalled-or-downloaded DSH at install time, Inno Setup installer, app-layer auto-update, unsigned policy, artifacts/layouts/failure handling/acceptance checklist, and phased effort |
 | [`profile/dsh-automation-suite/README.md`](profile/dsh-automation-suite/README.md) | composition of the blueprint, its three deployment methods, and how to verify it |
 | [`packages/dsh-tia-openness-v17-min/README.md`](packages/dsh-tia-openness-v17-min/README.md) | complete TIA plugin documentation (verification state, protocol, tools, error codes, V17 API notes) |
 | [`packages/dsh-tia-openness-v17-min/docs/`](packages/dsh-tia-openness-v17-min/docs/) | `PROTOCOL.md` (authoritative wire protocol), `decisions.md` (technical trade-offs), `REAL-RUN.md` (real-project runs), `FUNCTIONAL-TEST.md`, `verification.md` (verification checklist), `ECOSYSTEM-COMPAT.md` (ecosystem compatibility and accident records) |
