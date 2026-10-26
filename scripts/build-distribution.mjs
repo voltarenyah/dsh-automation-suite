@@ -54,6 +54,10 @@ const tag = args.tag ?? `v${version}`
 // previous one (and a development profile of the same edition keeps the plain
 // 'dsh-automation-suite' name).
 const defaultProfile = `dsh-automation-suite-v${version}`
+// A release-private DSH_HOME. Workspace lists, sessions, settings, and model
+// credentials live under DSH_HOME, so sharing the everyday ~/.dsh would make the
+// edition show (and write) the desktop app's workspace registry.
+const defaultHomeName = 'dsh-automation-suite-home'
 const repo = args.repo ?? 'voltarenyah/dsh-automation-suite'
 const outRoot = resolve(root, args.out ?? 'dist/release')
 const outDir = join(outRoot, version)
@@ -220,7 +224,14 @@ const installer = String.raw`# Install the dsh-automation-suite edition into an 
 # The profile is a normal DSH profile directory; nothing outside
 # <DshHome>/profiles/<Profile>/ is written.
 #
-# The default name carries the release version (for example
+# The default DSH_HOME is a release-private directory
+# (%USERPROFILE%\__HOME__), not the everyday ~/.dsh. Workspace
+# lists, sessions, settings, and model credentials all live under DSH_HOME; a
+# private home keeps this edition's workspace list free of the projects opened
+# in the everyday DeepSeek Harness desktop app, and stops the two apps from
+# writing the same workspace registry.
+#
+# The default profile name carries the release version (for example
 # 'dsh-automation-suite-v0.1.1'), so:
 #   - a development profile of the same edition (normally 'dsh-automation-suite'
 #     in the isolated DSH_HOME used by scripts/start-env.ps1) can coexist, and
@@ -231,7 +242,7 @@ const installer = String.raw`# Install the dsh-automation-suite edition into an 
 # next to them before they are overwritten. A junction/symlink is always
 # refused, because writing through one would modify whatever it points at.
 param(
-  [string]$DshHome = $(if ($env:DSH_HOME) { $env:DSH_HOME } else { Join-Path $env:USERPROFILE '.dsh' }),
+  [string]$DshHome = (Join-Path $env:USERPROFILE '__HOME__'),
   [string]$Profile = '__PROFILE__',
   [string]$DshExe = '',
   [switch]$Force
@@ -308,14 +319,23 @@ $env:DSH_HOME = $DshHome
 & $DshExe plugin --profile $Profile install
 if ($LASTEXITCODE -ne 0) { throw "dsh plugin install failed with exit code $LASTEXITCODE" }
 
+# Remember where this copy was installed so start.ps1 needs no arguments.
+# It lives next to install.ps1 in the extracted release folder.
+try {
+  $state = [ordered]@{ dshHome = $DshHome; profile = $Profile } | ConvertTo-Json
+  Set-Content -LiteralPath (Join-Path $here 'install.json') -Value $state -Encoding utf8
+} catch {
+  Write-Host ('warning: could not write install.json next to install.ps1: ' + $_.Exception.Message)
+}
+
 Write-Host ''
 Write-Host 'installed. start it with:'
-Write-Host ('  $env:DSH_HOME = ''' + $DshHome + '''')
-Write-Host ('  & ''' + $DshExe + ''' --profile ' + $Profile)
+Write-Host ('  "' + $here + '\start.cmd"')
+Write-Host '(or: start.cmd -DshHome ... -Profile ... to override; start.ps1 accepts -Port / -NoOpen)'
 Write-Host ''
 Write-Host ('upgrade this same profile later with: install.ps1 -Profile ' + $Profile + ' -Force')
 `
-writeFileSync(join(outDir, 'install.ps1'), installer.replace('__VERSION__', version).replace('__REPO__', repo).replace('__PROFILE__', defaultProfile))
+writeFileSync(join(outDir, 'install.ps1'), installer.replace('__VERSION__', version).replace('__REPO__', repo).replaceAll('__PROFILE__', defaultProfile).replaceAll('__HOME__', defaultHomeName))
 
 // Double-clickable entry point. Files extracted from a downloaded zip carry the
 // mark-of-the-web (ZoneId=3), and the default RemoteSigned execution policy then
@@ -339,6 +359,100 @@ exit /b %CODE%
 `
 writeFileSync(join(outDir, 'install.cmd'), installerCmd)
 
+// start.ps1 / start.cmd: launch the installed release with its own DSH_HOME and
+// a free port. install.json (written by install.ps1) records the chosen home and
+// profile, so the double-click entry point needs no arguments.
+const starter = String.raw`# Start the installed dsh-automation-suite release.
+#
+#   start.cmd                  double-click; picks a free port
+#   start.cmd -NoOpen          do not open a browser
+#   start.cmd -Port 3093       pin the port
+#
+# install.json, written by install.ps1, records the DSH_HOME and profile this
+# copy was installed with; -DshHome / -Profile override them.
+param(
+  [string]$DshHome = '',
+  [string]$Profile = '',
+  [int]$Port = 0,
+  [switch]$NoOpen,
+  [string]$DshExe = ''
+)
+
+$ErrorActionPreference = 'Stop'
+$here = Split-Path -Parent $PSCommandPath
+
+$state = $null
+$statePath = Join-Path $here 'install.json'
+if (Test-Path $statePath) {
+  try { $state = Get-Content -LiteralPath $statePath -Raw | ConvertFrom-Json } catch { }
+}
+if (-not $DshHome -and $state) { $DshHome = $state.dshHome }
+if (-not $DshHome) { $DshHome = Join-Path $env:USERPROFILE '__HOME__' }
+if (-not $Profile -and $state) { $Profile = $state.profile }
+if (-not $Profile) { $Profile = '__PROFILE__' }
+
+if (-not (Test-Path (Join-Path $DshHome "profiles\$Profile\package.json"))) {
+  throw "profile '$Profile' is not installed under '$DshHome'. Run install.cmd first, or pass -DshHome/-Profile."
+}
+
+# Same resolution order as install.ps1: explicit/env, shipped installation, PATH.
+if (-not $DshExe) {
+  $candidates = @()
+  if ($env:DSH_EXE) { $candidates += $env:DSH_EXE }
+  $appRoots = @()
+  if ($env:DSH_APP_ROOT) { $appRoots += $env:DSH_APP_ROOT }
+  $appRoots += (Join-Path $env:LOCALAPPDATA 'Programs\DeepSeek Harness')
+  foreach ($appRoot in $appRoots) {
+    $candidates += (Join-Path $appRoot 'resources\runtime\cli\bin\dsh.cmd')
+  }
+  $onPath = Get-Command dsh -ErrorAction SilentlyContinue
+  if ($onPath) { $candidates += $onPath.Source }
+  $DshExe = $candidates | Where-Object { $_ -and (Test-Path $_) } | Select-Object -First 1
+}
+if (-not $DshExe) { throw 'cannot find dsh. Pass -DshExe <path\to\dsh.cmd> or set DSH_EXE.' }
+
+# DSH's web server defaults to 3080, which is taken on some machines (for
+# example by the Windows IP Helper service), so pick a free port unless pinned.
+if ($Port -le 0) {
+  $candidate = 3093
+  while ($candidate -lt 3200) {
+    try {
+      $listener = [System.Net.Sockets.TcpListener]::new([System.Net.IPAddress]::Loopback, $candidate)
+      $listener.Start()
+      $listener.Stop()
+      break
+    } catch {
+      $candidate += 1
+    }
+  }
+  if ($candidate -ge 3200) { $candidate = 0 }
+  $Port = $candidate
+}
+
+$env:DSH_HOME = $DshHome
+Write-Host "dsh-automation-suite $Profile"
+Write-Host "  DSH_HOME = $DshHome"
+Write-Host "  port     = $Port"
+$launchArgs = @('--profile', $Profile, '--port', "$Port")
+if ($NoOpen) { $launchArgs += '--no-open' }
+& $DshExe @launchArgs
+exit $LASTEXITCODE
+`
+writeFileSync(join(outDir, 'start.ps1'), starter.replaceAll('__HOME__', defaultHomeName).replaceAll('__PROFILE__', defaultProfile))
+
+const starterCmd = String.raw`@echo off
+setlocal
+rem Double-click to start the installed release with its own DSH_HOME and a free
+rem port. The per-process execution-policy bypass avoids the mark-of-the-web
+rem block on start.ps1; errors keep the window open.
+set "PS=powershell"
+where pwsh >nul 2>nul
+if %errorlevel%==0 set "PS=pwsh"
+"%PS%" -NoProfile -ExecutionPolicy Bypass -File "%~dp0start.ps1" %*
+if errorlevel 1 pause
+`
+writeFileSync(join(outDir, 'start.cmd'), starterCmd)
+
 // ---------------------------------------------------------------------------
 // 5. Report.
 // ---------------------------------------------------------------------------
@@ -348,3 +462,5 @@ process.stdout.write(`  assets:   ${assetRows.length} tarballs (${(assetRows.red
 process.stdout.write(`  profile:  ${Object.keys(profileDependencies).length} dependencies\n`)
 process.stdout.write('\nnext: upload assets/ + install.ps1 + profile/ to the GitHub release,\n')
 process.stdout.write('or run install.ps1 directly from this folder.\n')
+
+

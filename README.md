@@ -425,29 +425,25 @@ pwsh -NoProfile -File install.ps1
 ```
 
 它把 profile 的三件套（`package.json` / `cordis.patch.yml` / `pnpm-workspace.yaml`）复制到
-**`<DSH_HOME>/profiles/dsh-automation-suite-v<version>/`**（默认名带版本号），再用 DSH 自带的
-pnpm 安装七个插件的 tarball（Release 资产，profile 里是**直接 URL 依赖**，不需要 npm 账号）。
-装完脚本会打印启动命令，形如：
+**专用 home** `%USERPROFILE%\dsh-automation-suite-home\profiles\dsh-automation-suite-v<version>\`
+（不是日常 `~/.dsh`），再用 DSH 自带的 pnpm 安装七个插件的 tarball（Release 资产，profile 里是
+**直接 URL 依赖**，不需要 npm 账号）。同时在解压目录写下 `install.json`，记录这次用的 home 与 profile。
 
-```powershell
-dsh --profile dsh-automation-suite-v<version>
-```
+**双击 `start.cmd` 启动**：它读取 `install.json`、设置 `DSH_HOME`、从 3093 起自动挑一个空闲端口并打开浏览器，
+不需要记 `--profile` / `--port`。可选：`start.cmd -NoOpen`、`start.cmd -Port 3093`。
 
-若启动报 `EADDRINUSE ... 127.0.0.1:3080`，说明 3080 已被别的进程占用（本机实测是 Windows 的
-**IP Helper** 服务），不是 DSH 自己冲突。加 `--port` 换一个即可：
-
-```powershell
-dsh --profile dsh-automation-suite-v<version> --port 3093
-dsh --profile dsh-automation-suite-v<version> --port 0      # 让系统挑空闲端口
-```
+为什么用专用 home：左侧 workspace 列表来自 `<DSH_HOME>\storages\workspace.json` 这份注册表，
+会话、设置、模型凭据也都在 DSH_HOME 下。与 desktop 共用 `~/.dsh` 会让发布版显示 desktop 打开过的项目，
+并互相回写同一份注册表；独立 home 后，发布版的 workspace 列表从空开始，只包含你在这个 App 里添加的工程。
 
 **开发版与发布版并存**：开发版用 `dsh-automation-suite`（`scripts/start-env.ps1` 默认在隔离的
 `%USERPROFILE%\dsh-suite-env` 里物化），发布版用带版本号的 profile（默认落在
-`%USERPROFILE%\.dsh`）；两者名字与 home 都不同，可以同时启动（用 `--port` 错开端口）。想用一个固定名字
-原地升级，可显式传 `-Profile dsh-automation-suite-release -Force`——覆盖前会先备份该 profile 的
-`package.json` 与 `cordis.patch.yml`。安装器**拒绝**写入 junction/symlink（避免顺链接改到别处）。
+`%USERPROFILE%\dsh-automation-suite-home`）；两者在 workspace、会话、设置、凭据上完全隔离，
+可以同时启动（`start.cmd` 会自动错开端口）。想用一个固定名字原地升级，可显式传
+`-Profile dsh-automation-suite-release -Force`——覆盖前会先备份该 profile 的 `package.json` 与
+`cordis.patch.yml`。安装器**拒绝**写入 junction/symlink（避免顺链接改到别处）。
 
-维护者生成发布目录（tarball + profile + `install.ps1` + sha256 清单）：
+维护者生成发布目录（tarball + profile + `install.cmd` / `start.cmd` + sha256 清单）：
 
 ```powershell
 node scripts/build-distribution.mjs

@@ -183,58 +183,61 @@ gh release upload v0.1.1 dist/dsh-automation-suite-0.1.1.zip
 > 结束时 `pause`，不会改动机器上的执行策略。
 
 ```powershell
-# 从 Release 下载 zip，解压后：默认装到 dsh-automation-suite-v<version>
+# 解压后双击 install.cmd（推荐），或：
 pwsh -NoProfile -File install.ps1
-# 安装到隔离的 home：
-pwsh -NoProfile -File install.ps1 -DshHome C:\temp\dsh-home
-# 用固定名字（便于原地升级）：
-pwsh -NoProfile -File install.ps1 -Profile dsh-automation-suite-release
-# 覆盖已存在的 profile（先备份 package.json / cordis.patch.yml）：
+# 自定义 home / profile：
+pwsh -NoProfile -File install.ps1 -DshHome C:\temp\dsh-home -Profile my-suite
+# 覆盖已存在的真实 profile（先备份 package.json / cordis.patch.yml）：
 pwsh -NoProfile -File install.ps1 -Profile dsh-automation-suite-release -Force
 ```
 
-- **默认 profile 名带版本号**（`dsh-automation-suite-v<version>`）：每次发布一个独立目录，
-  装新版本不会和旧版本或开发版重名。
-- 脚本只写 `<DshHome>/profiles/<Profile>/` 里的文件，然后调用 DSH 自带的 pnpm 安装插件。
-  默认 home 是 `~/.dsh`（设了 `DSH_HOME` 就用它）；要完全隔离请显式传 `-DshHome`。
-- **junction/symlink 一律拒绝**（即使加 `-Force`）：顺着链接写会改到它指向的目录，
-  安装器只提示用 `cmd /c rmdir` 拆链接。
+- **默认 home 是发布版专用目录**：`%USERPROFILE%\dsh-automation-suite-home`，不是日常 `~/.dsh`。
+- **默认 profile 名带版本号**：`dsh-automation-suite-v<version>`，每次发布一个独立目录。
+- `install.ps1` 在解压目录写 `install.json`（记录这次用的 home 与 profile），`start.cmd` 据此启动。
+- **junction/symlink 一律拒绝**（即使加 `-Force`）；对真实 profile 加 `-Force` 会先备份两个清单文件。
 
-### 启动与端口
+### 为什么发布版默认用独立 DSH_HOME
 
-DSH 的 Web 服务默认监听 **3080**。如果启动报：
+DSH 的左侧 workspace 列表**不是扫描本机目录**，而是 `<DSH_HOME>/storages/workspace.json`
+这份注册表；会话、设置、模型凭据也都存放在 DSH_HOME 下。发布版如果装进日常 `~/.dsh`：
 
-```
-Error: listen EADDRINUSE: address already in use 127.0.0.1:3080
-```
+- 列表会显示 desktop 里打开过的所有项目（读的是同一份注册表）；
+- 两个 App 会互相回写同一份注册表（顺序、置顶、归档都会串）。
 
-说明 3080 被别的进程占了——本机实测是 Windows 服务 **IP Helper**（`iphlpsvc`，占用者显示为
-`svchost`），并不是 DSH 自己的另一个实例，关掉开发版 App 也不会释放。用 `Get-NetTCPConnection`
-确认占用者：
+使用独立 home 后，发布版的注册表从空开始，只包含你在这个 App 里添加的 workspace；
+desktop 的列表完全不受影响。代价是模型 API key 要在新 home 里重新配一次，旧会话也不共享
+（这正是"这个 App 只干 automation-suite 的事"想要的隔离）。
 
-```powershell
-Get-NetTCPConnection -State Listen -LocalPort 3080 |
-  ForEach-Object { Get-Process -Id $_.OwningProcess }
-```
+### 启动（start.cmd）
 
-然后加 `--port` 换一个端口即可（3092–3100 在本机都空闲）：
+双击 `start.cmd` 即可。它读取 `install.json` 的 home/profile，设置 `DSH_HOME`，
+从 **3093** 起找一个空闲端口，启动 DSH 并打开浏览器。其它用法：
 
 ```powershell
+start.cmd -NoOpen                 # 不开浏览器
+start.cmd -Port 3093              # 固定端口
+start.cmd -DshHome C:\temp\dsh-home -Profile my-suite
+```
+
+手动启动（调试时）：
+
+```powershell
+$env:DSH_HOME = "$env:USERPROFILE\dsh-automation-suite-home"
 & "$env:LOCALAPPDATA\Programs\DeepSeek Harness\resources\runtime\cli\bin\dsh.cmd" `
   --profile dsh-automation-suite-v<version> --port 3093
 ```
 
-`--port 0` 让系统挑空闲端口，启动后按打印的带 token URL 访问。
+DSH Web 默认监听 **3080**；被别的进程占用时（本机实测是 Windows 服务 **IP Helper**，
+占用者显示为 `svchost`）需要加 `--port`，`start.cmd` 已经自动处理。
 
 ### 开发版与发布版并存
 
 | 版本 | 默认 profile 名 | 默认 DSH_HOME | 怎么起 |
 |---|---|---|---|
 | 开发版（当前工作树） | `dsh-automation-suite` | `%USERPROFILE%\dsh-suite-env`（`start-env.ps1` 默认） | `pwsh scripts\start-env.ps1 -Restart` |
-| 发布版（Release 资产） | `dsh-automation-suite-v<version>` | `%USERPROFILE%\.dsh` | `install.ps1` 后按打印的命令 |
+| 发布版（Release 资产） | `dsh-automation-suite-v<version>` | `%USERPROFILE%\dsh-automation-suite-home` | 双击 `start.cmd` |
 
-两者名字与 home 都不同，可以同时运行（换端口即可）。开发版一直在自己的隔离 home 里，
-不会被发布版覆盖；发布版按版本落在日常 home 里，各自独立。
+两者在 workspace、会话、设置、凭据上**完全隔离**，可以同时运行（`start.cmd` 会自动错开端口）。
 
 ### 升级与回退
 
@@ -247,15 +250,18 @@ Get-NetTCPConnection -State Listen -LocalPort 3080 |
   覆盖前会把该 profile 的 `package.json` 与 `cordis.patch.yml` 备份为 `.bak-<timestamp>`。
   模型凭据在 `<DshHome>/.credentials.yaml`，不随 profile 覆盖丢失。
 - **回退**：用旧版本的 profile 名启动，或把备份文件改名回去后重跑 `dsh plugin install`。
+- **之前装进 `~/.dsh` 的发布版 profile**：新版不再使用它，可留可删；它和 desktop 共享注册表，
+  留着只会继续出现在日常 home 里。
 
 首次进入仍需自己配模型（设置 → Models 填 API key），与普通 DSH 一致。
 
 ### 卸载
 
-profile 目录里可能有 `link:` 与 pnpm 的 junction，**不要**用会跟进链接的递归删除：
+整个发布版 home 是自包含的；不需要时直接删掉（里面可能有 pnpm junction，必须用
+`cmd /c rmdir`，不要用会跟进链接的递归删除）：
 
 ```powershell
-cmd /c rmdir /s /q "%USERPROFILE%\.dsh\profiles\dsh-automation-suite-v0.1.1"
+cmd /c rmdir /s /q "%USERPROFILE%\dsh-automation-suite-home"
 ```
 
 ---
@@ -265,20 +271,22 @@ cmd /c rmdir /s /q "%USERPROFILE%\.dsh\profiles\dsh-automation-suite-v0.1.1"
 发布前不必发到 GitHub，用本地 HTTP 服务器就能验完整链路：
 
 ```powershell
-node scripts/build-distribution.mjs --version 0.1.1 --base-url http://127.0.0.1:8766 --out dist/release/test
+node scripts/build-distribution.mjs --version 0.1.3 --base-url http://127.0.0.1:8766 --out dist/release/test
 # 另开一个进程，把 assets 目录当作静态站点
-python -m http.server 8766 --bind 127.0.0.1 --directory dist/release/test/0.1.1/assets
+python -m http.server 8766 --bind 127.0.0.1 --directory dist/release/test/0.1.3/assets
 
-# 默认 profile 名为 dsh-automation-suite-v0.1.1
-pwsh -NoProfile -File dist/release/test/0.1.1/install.ps1 -DshHome C:\temp\dsh-test
+# 默认 profile 名为 dsh-automation-suite-v0.1.3，默认 home 是专用目录；
+# 测试时用 -DshHome 指到临时目录，避免碰真实的发布版 home
+pwsh -NoProfile -File dist/release/test/0.1.3/install.ps1 -DshHome C:\temp\dsh-test
 ```
 
-实测结果（DSH 0.2.1-rc.2，v0.1.1）：
+实测结果（DSH 0.2.1-rc.2，v0.1.3）：
 
 | 检查 | 结果 |
 |---|---|
-| `install.ps1` | 退出 0，七个包 + `dsh-opencode-go` 装上；profile 为 `dsh-automation-suite-v0.1.1` |
-| 与已存在的 `dsh-automation-suite` 目录并存 | 默认安装不碰它，两个 profile 同时存在 |
+| `install.ps1` | 退出 0，七个包 + `dsh-opencode-go` 装上；profile 为 `dsh-automation-suite-v0.1.3`，并写出 `install.json` |
+| `start.cmd` | 读取 `install.json` 的 home/profile；3080 被占用时自动选到 **3093** 并正常监听 |
+| 专用 home 的 workspace 注册表 | 首次启动后 `<home>/storages/workspace.json` 为 `initialized=true`、**0 条 workspace**，不含 desktop 的项目 |
 | `--dump-config` | **退出 0，2033 行**；8 个插件行（含 `plcsim-advanced`）、3 个 preset、`engineering-context` 为 `disabled: true`，无 `not found` / 错误 |
 | `--dump-config-schema` | 退出 1（预期：preset 行的 `unrecognized Loader tree carrier`，与插件无关）；输出含 `opennessDir`、`destructivePolicy`，证明插件被真实 import |
 | 显式装到已存在的 profile | 报错并提示 `-Profile` / `-Force`，不写任何文件 |
@@ -304,6 +312,8 @@ pwsh -NoProfile -File dist/release/test/0.1.1/install.ps1 -DshHome C:\temp\dsh-t
   900000（在 profile 的 `cordis.patch.yml` 里覆盖，或用应用的设置页）。
 - **版本化 profile 会累积**：每个版本一个目录；不需要的旧版本按 §4「卸载」删掉即可。
   想只保留一个并原地升级，用固定 `-Profile` + `-Force`（会备份两个清单文件）。
+- **独立 home 的代价**：模型 API key 要在发布版 home 里重新配一次；desktop 的会话与 workspace
+  不会出现在发布版里（这正是隔离目标）。整个 home 自包含，删掉目录即完全回退。
 - 没有自动更新检查：升级 = 装新版本（并存），或对固定名字的 profile 重跑 `install.ps1 -Force`。
 
 ---

@@ -473,33 +473,32 @@ pwsh -NoProfile -File install.ps1
 ```
 
 It copies the profile's three files (`package.json` / `cordis.patch.yml` / `pnpm-workspace.yaml`)
-into **`<DSH_HOME>/profiles/dsh-automation-suite-v<version>/`** (the default name carries the
-release version), then uses DSH's bundled pnpm to install the seven plugins' tarballs (release
-assets; the profile uses **direct URL dependencies**, so no npm account is needed). The installer
-prints the start command, for example:
+into a **release-private home**, `%USERPROFILE%\dsh-automation-suite-home\profiles\dsh-automation-suite-v<version>\`
+— not the everyday `~/.dsh` — then uses DSH's bundled pnpm to install the seven plugins' tarballs
+(release assets; the profile uses **direct URL dependencies**, so no npm account is needed). It
+also writes `install.json` next to the scripts, recording the home and profile it used.
 
-```powershell
-dsh --profile dsh-automation-suite-v<version>
-```
+**Double-click `start.cmd` to launch**: it reads `install.json`, sets `DSH_HOME`, picks a free port
+starting at 3093, and opens the browser — no `--profile` / `--port` to remember. Options:
+`start.cmd -NoOpen`, `start.cmd -Port 3093`.
 
-If startup fails with `EADDRINUSE ... 127.0.0.1:3080`, port 3080 is held by something else (on
-this machine it is Windows' **IP Helper** service), not by a DSH conflict. Pass `--port`:
-
-```powershell
-dsh --profile dsh-automation-suite-v<version> --port 3093
-dsh --profile dsh-automation-suite-v<version> --port 0      # let the OS pick a free port
-```
+Why a private home: the left-sidebar workspace list comes from
+`<DSH_HOME>\storages\workspace.json`, and sessions, settings, and model credentials also live under
+DSH_HOME. Sharing `~/.dsh` with the desktop app would show every project opened there and let both
+apps write the same registry. With a private home the release starts with an empty workspace list
+and only shows folders you add inside this app.
 
 **Development and release builds coexist**: the development profile keeps the plain
 `dsh-automation-suite` name (`scripts/start-env.ps1` materializes it in the isolated
 `%USERPROFILE%\dsh-suite-env`), while each release gets its own versioned profile in
-`%USERPROFILE%\.dsh`. Different names and different homes, so both can run at once (use different
-ports). To keep one stable name and upgrade it in place, pass
-`-Profile dsh-automation-suite-release -Force`; the installer backs up that profile's
-`package.json` and `cordis.patch.yml` first. It always refuses to write through a junction/symlink.
+`%USERPROFILE%\dsh-automation-suite-home`. Workspaces, sessions, settings, and credentials are fully
+separate, so both can run at once (`start.cmd` picks its own port). To keep one stable name and
+upgrade it in place, pass `-Profile dsh-automation-suite-release -Force`; the installer backs up
+that profile's `package.json` and `cordis.patch.yml` first. It always refuses to write through a
+junction/symlink.
 
-To generate the release directory (tarballs + profile + `install.ps1` + sha256 manifest), maintainers
-run:
+To generate the release directory (tarballs + profile + `install.cmd` / `start.cmd` + sha256
+manifest), maintainers run:
 
 ```powershell
 node scripts/build-distribution.mjs
