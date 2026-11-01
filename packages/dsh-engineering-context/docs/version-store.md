@@ -85,8 +85,10 @@ project) but never modifies git. Normal queries never read the ledger.
 
 - `node:sqlite` is still marked experimental by Node; the code uses only the
   stable subset (`DatabaseSync`, `exec`, `prepare`, `run/get/all`).
-- The store is local (`.dsh/versions.db`, git-ignored). The durable record is
-  git + `_evidence.json`; the store exists to make history queries cheap.
-- `.dsh/docs/` is **not** git-ignored: design documents kept there can be
-  versioned like the source tree.
+- The store is local (`.dsh/versions.db`, git-ignored together with the rest of
+  `.dsh/`). The durable record is git + `_evidence.json`; the store exists to
+  make history queries cheap.
+- Design documents belong in the workspace's own `docs/` directory (versioned
+  like the source). Index them with `project_doc_index(dir: "docs")`;
+  `.dsh/docs/` is only a convenient scratch location and is not versioned.
 - TIA does not need to be open: the device is resolved from `source/<device>/`.

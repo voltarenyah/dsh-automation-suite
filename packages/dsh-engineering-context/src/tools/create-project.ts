@@ -51,7 +51,6 @@ import {
   sourceDirectoryPath,
   sourceIndexPath,
   stageRootPath,
-  stateIgnoreRule,
   tiaIgnoreRule,
   versionIgnoreRule,
   type PluginConfig,
@@ -288,12 +287,8 @@ function ignoreRules(config: PluginConfig): IgnoreRuleSpec[] {
       purpose: 'Generated knowledge databases: rebuilt from source/, binary, not versioned here.',
     },
     {
-      rule: stateIgnoreRule(config),
-      purpose: 'Local sync state (lock and STAGE): temporary, per machine, never committed.',
-    },
-    {
       rule: versionIgnoreRule(config),
-      purpose: 'Version store index: rebuilt from git history, local, never committed.',
+      purpose: 'Local state (lock, STAGE, version store): derived per machine, never committed.',
     },
   ]
 }

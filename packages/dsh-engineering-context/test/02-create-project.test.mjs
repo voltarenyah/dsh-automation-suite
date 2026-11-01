@@ -700,21 +700,19 @@ test('an existing source tree is announced rather than silently skipped', async 
 
 test('the ignore rules are created, appended or left alone — the file is never rewritten', async (t) => {
   // Missing file: created with all three rules (the project TIA owns, the
-  // databases the graph plugin derives from the source tree, and the local sync
-  // state the sync tool writes and deletes).
+  // databases the graph plugin derives from the source tree, and local state).
   const fresh = await tempWorkspace(t)
   const freshOutcome = assertEnvelope(await executeTool(setup().tool, { dry_run: false }, fakeExec(fresh)))
   const created = await readFile(join(fresh, '.gitignore'), 'utf8')
   assert.match(created, /^tia\/$/mu)
   assert.match(created, /^knowledge\/\*\*\/\*\.db\*$/mu)
-  assert.match(created, /^\.dsh\/local\/$/mu)
+  assert.match(created, /^\.dsh\/$/mu)
   assert.equal(freshOutcome.data.ignore.action, 'created')
-  assert.deepEqual(freshOutcome.data.ignore.added, ['tia/', 'knowledge/**/*.db*', '.dsh/local/', '.dsh/versions.db*'])
+  assert.deepEqual(freshOutcome.data.ignore.added, ['tia/', 'knowledge/**/*.db*', '.dsh/'])
   assert.deepEqual(freshOutcome.data.ignore.rules, [
     { rule: 'tia/', present: false },
     { rule: 'knowledge/**/*.db*', present: false },
-    { rule: '.dsh/local/', present: false },
-    { rule: '.dsh/versions.db*', present: false },
+    { rule: '.dsh/', present: false },
   ])
 
   // Existing file without the rules: the user's lines survive, all three rules are appended.
@@ -726,8 +724,7 @@ test('the ignore rules are created, appended or left alone — the file is never
   assert.match(appended, /^\*\.log$/mu)
   assert.match(appended, /^tia\/$/mu)
   assert.match(appended, /^knowledge\/\*\*\/\*\.db\*$/mu)
-  assert.match(appended, /^\.dsh\/local\/$/mu)
-  assert.match(appended, /^\.dsh\/versions\.db\*$/mu)
+  assert.match(appended, /^\.dsh\/$/mu)
   assert.equal(appendedOutcome.data.ignore.action, 'appended')
 
   // Running twice must not append any rule twice, and the second run reports
@@ -736,15 +733,12 @@ test('the ignore rules are created, appended or left alone — the file is never
   const twice = await readFile(join(existing, '.gitignore'), 'utf8')
   assert.equal(twice.match(/^tia\/$/gmu).length, 1)
   assert.equal(twice.match(/^knowledge\/\*\*\/\*\.db\*$/gmu).length, 1)
-  assert.equal(twice.match(/^\.dsh\/local\/$/gmu).length, 1)
-  assert.equal(twice.match(/^\.dsh\/versions\.db\*$/gmu).length, 1)
+  assert.equal(twice.match(/^\.dsh\/$/gmu).length, 1)
   assert.equal(twiceOutcome.data.ignore.action, 'unchanged')
   assert.deepEqual(twiceOutcome.data.ignore.added, [])
 
   // The alternate spellings a user may have written count as present: only the
-  // missing rules are added, and the file is otherwise left alone. (A user who
-  // ignored the database without its SQLite side files is *not* "present": the
-  // rule this plugin needs is the one that covers both.)
+  // missing rules are added, and the file is otherwise left alone.
   const half = await tempWorkspace(t)
   await makeFile(join(half, '.gitignore'), '# mine\n/tia/\n')
   const halfOutcome = assertEnvelope(await executeTool(setup().tool, { dry_run: false }, fakeExec(half)))
@@ -752,18 +746,17 @@ test('the ignore rules are created, appended or left alone — the file is never
   assert.match(repaired, /^# mine$/mu)
   assert.equal(repaired.match(/tia\//gmu).length, 1, 'the existing spelling is not duplicated')
   assert.match(repaired, /^knowledge\/\*\*\/\*\.db\*$/mu)
-  assert.match(repaired, /^\.dsh\/local\/$/mu)
-  assert.match(repaired, /^\.dsh\/versions\.db\*$/mu)
-  assert.deepEqual(halfOutcome.data.ignore.added, ['knowledge/**/*.db*', '.dsh/local/', '.dsh/versions.db*'])
+  assert.match(repaired, /^\.dsh\/$/mu)
+  assert.deepEqual(halfOutcome.data.ignore.added, ['knowledge/**/*.db*', '.dsh/'])
 
-  // A workspace that already ignores the database but not its SQLite side files
+  // A workspace that already ignores the database without its SQLite side files
   // gets the wider rule appended; the narrower line is left where the user put it.
   const narrower = await tempWorkspace(t)
-  await makeFile(join(narrower, '.gitignore'), 'tia/\nknowledge/**/*.db\n.dsh/local/\n')
+  await makeFile(join(narrower, '.gitignore'), 'tia/\nknowledge/**/*.db\n')
   const narrowerOutcome = assertEnvelope(await executeTool(setup().tool, { dry_run: false }, fakeExec(narrower)))
   const upgraded = await readFile(join(narrower, '.gitignore'), 'utf8')
   assert.match(upgraded, /^knowledge\/\*\*\/\*\.db\*$/mu)
-  assert.deepEqual(narrowerOutcome.data.ignore.added, ['knowledge/**/*.db*', '.dsh/versions.db*'])
+  assert.deepEqual(narrowerOutcome.data.ignore.added, ['knowledge/**/*.db*', '.dsh/'])
 })
 
 test('the target dirs do not depend on the project name, which is only the recorded identity', async (t) => {
