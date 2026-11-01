@@ -190,6 +190,10 @@ test('replay: three commits become three versions and two change events', async 
   assert.equal(entries[0].fingerprintBefore.Code, 'a1')
   assert.equal(entries[0].fingerprintAfter.Code, 'a2')
   assert.equal(entries[0].reason, 'because the interlock was missing')
+
+  // A bare block name (no `|`) is accepted too: it matches the key's last segment.
+  const byName = await call(definitions, 'project_history', { block: 'FB1' }, root)
+  assert.equal(byName.data.entries.length, 2)
 })
 
 test('checksum lookup returns every version carrying it, repeats included', async (t) => {

@@ -85,17 +85,21 @@ export function clampLimit(value: unknown, fallback = 20): number {
 /**
  * A block's full history, oldest first.
  *
+ * A key (`blocks|01_Cavity_A|100_Cycle`) matches exactly; a bare block name
+ * (`100_Cycle`) matches the last segment of every key.
+ *
  * @param store - the open store.
- * @param block - the evidence key, e.g. `blocks|01_Cavity_A|100_Cycle`.
+ * @param block - the evidence key or the block name.
  * @param limit - maximum rows.
  * @returns the timeline rows.
  */
 export function blockHistory(store: VersionStore, block: string, limit = 100): TimelineEntry[] {
+  const exact = block.includes('|')
   const rows = store.all<Record<string, unknown>>(
     `SELECT seq, commit_sha, occurred_at, subject, reason, problem_ref, session_id, faces,
             fingerprint_before, fingerprint_after, diff_path, lines_added, lines_removed
-     FROM block_timeline WHERE block_key = ? ORDER BY seq LIMIT ?`,
-    block,
+     FROM block_timeline WHERE ${exact ? 'block_key = ?' : 'block_key LIKE ?'} ORDER BY seq LIMIT ?`,
+    exact ? block : `%|${block}`,
     limit,
   )
   return rows.map((row) => ({
@@ -218,8 +222,9 @@ export function searchVersions(
     .filter((entry): entry is VersionSummary => entry !== null)
 }
 
-/** A block's documents, via the DOCUMENTS edges (P3). */
+/** A block's documents, via the DOCUMENTS edges (P3). Accepts a key or a bare name. */
 export function documentsForBlock(store: VersionStore, block: string): { path: string; title: string | null; anchor: string | null }[] {
+  const exact = block.includes('|')
   const rows = store.all<Record<string, unknown>>(
     `SELECT p.value AS path, t.value AS title, ep.value AS anchor
      FROM graph_nodes o
@@ -228,8 +233,8 @@ export function documentsForBlock(store: VersionStore, block: string): { path: s
      LEFT JOIN graph_node_properties p ON p.node_id = d.id AND p.name = 'path'
      LEFT JOIN graph_node_properties t ON t.node_id = d.id AND t.name = 'title'
      LEFT JOIN graph_edge_properties ep ON ep.edge_id = e.id AND ep.name = 'anchor'
-     WHERE o.kind = 'Object' AND o.name = ?`,
-    block,
+     WHERE o.kind = 'Object' AND (${exact ? 'o.name = ?' : 'o.name LIKE ?'})`,
+    exact ? block : `%|${block}`,
   )
   return rows.map((row) => ({
     path: String(row['path'] ?? ''),
