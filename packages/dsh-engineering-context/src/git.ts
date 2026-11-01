@@ -170,3 +170,125 @@ export async function commitPaths(root: string, paths: readonly string[], messag
 export function gitPath(root: string, absolute: string): string {
   return relative(root, absolute).replace(/\\/gu, '/')
 }
+
+// ---------------------------------------------------------------------------
+// Read-only history access for the version store
+// ---------------------------------------------------------------------------
+
+/** One commit as `git log` reports it. */
+export interface CommitMeta {
+  sha: string
+  parents: string[]
+  committedAt: string
+  subject: string
+  body: string
+}
+
+/**
+ * Read one commit's metadata.
+ *
+ * @param root - the workspace root.
+ * @param revision - a commit or ref.
+ * @returns the metadata, or null when the revision does not exist.
+ */
+export async function commitMeta(root: string, revision: string): Promise<CommitMeta | null> {
+  const result = await runGit(root, ['show', '-s', '--format=%H%x1f%P%x1f%cI%x1f%s%x1f%b', revision])
+  if (result.code !== 0) return null
+  const fields = result.stdout.split('\x1f')
+  const sha = (fields[0] ?? '').trim()
+  if (sha.length === 0) return null
+  return {
+    sha,
+    parents: (fields[1] ?? '').trim().split(/\s+/u).filter((entry) => entry.length > 0),
+    committedAt: (fields[2] ?? '').trim(),
+    subject: (fields[3] ?? '').trim(),
+    body: (fields[4] ?? '').replace(/\s+$/u, ''),
+  }
+}
+
+/**
+ * Every commit of the repository, oldest first.
+ *
+ * Records are separated by `\x1e` and fields by `\x1f`, so multi-line bodies
+ * survive; the repository's own ordering is kept, which is what a replay needs.
+ *
+ * @param root - the workspace root.
+ * @returns the commits; an empty list when the directory is not a repository.
+ */
+export async function logCommits(root: string): Promise<CommitMeta[]> {
+  const result = await runGit(root, ['log', '--reverse', '--format=%H%x1f%P%x1f%cI%x1f%s%x1f%b%x1e'])
+  if (result.code !== 0) return []
+  const commits: CommitMeta[] = []
+  for (const record of result.stdout.split('\x1e')) {
+    const text = record.replace(/^\r?\n/u, '')
+    if (text.trim().length === 0) continue
+    const fields = text.split('\x1f')
+    const sha = (fields[0] ?? '').trim()
+    if (sha.length === 0) continue
+    commits.push({
+      sha,
+      parents: (fields[1] ?? '').trim().split(/\s+/u).filter((entry) => entry.length > 0),
+      committedAt: (fields[2] ?? '').trim(),
+      subject: (fields[3] ?? '').trim(),
+      body: (fields[4] ?? '').replace(/\s+$/u, ''),
+    })
+  }
+  return commits
+}
+
+/**
+ * Read one file as it existed at one revision.
+ *
+ * @param root - the workspace root.
+ * @param revision - a commit or ref.
+ * @param relativePath - a workspace-relative path with forward slashes.
+ * @returns the file text, or null when that revision has no such file.
+ */
+export async function showFileAtRevision(
+  root: string,
+  revision: string,
+  relativePath: string,
+): Promise<string | null> {
+  const result = await runGit(root, ['show', `${revision}:${relativePath}`])
+  return result.code === 0 ? result.stdout : null
+}
+
+/** Per-file line statistics between two revisions. */
+export interface FileStat {
+  added: number
+  removed: number
+}
+
+/**
+ * `git diff --numstat` between two revisions, restricted to paths.
+ *
+ * @param root - the workspace root.
+ * @param from - the older revision.
+ * @param to - the newer revision (`WORKTREE` is not supported here).
+ * @param paths - path filters, relative to the workspace root.
+ * @returns a map from workspace-relative path to line counts.
+ */
+export async function numstatBetween(
+  root: string,
+  from: string,
+  to: string,
+  paths: readonly string[],
+): Promise<Map<string, FileStat>> {
+  const result = await runGit(root, ['diff', '--numstat', from, to, '--', ...paths])
+  const stats = new Map<string, FileStat>()
+  if (result.code !== 0) return stats
+  for (const line of result.stdout.split(/\r?\n/u)) {
+    if (line.trim().length === 0) continue
+    const parts = line.split('\t')
+    if (parts.length < 3) continue
+    const added = Number(parts[0])
+    const removed = Number(parts[1])
+    const path = (parts[2] ?? '').replace(/\\/gu, '/')
+    if (path.length === 0) continue
+    stats.set(path, {
+      added: Number.isFinite(added) ? added : 0,
+      removed: Number.isFinite(removed) ? removed : 0,
+    })
+  }
+  return stats
+}

@@ -53,6 +53,7 @@ import {
   stageRootPath,
   stateIgnoreRule,
   tiaIgnoreRule,
+  versionIgnoreRule,
   type PluginConfig,
 } from '../config.js'
 import { EngineeringContextError } from '../errors.js'
@@ -68,6 +69,10 @@ import {
 } from '../git-context.js'
 import { ingestKnowledgeGraph, type KnowledgeIngestReport } from '../knowledge-graph.js'
 import { canonicalizeLoose, folderName, isInside, toPortable } from '../paths.js'
+import { commitMeta } from '../git.js'
+import { indexDocuments } from '../version/docs.js'
+import { openVersionStore } from '../version/store.js'
+import { recordCommitAfterWrite } from '../version/write.js'
 import { callSyncScan } from '../scan.js'
 import { assertInsideWith, describePath, resolveScope, type ResolvedScope } from '../scope.js'
 import type { ToolDependencies } from './deps.js'
@@ -285,6 +290,10 @@ function ignoreRules(config: PluginConfig): IgnoreRuleSpec[] {
     {
       rule: stateIgnoreRule(config),
       purpose: 'Local sync state (lock and STAGE): temporary, per machine, never committed.',
+    },
+    {
+      rule: versionIgnoreRule(config),
+      purpose: 'Version store index: rebuilt from git history, local, never committed.',
     },
   ]
 }
@@ -1432,6 +1441,55 @@ export function createProjectTool(dependencies: ToolDependencies): ToolDefinitio
               'The import itself is complete.',
           )
         }
+
+        // Version store: replay the baseline so "show me this block's history"
+        // works right after the import, and index any documents already present.
+        // Both are derived indexes; a failure is a warning, never a failed import.
+        let versionNote: string | null = null
+        if (baseline.committed && baseline.hash !== null && evidence.length > 0) {
+          const first = evidence[0]
+          if (first !== undefined) {
+            try {
+              const meta = await commitMeta(root, baseline.hash)
+              if (meta !== null) {
+                const written = await recordCommitAfterWrite({
+                  root,
+                  config,
+                  device: {
+                    device: first.device,
+                    software: first.software,
+                    directory: first.directory,
+                    sourceRoot,
+                  },
+                  commit: meta,
+                  sessionId: null,
+                  bundleDir: null,
+                  log: dependencies.log,
+                })
+                versionNote =
+                  written === null
+                    ? 'already recorded'
+                    : written.replayed === true
+                      ? 'history replayed'
+                      : `${written.events} change event(s)`
+              }
+              const store = openVersionStore(config, root)
+              try {
+                const docs = await indexDocuments({ store, config, root })
+                if (docs.indexed > 0) {
+                  versionNote = `${versionNote ?? 'recorded'}; ${docs.indexed} document(s) indexed`
+                }
+              } finally {
+                store.close()
+              }
+            } catch (error) {
+              warnings.push(
+                `The version store was not initialized (the import itself is complete): ${error instanceof Error ? error.message : String(error)}`,
+              )
+            }
+          }
+        }
+        if (versionNote !== null) details.push(`Version store: ${versionNote}.`)
 
         return okOutcome(
           CREATE_PROJECT_TOOL,

@@ -23,7 +23,9 @@ import { planCommit, runCommit } from '../commit.js'
 import type { DeviceInfo } from '../device.js'
 import { resolveDevice } from '../device.js'
 import { EngineeringContextError } from '../errors.js'
+import { commitMeta } from '../git.js'
 import { resolveScope, type ResolvedScope } from '../scope.js'
+import { recordCommitAfterWrite } from '../version/write.js'
 import type { ToolDependencies } from './deps.js'
 import { defineOutcomeTool, failedOutcome, okOutcome } from './outcome.js'
 
@@ -119,6 +121,34 @@ export function commitTool(dependencies: ToolDependencies): ToolDefinition {
         }
 
         const result = await runCommit(scope, device, message, exec)
+        let versionNote: string | null = null
+        const versionWarnings: string[] = []
+        if (result.commit.committed && result.commit.hash !== null) {
+          try {
+            const meta = await commitMeta(scope.workspace.path, result.commit.hash)
+            if (meta !== null) {
+              const written = await recordCommitAfterWrite({
+                root: scope.workspace.path,
+                config: dependencies.config,
+                device,
+                commit: meta,
+                sessionId: null,
+                bundleDir: null,
+                log: dependencies.log,
+              })
+              versionNote =
+                written === null
+                  ? 'already recorded'
+                  : written.replayed === true
+                    ? 'history replayed (first recording)'
+                    : `${written.events} change event(s)`
+            }
+          } catch (error) {
+            versionWarnings.push(
+              `The version store was not updated (the commit itself succeeded): ${error instanceof Error ? error.message : String(error)}`,
+            )
+          }
+        }
         return okOutcome(
           PROJECT_COMMIT_TOOL,
           scope.view,
@@ -133,15 +163,18 @@ export function commitTool(dependencies: ToolDependencies): ToolDefinition {
             message: result.message,
             committed: result.commit.committed,
             hash: result.commit.hash,
+            versionStore: versionNote,
           },
           {
             dryRun: false,
+            warnings: versionWarnings,
             details: [
               `PLC: ${result.device.device} / ${result.device.software} → ${result.device.directory}`,
               result.commit.committed
                 ? `Commit: ${result.commit.hash ?? 'unknown'} (${result.paths.length} path(s)).`
                 : 'Commit: nothing to commit.',
               `Evidence: ${result.evidence.objects} object(s), state ${result.evidence.stateId ?? 'unknown'}.`,
+              ...(versionNote === null ? [] : [`Version store: ${versionNote}.`]),
             ],
           },
         )

@@ -19,6 +19,12 @@
     "./status": {
       "default": "./lib/status-entry.js"
     },
+    "./version": {
+      "default": "./lib/version-entry.js"
+    },
+    "./version-read": {
+      "default": "./lib/version-read-entry.js"
+    },
     "./package.json": "./package.json"
   },
   "files": [

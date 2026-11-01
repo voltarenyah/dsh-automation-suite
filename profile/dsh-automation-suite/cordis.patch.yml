@@ -384,6 +384,8 @@
           # 不声明任何工具，所以没有 `/tools` 行的 preset 也能单独挂它。
           - id: leader-engineering-status
             name: '@voltarenyah/dsh-engineering-context/status'
+          - id: leader-version-store
+            name: '@voltarenyah/dsh-engineering-context/version'
           - id: leader-tia-tools
             name: '@voltarenyah/dsh-tia-openness-v17-min/tools'
           - id: leader-plcsim-tools
@@ -531,6 +533,8 @@
             name: '@deepseek-ai/dsh-time-context'
           - id: auditor-engineering-context
             name: '@voltarenyah/dsh-engineering-context'
+          - id: auditor-version-store
+            name: '@voltarenyah/dsh-engineering-context/version'
           - id: auditor-project-diff
             name: '@voltarenyah/dsh-engineering-context/diff'
           - id: auditor-graph-tools
@@ -686,6 +690,8 @@
               includeDrilldown: all
           - id: expert-project-diff
             name: '@voltarenyah/dsh-engineering-context/diff'
+          - id: expert-version-store-read
+            name: '@voltarenyah/dsh-engineering-context/version-read'
           - id: expert-fs-readonly
             name: '@deepseek-ai/dsh-tool-fs'
             config:

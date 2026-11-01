@@ -50,6 +50,16 @@ export async function loadStatusEntryModule() {
   return await importBuilt('status-entry.js')
 }
 
+/** Load the version-store tools (`lib/tools/version.js`). */
+export async function loadVersionToolsModule() {
+  return await importBuilt('tools', 'version.js')
+}
+
+/** Load the separate version-store entry point (`lib/version-entry.js`). */
+export async function loadVersionEntryModule() {
+  return await importBuilt('version-entry.js')
+}
+
 /** Load the built config module. */
 export async function loadConfigModule() {
   return await importBuilt('config.js')

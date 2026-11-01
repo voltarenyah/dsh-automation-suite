@@ -4,15 +4,15 @@ DeepSeek Harness 插件（**工程上下文插件**）：把一个 **TIA Portal 
 另存进来、把源文件读出来、把块逻辑转译进知识图谱 —— 并在 TIA 改动之后，把差异同步成
 **SOURCE 树的一次 git 提交**。会话因此有三个确定的事实："现在谈的是哪个工程、它在哪、它和 TIA 是否一致"。
 
-> **实现状态（2026-10，S2 + D30 完成）。** 四个工具、三个挂载入口：
-> `create_engineering_project`（另存 + 重建源文件树 + 逐设备重建 knowledge.db）、
-> `project_status`（只读状态）、`project_sync`（TIA → STAGE → SOURCE，**不提交**）、
-> `project_commit`（用调用方给的信息提交设备目录）。入口 `.` 挂前四个，`/diff` 只挂
-> `project_diff`，`/status` 只挂 `project_status`。
+> **实现状态（2026-11，版本库 P0–P5 完成）。** 四个版本工作流工具、三个入口
+> （`.` / `/diff` / `/status`），外加**版本库**：`/version` 挂 8 个工具、`/version-read`
+> 挂只读子集。`.dsh/versions.db` 是 git 之上的工程历史索引——图（version/event/object/
+> session/problem/doc）+ 变更事件表 + 块时间线投影；`project_commit` 提交后自动记录，
+> `create_engineering_project` 建基线后回放。设计见 [`docs/version-store.md`](docs/version-store.md)。
 > 版本管理的口径见 [`docs/decisions.md`](decisions.md) **D26** 与发行版的 **D30**，路径规则见
 > [`docs/PATH-RULES.md`](docs/PATH-RULES.md)（**现行布局以它为准**），核心架构见
 > [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)。
-> **未实现**：DRAFT / REMOTE 与逐块指纹锁（S3）、变更台账（P3）。
+> **未实现**：DRAFT / REMOTE 与逐块指纹锁（S3）。
 
 ---
 
@@ -34,7 +34,7 @@ DeepSeek Harness 插件（**工程上下文插件**）：把一个 **TIA Portal 
 **不再有注册表**：workspace 里"有哪些工程"由目录布局本身回答（`tia/` 与 `source/` 下有什么），
 没有 `_dsh-eng/projects.json`，也没有"当前工程"指针（D22 的刻意取舍）。
 
-## 2. 工具（4 个，另有一个只挂 `project_diff` 的独立入口）
+## 2. 工具（4 个，另有一个只挂 `project_diff` 的独立入口，外加版本库的 8 个工具）
 
 | 工具 | 干什么 | 写？ |
 |---|---|---|
@@ -42,6 +42,21 @@ DeepSeek Harness 插件（**工程上下文插件**）：把一个 **TIA Portal 
 | `project_status` | 只读报告：哪个 PLC、账本/清单在不在、git 看到什么、锁有没有被占，并给出 `nextAction`（`open_project` / `compile` / `sync` / `commit` / `git_init` / `clean`）。`verify: true` 才读 checksum（约 3 s），否则明确标 **NOT CHECKED**；`data.wouldSync` / `data.syncReason` 只在真的读到 checksum 时下结论（`no-evidence` / `no-manifest` / `checksum-differs` / `in-sync`，读不到时 `null` / `unavailable`，未验证时 `null` / `not-checked`），成功读到的 checksum 同时写入 30 s 进程内缓存 | 否 |
 | `project_sync` | 让 SOURCE 与 TIA 对齐：checksum 快路径 → 需要时慢路径扫描 → 只把差异提升进 SOURCE → 写账本/清单，**然后停下**：返回 `pending.paths` 与 `pending.suggestedMessage`，不提交。默认只读 checksum 并报告 `wouldSync`；计划命中上一个只读调用写入的缓存时不再读 TIA，并标 `checksumCached: true`；`dry_run: false` 永不用缓存做决定、总是重新扫描。`refresh_knowledge: true` 时导出后刷新图谱：块级小改动走增量，类型/标签表或超过 20 个文件走全量；图谱失败只警告。写盘必须 `dry_run: false` | 是（SOURCE + `.dsh/local/stage`；可选图谱刷新） |
 | `project_commit` | 提交 `source/<device>`。`message` 必填（空消息 → `invalid_commit_message`，超 8000 字符同样拒绝），默认只给计划——列出会提交的路径、账本事实与**最终信息全文**；`dry_run: false` 才写历史。插件在信息末尾追加 `Tia-Op` / `Tia-Checksum` / `Tia-State` trailer（信息里已有 trailer 块时不重复）。没有可读账本时以 `not_synced` 拒绝；工作树干净时返回"无需提交"而不是报错。提交路径限定在该 device 目录，别处的脏文件不会被带走 | 是（一次 git commit） |
+
+**版本库（`/version` 挂全部 8 个；`/version-read` 只挂只读的 5 个）**：
+
+| 工具 | 干什么 | 写？ |
+|---|---|---|
+| `project_history` | `block=` 出一条块的时间线（第几次改、commit、指纹前后、原因）；`commit=` 出一个版本的详情；`checksum=` 出所有携带该 checksum 的版本（重复 checksum 是正常场景）；`face=` / `since=` 过滤 | 否 |
+| `project_version_reindex` | 从 git 历史与每个提交的 `_evidence.json` 重建版本库 | 是（本地库） |
+| `project_version_verify` | 校验 commit/parent/时间线连续性；`deep` 再核对账本 checksum | 否 |
+| `project_doc_index` | 索引 `.dsh/docs/**`：front matter 的 `affects`/`problems`、标题锚点、全文 | 是（本地库） |
+| `project_doc_search` | 全文搜索（FTS5 trigram；短词回退 LIKE） | 否 |
+| `project_version_annotate` | 给版本补原因/问题/验收/引用，图与投影一起更新 | 是（本地库） |
+| `project_problem` | 一个问题影响了哪些块、会话、提交 | 否 |
+| `project_version_query` | 只读 SELECT/WITH（其他工具覆盖不到时） | 否 |
+
+库在 `.dsh/versions.db`（git 忽略），删掉可用 `reindex` 随时重建；TIA 关闭时也能查询。
 
 **版本管理怎么判断"变没变"**：
 

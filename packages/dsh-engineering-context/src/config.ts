@@ -211,6 +211,20 @@ export function stateIgnoreRule(config: PluginConfig): string {
 }
 
 /**
+ * The `.gitignore` line that keeps the version store out of version control.
+ *
+ * The store is a derived index: git history plus each commit's `_evidence.json`
+ * can rebuild it (`project_version_reindex`), so it is per-machine state. The
+ * trailing `*` covers SQLite's `-wal` / `-shm` / `-journal` side files.
+ *
+ * `.dsh/docs/` is deliberately **not** ignored: an external design document the
+ * user chooses to keep there has as much right to be versioned as the source.
+ */
+export function versionIgnoreRule(config: PluginConfig): string {
+  return `${config.stateDirName}/versions.db*`
+}
+
+/**
  * The directory the engineering-graph plugin writes one database per device into,
  * beside the source tree (`<project root>/knowledge/<device>/<device>_knowledge.db`,
  * distribution D20, `docs/decisions.md`).

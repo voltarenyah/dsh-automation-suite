@@ -709,11 +709,12 @@ test('the ignore rules are created, appended or left alone — the file is never
   assert.match(created, /^knowledge\/\*\*\/\*\.db\*$/mu)
   assert.match(created, /^\.dsh\/local\/$/mu)
   assert.equal(freshOutcome.data.ignore.action, 'created')
-  assert.deepEqual(freshOutcome.data.ignore.added, ['tia/', 'knowledge/**/*.db*', '.dsh/local/'])
+  assert.deepEqual(freshOutcome.data.ignore.added, ['tia/', 'knowledge/**/*.db*', '.dsh/local/', '.dsh/versions.db*'])
   assert.deepEqual(freshOutcome.data.ignore.rules, [
     { rule: 'tia/', present: false },
     { rule: 'knowledge/**/*.db*', present: false },
     { rule: '.dsh/local/', present: false },
+    { rule: '.dsh/versions.db*', present: false },
   ])
 
   // Existing file without the rules: the user's lines survive, all three rules are appended.
@@ -726,6 +727,7 @@ test('the ignore rules are created, appended or left alone — the file is never
   assert.match(appended, /^tia\/$/mu)
   assert.match(appended, /^knowledge\/\*\*\/\*\.db\*$/mu)
   assert.match(appended, /^\.dsh\/local\/$/mu)
+  assert.match(appended, /^\.dsh\/versions\.db\*$/mu)
   assert.equal(appendedOutcome.data.ignore.action, 'appended')
 
   // Running twice must not append any rule twice, and the second run reports
@@ -735,6 +737,7 @@ test('the ignore rules are created, appended or left alone — the file is never
   assert.equal(twice.match(/^tia\/$/gmu).length, 1)
   assert.equal(twice.match(/^knowledge\/\*\*\/\*\.db\*$/gmu).length, 1)
   assert.equal(twice.match(/^\.dsh\/local\/$/gmu).length, 1)
+  assert.equal(twice.match(/^\.dsh\/versions\.db\*$/gmu).length, 1)
   assert.equal(twiceOutcome.data.ignore.action, 'unchanged')
   assert.deepEqual(twiceOutcome.data.ignore.added, [])
 
@@ -750,7 +753,8 @@ test('the ignore rules are created, appended or left alone — the file is never
   assert.equal(repaired.match(/tia\//gmu).length, 1, 'the existing spelling is not duplicated')
   assert.match(repaired, /^knowledge\/\*\*\/\*\.db\*$/mu)
   assert.match(repaired, /^\.dsh\/local\/$/mu)
-  assert.deepEqual(halfOutcome.data.ignore.added, ['knowledge/**/*.db*', '.dsh/local/'])
+  assert.match(repaired, /^\.dsh\/versions\.db\*$/mu)
+  assert.deepEqual(halfOutcome.data.ignore.added, ['knowledge/**/*.db*', '.dsh/local/', '.dsh/versions.db*'])
 
   // A workspace that already ignores the database but not its SQLite side files
   // gets the wider rule appended; the narrower line is left where the user put it.
@@ -759,7 +763,7 @@ test('the ignore rules are created, appended or left alone — the file is never
   const narrowerOutcome = assertEnvelope(await executeTool(setup().tool, { dry_run: false }, fakeExec(narrower)))
   const upgraded = await readFile(join(narrower, '.gitignore'), 'utf8')
   assert.match(upgraded, /^knowledge\/\*\*\/\*\.db\*$/mu)
-  assert.deepEqual(narrowerOutcome.data.ignore.added, ['knowledge/**/*.db*'])
+  assert.deepEqual(narrowerOutcome.data.ignore.added, ['knowledge/**/*.db*', '.dsh/versions.db*'])
 })
 
 test('the target dirs do not depend on the project name, which is only the recorded identity', async (t) => {
