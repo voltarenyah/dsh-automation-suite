@@ -43,6 +43,7 @@ export const OPERATIONS = [
   'GenerateSource',
   'WatchAndForceTables',
   'SoftwareUnits',
+  'ExportHardwareConfig',
   'SafetyStatus',
   'SetSafetySettings',
   'SafetySignatures',

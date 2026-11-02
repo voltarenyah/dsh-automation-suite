@@ -1222,7 +1222,32 @@ export const SECTIONS = [
     pre: [],
     reject: ['R12', 'R13'],
     default: 'none',
-    note: 'CAx/AML 硬件数据导入导出（设备、设备项、子模块、子网、IO 系统、拓扑、GSD/GSDML、F 设备等）；全部未适配。',
+    note:
+      'CAx/AML 硬件数据导入导出（设备、设备项、子模块、子网、IO 系统、拓扑、GSD/GSDML、F 设备等）。' +
+      '已适配的只有工程级导出（export_hardware_config）：CaxProvider.Export(project, aml, log) 在独占访问内写出单个 ' +
+      'CAEX 2.15 文档，回读校验根元素并回报 SHA-256 与 TIA 日志摘要。设备级导出、全部导入方向与 AML 解析仍未适配。',
+    leaves: {
+      'Export of CAx data': {
+        status: 'partial',
+        note:
+          '部分：只做工程级导出（controller/OperationsHardware.cs）。按手册该条目调 project.GetService<CaxProvider>() ' +
+          '后 Export(project, aml, log)，在独占访问内执行、不 Save、不改工程；产物回读校验 CAEX 根元素并记 SHA-256。' +
+          '实机实测（PEI_SinoARP_SWT2，2026-11-02）：86–100 s 写出 1.47 MB / CAEX 2.15 单文件，' +
+          'Export 返回 false 但文件完整——false 的语义是"有对象被跳过"（本例 HMI_1 报 TypeIdentifier 无效），' +
+          '已改为部分成功 + 逐条 logProblems，不再当失败。' +
+          '手册同条目列出的导出禁区已写进工具描述，但 2026-11-02 在一个 18 台设备的工程上实测：只跳过 1 台 HMI，' +
+          '17 台全部导出（含 GSDML 形式的驱动与第三方 GSD 设备），AML 原生含 LogicalAddress（byte.bit，如 32.6）——' +
+          '所以手册的类别清单不能当预测用。被跳过的设备在 data.notInAml[] 里结构化回报（名字/类型/各节点 IP、' +
+          '掩码、PROFINET 名、子网，均取自工程对象模型），因为 HMI 在 CAx 里没有类模型、它的网络身份只能从这里拿。' +
+          '设备级 Export(device, …) 未暴露。',
+      },
+      'Exceptions during import and export of CAx data': {
+        status: 'partial',
+        note:
+          '部分：CAx 的异常经 OpennessHost.OpennessFailure 归一为 cax_export_failed / cax_unavailable / ' +
+          'verification_failed，并把 TIA 日志摘要放进 details；未逐条对应手册列出的异常类型。',
+      },
+    },
   },
 
   // ------------------------------------------------------------ version history

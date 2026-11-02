@@ -458,3 +458,59 @@ import → `{action, imported:[{file, name}], committed, dryRun}`
 F 签名只对候选块（`F_*` 语言或 OB）探测，额外开销是一次枚举里多几十次 `GetService`。
 错误码：`checksum_unavailable` `evidence_invalid` `evidence_version_mismatch`
 `evidence_device_mismatch` `project_not_open`。
+
+---
+
+## 23. ExportHardwareConfig / `export_hardware_config`（只读，只写文件）
+
+把当前工程**整份硬件组态**导出为单个 AutomationML（CAx/AML，CAEX 2.15）文档。
+对应手册 "Export of CAx data" 的工程级分支：`project.GetService<CaxProvider>()` 后
+`Export(project, aml, log)`。V17 的 `CaxProvider` **没有** `CaxExportOptions`
+（反射实证：`Siemens.Engineering.Cax` 只有 `CaxProvider` / `CaxImportOptions` /
+`CaxProviderFactoryFacade` 三个类型），所以导出没有范围参数：工程级就是全部设备一个文件，
+要按设备得逐台调 `Export(device, …)`（本操作未暴露）。
+
+**执行方式**：包在独占访问里（`OpennessHost.BeginExclusiveAccess`）——只读操作也拿独占，
+避免读取期间有人改组态。**不包事务**（不需要 undo 单元，也避开手册事务禁区），**不 Save**。
+
+| 参数 | 类型 | 默认 | 说明 |
+|---|---|---|---|
+| `output_dir` | string | — | 落盘目录，绝对路径；不存在则创建。工具侧默认传 `<workspace>/hardware` |
+| `file_name` | string | `globalHardware.aml` | 纯文件名，必须以 `.aml` 结尾，不得带目录部分 |
+| `overwrite` | bool | `true` | 覆盖已存在文件；`false` 则 `output_exists` |
+
+`data`：`file` `fileName` `outputDir` `bytes` `sha256` `rootElement` `deviceCount`
+`allObjectsExported` `logSummary{errors,warnings,clean}` `logProblems[]`
+`notInAml[]` `notInAmlCount` `notInAmlNote` `logPath` `logExcerpt`（日志**尾部** 4000 字符）。
+
+`notInAml[]` 是"AML 里没有的设备"的结构化描述，每一行都在同一次独占访问里从工程模型读出来：
+`device`、`kind`（设备的软件是 HMI target 时为 `hmi`）、`reason`（TIA 日志原话）、
+`typeIdentifier` / `typeName` / `orderNumber`（尽力而为）、`deviceItemCount`、
+`nodes[]{deviceItem,node,address,subnetMask,pnDeviceName,netType,interfaceType,subnet}`。
+**这些正是 AML 条目会带的字段**——HMI 没有 CAx 类模型，所以它的 IP 只能出现在这里。
+`deviceCount - notInAmlCount` 就是文件覆盖到的设备数。
+
+要点：
+
+- **产物回读校验**：空文件、非 XML、缺 `CAEXFile` 根元素都算 `verification_failed`，
+  不会把"TIA 说成功"当成成功；
+- **`Export` 的 bool 语义（实机实测，2026-11-02）**：它是"所有对象都导出了"，不是"产出文件了"。
+  `PEI_SinoARP_SWT2` 上返回 **false**，却写出了完整的 1.4 MB CAEX 2.15 文档，日志结尾是
+  `completed (errors: 1, warnings: 0)`，唯一那条 error 是
+  `device HMI_1 is being skipped. The required attribute TypeIdentifier is invalid or missing.`
+  —— 正是一个 CAx 无法表达的对象。所以 **false + 合法文件 = 部分成功**：操作成功返回，
+  `allObjectsExported:false`，`logProblems[]` 逐条列出被跳过的对象与原因；
+- **日志**：TIA 写到同级 `<name>.log`（本项目 108 KB、上万行 INFO/DEBUG）。只取**尾部** 4000 字符
+  ——头部全是逐对象进度，结论和 ERROR 在末尾；`logProblems` 另外把 ERROR 行抽出来并去重（最多 20 条）；
+- **`deviceCount` 是全部设备**：`Project.Devices` + 未分组系统组 + 递归用户组，按名去重。
+  实测 `PEI_SinoARP_SWT2` 的 `Project.Devices` 只有 **1** 个，而 CAx 日志导出的是几十个（都在用户组里），
+  所以只数扁平层会给出荒唐的数字；
+- **AML 不是完整清单，但手册清单也不是可靠预测**：手册同条目列出 CAx 不支持的导出对象（除按键面板外的 HMI、
+  多 CPU、扩展机架连接、端口到端口连接、模拟量通道输出模式/量程、压缩地址、以及"驱动"，另有一批 MLFB）。
+  **实测（2026-11-02，18 台设备的工程）只跳过了 1 台 HMI，17 台全部导出——包括 GSDML 形式的驱动和第三方 GSD 设备**。
+  所以"丢了什么"以 `logProblems` 为准，不要按类别假设；
+- **不解析 AML**：本操作只交付文件 + 哈希 + 日志摘要，设备/模块/插槽/地址的结构化读取
+  是后续增量（见 `docs/HARDWARE-CONFIG-SCOPE.md`）。
+
+错误码：`project_not_open` `invalid_params` `output_exists` `exclusive_access_failed`
+`cax_unavailable` `cax_export_failed` `verification_failed`。

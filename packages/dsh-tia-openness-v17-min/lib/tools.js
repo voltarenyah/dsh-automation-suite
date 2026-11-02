@@ -12,8 +12,9 @@
  * Openness. `controller_status` is answered by the plugin itself and never
  * touches TIA Portal.
  */
+import { isAbsolute, join } from 'node:path';
 import { defineTool } from '@deepseek-ai/dsh-tools';
-import { changesOf, diagnosticsOf } from './protocol.js';
+import { changesOf, diagnosticsOf, localFailure } from './protocol.js';
 /** The controller payload is JSON by construction; this only satisfies the type system. */
 function asJson(value) {
     return value;
@@ -789,6 +790,41 @@ export function renderOutcome(outcome, verbose) {
     const body = renderOutcomeBody(outcome, verbose);
     const parts = [header, outcome.summary, body];
     return parts.filter((part) => part.length > 0).join('\n');
+}
+// ------------------------------------------------- workspace-relative artifacts
+/** Folder below the workspace root that holds hardware exports. */
+const HARDWARE_DIR_NAME = 'hardware';
+/**
+ * The session working directory, the one fact that ties a tool call to a workspace.
+ *
+ * @param exec - the per-call execution context.
+ * @returns the recorded cwd, or undefined when the harness supplied none.
+ */
+function sessionCwd(exec) {
+    const cwd = exec.agent?.session?.header?.cwd;
+    return typeof cwd === 'string' && cwd.trim().length > 0 ? cwd.trim() : undefined;
+}
+/**
+ * The directory a hardware export writes into.
+ *
+ * A hardware export is a workspace artifact, so the default is
+ * `<workspace>/hardware` rather than a caller-supplied drop location. An explicit
+ * `output_dir` overrides it; a relative one is resolved against the workspace and
+ * not against the controller's own process directory, which is a different place.
+ *
+ * @param explicit - the caller's `output_dir`, when it passed one.
+ * @param exec - the per-call execution context, for the workspace root.
+ * @returns the absolute directory, or `null` when no workspace is available.
+ */
+function hardwareDirectory(explicit, exec) {
+    const workspace = sessionCwd(exec);
+    if (typeof explicit === 'string' && explicit.trim().length > 0) {
+        const value = explicit.trim();
+        if (isAbsolute(value))
+            return value;
+        return workspace === undefined ? null : join(workspace, value);
+    }
+    return workspace === undefined ? null : join(workspace, HARDWARE_DIR_NAME);
 }
 // ----------------------------------------------------------------- the tools
 /** The canonical output envelope every tool declares. */
@@ -2344,6 +2380,75 @@ export function registerTools(ctx, dependencies) {
             if (args.target_address !== undefined)
                 params['target_address'] = args.target_address;
             return asJsonOutcome(await runOperation(dependencies, 'Download', params, exec.signal));
+        },
+    }));
+    register(defineTool({
+        name: 'export_hardware_config',
+        description: "Export the open project's hardware configuration as one AutomationML (CAx/AML) file — the document " +
+            "TIA's 'Devices & networks' export produces, at project level. The file lands in the workspace: " +
+            '`<workspace>/hardware/globalHardware.aml` by default, with the TIA log next to it as `globalHardware.log`. ' +
+            'Read-only for the project: it never modifies or saves the project, and runs inside exclusive access so an ' +
+            'operator cannot change the configuration while it is being read. ' +
+            'The AML is a CAEX 2.15 document, and every export is read back: the file must be non-empty, start as XML and ' +
+            'carry the `CAEXFile` root element, otherwise the call fails with verification_failed. ' +
+            'Check `data.allObjectsExported`: TIA returns false when it had to skip an object, and still writes a usable ' +
+            'file — measured on a real project, one HMI device was skipped ("TypeIdentifier is invalid or missing") while ' +
+            'the complete 1.4 MB AML was written. A false therefore means "file written, some objects left out", not ' +
+            '"nothing exported": the call still succeeds and `data.logProblems` lists each skipped object with its reason, ' +
+            'while `data.logSummary{errors,warnings}` carries the counts TIA printed. ' +
+            'IMPORTANT — do not treat the AML as a complete inventory. The manual lists objects it cannot export: HMI ' +
+            'devices other than push-button and key panels, multi-CPU stations, port-to-port connections, connections to ' +
+            'or between extension racks, the output mode/range of analog channels, packed addresses, and (per the manual) ' +
+            'drives. Measured on a real 18-device project, only the HMI was actually skipped — 17 devices came through, ' +
+            'including GSDML-based drives and third-party devices, so the manual list is not a reliable predictor either ' +
+            'way. Read `data.logProblems` for what TIA really dropped instead of assuming a whole category is absent. ' +
+            'Every dropped device is also described in `data.notInAml[]` — name, kind, the reason, and each configured ' +
+            "node's address, subnet mask, PROFINET device name and subnet, read from the project model rather than from " +
+            'the file (an HMI has no CAx class model, so this list is the only place its IP sits next to the export). ' +
+            '`data.deviceCount` is the project total, so "deviceCount minus notInAml" is the AML coverage. ' +
+            'This tool only produces the file; it does not parse the AML into devices, modules, slots or addresses. ' +
+            'Where derived work goes: the export directory holds that pair and NOTHING else. Put any ad-hoc parsing ' +
+            'script or intermediate dump in `<workspace>/temp/` (disposable, gitignored), and put a deliverable report in ' +
+            'the workspace root or wherever the user asked — never inside the export directory. If the question is a ' +
+            'recurring one (device list, station/slot table, network topology), ask for it as a tool instead of writing ' +
+            'yet another script. ' +
+            'Requires an open project (open_project first). Fails with project_not_open, output_exists, invalid_params, ' +
+            'cax_unavailable, cax_export_failed (TIA threw, or produced no file at all) or verification_failed (a file ' +
+            'exists but is empty or not CAEX).',
+        parameters: {
+            output_dir: {
+                type: 'string',
+                description: 'Directory the AML file is written to. Defaults to `<workspace>/hardware`, where the workspace is this ' +
+                    "session's working directory. A relative path is resolved against the workspace root, not against the " +
+                    'controller process directory. The directory is created when missing.',
+            },
+            file_name: {
+                type: 'string',
+                description: "File name inside output_dir; defaults to 'globalHardware.aml'. Must end with .aml and must not contain a " +
+                    'directory part. TIA writes the log as the same name with a .log extension.',
+            },
+            overwrite: {
+                type: 'boolean',
+                description: 'True (the default) to replace an existing file, which is what repeated exports of the same project want. ' +
+                    'False fails with output_exists instead of replacing it.',
+            },
+        },
+        output: {
+            schema: OUTCOME_SCHEMA,
+            render: (_args, value) => [{ type: 'text', text: renderValue(value, verbose) }],
+        },
+        async execute(args, exec) {
+            const outputDir = hardwareDirectory(args.output_dir, exec);
+            if (outputDir === null) {
+                return asJsonOutcome(localFailure('ExportHardwareConfig', 'scope_unavailable', 'The hardware export needs a workspace to write into, but this session supplied no working directory. ' +
+                    'Pass an absolute `output_dir` instead.'));
+            }
+            const params = {
+                output_dir: outputDir,
+                file_name: args.file_name ?? 'globalHardware.aml',
+                overwrite: args.overwrite ?? true,
+            };
+            return asJsonOutcome(await runOperation(dependencies, 'ExportHardwareConfig', params, exec.signal));
         },
     }));
     register(defineTool({

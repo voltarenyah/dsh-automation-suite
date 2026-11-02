@@ -82,6 +82,7 @@ export const EXPECTED_TOOLS = [
   'online_status',
   'online_disconnect',
   'download',
+  'export_hardware_config',
   'controller_status',
 ]
 

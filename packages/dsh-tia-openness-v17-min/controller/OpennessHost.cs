@@ -458,6 +458,35 @@ namespace TiaOpennessV17Min.Controller
             return new TransactionScope(access, transaction, _log);
         }
 
+        /// <summary>
+        /// Opens an exclusive-access session <b>without</b> a transaction.
+        ///
+        /// For operations that must not run concurrently with an operator but change
+        /// nothing: the CAx/AML export reads the whole hardware configuration, so it
+        /// wants the same protection a write gets, while an undo unit would be noise —
+        /// and the manual's "Transaction handling → Restrictions" makes wrapping
+        /// non-transactional reads a risk rather than a benefit.
+        ///
+        /// The caller owns the returned scope; disposing releases the session.
+        /// </summary>
+        public ExclusiveAccessScope BeginExclusiveAccess(string description)
+        {
+            EnsureProjectOpen(description);
+            ExclusiveAccess access;
+            try
+            {
+                access = _portal.ExclusiveAccess();
+            }
+            catch (Exception ex)
+            {
+                throw OpennessFailure(
+                    "exclusive_access_failed",
+                    "Exclusive access could not be opened (" + description + "): " + ex.Message,
+                    ex);
+            }
+            return new ExclusiveAccessScope(access, _log);
+        }
+
         // --------------------------------------------------------- plc software
 
         /// <summary>
@@ -1541,6 +1570,38 @@ namespace TiaOpennessV17Min.Controller
                     _log.Warning("The TIA Portal instance could not be disposed during shutdown: " + ex.Message);
                 }
                 _portal = null;
+            }
+        }
+    }
+
+    /// <summary>
+    /// One exclusive-access session with no transaction: for read operations that must
+    /// not interleave with an operator, such as the CAx/AML hardware export.
+    /// </summary>
+    internal sealed class ExclusiveAccessScope : IDisposable
+    {
+        private readonly ExclusiveAccess _access;
+        private readonly DiagnosticLog _log;
+        private bool _disposed;
+
+        public ExclusiveAccessScope(ExclusiveAccess access, DiagnosticLog log)
+        {
+            _access = access;
+            _log = log;
+        }
+
+        public void Dispose()
+        {
+            if (_disposed) return;
+            _disposed = true;
+
+            try
+            {
+                _access.Dispose();
+            }
+            catch (Exception ex)
+            {
+                _log.Warning("Releasing the exclusive access session failed: " + ex.Message);
             }
         }
     }

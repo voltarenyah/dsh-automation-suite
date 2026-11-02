@@ -74,9 +74,9 @@ report a precise reason — on a machine without TIA Portal.
 ```
 
 - `type` is optional and must be `"operation"` when present.
-- `operation` must be one of the 27 whitelisted names (`OperationCatalog` / `src/protocol.ts`); anything else is
-  `unsupported_operation` and is never dispatched. Twenty-five of them back a model-facing tool; `PlcChecksum`
-  and `SyncScan` are **service-only** (they back `engineeringAccess` methods and deliberately have no tool).
+- `operation` must be one of the 34 whitelisted names (`OperationCatalog` / `src/protocol.ts`); anything else is
+  `unsupported_operation` and is never dispatched. All but `PlcChecksum` and `SyncScan` back a model-facing tool;
+  those two are **service-only** (they back `engineeringAccess` methods and deliberately have no tool).
 - `params` is an operation-specific object. Unknown keys are ignored; a key of the
   wrong type is `invalid_params`.
 
@@ -130,10 +130,13 @@ Controller-level notes that belong to no request (shutdown notes, warnings).
 ## Operations and their `params`
 
 The five operations below are the original block read/write surface. v0.2 added 20 more
-(8 project-data, 9 PLC-data, 3 F-related), and the versioning workflow added two
-service-only operations (`PlcChecksum`, `SyncScan`). Their parameter and payload
-contract is frozen in [`EXTENDED-SURFACE.md`](EXTENDED-SURFACE.md) and is not
-repeated here beyond the two new sections above.
+(8 project-data, 9 PLC-data, 3 F-related), the versioning workflow added two
+service-only operations (`PlcChecksum`, `SyncScan`), and the online surface added six
+(`AdoptOpenProject`, `OnlineTargets`, `OnlineConnect`, `OnlineStatus`,
+`OnlineDisconnect`, `Download`). v0.3 added the hardware export
+(`ExportHardwareConfig`). Their parameter and payload contract is frozen in
+[`EXTENDED-SURFACE.md`](EXTENDED-SURFACE.md) and is not repeated here beyond the
+sections above.
 
 ### `OpenProject`
 
@@ -165,6 +168,68 @@ repeated here beyond the two new sections above.
 `data`: `device`, `software`, `outputDir`, `exportOptions`, `blockCount`,
 `summary{exported,skipped,failed}`, `files[]{name,group,file,bytes,sha256,verified,declaredName,…}`,
 `manifest` (path).
+
+### `ExportHardwareConfig`
+
+Read-only against the project; writes one file pair. Exports the open project's
+whole hardware configuration as a single AutomationML (CAx/AML, CAEX 2.15)
+document via `project.GetService<CaxProvider>()` +
+`CaxProvider.Export(project, aml, log)`, inside an exclusive-access session and
+**without** saving the project.
+
+| param | type | default | meaning |
+|---|---|---|---|
+| `output_dir` | string | — | absolute directory the AML is written to; created when missing (the tool resolves `<workspace>/hardware` and sends it here) |
+| `file_name` | string | `globalHardware.aml` | plain file name, must end in `.aml`, no directory part |
+| `overwrite` | bool | `true` | replace an existing file; `false` fails with `output_exists` |
+
+`data`: `file`, `fileName`, `outputDir`, `bytes`, `sha256`, `rootElement`,
+`deviceCount` (all devices: `Project.Devices`, the ungrouped system group and
+nested device user groups, de-duplicated by name — `Project.Devices` alone reports
+1 for a project whose CAx log exports dozens, measured 2026-11-02), `allObjectsExported`, `logSummary{errors,warnings,clean}`, `logProblems[]`,
+`notInAml[]`, `notInAmlCount`, `notInAmlNote`, `logPath`, `logExcerpt` (the **tail** of TIA's log).
+
+`notInAml[]` describes every device the AML does not carry — CAx has no class model
+for HMI devices (the manual excludes them except push-button/key panels), so HMI
+identity would otherwise exist only as one line in TIA's log. Each row is read from
+the project model inside the same exclusive session: `device`, `kind` (`hmi` when the
+device's software is an HMI target), `reason` (TIA's own log line), `typeIdentifier` /
+`typeName` / `orderNumber` (best effort), `deviceItemCount`, and `nodes[]` with
+`deviceItem`, `node`, `address`, `subnetMask`, `pnDeviceName`, `netType`,
+`interfaceType`, `subnet` — i.e. the fields an AML entry would have carried.
+`deviceCount` minus `notInAmlCount` is what the file covers.
+
+Two independent signals fill that list, because either can stay silent on its own: the
+CAx log naming a skipped device, and a device whose `SoftwareContainer.Software` has the
+runtime type name `HmiTarget`. The second is compared as a string on purpose — a
+compile-time dependency on `Siemens.Engineering.Hmi` would pull the whole HMI surface in
+just to recognise one type.
+
+**What `Export`'s boolean means** (measured 2026-11-02 on `PEI_SinoARP_SWT2`):
+it is "every object was exported", not "a file was produced". TIA returned
+`false` while writing a complete 1.4 MB CAEX 2.15 document and logging
+`completed (errors: 1, warnings: 0)`; the single error was
+`device HMI_1 is being skipped. The required attribute TypeIdentifier is invalid
+or missing.` — one object CAx cannot represent. So a `false` with a valid file is
+a **partial success**: the operation succeeds, `allObjectsExported: false`, and
+`logProblems[]` names every skipped object with its reason.
+
+Failures: `Export` throwing or producing **no file at all** is `cax_export_failed`
+(with `details.logSummary` / `details.logProblems` when the log exists); a file
+that exists but is empty, not XML, or has no `CAEXFile` root is
+`verification_failed`. A null `CaxProvider` is `cax_unavailable`.
+
+The AML is **not** a complete inventory, but the manual list is **not a reliable
+predictor either**: the topic "Export of CAx data" names HMI devices other than
+push-button/key panels, multi-CPUs, port-to-port connections, extension-rack
+connections, analog channel output mode and range, packed addresses and "drives".
+Measured 2026-11-02 on an 18-device project, **only the HMI was skipped — 17
+devices were exported, including GSDML-based drives and third-party GSD devices**.
+Use `logProblems` to see what TIA actually dropped instead of assuming a category
+is missing.
+
+`LogicalAddress` values are present in the AML as byte.bit strings (`<Value>32.6</Value>`),
+so I/O addresses can be mapped from the file itself.
 
 ### `PlcChecksum`
 
@@ -543,6 +608,10 @@ it, so compile first.
 | `download_failed` | `Download` threw or a callback hit an unknown configuration | inspect `details.configurations` and `details.exceptionType`; if it is `Connect to module … failed` with an empty list, adopt the UI project after accepting the PLC certificate |
 | `online_mode_conflict` | `ApplyConfiguration` was refused because TIA still considers the session online | `online_disconnect` (a failed `GoOnline` can leave that state) and retry |
 | `online_configuration_not_applied` | `ApplyConfiguration` returned false | pick another interface/slot |
+| `exclusive_access_failed` | `ExclusiveAccess()` threw (another Openness client holds TIA Portal) | retry when the other client is idle |
+| `cax_unavailable` | `GetService<CaxProvider>()` returned null or threw | reload the project; check the TIA installation ships CAx |
+| `cax_export_failed` | `CaxProvider.Export` returned false or threw | inspect `details.logExcerpt` (TIA's own log) |
+| `output_exists` | the AML path exists and `overwrite` is false | pass `overwrite: true` or another `file_name` |
 | `internal_error` | unexpected exception | `error.details.exceptionType` |
 
 Transport failures are raised by the plugin, not by the controller, and are

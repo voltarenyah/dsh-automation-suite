@@ -330,9 +330,28 @@ declare module '@deepseek-ai/dsh-tools' {
     text: string
   }
 
-  /** Execution identity handed to a tool body. */
+  /**
+   * Execution identity handed to a tool body.
+   *
+   * `signal` stays optional here because a rendered/test harness may drive a tool
+   * body with a bare object.
+   *
+   * `agent` is the documented way for a tool body to learn its session, and
+   * `agent.session.header.cwd` is the session working directory — the same fact
+   * `commands.ts` reads as `invocation.agent.session.header.cwd`. The hardware
+   * export needs it because it defaults its output directory to
+   * `<workspace>/hardware` instead of asking the model for an absolute path.
+   * Only the members this plugin reads are declared.
+   */
   export interface ToolRunContext {
     readonly signal?: AbortSignal
+    readonly agent?: {
+      readonly session?: {
+        readonly header?: {
+          readonly cwd?: string
+        }
+      }
+    }
   }
 
   /** A registry-ready tool definition. */

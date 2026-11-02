@@ -9,6 +9,7 @@
  */
 
 import assert from 'node:assert/strict'
+import { join } from 'node:path'
 import { test } from 'node:test'
 
 import {
@@ -120,6 +121,41 @@ test('export_blocks applies its documented defaults and writes directly', async 
   assert.ok(!('dry_run' in calls[1].params), 'export_blocks only writes files, so it has no dry run')
 })
 
+test('export_hardware_config writes into the workspace by default', async (t) => {
+  const { calls, byName } = await harness(t)
+  const exec = { agent: { session: { header: { cwd: 'C:\\ws' } } } }
+
+  await byName['export_hardware_config'].execute({}, exec)
+  assert.equal(calls[0].operation, 'ExportHardwareConfig')
+  assert.deepEqual(calls[0].params, {
+    output_dir: join('C:\\ws', 'hardware'),
+    file_name: 'globalHardware.aml',
+    overwrite: true,
+  })
+  assert.ok(!('dry_run' in calls[0].params), 'the hardware export only writes a file, so it has no dry run')
+
+  // A relative output_dir belongs to the workspace, not to the controller's own
+  // process directory, so it is resolved here rather than forwarded as-is.
+  await byName['export_hardware_config'].execute({ output_dir: join('out', 'hw'), overwrite: false }, exec)
+  assert.equal(calls[1].params.output_dir, join('C:\\ws', 'out', 'hw'))
+  assert.equal(calls[1].params.overwrite, false)
+
+  // An absolute one is used as given, and the file name is forwarded.
+  await byName['export_hardware_config'].execute({ output_dir: 'D:\\aml', file_name: 'site.aml' }, exec)
+  assert.equal(calls[2].params.output_dir, 'D:\\aml')
+  assert.equal(calls[2].params.file_name, 'site.aml')
+})
+
+test('export_hardware_config refuses to run without a destination', async (t) => {
+  const { calls, byName } = await harness(t)
+
+  const value = await byName['export_hardware_config'].execute({}, {})
+  assert.equal(calls.length, 0, 'nothing may reach the controller without a directory to write into')
+  assert.equal(value.ok, false)
+  assert.equal(value.error.code, 'scope_unavailable')
+  assert.match(value.summary, /scope_unavailable|working directory/)
+})
+
 test('import_blocks is a dry run unless it is explicitly switched off', async (t) => {
   const { calls, byName } = await harness(t)
 
@@ -179,7 +215,7 @@ test('controller_status never talks to the controller and hides the captured out
   const verboseValue = await byName['controller_status'].execute({ include_controller_output: true }, {})
   assert.deepEqual(verboseValue.data.stderrTail, ['a stderr line'])
 
-  assert.equal(context.definitions.length, 32)
+  assert.equal(context.definitions.length, 33)
 })
 
 test('only whitelisted operations ever reach the controller', async (t) => {
