@@ -150,9 +150,16 @@ namespace TiaOpennessV17Min.Controller
                 case OperationCatalog.SoftwareUnits:
                     return SoftwareUnits(parameters, log, changes, progress);
 
-                // Hardware configuration: CAx/AML export (read-only).
+                // Hardware configuration: CAx/AML export (read-only, needs a project)
+                // and the two file-only readers that parse the export (need none).
                 case OperationCatalog.ExportHardwareConfig:
                     return ExportHardwareConfig(parameters, log, changes, progress);
+                case OperationCatalog.HardwareInventory:
+                    return HardwareInventory(parameters, log, changes, progress);
+                case OperationCatalog.HardwareConfiguration:
+                    return HardwareConfiguration(parameters, log, changes, progress);
+                case OperationCatalog.HardwareParameters:
+                    return HardwareParameters(parameters, log, changes, progress);
 
                 // F-related Openness.
                 case OperationCatalog.SafetyStatus:

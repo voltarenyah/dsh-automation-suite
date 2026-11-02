@@ -1239,7 +1239,9 @@ export const SECTIONS = [
           '17 台全部导出（含 GSDML 形式的驱动与第三方 GSD 设备），AML 原生含 LogicalAddress（byte.bit，如 32.6）——' +
           '所以手册的类别清单不能当预测用。被跳过的设备在 data.notInAml[] 里结构化回报（名字/类型/各节点 IP、' +
           '掩码、PROFINET 名、子网，均取自工程对象模型），因为 HMI 在 CAx 里没有类模型、它的网络身份只能从这里拿。' +
-          '设备级 Export(device, …) 未暴露。',
+          '所以手册的类别清单不能当预测用，丢失以 logProblems 为准。设备级 Export(device, …) 未暴露。' +
+          '另有两个只读工具解析同一份 AML：hardware_inventory（元器件身份）与 hardware_configuration' +
+          '（地址/网络/连线/信号映射），真机 167–180 ms 读完 442 个元素；AML 里没有模块参数，那部分只能走对象模型。',
       },
       'Exceptions during import and export of CAx data': {
         status: 'partial',

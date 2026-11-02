@@ -514,3 +514,75 @@ F 签名只对候选块（`F_*` 语言或 OB）探测，额外开销是一次枚
 
 错误码：`project_not_open` `invalid_params` `output_exists` `exclusive_access_failed`
 `cax_unavailable` `cax_export_failed` `verification_failed`。
+
+---
+
+## 24. HardwareInventory / `hardware_inventory`（只读，不需要工程）
+
+解析 `export_hardware_config` 产出的 AML，返回**元器件身份**。走 `SupportedRoleClass` 分类
+（`Device` / `DeviceItem` / `CommunicationPort` / `CommunicationInterface` / `Node`），
+**不用** `RefBaseClassPath`（V17 导出里 442 个元素全为空）。
+
+| 参数 | 类型 | 默认 | 说明 |
+|---|---|---|---|
+| `aml_path` | string | `<cwd>/hardware/globalHardware.aml` | 导出文件路径 |
+| `device` | string | 全部 | 只看一台设备 |
+| `include_comments` | bool | `true` | 多语言 `Comment` |
+| `include_counts` | bool | `true` | 每模块通道数与总计 |
+
+`data`：`aml{path,bytes,sha256,schemaVersion,project}`、`devices[]{…}`、`counts`。
+设备 → `racks[]` → `modules[]`（`slot`/`orderNumber`/`typeName`/`deviceItemType`/`builtIn`/
+`firmwareVersion`/`channels{di,do,ai,ao,total}`）。
+
+**不含任何地址与网络字段**——那是 `hardware_configuration` 的职责（见 §25 与
+`docs/HARDWARE-TOOL-TAXONOMY.md` §4.1 的决策）。
+
+## 25. HardwareConfiguration / `hardware_configuration`（只读，不需要工程）
+
+同一份 AML 的**组态值**：
+
+| 参数 | 类型 | 默认 | 说明 |
+|---|---|---|---|
+| `aml_path` | string | 同上 | 导出文件路径 |
+| `device` | string | 全部 | 只看一台设备 |
+| `sections` | array | 全开 | `addresses` `channels` `tags` `network` `links` `signals` `f` |
+
+- `addresses`：模块的地址组（`StartAddress`/`Length`/`IoType`），AML 里是嵌套 Attribute；
+- `channels`：通道 `Type`/`IoType`/`Number`/`Length`；
+- `tags`：PLC 侧 `…/Tag` 接口（`DataType`/`LogicalAddress`/`Comment`）；
+- `network`：子网、节点（IP/掩码/PROFINET 名/协议）、IO 系统；
+- `links`：`port-port`(16) / `node-subnet`(17) / `interface-iosystem`(15)，来自 `<InternalLink>`；
+- `signals`：通道↔PLC 标签的信号映射（356 条）；
+- `f`：F 源/目的地址与上下界。
+
+全量在一次 18 设备 / 500 标签的工程上约 **245 KB**，用 `sections` 收窄。
+真机实测（`SWT2_PEI_1026_Night`）：`hardware_inventory` 167 ms、`hardware_configuration` 180 ms。
+
+---
+
+## 26. HardwareParameters / `hardware_parameters`（只读，**需要打开的工程**）
+
+读 CAx/AML 永远不会带的那一层：模块/通道的**参数**。没有白名单——属性名随型号变化，
+Openness 只发布运行期 `GetAttributeInfos()` 的名字与 `AccessMode`。
+
+| 参数 | 类型 | 默认 | 说明 |
+|---|---|---|---|
+| `device` | string | — | 必填 |
+| `item` | string | 整台设备 | 设备项路径，`/` 分隔按名匹配，或 `#<slot>` 按槽位 |
+| `channel` | int | 全部 | 只看某通道号 |
+| `attribute` | string | 全部 | 只看某属性；未知名字 → `attribute_not_found` + `details.available` |
+| `mode` | enum | `list` | `list` 只列名字+权限；`values` 连值一起读 |
+| `include` | array | `attributes,channels` | 另有 `gsd`（GSD 身份） |
+| `max_items` / `offset` | int | 200 / 0 | 设备项分页 |
+
+实现要点：
+
+- 复用 `OpennessHost.AttributeInfosOf` / `TryReadAttribute`；`Channel` 本身是 `IEngineeringObject`，
+  同一套 helper 直接可用；
+- **两段式**：`list` 只调一次 `GetAttributeInfos()`；`values` 才逐属性取值。整台设备的 `values`
+  可能上千属性，用 `item` 收窄；
+- 值序列化：枚举取名字、`DateTime` 取 ISO-8601、`byte[]` 取 base64，其余原样；
+- **不写任何属性**：`SetAttribute` / `SetPrmData` / `ConnectToPort` 都不在本操作内。
+
+覆盖到 P1a：设备项 + 通道 + GSD 身份。P1b（`GetPrmData` 参数块）、P1c（端口/连线/MRP/MAC）
+见 [`HARDWARE-PARAMETERS-PLAN.md`](HARDWARE-PARAMETERS-PLAN.md)。

@@ -816,6 +816,22 @@ function sessionCwd(exec) {
  * @param exec - the per-call execution context, for the workspace root.
  * @returns the absolute directory, or `null` when no workspace is available.
  */
+/** The export file name inside the hardware directory. */
+const HARDWARE_AML_NAME = 'globalHardware.aml';
+/**
+ * Absolute path of the export the readers default to.
+ *
+ * The controller resolves a missing `aml_path` against its **own** process directory
+ * (`<plugin>/controller/bin`), which is never the workspace — measured in a real run,
+ * where the default produced `...\controller\bin\hardware\globalHardware.aml`. The
+ * workspace is only known here, so the default is resolved on this side and always sent.
+ *
+ * @returns the absolute path, or `null` when the session has no working directory.
+ */
+function defaultAmlPath(exec) {
+    const dir = hardwareDirectory(undefined, exec);
+    return dir === null ? null : join(dir, HARDWARE_AML_NAME);
+}
 function hardwareDirectory(explicit, exec) {
     const workspace = sessionCwd(exec);
     if (typeof explicit === 'string' && explicit.trim().length > 0) {
@@ -2449,6 +2465,193 @@ export function registerTools(ctx, dependencies) {
                 overwrite: args.overwrite ?? true,
             };
             return asJsonOutcome(await runOperation(dependencies, 'ExportHardwareConfig', params, exec.signal));
+        },
+    }));
+    register(defineTool({
+        name: 'hardware_inventory',
+        description: 'Read the hardware configuration that was exported to AML and report what the ordered hardware IS: every ' +
+            'device with its user group, and inside each device its rack and, per slot, the module — TypeIdentifier, ' +
+            'order number (MLFB), type name, firmware version, built-in flag, role class, and the channel counts ' +
+            '(DI/DO/AI/AO). This is the answer to "which components are in this project, how many, and what models". ' +
+            'It reads the FILE, not the project: no open project, no TIA session, no Openness — so it also works after ' +
+            'close_project and can be repeated cheaply. ' +
+            'It deliberately contains no addresses, no IP and no network data: those are configured values and live in ' +
+            'hardware_configuration. ' +
+            'Defaults to `<workspace>/hardware/globalHardware.aml` (the export location). Fails with ' +
+            'hardware_aml_not_found (run export_hardware_config first), invalid_aml (not a CAEX file) or ' +
+            'device_not_found (the name is not in the export; details.available lists what is). ' +
+            'Derived work goes elsewhere: ad-hoc scripts and intermediate dumps belong in the workspace temp/ folder ' +
+            '(disposable, gitignored), and a deliverable report goes to the workspace root — never into the export ' +
+            'directory. ',
+        parameters: {
+            aml_path: {
+                type: 'string',
+                description: 'Absolute path of the AML file. Omit to use `<workspace>/hardware/globalHardware.aml`.',
+            },
+            device: {
+                type: 'string',
+                description: 'Only report this device (exact name from a previous call). Omit for every device.',
+            },
+            include_comments: {
+                type: 'boolean',
+                description: 'True (default) to include the multilingual comment of devices and modules.',
+            },
+            include_counts: {
+                type: 'boolean',
+                description: 'True (default) to include per-module channel counts and the overall totals.',
+            },
+        },
+        output: {
+            schema: OUTCOME_SCHEMA,
+            render: (_args, value) => [{ type: 'text', text: renderValue(value, verbose) }],
+        },
+        async execute(args, exec) {
+            const amlPath = args.aml_path ?? defaultAmlPath(exec);
+            if (amlPath === null) {
+                return asJsonOutcome(localFailure('HardwareInventory', 'scope_unavailable', 'The hardware reader needs a workspace to find the export, but this session supplied no working ' +
+                    'directory. Pass an absolute `aml_path` instead.'));
+            }
+            const params = {
+                aml_path: amlPath,
+                include_comments: args.include_comments ?? true,
+                include_counts: args.include_counts ?? true,
+            };
+            if (args.device !== undefined)
+                params['device'] = args.device;
+            return asJsonOutcome(await runOperation(dependencies, 'HardwareInventory', params, exec.signal));
+        },
+    }));
+    register(defineTool({
+        name: 'hardware_configuration',
+        description: 'Read the values engineering ASSIGNED in the exported hardware configuration: I/O addresses and channel ' +
+            'widths, PLC tags with their logical addresses, the network plan (subnets, node IP / subnet mask / ' +
+            'PROFINET device name / IP protocol, IO systems), the cabling and memberships, and the F addresses. ' +
+            'Sections: addresses, channels, tags, network (subnets + nodes + ioSystems), links (port-to-port cabling, ' +
+            'node-to-subnet, interface-to-IO-system), signals (channel-to-PLC-tag I/O mapping), f. ' +
+            'These are the values a user changes, so they are separate from hardware_inventory, which reports the ' +
+            'ordered identity (models, order numbers, slots). Where someone needs both, call both — the rows here ' +
+            'carry `device`/`rack`/`slot` so the two results join by name. ' +
+            'Reads the FILE only: no project, no TIA session. Note what the AML does NOT carry: module parameters ' +
+            '(measuring range, filtering, diagnostics) and GSD parameter blocks are not exported at all, so a question ' +
+            'about parameter values cannot be answered from here. ' +
+            'Defaults to `<workspace>/hardware/globalHardware.aml`. Fails with hardware_aml_not_found, invalid_aml or ' +
+            'device_not_found. ' +
+            'Derived work goes elsewhere: ad-hoc scripts and intermediate dumps belong in the workspace temp/ folder ' +
+            '(disposable, gitignored), and a deliverable report goes to the workspace root — never into the export ' +
+            'directory. ',
+        parameters: {
+            aml_path: {
+                type: 'string',
+                description: 'Absolute path of the AML file. Omit to use `<workspace>/hardware/globalHardware.aml`.',
+            },
+            device: { type: 'string', description: 'Only report this device. Omit for every device.' },
+            sections: {
+                type: 'array',
+                items: {
+                    type: 'string',
+                    enum: ['addresses', 'channels', 'tags', 'network', 'links', 'signals', 'f'],
+                },
+                description: 'Which sections to return; all of them by default. Use this to keep the payload small — the full set ' +
+                    'on a 500-tag project is roughly 250 KB.',
+            },
+        },
+        output: {
+            schema: OUTCOME_SCHEMA,
+            render: (_args, value) => [{ type: 'text', text: renderValue(value, verbose) }],
+        },
+        async execute(args, exec) {
+            const amlPath = args.aml_path ?? defaultAmlPath(exec);
+            if (amlPath === null) {
+                return asJsonOutcome(localFailure('HardwareConfiguration', 'scope_unavailable', 'The hardware reader needs a workspace to find the export, but this session supplied no working ' +
+                    'directory. Pass an absolute `aml_path` instead.'));
+            }
+            const params = { aml_path: amlPath };
+            if (args.device !== undefined)
+                params['device'] = args.device;
+            if (args.sections !== undefined)
+                params['sections'] = args.sections;
+            return asJsonOutcome(await runOperation(dependencies, 'HardwareConfiguration', params, exec.signal));
+        },
+    }));
+    register(defineTool({
+        name: 'hardware_parameters',
+        description: 'Read PARAMETER values of the open project through the Openness object model — the things a CAx/AML ' +
+            'export never carries: an analog module measuring type and range, diagnostics/wire-break settings, F-module ' +
+            'options, GSD device identity. ' +
+            'There is NO parameter whitelist: attribute names differ per module type and Openness publishes only the ' +
+            'runtime list from GetAttributeInfos() (name + access mode). So mode=list (default) answers "which ' +
+            'parameters does this object publish", and mode=values reads them. Keep values scoped with item/device: a ' +
+            'whole device can publish thousands of attributes. ' +
+            'Requires an open project (open_project) — unlike hardware_inventory/hardware_configuration, which read the ' +
+            'AML file and need none. Read-only: it never writes an attribute. ' +
+            'Measured on a real project: F modules publish their whole F-parameter set (57 attributes such as ' +
+            'FMonitoringtime, FPassivation, ShortCircuitTest_*), F channels publish theirs (17, e.g. DiscrepancyTime, ' +
+            'InputDelay), and a CPU publishes about 78 settings (cycle, webserver, time sync, protection). STANDARD I/O ' +
+            'modules DEPEND ON THE TYPE — do not generalise from one: an analog RTD/TC input publishes only identity ' +
+            'data (18 attributes; its channels only ChannelAddress/ChannelWidth/Type/IoType/Number), while an analog ' +
+            '2xU/I input DOES publish OperatingType, OperatingRange, InterferenceFrequencySuppression, Smoothing and ' +
+            'per-channel diagnostics. Those are numeric ENUM INDICES, not engineering values (measured: ' +
+            'InterferenceFrequencySuppression = 19, which cannot be a frequency), so never translate one into a range ' +
+            'or a unit — say it is an index and that the mapping lives in TIA. ' +
+            'A rack and its modules are SIBLINGS in the object model (unlike the AML), so item "200MOD5" resolves through ' +
+            'the name fallback; channels live on the same-named child item ("200MOD5/200MOD5"), whose rows carry ' +
+            '`address` (ChannelAddress — the AML has no per-channel address). ' +
+            'P1b still owes GSD parameter blocks (GetPrmData), structured vendor data and port/cabling details. ' +
+            'Derived work goes elsewhere: ad-hoc scripts and intermediate dumps belong in the workspace temp/ folder ' +
+            '(disposable, gitignored), and a deliverable report goes to the workspace root — never into the export ' +
+            'directory. ' +
+            'Fails with project_not_open, device_not_found, item_not_found, item_ambiguous, attribute_not_found or ' +
+            'invalid_params.',
+        parameters: {
+            device: { type: 'string', required: true, description: 'Device name (as reported by hardware_inventory).' },
+            item: {
+                type: 'string',
+                description: 'Device item path, segments separated by "/", e.g. "Châssis_0/3" or "Châssis_0/200MOD5". A segment ' +
+                    'matches by name, or by slot with a leading "#" (e.g. "#3"). Omit to walk the whole device.',
+            },
+            channel: { type: 'integer', description: 'Only this channel number (of every selected device item).' },
+            attribute: {
+                type: 'string',
+                description: 'Only this attribute. An unknown name fails with attribute_not_found and lists what the object publishes.',
+            },
+            mode: {
+                type: 'string',
+                enum: ['list', 'values'],
+                description: "'list' (default) returns names and access modes; 'values' also reads every published value — slow on a " +
+                    'whole device, so scope it with item.',
+            },
+            include: {
+                type: 'array',
+                items: { type: 'string', enum: ['attributes', 'channels', 'gsd'] },
+                description: "What to return: 'attributes' and 'channels' (both default), and 'gsd' for GSD identity.",
+            },
+            max_items: {
+                type: 'integer',
+                description: 'Cap on device items per call (default 200); the result reports truncated/nextOffset.',
+            },
+            offset: { type: 'integer', description: 'Pagination cursor (default 0), use nextOffset from a previous call.' },
+        },
+        output: {
+            schema: OUTCOME_SCHEMA,
+            render: (_args, value) => [{ type: 'text', text: renderValue(value, verbose) }],
+        },
+        async execute(args, exec) {
+            const params = {
+                device: args.device,
+                mode: args.mode ?? 'list',
+                max_items: args.max_items ?? 200,
+            };
+            if (args.item !== undefined)
+                params['item'] = args.item;
+            if (args.channel !== undefined)
+                params['channel'] = args.channel;
+            if (args.attribute !== undefined)
+                params['attribute'] = args.attribute;
+            if (args.include !== undefined)
+                params['include'] = args.include;
+            if (args.offset !== undefined)
+                params['offset'] = args.offset;
+            return asJsonOutcome(await runOperation(dependencies, 'HardwareParameters', params, exec.signal));
         },
     }));
     register(defineTool({

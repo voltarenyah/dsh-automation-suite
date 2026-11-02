@@ -77,10 +77,12 @@ namespace TiaOpennessV17Min.Controller
         public const string SetSafetySettings = "SetSafetySettings";
         public const string SafetySignatures = "SafetySignatures";
 
-        // Hardware configuration (OperationsHardware.cs). The CAx/AML export is the
-        // only Openness entry point that produces a project-level AML document, and
-        // it is read-only against the project.
+        // Hardware configuration (OperationsHardware.cs / HardwareAml.cs). The CAx/AML
+        // export writes the file; the two readers below parse it and need no project.
         public const string ExportHardwareConfig = "ExportHardwareConfig";
+        public const string HardwareInventory = "HardwareInventory";
+        public const string HardwareConfiguration = "HardwareConfiguration";
+        public const string HardwareParameters = "HardwareParameters";
 
         // Online surface (OperationsOnline.cs). Discovery is read-only; the
         // session operations are stateful and share one controller-held session.
@@ -98,7 +100,7 @@ namespace TiaOpennessV17Min.Controller
             PortalSettings,
             ListPlcObjects, CreatePlcObjects, DeletePlcObjects, WriteTags, SetBlockAttributes, ProtectBlocks,
             GenerateSource, WatchAndForceTables, SoftwareUnits,
-            ExportHardwareConfig,
+            ExportHardwareConfig, HardwareInventory, HardwareConfiguration, HardwareParameters,
             SafetyStatus, SetSafetySettings, SafetySignatures,
             AdoptOpenProject, OnlineTargets, OnlineConnect, OnlineStatus, OnlineDisconnect, Download,
             PlcChecksum, SyncScan,

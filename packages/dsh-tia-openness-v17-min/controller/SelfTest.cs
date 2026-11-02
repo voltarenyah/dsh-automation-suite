@@ -152,7 +152,7 @@ namespace TiaOpennessV17Min.Controller
                 "UpdateProject", "PortalSettings",
                 "ListPlcObjects", "CreatePlcObjects", "DeletePlcObjects", "WriteTags", "SetBlockAttributes",
                 "ProtectBlocks", "GenerateSource", "WatchAndForceTables", "SoftwareUnits",
-                "ExportHardwareConfig",
+                "ExportHardwareConfig", "HardwareInventory", "HardwareConfiguration", "HardwareParameters",
                 "SafetyStatus", "SetSafetySettings", "SafetySignatures",
                 "AdoptOpenProject", "OnlineTargets", "OnlineConnect", "OnlineStatus", "OnlineDisconnect", "Download",
                 "PlcChecksum", "SyncScan",

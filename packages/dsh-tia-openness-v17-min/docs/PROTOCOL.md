@@ -231,6 +231,79 @@ is missing.
 `LogicalAddress` values are present in the AML as byte.bit strings (`<Value>32.6</Value>`),
 so I/O addresses can be mapped from the file itself.
 
+### `HardwareInventory`
+
+Read-only; **needs no project**. Parses the CAx/AML export and reports what the
+ordered hardware is. Classification uses `SupportedRoleClass` (Device /
+DeviceItem / CommunicationPort / CommunicationInterface / Node), never
+`RefBaseClassPath` (empty on every element in a V17 export).
+
+| param | type | default | meaning |
+|---|---|---|---|
+| `aml_path` | string | `<cwd>/hardware/globalHardware.aml` | absolute path of the export |
+| `device` | string | all | restrict to one device |
+| `include_comments` | bool | `true` | multilingual `Comment` |
+| `include_counts` | bool | `true` | per-module channel counts and totals |
+
+`data`: `aml{path,bytes,sha256,schemaVersion,project}`, `devices[]{name,groupPath,
+roleClass,typeIdentifier,orderNumber,typeName,firmwareVersion,plantDesignation,
+locationIdentifier,comment?,racks[]{name,typeIdentifier,slot,modules[]{slot,name,
+roleClass,typeIdentifier,orderNumber,typeName,deviceItemType,builtIn,
+firmwareVersion,comment?,channels{di,do,ai,ao,total}}}}`, `counts`.
+
+### `HardwareConfiguration`
+
+Read-only; **needs no project**. Parses the same file for the values engineering
+assigned.
+
+| param | type | default | meaning |
+|---|---|---|---|
+| `aml_path` | string | as above | absolute path of the export |
+| `device` | string | all | restrict to one device |
+| `sections` | array | all | `addresses`, `channels`, `tags`, `network`, `links`, `signals`, `f` |
+
+`data`: `aml{...}`, `sections`, and one member per requested section:
+`addresses[]{device,rack,slot,module,group,ioType,startAddress,length}`,
+`channels[]{device,rack,slot,module,channels[]{name,type,ioType,number,width}}`,
+`tags[]{device,name,dataType,ioType,logicalAddress,comment?}`,
+`network{subnets[],nodes[],ioSystems[]}`,
+`links[]{name,kind,sideA,sideB}` with `kind` one of `port-port`, `node-subnet`,
+`interface-iosystem`,
+`signals[]{name,channel{device,module,slot,channel},tag{device,name,logicalAddress,dataType}}`,
+`fAddresses[]{device,slot,module,fSourceAddress?,fDestinationAddress?,fLowerBound?,fUpperBound?}`.
+
+The four link kinds come from `<InternalLink>` (`RefPartnerSideA/B` =
+`elementID:interfaceName`). Measured on a real project: 356 channel-to-tag
+signals, 17 node-to-subnet, 16 port-to-port, 15 interface-to-IO-system.
+
+What the AML cannot answer: module parameters (measuring range, filtering,
+diagnostics) and GSD parameter blocks are not exported at all — use the object
+model for those (`DeviceItem.GetAttributeInfos`, `GsdDeviceItem.GetPrmData`).
+### `HardwareParameters`
+
+Read-only; **requires an open project**. Reads parameter values through the object
+model — the attributes a CAx/AML export never carries. There is no parameter
+whitelist: attribute names differ per module type and Openness only publishes the
+runtime `GetAttributeInfos()` list (name + access mode).
+
+| param | type | default | meaning |
+|---|---|---|---|
+| `device` | string | — | device name (required) |
+| `item` | string | whole device | device-item path, `/`-separated by name, or `#<slot>` |
+| `channel` | integer | all | only this channel number |
+| `attribute` | string | all | only this attribute; an unknown name is `attribute_not_found` |
+| `mode` | enum | `list` | `list` = names + access modes, `values` = also read them |
+| `include` | array | `attributes,channels` | plus `gsd` for GSD identity |
+| `max_items` / `offset` | integer | 200 / 0 | pagination over device items |
+
+`data`: `device`, `mode`, `include`, `items[]{name,path,depth,position,typeIdentifier,
+classification,attributes[]{name,accessMode,value?},channels[]{number,type,ioType,
+attributes[]},gsd?}`, `counts`, `totalItems`, `offset`, `truncated`, `nextOffset?`.
+
+`mode=values` on a whole device can be expensive (thousands of attributes); scope it
+with `item`. P1a covers device items, their channels and GSD identity. GSD parameter
+blocks (`GsdDeviceItem.GetPrmData`), structured vendor data and port/cabling details
+are P1b/P1c — see `docs/HARDWARE-PARAMETERS-PLAN.md`.
 ### `PlcChecksum`
 
 Read-only. Reads `PlcChecksumProvider.Software` of one PLC — the checksum V17

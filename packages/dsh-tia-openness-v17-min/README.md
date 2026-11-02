@@ -190,16 +190,16 @@ plugin_manager(action: "install_bundle", target: "C:\\Users\\Ansel\\dsh-automati
 
 DSH 按**声明作用域**决定工具对谁可见：一行里注册的工具属于该行的作用域。插件原来把全部工具
 和控制器放在同一行，于是它们落在**宿主（全局）平面**上 —— 任何 agent（包括被派生的子 agent）
-都继承。发行版要区分 `leader`（主 agent，保留 33 个工具）与 `expert`（子 agent，不应看到任何
+都继承。发行版要区分 `leader`（主 agent，保留 36 个工具）与 `expert`（子 agent，不应看到任何
 TIA 工具），所以注册被拆成两行；**人**用的斜线指令是第三个面，再拆一行：
 
 | 行 | 子路径导出 | `name` | `inject` | 内容 |
 |---|---|---|---|---|
 | 宿主行 | `.`（`lib/index.js`） | `tia-openness-v17-min` | `[]` | `ControllerProcess` + `ctx.effect` 的所有权、`engineeringAccess` 服务（公开缝）、`tiaOpennessRuntime`（本包另两行的内部缝）、bundled skill provider |
-| 工具行 | `./tools`（`lib/tools-entry.js`） | `tia-openness-v17-min-tools` | `['tools', 'tiaOpennessRuntime']` | 33 个模型可见工具（`src/tools.ts`） |
+| 工具行 | `./tools`（`lib/tools-entry.js`） | `tia-openness-v17-min-tools` | `['tools', 'tiaOpennessRuntime']` | 36 个模型可见工具（`src/tools.ts`） |
 | 命令行 | `./commands`（`lib/commands-entry.js`） | `tia-openness-v17-min-commands` | `['commands', 'tiaOpennessRuntime']` | 7 个 `/tia-…` 斜线指令（`src/commands.ts`，复用工具的操作与渲染） |
 
-- **只有该看到 TIA 的 preset 才声明工具行**：`leader` 声明它 → 保留 33 个工具；
+- **只有该看到 TIA 的 preset 才声明工具行**：`leader` 声明它 → 保留 36 个工具；
   `expert` 不声明 → 一个 TIA 工具都没有。宿主行对所有 agent 都加载，因为控制器与会话是
   composition 级资源。
 - **命令行独立于工具行**：它不注册任何工具，也不要求 `/tools` 行存在；一个只想给人用 `/tia-open`
@@ -217,7 +217,7 @@ TIA 工具），所以注册被拆成两行；**人**用的斜线指令是第三
 
 ## 4. 工具
 
-工具行注册的 33 个工具，统一返回同一个信封（`ok` / `summary` / `data` / `changes` / `diagnostics` / `error`）。
+工具行注册的 36 个工具，统一返回同一个信封（`ok` / `summary` / `data` / `changes` / `diagnostics` / `error`）。
 每个工具对应控制器的一个白名单操作，参数与返回结构见
 [`docs/EXTENDED-SURFACE.md`](docs/EXTENDED-SURFACE.md)。
 
@@ -272,8 +272,11 @@ TIA 工具），所以注册被拆成两行；**人**用的斜线指令是第三
 | 工具 | 作用 | 写入 | 默认 dry-run |
 |---|---|---|---|
 | `export_hardware_config` | 导出工程级硬件组态为单个 AutomationML（CAx/AML）文件，默认落盘 `<workspace>/hardware/globalHardware.aml`（日志同级 `globalHardware.log`） | 否（只写文件系统；独占访问内执行，不 Save、不改工程） | —（无 `dry_run`） |
+| `hardware_inventory` | 读导出的 AML，返回**元器件身份**：设备/用户组、机架、每槽模块的型号、订货号、固件版本、通道数 | 否（只读文件，不需要打开工程） | —（无 `dry_run`） |
+| `hardware_configuration` | 读导出的 AML，返回**组态值**：I/O 地址与通道宽度、PLC 标签、网络（IP/掩码/PROFINET 名/IO 系统）、连线（端口↔端口、节点→子网、接口→IO 系统）与信号映射（通道↔标签）、F 地址 | 否（只读文件） | —（无 `dry_run`） |
+| `hardware_parameters` | 读**对象模型**的参数：模块/通道发布的属性名与值、GSD 身份（AML 里没有这一层） | 否（只读） | —（无 `dry_run`） |
 
-`export_hardware_config` 只产出文件，**不解析 AML**：拿到的是文档本身、字节数、SHA-256、
+`export_hardware_config` 只产出文件；解析由两个只读工具负责（`hardware_inventory` / `hardware_configuration`），它们读文件、不需要打开的工程。`export_hardware_config` 的返回值仍是：
 `allObjectsExported`、日志计数器（`logSummary{errors,warnings}`）与被跳过的对象（`logProblems[]`）。
 返回里另有 `notInAml[]`：**AML 里没有的设备**（HMI 首当其冲）的名字、类型、以及每个节点的
 `address` / `subnetMask` / `pnDeviceName` / `subnet`——这些正是 AML 条目会带的字段，
@@ -407,7 +410,7 @@ commit `b5c7041`）**逐字**打进包里，并注册成模型可见的**一个*
 - **失败语义与 §8 一致**：操作级失败（TIA 拒绝、块不存在）返回 `ok:false` + 结构化 `error`；
   传输级失败（找不到 exe、超时、协议不匹配）**抛出**。
 - **不新增模型工具**：新增的 `readPlcChecksum` / `syncScan` 落在两个**服务专用**操作上
-  （`PlcChecksum` / `SyncScan`），模型面工具数不因此增加（当前 33 个）；操作数由 25 增至 34（含在线/下载/接管 6 个、v0.3 硬件导出 1 个）。
+  （`PlcChecksum` / `SyncScan`），模型面工具数不因此增加（当前 36 个）；操作数由 25 增至 37（含在线/下载/接管 6 个、v0.3 硬件 4 个）。
   这两个操作刻意不注册成工具：逐块比对指纹是版本管理工作流的一步，不应由模型手工编排。
 - **它是可选的**：消费方按名取（`ctx.get('engineeringAccess')`），取不到就降级 ——
   读上一次的指纹工件并**明确报过期**，而不是装作数据是新的。
@@ -452,7 +455,7 @@ DSH 的斜线指令是**绕过模型**的直接执行面：命令行与结果都
 
 | 措施 | 实现 |
 |---|---|
-| 操作白名单 | 控制器只接受 `controller/Protocol.cs` 的 `OperationCatalog` 里的 34 个操作名（v0.1 的 5 个 + v0.2 的 20 个 + F/版本取证 2 个 + 在线/下载/接管 6 个 + 硬件导出 1 个）；其它名字返回 `unsupported_operation`。插件侧 `src/protocol.ts` 的 `OPERATIONS` 是同一份列表（双重校验，互不信任），`npm run matrix:check` 逐条比对两者 |
+| 操作白名单 | 控制器只接受 `controller/Protocol.cs` 的 `OperationCatalog` 里的 37 个操作名（v0.1 的 5 个 + v0.2 的 20 个 + F/版本取证 2 个 + 在线/下载/接管 6 个 + 硬件 4 个）；其它名字返回 `unsupported_operation`。插件侧 `src/protocol.ts` 的 `OPERATIONS` 是同一份列表（双重校验，互不信任），`npm run matrix:check` 逐条比对两者 |
 | 禁止任意代码 | 控制器不接受任何 C#/脚本片段，所有参数都是数据（路径、块名、枚举）；没有 `eval` / `Invoke` / `Create` 反射入口 |
 | 事务与回滚 | 写入使用 `TiaPortal.ExclusiveAccess()` + `ExclusiveAccess.Transaction(project, "...")`；**只有全部文件成功后**才调用 `CommitOnDispose()`，否则 dispose 即回滚，项目保持不变 |
 | 写后验证 | 见 4.3 |
@@ -543,7 +546,7 @@ npm run test:controller  # 只跑 C# 控制器自检
 
 | 文件 | 覆盖 |
 |---|---|
-| `01-load.test.mjs` | **加载与拆分契约**：两行的模块级 `name`/`inject`/`apply`（宿主行 `inject: []`，工具行 `['tools', 'tiaOpennessRuntime']`）；工具行按注册顺序注册相同的 33 个工具、宿主行一个工具都不注册、缺少宿主行时工具行报错；参数与输出 schema 用**真实** `@deepseek-ai/dsh-tools` 编译器编译；校验器拒绝缺参/错类型/越界枚举；工具描述包含 dry-run 策略与错误码；工具返回值通过 output schema 校验；控制器缺失时宿主行仍能加载并给出结构化原因 |
+| `01-load.test.mjs` | **加载与拆分契约**：两行的模块级 `name`/`inject`/`apply`（宿主行 `inject: []`，工具行 `['tools', 'tiaOpennessRuntime']`）；工具行按注册顺序注册相同的 36 个工具、宿主行一个工具都不注册、缺少宿主行时工具行报错；参数与输出 schema 用**真实** `@deepseek-ai/dsh-tools` 编译器编译；校验器拒绝缺参/错类型/越界枚举；工具描述包含 dry-run 策略与错误码；工具返回值通过 output schema 校验；控制器缺失时宿主行仍能加载并给出结构化原因 |
 | `02-lifecycle.test.mjs` | **生命周期测试**：用真实 exe 启动控制器，断言操作系统可见该进程；`ctx.effect` 的 disposer 卸载后断言**进程已消失**；卸载幂等；配置了不存在的路径时调用失败为 `controller_not_found`。注意：触发卸载的是测试里忠实模拟 `ctx.effect` 语义的 disposer，不是真实 DSH loader 的 HMR 路径（该环待人工验证） |
 | `03-controller-protocol.test.mjs` | **协议测试**：握手、白名单拒绝、参数校验、`project_not_open`、ASCII 转义、进度帧、请求串行化、队列上限；用 stub 控制器覆盖**卡死超时→终止→重启**、请求中途退出、协议版本不匹配、stdout 噪声（这一组还捕获并回归了一个真实的 bug：被替换的旧子进程的迟到 `exit` 事件会清掉新子进程引用，导致进程泄漏） |
 | `04-tools.test.mjs` | **工具语义**：每个工具发送的参数与默认值、dry-run 只留给预览带信息量的 7 个工具（决策 D22）、只发送白名单操作、`controller_status` 不触碰控制器、渲染文本包含错误码/提示/诊断 |
@@ -551,7 +554,7 @@ npm run test:controller  # 只跑 C# 控制器自检
 | `06-skills.test.mjs` | **知识库（替身注册表）**：宿主行 `ctx.inject(['skills'], …)` 注册；没有 skills 服务的 profile 仍加载控制器与全部工具；目录只多一条且 description ≤ 500；`get()` 正文无 frontmatter、引用的每个上游文件都存在、正文 < 8192；vendored 树与 `UPSTREAM.json` 一致；每个工具描述都指向该 skill |
 | `07-skills-registry.test.mjs` | **知识库（真实注册表）**：把 `@deepseek-ai/dsh-skill` 的真实 `SkillRegistry` 挂到裸 cordis context 上（**不需要**工具注册表，因为宿主行已不含工具），验证 candidate 被真实校验接受、重名注册被拒、`get()` 能加载、`renderSkillContent` 带上 base directory、卸载宿主行后目录项消失 |
 | `08-access-service.test.mjs` | **服务缝**：`engineeringAccess` 每个方法发送与对应工具相同的操作与参数、族信封摊平、截断如实上报、`closeProject` 必须显式给 `dryRun`、操作级失败回数据而传输级失败抛出；宿主行发布内部 `tiaOpennessRuntime` 缝（恰好三个成员）且卸载后消失 |
-| `09-two-rows.test.mjs` | **两行接线的真实服务图**：把两行当**兄弟插件**挂在裸 cordis `Context` 上（只有记录用的 `tools` 服务），断言工具行的 `inject` 由宿主行满足、跨行读到 `tiaOpennessRuntime` 并注册同名同序的 33 个工具；宿主行自己一个工具都不注册，卸载后缝消失 |
+| `09-two-rows.test.mjs` | **两行接线的真实服务图**：把两行当**兄弟插件**挂在裸 cordis `Context` 上（只有记录用的 `tools` 服务），断言工具行的 `inject` 由宿主行满足、跨行读到 `tiaOpennessRuntime` 并注册同名同序的 36 个工具；宿主行自己一个工具都不注册，卸载后缝消失 |
 
 C# 控制器自检（无需 TIA Portal，14 项）：
 
@@ -645,6 +648,9 @@ pnpm run link:runtime -- --force   # 无视缓存，按当前宿主版本重抽
 | `exclusive_access_failed` | v0.3：拿不到独占访问（另一个 Openness 客户端正占用 TIA Portal） |
 | `output_exists` | v0.3：目标 AML 已存在且 `overwrite=false` |
 | `scope_unavailable` | v0.3：会话没有工作目录，`export_hardware_config` 无法推导默认落盘位置（改传绝对 `output_dir`） |
+| `hardware_aml_not_found` / `invalid_aml` | v0.3：找不到 AML（先跑 `export_hardware_config`）/ 文件不是 CAEX 文档（根元素不是 `CAEXFile`，或没有 `InstanceHierarchy`） |
+| `device_not_found`（硬件读取） | v0.3：`device` 参数给的设备名不在 AML 里，`details.available` 列出全部设备名 |
+| `item_not_found` / `item_ambiguous` / `attribute_not_found` | v0.3：`hardware_parameters` 的设备项路径不存在 / 有多个同名项（`details.candidates`）/ 该对象不发布这个属性（`details.available` 给全部属性名） |
 
 排障第一步永远是：
 
@@ -659,7 +665,7 @@ pnpm run link:runtime -- --force   # 无视缓存，按当前宿主版本重抽
 ```
 src/
   index.ts             宿主行入口：name / inject[] / Config / apply，ctx.effect 拥有子进程
-  tools-entry.ts       工具行入口（exports["./tools"]）：读 tiaOpennessRuntime，注册 33 个工具
+  tools-entry.ts       工具行入口（exports["./tools"]）：读 tiaOpennessRuntime，注册 36 个工具
   commands-entry.ts    命令行入口（exports["./commands"]）：读 tiaOpennessRuntime，注册 7 个 /tia-… 斜线指令
   runtime-service.ts   宿主行与另两行之间的内部缝 tiaOpennessRuntime（恰好 request/status/verbose）
   config.ts            Schemastery 配置 schema + 归一化（所有字段有默认值）

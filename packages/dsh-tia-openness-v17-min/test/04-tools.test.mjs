@@ -156,6 +156,72 @@ test('export_hardware_config refuses to run without a destination', async (t) =>
   assert.match(value.summary, /scope_unavailable|working directory/)
 })
 
+test('the hardware readers default the AML path to the workspace and forward only what they were given', async (t) => {
+  const { calls, byName } = await harness(t)
+  const exec = { agent: { session: { header: { cwd: 'C:\\ws' } } } }
+
+  // The default must be resolved here: the controller would resolve a missing path
+  // against its own bin directory, which is never the workspace (measured in a real run).
+  await byName['hardware_inventory'].execute({}, exec)
+  assert.equal(calls[0].operation, 'HardwareInventory')
+  assert.deepEqual(calls[0].params, {
+    aml_path: join('C:\\ws', 'hardware', 'globalHardware.aml'),
+    include_comments: true,
+    include_counts: true,
+  })
+
+  await byName['hardware_inventory'].execute({ aml_path: 'C:\\x\\h.aml', device: 'PLC_1', include_counts: false }, exec)
+  assert.equal(calls[1].params.aml_path, 'C:\\x\\h.aml')
+  assert.equal(calls[1].params.device, 'PLC_1')
+  assert.equal(calls[1].params.include_counts, false)
+
+  // No output_dir and no dry_run: the readers never write and never open a project.
+  await byName['hardware_configuration'].execute({}, exec)
+  assert.equal(calls[2].operation, 'HardwareConfiguration')
+  assert.deepEqual(calls[2].params, { aml_path: join('C:\\ws', 'hardware', 'globalHardware.aml') })
+
+  await byName['hardware_configuration'].execute({ sections: ['network', 'links'], device: 'PLC_1' }, exec)
+  assert.deepEqual(calls[3].params, {
+    aml_path: join('C:\\ws', 'hardware', 'globalHardware.aml'),
+    sections: ['network', 'links'],
+    device: 'PLC_1',
+  })
+  assert.ok(!('dry_run' in calls[3].params), 'reading a file has nothing to preview')
+})
+
+test('the hardware readers refuse to guess a path when the session has no workspace', async (t) => {
+  const { calls, byName } = await harness(t)
+
+  for (const name of ['hardware_inventory', 'hardware_configuration']) {
+    const value = await byName[name].execute({}, {})
+    assert.equal(value.ok, false)
+    assert.equal(value.error.code, 'scope_unavailable')
+  }
+  assert.equal(calls.length, 0, 'nothing may reach the controller without a path to read')
+})
+test('hardware_parameters defaults to the cheap list mode and forwards only what it got', async (t) => {
+  const { calls, byName } = await harness(t)
+
+  await byName['hardware_parameters'].execute({ device: 'PLC_1' }, {})
+  assert.equal(calls[0].operation, 'HardwareParameters')
+  assert.deepEqual(calls[0].params, { device: 'PLC_1', mode: 'list', max_items: 200 })
+  assert.ok(!('dry_run' in calls[0].params), 'reading attributes has nothing to preview')
+
+  await byName['hardware_parameters'].execute(
+    { device: 'PLC_1', item: '#1', channel: 2, attribute: 'SignalType', mode: 'values', include: ['attributes'], max_items: 50, offset: 100 },
+    {},
+  )
+  assert.deepEqual(calls[1].params, {
+    device: 'PLC_1',
+    item: '#1',
+    channel: 2,
+    attribute: 'SignalType',
+    mode: 'values',
+    include: ['attributes'],
+    max_items: 50,
+    offset: 100,
+  })
+})
 test('import_blocks is a dry run unless it is explicitly switched off', async (t) => {
   const { calls, byName } = await harness(t)
 
@@ -215,7 +281,7 @@ test('controller_status never talks to the controller and hides the captured out
   const verboseValue = await byName['controller_status'].execute({ include_controller_output: true }, {})
   assert.deepEqual(verboseValue.data.stderrTail, ['a stderr line'])
 
-  assert.equal(context.definitions.length, 33)
+  assert.equal(context.definitions.length, 36)
 })
 
 test('only whitelisted operations ever reach the controller', async (t) => {
