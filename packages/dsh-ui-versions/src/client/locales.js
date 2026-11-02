@@ -42,6 +42,8 @@ export const zh = {
   modified: '修改',
   added: '新增',
   removed: '删除',
+  faceChange: '{face} 变更',
+  resize: '拖动调整两栏宽度',
 
   refresh: '刷新',
   loading: '正在读取版本数据…',
@@ -83,6 +85,8 @@ export const en = {
   modified: 'modified',
   added: 'added',
   removed: 'removed',
+  faceChange: '{face} change',
+  resize: 'Drag to resize the two columns',
 
   refresh: 'Refresh',
   loading: 'Reading version data…',

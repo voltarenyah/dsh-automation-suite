@@ -20,11 +20,16 @@ DSH 插件（**浏览器半侧**）：在 dsh-web 的**右侧栏**增加一个 *
 - **VERSION HISTORY** 面板：计数 `n / total`，一行一个版本 —— 短 sha（10 位）、标题、日期、
   `checksumPrev → checksum`、徽章（`N block(s)`；没有变更事件的基线提交显示 `Baseline`）；
 - 点版本行展开它的变更事件：变更徽章（`modified` / `added` / `removed`）、块 key（可点击）、
-  `+added -removed`、face 标签，以及**每个变化 face 一行**的指纹（前 10 位；缺失值显示 `—`）；
+  `+added -removed`、**每个变化 face 一枚 pill**（`Code change` / `Interface change` …，
+  **悬停**才显示该 face 的 `前 10 位 → 后 10 位` 指纹；缺失值显示 `—`）；
   再往下是 `Reason` 与 `Problem`（有才显示）；
 - **BLOCK TIMELINE** 面板：点版本里的块 key 后，按 `seq` 列出这个块的每次变更 —— `#seq`、短 sha、日期、
-  标题、face 标签、每 face 指纹、`Reason`；
-- 可读性取舍：版本行与时间线都只展示前 10 位指纹；`reason` 只取首行并截到 160/180 字符。
+  标题、face pills（同样悬停看指纹）、`Reason`；
+- 可读性取舍：指纹只以 pill 悬停的形式出现（前 10 位），`reason` 只取首行并截到 160/180 字符。
+
+**颜色只有一条规矩**：面（face）用三个色相区分 —— Code 蓝、Interface 紫、Comments 青（都由宿主
+`--dsw-*` token 用 `color-mix` 派生，所以明暗主题都跟着走），Properties 保持中性；变更种类只用徽章上
+的小圆点（新增绿 / 修改琥珀 / 删除红），`+n / -n` 也分别用宿主的增删色。除此之外一律中性色。
 
 ## 数据从哪来
 
@@ -58,16 +63,27 @@ DSH 插件（**浏览器半侧**）：在 dsh-web 的**右侧栏**增加一个 *
 tab 的布局看**面板自己的宽度**，不看窗口宽度 —— 用 CSS **容器查询**（`.vsn-root { container-type: inline-size }`）
 而不是 viewport media query：1600px 的窗口里侧栏可能只有 380px，media query 会把双列硬塞进去。
 
-- 面板 ≥ **760px**：两列（左侧版本历史、右侧块时间线，时间线 300px）；
-- 面板 < **760px**：单列；
-- 面板 < **560px**：版本行改成堆叠（sha / 标题 / 元信息各占一行），指纹列收窄到 64px。
+- 面板 ≥ **760px**：两列（左版本历史 / 右块时间线），中间是一条**可拖动的分隔条**
+  （默认 62%，把手夹在 25%–75% 之间；拖动只改渲染态，不落盘）；
+- 面板 < **760px**：单列，分隔条隐藏；
+- 面板 < **560px**：版本行改成堆叠（sha / 标题 / 元信息各占一行）。
+
+## 滚动
+
+整个面板是**一个滚动容器**（`.vsn-root { overflow-y: auto }`），标题与工具栏用 `position: sticky`
+固定在上方。原因：本插件坐在一个 `overflow: hidden` 且有固定高度的 tab 座位里，按"子元素自己滚"
+的写法在窗口变矮时会**直接裁掉**内容而且没有滚动条（真机复现后改的）。滚动条显式设了
+`scrollbar-width` / `scrollbar-color`，不再依赖会隐藏的 overlay 滚动条。
 
 ## 主题与语言
 
-- 样式只用宿主的语义 token：`--dsw-alias-label-primary/secondary/tertiary`、`--dsw-alias-border-l1`、
-  `--dsw-alias-fill-l1`、`--dsw-alias-label-warning/error`、`--dsw-radius-sm`（都带 fallback），
-  **没有自带的调色板**，所以浅色/深色都跟随应用；颜色只用于徽章里的 4px 语义点
-  （`modified` 用 warning、`removed` 用 error）。
+- 样式只用宿主的语义 token（`--dsw-alias-label-*`、`--dsw-alias-border-l1/l2`、`--dsw-alias-fill-l1`、
+  `--dsw-alias-state-*`、`--dsw-alias-scrollbar-*`、`--dsw-alias-button-floating-fill`、`--dsw-radius-sm`，
+  都带 fallback），**没有自带的调色板**，浅色/深色都跟随应用；
+- face 的三个色相（Code 蓝 / Interface 紫 / Comments 青）是宿主 token 的 `color-mix`，不是新字面量，
+  所以换主题时不会偏色；徽章上只保留 4px 语义点，`+n / -n` 用宿主的增删色；
+- 下拉是**自绘**的（`Dropdown`），因为原生 `<select>` 的弹层由系统绘制 —— 深色主题下出现过
+  浅底浅字（看不清）。自绘弹层用 `--dsw-alias-button-floating-fill` 作底色，跟着主题走。
 - 字典在 `src/client/locales.js`：`NS = 'versions'`，`zh` / `en` 两份；
   `apply` 里 `ctx.locale.register(NS, { zh, en })`，`ctx.locale.bind(NS)` 拿到 `t`。
   界面文字**跟随 DSH 的语言设置**（设置 → 通用 → 语言），切换不刷新；
@@ -113,6 +129,6 @@ node scripts/tsc.mjs -p tsconfig.json --noEmit
 - **不解析 SQLite**：所有信息都来自视图文件；视图里没有的字段（例如文件内容、网络逻辑）这里也看不到，
   那是 expert / 图谱的事。
 - **块时间线要点一下块 key 才出现**：面板不预选块（不同版本可能改的是不同块）。
-- **不渲染 `added` 的完整旧状态**：`added` 事件的 `before` 为空，指纹行左边显示 `—`。
+- **不渲染 `added` 的完整旧状态**：`added` 事件的 `before` 为空，pill 的悬停提示左边显示 `—`。
 - **同一视图文件串行覆盖**：多个版本操作连续跑时以最后一次写为准；没有历史视图文件。
 - **没有文件监听**：切到别的 tab 再回来保留已读数据与筛选，但不会重新读取；需要用刷新按钮。

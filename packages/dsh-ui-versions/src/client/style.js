@@ -2,10 +2,16 @@
  * The tab's stylesheet, inlined into the client bundle and injected once as a
  * `<style data-plugin …>` node.
  *
- * Only `--dsw-*` semantic tokens are used (with fallbacks), so the list follows
- * the app's light/dark themes without a second palette of its own. Colour is
- * deliberately scarce: one primary label colour, one muted pair, and two
- * semantic tokens (warning for `modified`, error for `removed`).
+ * Colours come from the host's `--dsw-*` semantic tokens, so light and dark
+ * follow the app without a palette of our own. Three hues carry the *faces*
+ * (blue = Code, violet = Interface, teal = Comments; Properties stays neutral)
+ * — the violet and teal are `color-mix` of host tokens rather than new literals,
+ * so they keep following the theme. Everything else stays neutral, and the
+ * change kind keeps its small semantic dot.
+ *
+ * The panel is one scroll container: the seat above it is `overflow: hidden`
+ * with a fixed height, and a flex-child scroller silently clipped in the real
+ * app at narrow window heights.
  *
  * @module dsh-ui-versions/client/style
  */
@@ -16,22 +22,42 @@ export const TAG_ID = 'dsh-ui-versions/versions.css'
 /** Stylesheet text. Class names are prefixed to stay out of the app's way. */
 export const CSS = `
 .vsn-root {
-  display: flex;
-  flex-direction: column;
-  min-height: 0;
   height: 100%;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
   font-size: 12px;
   line-height: 18px;
   color: var(--dsw-alias-label-primary, #1f2328);
   /* The layout follows the *pane*, not the window: a 1600px window can still
      hold a 380px sidebar, and a viewport media query would cram two columns
-     into it (observed in the real app). Container queries keep the approved
-     wide/narrow rules tied to the space the tab actually gets. */
+     into it (observed in the real app). */
   container-type: inline-size;
   container-name: vsn;
+  /* A visible scrollbar: Chromium's overlay scrollbars hid the only way to
+     reach content below the fold. */
+  scrollbar-width: thin;
+  scrollbar-color: var(--dsw-alias-scrollbar-bg-l1, #e5e5e5) transparent;
+  overscroll-behavior: contain;
+}
+.vsn-root::-webkit-scrollbar { width: 10px; height: 10px; }
+.vsn-root::-webkit-scrollbar-track { background: transparent; }
+.vsn-root::-webkit-scrollbar-thumb {
+  background: var(--dsw-alias-scrollbar-bg-l1, #e5e5e5);
+  border-radius: 5px;
+}
+.vsn-root::-webkit-scrollbar-thumb:hover { background: var(--dsw-alias-scrollbar-hover-l1, #d4d4d4); }
+
+/* Header and toolbar stay reachable while the panel scrolls: they are one
+   sticky block, so no offset maths and no jump when the toolbar wraps. */
+.vsn-sticky {
+  position: sticky;
+  top: 0;
+  z-index: 6;
+  background: color-mix(in srgb, var(--dsw-alias-button-floating-fill, #fff) 88%, transparent);
+  backdrop-filter: blur(8px);
 }
 .vsn-head {
-  flex: none;
   display: flex;
   align-items: center;
   gap: 6px;
@@ -59,15 +85,16 @@ export const CSS = `
 }
 
 .vsn-toolbar {
-  flex: none;
   display: flex;
   gap: 6px;
   padding: 6px 10px;
   border-bottom: 1px solid var(--dsw-alias-border-l1, rgba(128, 128, 128, 0.24));
   flex-wrap: wrap;
+  align-items: center;
 }
-.vsn-toolbar input,
-.vsn-toolbar select {
+.vsn-toolbar input {
+  flex: 1 1 140px;
+  min-width: 0;
   background: var(--dsw-alias-fill-l1, rgba(128, 128, 128, 0.12));
   border: 1px solid var(--dsw-alias-border-l1, rgba(128, 128, 128, 0.24));
   color: var(--dsw-alias-label-primary, #1f2328);
@@ -78,15 +105,64 @@ export const CSS = `
   min-height: 26px;
   outline: none;
 }
-.vsn-toolbar input { flex: 1; min-width: 120px; }
 .vsn-toolbar input::placeholder { color: var(--dsw-alias-label-tertiary, #6b7280); }
-.vsn-toolbar input:focus,
-.vsn-toolbar select:focus { border-color: var(--dsw-alias-label-secondary, #4b5563); }
+.vsn-toolbar input:focus { border-color: var(--dsw-alias-label-secondary, #4b5563); }
+
+/* A select-shaped dropdown of our own: the native popup is painted by the OS
+   and came out as light text on a light list in the app's dark theme. */
+.vsn-select { position: relative; }
+.vsn-select-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 26px;
+  padding: 4px 8px;
+  font: inherit;
+  font-size: 11.5px;
+  color: var(--dsw-alias-label-primary, #1f2328);
+  background: var(--dsw-alias-fill-l1, rgba(128, 128, 128, 0.12));
+  border: 1px solid var(--dsw-alias-border-l1, rgba(128, 128, 128, 0.24));
+  border-radius: var(--dsw-radius-sm, 4px);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.vsn-select-button:hover { border-color: var(--dsw-alias-border-l2, rgba(128, 128, 128, 0.34)); }
+.vsn-select-button .caret { color: var(--dsw-alias-label-tertiary, #6b7280); font-size: 9px; }
+.vsn-menu {
+  position: absolute;
+  z-index: 20;
+  top: calc(100% + 4px);
+  right: 0;
+  min-width: 100%;
+  margin: 0;
+  padding: 4px;
+  list-style: none;
+  border-radius: var(--dsw-radius-sm, 6px);
+  border: 1px solid var(--dsw-alias-border-l2, rgba(128, 128, 128, 0.34));
+  background: var(--dsw-alias-button-floating-fill, #fff);
+  box-shadow: 0 8px 24px var(--dsw-alias-label-shimmer, rgba(0, 0, 0, 0.18));
+}
+.vsn-menu button {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 5px 8px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--dsw-alias-label-secondary, #4b5563);
+  font: inherit;
+  font-size: 11.5px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.vsn-menu button:hover { background: var(--dsw-alias-interactive-bg-hover, rgba(128, 128, 128, 0.12)); }
+.vsn-menu button.selected {
+  color: var(--dsw-alias-state-business-primary, #4176e6);
+  background: var(--dsw-alias-state-business-tertiary, rgba(65, 118, 230, 0.1));
+}
 
 .vsn-body {
-  flex: 1;
-  min-height: 0;
-  overflow: auto;
   padding: 8px 10px 16px;
   display: grid;
   grid-template-columns: minmax(0, 1fr);
@@ -97,6 +173,7 @@ export const CSS = `
   border: 1px solid var(--dsw-alias-border-l1, rgba(128, 128, 128, 0.24));
   border-radius: var(--dsw-radius-sm, 4px);
   overflow: hidden;
+  min-width: 0;
 }
 .vsn-panel-head {
   display: flex;
@@ -110,6 +187,9 @@ export const CSS = `
   text-transform: uppercase;
 }
 .vsn-count { margin-left: auto; letter-spacing: 0; text-transform: none; }
+
+/* The draggable split between the two panels (wide layout only). */
+.vsn-divider { display: none; }
 
 .vsn-vrow { border-bottom: 1px solid var(--dsw-alias-border-l1, rgba(128, 128, 128, 0.24)); }
 .vsn-vrow:last-child { border-bottom: 0; }
@@ -126,7 +206,7 @@ export const CSS = `
 .vsn-sha {
   font-family: ui-monospace, "Cascadia Code", Consolas, monospace;
   font-size: 11px;
-  color: var(--dsw-alias-label-secondary, #4b5563);
+  color: var(--dsw-alias-state-business-primary, #4176e6);
   white-space: nowrap;
 }
 .vsn-subj {
@@ -176,29 +256,79 @@ export const CSS = `
   border-radius: 50%;
   background: var(--dsw-alias-label-tertiary, #6b7280);
 }
-.vsn-badge.change-modified::before { background: var(--dsw-alias-label-warning, #b7791f); }
-.vsn-badge.change-removed::before { background: var(--dsw-alias-label-error, #c0392b); }
+.vsn-badge.change-added::before { background: var(--dsw-alias-state-success-primary, #22c55e); }
+.vsn-badge.change-modified::before { background: var(--dsw-alias-state-warn-primary, #f59e0b); }
+.vsn-badge.change-removed::before { background: var(--dsw-alias-state-error-primary, #ec1313); }
 .vsn-badge.plain::before { display: none; }
-.vsn-face {
-  font-family: ui-monospace, "Cascadia Code", Consolas, monospace;
-  font-size: 9.5px;
-  color: var(--dsw-alias-label-tertiary, #6b7280);
-  border: 1px solid var(--dsw-alias-border-l1, rgba(128, 128, 128, 0.24));
-  border-radius: 3px;
-  padding: 0 4px;
-  white-space: nowrap;
-}
+
 .vsn-delta {
   font-family: ui-monospace, "Cascadia Code", Consolas, monospace;
   font-size: 10px;
-  color: var(--dsw-alias-label-tertiary, #6b7280);
+  white-space: nowrap;
+}
+.vsn-delta .plus { color: var(--dsw-alias-file-diff-added-marker, #01a241); }
+.vsn-delta .minus { color: var(--dsw-alias-file-diff-deleted-marker, #ba2723); margin-left: 6px; }
+
+/* Faces: three hues, derived from host tokens so both themes stay correct. */
+.vsn-pills { display: flex; flex-wrap: wrap; gap: 4px; margin: 4px 0 0; }
+.vsn-pill {
+  --vsn-pill: var(--dsw-alias-label-tertiary, #6b7280);
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0 6px;
+  border-radius: 9px;
+  font-size: 10px;
+  line-height: 17px;
+  color: var(--vsn-pill);
+  border: 1px solid color-mix(in srgb, var(--vsn-pill) 34%, transparent);
+  background: color-mix(in srgb, var(--vsn-pill) 10%, transparent);
+  cursor: help;
+  white-space: nowrap;
+}
+.vsn-pill::before {
+  content: '';
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--vsn-pill);
+}
+.vsn-pill:hover { background: color-mix(in srgb, var(--vsn-pill) 20%, transparent); }
+.vsn-pill.face-code { --vsn-pill: var(--dsw-alias-state-business-primary, #4176e6); }
+.vsn-pill.face-interface {
+  --vsn-pill: color-mix(
+    in srgb,
+    var(--dsw-alias-state-business-primary, #4176e6) 55%,
+    var(--dsw-alias-state-error-secondary, #f25a5a)
+  );
+}
+.vsn-pill.face-comments {
+  --vsn-pill: color-mix(
+    in srgb,
+    var(--dsw-alias-state-business-primary, #4176e6) 45%,
+    var(--dsw-alias-state-success-primary, #22c55e)
+  );
+}
+.vsn-pill.face-properties { --vsn-pill: var(--dsw-alias-label-secondary, #4b5563); }
+
+.vsn-tag {
+  display: inline-block;
+  padding: 0 5px;
+  border-radius: 3px;
+  font-size: 10px;
+  border: 1px solid var(--dsw-alias-border-l1, rgba(128, 128, 128, 0.24));
+}
+.vsn-tag.problem {
+  color: var(--dsw-alias-state-warn-label, #b7791f);
+  border-color: color-mix(in srgb, var(--dsw-alias-state-warn-primary, #f59e0b) 40%, transparent);
+  background: var(--dsw-alias-state-warn-tertiary, rgba(245, 158, 11, 0.1));
 }
 
 .vsn-events { display: none; padding: 2px 9px 8px 18px; }
 .vsn-vrow.open .vsn-events { display: block; }
 .vsn-event { padding: 6px 0; border-top: 1px solid var(--dsw-alias-border-l1, rgba(128, 128, 128, 0.24)); }
 .vsn-event:first-child { border-top: 0; }
-.vsn-event-head { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-bottom: 3px; }
+.vsn-event-head { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 .vsn-blk {
   font-family: ui-monospace, "Cascadia Code", Consolas, monospace;
   font-size: 10.5px;
@@ -210,19 +340,7 @@ export const CSS = `
   padding: 0;
   text-align: left;
 }
-.vsn-blk:hover { color: var(--dsw-alias-label-primary, #1f2328); text-decoration: underline; }
-.vsn-fp {
-  display: grid;
-  grid-template-columns: 74px minmax(0, 1fr);
-  gap: 6px;
-  padding: 0;
-  font-family: ui-monospace, "Cascadia Code", Consolas, monospace;
-  font-size: 10px;
-  color: var(--dsw-alias-label-tertiary, #6b7280);
-}
-.vsn-fp .val { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.vsn-fp .arrow { margin: 0 5px; }
-.vsn-fp .b { color: var(--dsw-alias-label-secondary, #4b5563); }
+.vsn-blk:hover { color: var(--dsw-alias-state-business-primary, #4176e6); text-decoration: underline; }
 .vsn-reason { color: var(--dsw-alias-label-secondary, #4b5563); font-size: 11px; margin-top: 4px; line-height: 1.45; }
 .vsn-reason .label { color: var(--dsw-alias-label-tertiary, #6b7280); margin-right: 5px; }
 
@@ -234,16 +352,50 @@ export const CSS = `
 .vsn-tl-subj { color: var(--dsw-alias-label-secondary, #4b5563); font-size: 11px; line-height: 1.45; margin-bottom: 3px; }
 
 .vsn-empty { padding: 22px 12px; color: var(--dsw-alias-label-tertiary, #6b7280); font-size: 11px; text-align: center; }
-.vsn-error { padding: 22px 12px; color: var(--dsw-alias-label-error, #c0392b); font-size: 11px; text-align: center; }
+.vsn-error { padding: 22px 12px; color: var(--dsw-alias-state-error-primary, #c0392b); font-size: 11px; text-align: center; }
 .vsn-hint { padding: 16px 12px; color: var(--dsw-alias-label-tertiary, #6b7280); font-size: 11px; text-align: center; }
 
 @container vsn (max-width: 560px) {
   .vsn-vline { grid-template-columns: minmax(0, 1fr); gap: 3px; }
   .vsn-meta { grid-column: 1; }
-  .vsn-fp { grid-template-columns: 64px minmax(0, 1fr); }
 }
 @container vsn (min-width: 760px) {
-  .vsn-body { grid-template-columns: minmax(0, 1fr) 300px; align-items: start; }
+  .vsn-body {
+    grid-template-columns: minmax(0, calc(var(--vsn-split, 62%) - 4px)) 8px minmax(0, 1fr);
+    align-items: start;
+  }
+  .vsn-divider {
+    display: block;
+    align-self: stretch;
+    min-height: 160px;
+    cursor: col-resize;
+    position: relative;
+    touch-action: none;
+  }
+  .vsn-divider::after {
+    content: '';
+    position: absolute;
+    inset: 0 50%;
+    width: 1px;
+    background: var(--dsw-alias-border-l2, rgba(128, 128, 128, 0.34));
+  }
+  /* A grip, so the split reads as adjustable instead of decorative. */
+  .vsn-divider::before {
+    content: '';
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    width: 8px;
+    height: 30px;
+    border-radius: 4px;
+    background-image: radial-gradient(circle, var(--dsw-alias-label-tertiary, #6b7280) 1px, transparent 1.2px);
+    background-size: 8px 7px;
+    opacity: 0.5;
+  }
+  .vsn-divider:hover::after,
+  .vsn-divider:focus-visible::after { width: 2px; background: var(--dsw-alias-state-business-primary, #4176e6); }
+  .vsn-divider:hover::before { opacity: 1; }
 }
 `
 

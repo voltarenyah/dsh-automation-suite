@@ -7,19 +7,29 @@
  * commit, replay and annotation, so the panel never parses SQLite and never
  * needs the store schema.
  *
- * The layout is single-column by default (a right-sidebar tab is narrow) and
- * becomes two columns when the pane is widened, with the block timeline on the
- * right.
+ * Three deliberate choices, all from using the tab in the real app:
+ *
+ *  - the panel is one scroll container with a sticky header, so a short window
+ *    scrolls instead of clipping (the seat above us is `overflow: hidden`);
+ *  - fingerprints are compact pills ("Code change") whose tooltip carries the
+ *    before → after pair — four lines of 17-digit checksums per change are
+ *    unreadable at sidebar width;
+ *  - the two columns of the wide layout are split by a draggable divider,
+ *    because the history column is usually the wider one but not always.
  *
  * @module dsh-ui-versions/client/Panel
  */
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 
 import { VIEW_FILE, filterVersions, formatDate, parseView, shortSha, timelineFor } from '../model'
 
 /** Faces the toolbar can filter on. */
 const FACES = ['Code', 'Interface', 'Comments', 'Properties']
+
+/** Narrowest the split may pull either column. */
+const MIN_RATIO = 0.25
+const MAX_RATIO = 0.75
 
 /**
  * Join an absolute base with a forward-slash relative path.
@@ -47,19 +57,99 @@ function tv(t, key, vars) {
 }
 
 /**
- * One changed fingerprint, as a label/value pair.
+ * The before → after pair of one face, for a pill's tooltip.
  *
- * @param {{ face: string, before: Record<string,string>|null, after: Record<string,string>|null }} props
+ * @param {string} face - face name.
+ * @param {Record<string,string>|null} before - fingerprints before the change.
+ * @param {Record<string,string>|null} after - fingerprints after the change.
+ * @returns {string} `Code CVt2YE+d0L → E4pUnyy/ld`, or `Code —` when unchanged.
  */
-function Fingerprint({ face, before, after }) {
+function fingerprintTitle(face, before, after) {
+  const from = shortSha(before?.[face])
+  const to = shortSha(after?.[face])
+  if (from === to) return `${face} —`
+  return `${face} ${from} → ${to}`
+}
+
+/**
+ * One changed face, as a pill whose tooltip holds the fingerprints.
+ *
+ * @param {{ face: string, label: string, before: Record<string,string>|null, after: Record<string,string>|null, change: string }} props
+ */
+function FacePill({ face, label, before, after, change }) {
   return (
-    <div className="vsn-fp">
-      <span>{face}</span>
-      <span className="val">
-        <span className="a">{shortSha(before?.[face])}</span>
-        <span className="arrow">→</span>
-        <span className="b">{shortSha(after?.[face])}</span>
-      </span>
+    <span
+      className={`vsn-pill face-${face.toLowerCase()} change-${change}`}
+      title={fingerprintTitle(face, before, after)}
+    >
+      {label}
+    </span>
+  )
+}
+
+/**
+ * A select-shaped dropdown drawn with the panel's own tokens.
+ *
+ * The native `<select>` popup is painted by the OS: in the app's dark theme it
+ * came out as light text on a light list (unreadable). A listbox of our own
+ * keeps the popup inside the theme.
+ *
+ * @param {{ value: string, options: { value: string, label: string }[], onChange: (value: string) => void, label: string }} props
+ */
+function Dropdown({ value, options, onChange, label }) {
+  const [open, setOpen] = useState(false)
+  const box = useRef(null)
+  const current = options.find((option) => option.value === value) ?? options[0]
+
+  useEffect(() => {
+    if (!open) return undefined
+    const close = (event) => {
+      if (box.current !== null && !box.current.contains(event.target)) setOpen(false)
+    }
+    const escape = (event) => {
+      if (event.key === 'Escape') setOpen(false)
+    }
+    document.addEventListener('pointerdown', close)
+    document.addEventListener('keydown', escape)
+    return () => {
+      document.removeEventListener('pointerdown', close)
+      document.removeEventListener('keydown', escape)
+    }
+  }, [open])
+
+  return (
+    <div className="vsn-select" ref={box}>
+      <button
+        type="button"
+        className="vsn-select-button"
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        aria-label={label}
+        onClick={() => setOpen(!open)}
+      >
+        <span>{current?.label}</span>
+        <span className="caret">▾</span>
+      </button>
+      {open ? (
+        <ul className="vsn-menu" role="listbox" aria-label={label}>
+          {options.map((option) => (
+            <li key={option.value}>
+              <button
+                type="button"
+                role="option"
+                aria-selected={option.value === value}
+                className={option.value === value ? 'selected' : ''}
+                onClick={() => {
+                  onChange(option.value)
+                  setOpen(false)
+                }}
+              >
+                {option.label}
+              </button>
+            </li>
+          ))}
+        </ul>
+      ) : null}
     </div>
   )
 }
@@ -80,6 +170,7 @@ export function Panel(props) {
   const [problem, setProblem] = useState('')
   const [open, setOpen] = useState(() => new Set())
   const [block, setBlock] = useState('')
+  const [ratio, setRatio] = useState(0.62)
 
   const lang = (typeof document !== 'undefined' && document.documentElement.lang) || 'zh'
   const i18nLang = lang.startsWith('en') ? 'en' : 'zh'
@@ -160,40 +251,65 @@ export function Panel(props) {
     setOpen(next)
   }
 
+  // Pointer drag on the divider: the split is a fraction of the body width, so
+  // it survives a window resize. Bounds keep both columns readable.
+  const drag = (event) => {
+    const track = event.currentTarget.parentElement
+    if (track === null) return
+    const rect = track.getBoundingClientRect()
+    const move = (moveEvent) => {
+      const next = (moveEvent.clientX - rect.left) / rect.width
+      setRatio(Math.min(MAX_RATIO, Math.max(MIN_RATIO, next)))
+    }
+    const stop = () => {
+      document.removeEventListener('pointermove', move)
+      document.removeEventListener('pointerup', stop)
+      document.body.style.cursor = ''
+    }
+    document.addEventListener('pointermove', move)
+    document.addEventListener('pointerup', stop)
+    document.body.style.cursor = 'col-resize'
+    event.preventDefault()
+  }
+
   return (
     <div className="vsn-root">
-      <div className="vsn-head">
-        <span className="vsn-title">{t('title')}</span>
-        <span className="vsn-device">{view.device}</span>
-        <span className="vsn-spacer" />
-        <button className="vsn-icon" onClick={load} title={t('refresh')}>
-          ⟳
-        </button>
+      <div className="vsn-sticky">
+        <div className="vsn-head">
+          <span className="vsn-title">{t('title')}</span>
+          <span className="vsn-device">{view.device}</span>
+          <span className="vsn-spacer" />
+          <button className="vsn-icon" onClick={load} title={t('refresh')}>
+            ⟳
+          </button>
+        </div>
+
+        <div className="vsn-toolbar">
+          <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder={t('search')} />
+          <Dropdown
+            label={t('allFaces')}
+            value={face}
+            onChange={setFace}
+            options={[
+              { value: '', label: t('allFaces') },
+              ...FACES.map((name) => ({ value: name, label: name })),
+            ]}
+          />
+          {view.problems.length > 0 ? (
+            <Dropdown
+              label={t('allProblems')}
+              value={problem}
+              onChange={setProblem}
+              options={[
+                { value: '', label: t('allProblems') },
+                ...view.problems.map((name) => ({ value: name, label: name })),
+              ]}
+            />
+          ) : null}
+        </div>
       </div>
 
-      <div className="vsn-toolbar">
-        <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder={t('search')} />
-        <select value={face} onChange={(event) => setFace(event.target.value)} aria-label={t('allFaces')}>
-          <option value="">{t('allFaces')}</option>
-          {FACES.map((name) => (
-            <option key={name} value={name}>
-              {name}
-            </option>
-          ))}
-        </select>
-        {view.problems.length > 0 ? (
-          <select value={problem} onChange={(event) => setProblem(event.target.value)} aria-label={t('allProblems')}>
-            <option value="">{t('allProblems')}</option>
-            {view.problems.map((name) => (
-              <option key={name} value={name}>
-                {name}
-              </option>
-            ))}
-          </select>
-        ) : null}
-      </div>
-
-      <div className="vsn-body">
+      <div className="vsn-body" style={{ '--vsn-split': `${Math.round(ratio * 100)}%` }}>
         <div className="vsn-panel">
           <div className="vsn-panel-head">
             <span>{t('history')}</span>
@@ -242,18 +358,22 @@ export function Panel(props) {
                               {event.key}
                             </button>
                             <span className="vsn-delta">
-                              +{event.linesAdded ?? 0} -{event.linesRemoved ?? 0}
+                              <span className="plus">+{event.linesAdded ?? 0}</span>
+                              <span className="minus">-{event.linesRemoved ?? 0}</span>
                             </span>
-                            <span className="vsn-spacer" />
+                          </div>
+                          <div className="vsn-pills">
                             {event.faces.map((name) => (
-                              <span key={name} className="vsn-face">
-                                {name}
-                              </span>
+                              <FacePill
+                                key={name}
+                                face={name}
+                                label={tv(t, 'faceChange', { face: name })}
+                                before={event.before}
+                                after={event.after}
+                                change={event.change}
+                              />
                             ))}
                           </div>
-                          {event.faces.map((name) => (
-                            <Fingerprint key={name} face={name} before={event.before} after={event.after} />
-                          ))}
                           {event.reason ? (
                             <div className="vsn-reason">
                               <span className="label">{t('reason')}</span>
@@ -263,7 +383,7 @@ export function Panel(props) {
                           {event.problem ? (
                             <div className="vsn-reason">
                               <span className="label">{t('problem')}</span>
-                              {event.problem}
+                              <span className="vsn-tag problem">{event.problem}</span>
                             </div>
                           ) : null}
                         </div>
@@ -275,6 +395,14 @@ export function Panel(props) {
             })
           )}
         </div>
+
+        <div
+          className="vsn-divider"
+          role="separator"
+          aria-orientation="vertical"
+          aria-label={t('resize')}
+          onPointerDown={drag}
+        />
 
         <div className="vsn-panel vsn-detail">
           <div className="vsn-panel-head">
@@ -294,16 +422,18 @@ export function Panel(props) {
                 <div className="vsn-tl-subj" title={entry.subject}>
                   {entry.subject}
                 </div>
-                <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', margin: '3px 0' }}>
+                <div className="vsn-pills">
                   {entry.faces.map((name) => (
-                    <span key={name} className="vsn-face">
-                      {name}
-                    </span>
+                    <FacePill
+                      key={name}
+                      face={name}
+                      label={tv(t, 'faceChange', { face: name })}
+                      before={entry.before}
+                      after={entry.after}
+                      change="modified"
+                    />
                   ))}
                 </div>
-                {entry.faces.map((name) => (
-                  <Fingerprint key={name} face={name} before={entry.before} after={entry.after} />
-                ))}
                 {entry.reason ? (
                   <div className="vsn-reason">
                     <span className="label">{t('reason')}</span>

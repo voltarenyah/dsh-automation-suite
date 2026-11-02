@@ -16,6 +16,7 @@ const USED = [
   'baseline', 'blocks', 'noChange', 'baselineNote', 'reason', 'problem',
   'pickBlock', 'noMatch', 'changesCount', 'none',
   'modified', 'added', 'removed',
+  'faceChange', 'resize',
   'refresh', 'loading', 'noWorkspace', 'readFailed', 'noView', 'retry',
 ]
 
@@ -41,9 +42,9 @@ describe('locales', () => {
   })
 
   it('keeps placeholders in both languages', () => {
-    for (const key of ['blocks', 'changesCount']) {
-      assert.match(zh[key], /\{n\}/u)
-      assert.match(en[key], /\{n\}/u)
+    for (const key of ['blocks', 'changesCount', 'faceChange']) {
+      assert.match(zh[key], /\{n\}|\{face\}/u)
+      assert.match(en[key], /\{n\}|\{face\}/u)
     }
     assert.match(zh.readFailed, /\{code\}/u)
     assert.match(en.readFailed, /\{code\}/u)
