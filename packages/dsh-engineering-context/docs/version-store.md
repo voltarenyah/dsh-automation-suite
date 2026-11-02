@@ -8,6 +8,7 @@ top of it.
 git commit ──────────► file contents, message, Tia-Checksum trailer
 _evidence.json ──────► per-object fingerprints, one ledger per commit
 .dsh/versions.db ────► graph + change events + timeline projection (local index)
+.dsh/versions-view.json ► flat JSON dump of the above, for the Versions tab
 ```
 
 The store is derived: delete it and `project_version_reindex` rebuilds it from
@@ -49,6 +50,47 @@ git history. Nothing in it is the only copy of anything.
 
 The expert mounts the read-only subset (`/version-read`); the leader and the
 auditor mount the full set (`/version`).
+
+## The view file (`versions-view.json`)
+
+The store is a SQLite file; a browser tab cannot read it. So after every write the
+plugin also dumps a **derived JSON projection** next to it, and the Versions tab
+(`dsh-ui-versions`) reads that file instead of the database:
+
+```text
+.dsh/versions.db  ──buildVersionView──►  .dsh/versions-view.json  ──►  right-sidebar "Versions" tab
+```
+
+`src/version/view.ts` holds both halves: `buildVersionView(store, workspace)` and
+`writeVersionView(config, root)`.
+
+| Field | Where it comes from |
+|---|---|
+| `device` | `device` of the first `versions` row (empty when the store has no version yet) |
+| `workspace` | `basename()` of the workspace root, not a session title |
+| `generatedAt` | write time; the panel never computes or caches it |
+| `counts` | `COUNT(*)` over `versions`, `change_events`, `baseline_snapshots` |
+| `versions[]` | `commit`, `parent`, `date`, `subject`, `op`, `checksum`, `checksumPrev`, `acceptance`, `intent`, plus nested `events[]` — `key`, `change`, `faces`, `before`, `after`, `linesAdded`, `linesRemoved`, `reason`, `problem` |
+| `timeline[]` | `block_timeline` verbatim: `block`, `seq`, `commit`, `date`, `subject`, `faces`, `before`, `after`, `reason`, `problem` |
+| `problems[]` | `name` of every graph node with `kind='Problem'` |
+
+It is written after `create_engineering_project`'s baseline commit and after every
+successful `project_commit` (both go through the same `recordVersion` path), after
+`project_version_reindex`, and after `project_version_annotate`.
+
+Three properties matter when changing it:
+
+- **Derived, never authoritative.** Deleting the file loses nothing: the next
+  commit, annotation or reindex rewrites it. No tool reads it — it is a display
+  artifact, not an input.
+- **Never throws.** `writeVersionView` returns `null` when the store cannot be
+  opened; the commit or replay has already succeeded and a stale panel is a display
+  problem, not a data problem. A missing or stale file is exactly what the tab's
+  "no view" and "read failed" states are for.
+- **Shape is a contract with the renderer.** `VersionViewFile` in `view.ts` mirrors
+  `parseView` in `dsh-ui-versions/src/model.ts`. Add a field only on both sides, and
+  keep old fields: the tab tolerates missing optional values (a missing fingerprint
+  prints `—`) but drops versions without a `commit` and events without a `key`.
 
 ## Documents
 

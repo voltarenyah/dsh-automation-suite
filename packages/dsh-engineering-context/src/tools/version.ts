@@ -29,6 +29,7 @@ import {
 import { indexDocuments, searchDocuments } from '../version/docs.js'
 import { resolveSourceDevice } from '../version/device.js'
 import { openVersionStore } from '../version/store.js'
+import { writeVersionView } from '../version/view.js'
 import { reindexVersionStore, type ReindexReport } from '../version/write.js'
 import type { ToolDependencies } from './deps.js'
 import { defineOutcomeTool, failedOutcome, okOutcome } from './outcome.js'
@@ -575,6 +576,8 @@ export function annotateTool(dependencies: ToolDependencies): ToolDefinition {
             }
             if (references.length > 0) applied.push(`${references.length} reference(s)`)
           })
+          // The browser tab reads a flat projection; keep it in step.
+          await writeVersionView(dependencies.config, scope.workspace.path)
           return okOutcome(
             'project_version_annotate',
             scope.view,

@@ -23,6 +23,7 @@ import type { DeviceInfo } from '../device.js'
 import { gitPath, logCommits, numstatBetween, showFileAtRevision, type CommitMeta, type FileStat } from '../git.js'
 import { diffEvidence, eventIdFor, type ObjectChange } from './evidence-diff.js'
 import { openVersionStore, type VersionStore } from './store.js'
+import { writeVersionView } from './view.js'
 
 /** One version to record. */
 export interface VersionRecordInput {
@@ -516,6 +517,8 @@ export async function reindexVersionStore(input: {
     store.close()
   }
 
+  // The browser tab reads a flat projection; regenerate it after every replay.
+  await writeVersionView(config, root)
   return report
 }
 
@@ -583,7 +586,7 @@ export async function recordCommitAfterWrite(input: {
       }
     }
 
-    return recordVersion(store, {
+    const written = recordVersion(store, {
       commit: commit.sha,
       parent,
       device: device.device,
@@ -600,6 +603,8 @@ export async function recordCommitAfterWrite(input: {
       changes,
       lines,
     })
+    await writeVersionView(config, root)
+    return written
   } finally {
     if (!closed) store.close()
   }
