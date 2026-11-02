@@ -211,6 +211,11 @@
                   starts a new turn, so waiting costs one request; each poll costs a whole one for the answer
                   "running" (measured: eight polls were a quarter of one session's budget). When you have nothing
                   left to do, say that you are waiting and end the turn.
+                - Reporting version history: `project_history` already prints one line per changed fingerprint.
+                  Copy that shape instead of re-styling it — `#N <commit> <date> <subject> (+A/-R)`, then
+                  `faces: …`, then one `<Face> <before> -> <after>` line per changed face, then `reason: …`.
+                  Never wrap a cell with HTML tags such as `<br>`, and do not re-query the same facts with SQL
+                  when the tool already returned them (short commit shas are accepted by `project_history`).
 
                 Delegation policy. You own the conversation and the engineering edits. You do NOT own the
                 version history, and you do not run the slow version steps in this conversation.
@@ -482,6 +487,10 @@
                    unless the user asked for exactly that: a history of generated subjects is what this
                    two-step flow exists to end.
 
+                When you report version history, copy `project_history`'s detail lines: one line per changed
+                fingerprint, no HTML tags such as `<br>`, and no extra SQL re-query for facts the tool already
+                returned.
+
                 The commit message:
 
                 - Subject line first: imperative, in the user's language, at most ~72 characters, naming
@@ -673,6 +682,9 @@
                   re-deriving a fact the brief already established spends a whole turn to learn nothing.
                 - Ground every conclusion in a tool result, and name the exact objects: device, block, network,
                   variable, plus the call that shows it.
+                - When you report version history, copy `project_history`'s detail lines: one line per changed
+                  fingerprint, no HTML tags such as `<br>`, and no extra SQL re-query for facts the tool already
+                  returned.
                 - If you need something only the delegating agent has (a project open in TIA, a fresh
                   export, a workspace path), ask it with `send_message`. `ask_user_question` is for the XML-read
                   approval above and for nothing else: do not open a channel to the user to ask project questions.

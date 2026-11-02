@@ -119,6 +119,40 @@ export function blockHistory(store: VersionStore, block: string, limit = 100): T
   }))
 }
 
+/** A commit reference resolved to one stored version. */
+export interface CommitResolution {
+  /** The full sha, when exactly one version matches. */
+  sha: string | null
+  /** Every candidate when the reference is ambiguous (more than one match). */
+  candidates: string[]
+}
+
+/**
+ * Resolve a short or long commit reference against the store.
+ *
+ * A 40-character hex string must match exactly; anything shorter is a prefix.
+ * A prefix that matches several versions is reported as ambiguous rather than
+ * silently picking one.
+ *
+ * @param store - the open store.
+ * @param ref - the commit reference the caller passed.
+ * @returns the match, or the candidate list.
+ */
+export function resolveCommit(store: VersionStore, ref: string): CommitResolution {
+  const trimmed = ref.trim().toLowerCase()
+  if (trimmed.length === 0) return { sha: null, candidates: [] }
+  if (/^[0-9a-f]{40}$/u.test(trimmed)) {
+    const hit = store.get<{ commit_sha: string }>('SELECT commit_sha FROM versions WHERE commit_sha = ?', trimmed)
+    return { sha: hit?.commit_sha ?? null, candidates: hit === undefined ? [] : [hit.commit_sha] }
+  }
+  const rows = store.all<{ commit_sha: string }>(
+    'SELECT commit_sha FROM versions WHERE commit_sha LIKE ? ORDER BY committed_at LIMIT 10',
+    `${trimmed}%`,
+  )
+  if (rows.length === 1) return { sha: rows[0]?.commit_sha ?? null, candidates: [] }
+  return { sha: null, candidates: rows.map((row) => String(row.commit_sha)) }
+}
+
 /** Read one version row. */
 export function versionSummary(store: VersionStore, commit: string): VersionSummary | null {
   const row = store.get<Record<string, unknown>>(
@@ -174,12 +208,30 @@ export function versionsByChecksum(store: VersionStore, checksum: string, limit 
     .filter((entry): entry is VersionSummary => entry !== null)
 }
 
-/** Search versions by face, since, subject or acceptance. */
+/** Search versions by free text, face, since or problem. */
 export function searchVersions(
   store: VersionStore,
-  filters: { face?: string; since?: string; problem?: string; limit?: number },
+  filters: { search?: string; face?: string; since?: string; problem?: string; limit?: number },
 ): VersionSummary[] {
   const limit = clampLimit(filters.limit, 20)
+  if (filters.search !== undefined && filters.search.trim().length > 0) {
+    const like = `%${filters.search.trim()}%`
+    const rows = store.all<Record<string, unknown>>(
+      `SELECT DISTINCT v.commit_sha
+       FROM versions v
+       LEFT JOIN change_events e ON e.commit_sha = v.commit_sha
+       WHERE v.subject LIKE ? OR v.subject_norm LIKE ? OR e.reason LIKE ? OR e.object_key LIKE ?
+       ORDER BY v.committed_at DESC LIMIT ?`,
+      like,
+      like,
+      like,
+      like,
+      limit,
+    )
+    return rows
+      .map((row) => versionSummary(store, String(row['commit_sha'] ?? '')))
+      .filter((entry): entry is VersionSummary => entry !== null)
+  }
   if (filters.face !== undefined) {
     const rows = store.all<Record<string, unknown>>(
       `SELECT DISTINCT v.commit_sha

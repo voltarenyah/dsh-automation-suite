@@ -213,13 +213,26 @@ test('commit details list the changed objects and the checksum transition', asyn
   const { definitions } = toolsFor()
   await call(definitions, 'project_version_reindex', {}, root)
 
-  const detail = await call(definitions, 'project_history', { commit: secondSha }, root)
+  // A short sha is accepted (the agent naturally passes what git log printed).
+  const detail = await call(definitions, 'project_history', { commit: secondSha.slice(0, 8) }, root)
   assert.equal(detail.ok, true)
+  assert.equal(detail.data.version.commit, secondSha)
   assert.equal(detail.data.version.checksumPrev, 'C0')
   assert.equal(detail.data.version.checksum, '71')
   assert.equal(detail.data.changes.length, 1)
   assert.equal(detail.data.changes[0].key, BLOCK_A)
   assert.deepEqual(detail.data.changes[0].faces.sort(), ['Code'])
+})
+
+test('a free-text search finds the version by reason or object key', async (t) => {
+  const { root, secondSha } = await history(t)
+  const { definitions } = toolsFor()
+  await call(definitions, 'project_version_reindex', {}, root)
+
+  const found = await call(definitions, 'project_history', { search: 'interlock' }, root)
+  assert.equal(found.ok, true)
+  assert.equal(found.data.versions.length, 1)
+  assert.equal(found.data.versions[0].commit, secondSha)
 })
 
 test('verify accepts a consistent store and detects a gap', async (t) => {

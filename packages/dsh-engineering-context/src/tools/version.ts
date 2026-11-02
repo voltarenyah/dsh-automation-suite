@@ -19,6 +19,7 @@ import {
   clampLimit,
   documentsForBlock,
   problemView,
+  resolveCommit,
   searchVersions,
   versionChanges,
   versionSummary,
@@ -37,26 +38,41 @@ export const VERSION_TOOLS = ['project_history', 'project_version_reindex', 'pro
 
 function short(value: string | null | undefined): string {
   if (typeof value !== 'string' || value.length === 0) return '—'
-  return value.length <= 10 ? value : `${value.slice(0, 10)}…`
+  return value.length <= 10 ? value : value.slice(0, 10)
 }
 
-function fp(fingerprint: Record<string, string> | null): string {
-  if (fingerprint === null) return '(none)'
-  const entries = Object.entries(fingerprint)
-  if (entries.length === 0) return '(empty)'
-  return entries.map(([face, value]) => `${face}=${short(value)}`).join(' ')
+/** One line, whitespace collapsed, truncated. */
+function oneLine(text: string | null, max = 160): string {
+  if (text === null) return ''
+  const flat = text.replace(/\s+/gu, ' ').trim()
+  return flat.length <= max ? flat : `${flat.slice(0, max)}…`
+}
+
+/** One changed face as its own line: `Code       CVt2YE+d0L → E4pUnyy/ld`. */
+function fingerprintLine(
+  face: string,
+  before: Record<string, string> | null,
+  after: Record<string, string> | null,
+): string {
+  return `${face.padEnd(10)} ${short(before?.[face])} → ${short(after?.[face])}`
 }
 
 function timelineLine(entry: TimelineEntry): string {
-  const head = `#${entry.seq} ${short(entry.commit)} ${entry.occurredAt.slice(0, 10)} ${entry.subject ?? ''}`.trim()
-  const faces = entry.faces.length > 0 ? `faces: ${entry.faces.join(', ')}` : 'faces: (none)'
-  const before = fp(entry.fingerprintBefore)
-  const after = fp(entry.fingerprintAfter)
-  const lines = entry.linesAdded === null && entry.linesRemoved === null
-    ? ''
-    : ` (+${entry.linesAdded ?? 0}/-${entry.linesRemoved ?? 0})`
-  const reason = entry.reason === null || entry.reason.length === 0 ? '' : ` — ${entry.reason}`
-  return `${head}${lines}${reason}\n    ${faces}\n    ${before} → ${after}`
+  const stat =
+    entry.linesAdded === null && entry.linesRemoved === null
+      ? ''
+      : ` (+${entry.linesAdded ?? 0}/-${entry.linesRemoved ?? 0})`
+  const lines: string[] = [
+    `#${entry.seq} ${short(entry.commit)} ${entry.occurredAt.slice(0, 10)} ${entry.subject ?? ''}${stat}`.trimEnd(),
+  ]
+  lines.push(`    faces: ${entry.faces.length === 0 ? '(none)' : entry.faces.join(', ')}`)
+  for (const face of entry.faces) {
+    lines.push(`    ${fingerprintLine(face, entry.fingerprintBefore, entry.fingerprintAfter)}`)
+  }
+  if (entry.reason !== null && entry.reason.length > 0) {
+    lines.push(`    reason: ${oneLine(entry.reason)}`)
+  }
+  return lines.join('\n')
 }
 
 /** The `project_history` tool. */
@@ -65,9 +81,10 @@ export function historyTool(dependencies: ToolDependencies): ToolDefinition {
     name: 'project_history',
     description:
       'Answer history questions from the version store (works with TIA closed). Modes, by the parameter you pass: block = one block\'s ' +
-      'change timeline (oldest first, with fingerprint before/after and reason); commit = one version\'s details and changed objects; ' +
-      'checksum = every version that ever carried that PLC checksum (repeats are normal); face/since = matching versions. ' +
-      'Never reads the exported XML; use it before asking an expert about logic.',
+      'change timeline (oldest first, with fingerprint before/after and reason); commit = one version\'s details and changed objects ' +
+      '(short shas are accepted); checksum = every version that ever carried that PLC checksum (repeats are normal); face/since = ' +
+      'matching versions. Report the detail lines as they come — one fingerprint per line, no HTML tags such as <br> — and do not ' +
+      're-derive them with SQL unless a fact is genuinely missing. Never reads the exported XML.',
     parameters: {
       block: {
         type: 'string',
@@ -85,6 +102,12 @@ export function historyTool(dependencies: ToolDependencies): ToolDefinition {
       face: {
         type: 'string',
         description: 'Only versions whose change touched this fingerprint face (Code / Interface / Comments / Properties).',
+      },
+      search: {
+        type: 'string',
+        description:
+          'Free text over commit subjects, reasons and object keys (e.g. "cooling"). Use this instead of writing SQL for "which ' +
+          'changes mention X".',
       },
       since: {
         type: 'string',
@@ -125,11 +148,30 @@ export function historyTool(dependencies: ToolDependencies): ToolDefinition {
           }
 
           if (typeof args.commit === 'string' && args.commit.length > 0) {
-            const version = versionSummary(store, args.commit)
+            const resolution = resolveCommit(store, args.commit)
+            if (resolution.sha === null) {
+              const ambiguous = resolution.candidates.length > 0
+              return okOutcome(
+                'project_history',
+                scope.view,
+                ambiguous
+                  ? `Commit ${args.commit} is ambiguous (${resolution.candidates.length} matches).`
+                  : `No version ${args.commit} in the store.`,
+                { commit: args.commit, found: false, candidates: resolution.candidates },
+                {
+                  dryRun: true,
+                  details: ambiguous
+                    ? ['Candidates:', ...resolution.candidates.map((sha) => `  ${short(sha)}`)]
+                    : [],
+                },
+              )
+            }
+            const sha = resolution.sha
+            const version = versionSummary(store, sha)
             if (version === null) {
               return okOutcome('project_history', scope.view, `No version ${args.commit} in the store.`, { commit: args.commit, found: false }, { dryRun: true })
             }
-            const changes = versionChanges(store, args.commit)
+            const changes = versionChanges(store, sha)
             return okOutcome(
               'project_history',
               scope.view,
@@ -143,8 +185,12 @@ export function historyTool(dependencies: ToolDependencies): ToolDefinition {
                   `When: ${version.committedAt}`,
                   `Subject: ${version.subject}`,
                   `Checksum: ${version.checksumPrev ?? '—'} → ${version.checksum ?? '—'}`,
-                  ...(version.intent === null ? [] : [`Intent: ${version.intent}`]),
-                  ...changes.map((change) => `· ${change.key} (${change.change}) ${change.faces.join(', ')}`),
+                  ...(version.intent === null ? [] : [`Intent: ${oneLine(version.intent, 200)}`]),
+                  ...(changes.length === 0 ? ['Changed objects: none'] : ['Changed objects:']),
+                  ...changes.flatMap((change) => [
+                    `  · ${change.key} (${change.change})`,
+                    ...change.faces.map((face) => `      ${fingerprintLine(face, change.fingerprintBefore, change.fingerprintAfter)}`),
+                  ]),
                 ],
               },
             )
@@ -165,6 +211,7 @@ export function historyTool(dependencies: ToolDependencies): ToolDefinition {
           }
 
           const versions = searchVersions(store, {
+            search: typeof args.search === 'string' ? args.search : undefined,
             face: typeof args.face === 'string' ? args.face : undefined,
             since: typeof args.since === 'string' ? args.since : undefined,
             limit: args.limit,
@@ -473,21 +520,29 @@ export function annotateTool(dependencies: ToolDependencies): ToolDefinition {
         scope = await resolveScope(dependencies.ctx, exec, dependencies.config)
         const store = openVersionStore(dependencies.config, scope.workspace.path)
         try {
-          const version = store.get<{ commit_sha: string }>('SELECT commit_sha FROM versions WHERE commit_sha = ?', args.commit)
-          if (version === undefined) {
-            return okOutcome('project_version_annotate', scope.view, `No version ${args.commit} in the store.`, { commit: args.commit, found: false }, { dryRun: true })
+          const resolution = resolveCommit(store, args.commit)
+          if (resolution.sha === null) {
+            const ambiguous = resolution.candidates.length > 0
+            return okOutcome(
+              'project_version_annotate',
+              scope.view,
+              ambiguous ? `Commit ${args.commit} is ambiguous.` : `No version ${args.commit} in the store.`,
+              { commit: args.commit, found: false, candidates: resolution.candidates },
+              { dryRun: true },
+            )
           }
+          const target = resolution.sha
           const applied: string[] = []
           store.transaction(() => {
             if (typeof args.reason === 'string' && args.reason.length > 0) {
-              store.run('UPDATE versions SET subject_norm = ? WHERE commit_sha = ?', args.reason, args.commit)
-              store.run('UPDATE change_events SET reason = ? WHERE commit_sha = ?', args.reason, args.commit)
-              store.run('UPDATE block_timeline SET reason = ? WHERE commit_sha = ?', args.reason, args.commit)
+              store.run('UPDATE versions SET subject_norm = ? WHERE commit_sha = ?', args.reason, target)
+              store.run('UPDATE change_events SET reason = ? WHERE commit_sha = ?', args.reason, target)
+              store.run('UPDATE block_timeline SET reason = ? WHERE commit_sha = ?', args.reason, target)
               applied.push('reason')
             }
             if (typeof args.problem === 'string' && args.problem.length > 0) {
-              store.run('UPDATE change_events SET problem_ref = ? WHERE commit_sha = ?', args.problem, args.commit)
-              store.run('UPDATE block_timeline SET problem_ref = ? WHERE commit_sha = ?', args.problem, args.commit)
+              store.run('UPDATE change_events SET problem_ref = ? WHERE commit_sha = ?', args.problem, target)
+              store.run('UPDATE block_timeline SET problem_ref = ? WHERE commit_sha = ?', args.problem, target)
               store.run(
                 `INSERT INTO graph_nodes(id, kind, name) VALUES(?, 'Problem', ?)
                  ON CONFLICT(id) DO NOTHING`,
@@ -497,7 +552,7 @@ export function annotateTool(dependencies: ToolDependencies): ToolDefinition {
               applied.push('problem')
             }
             if (typeof args.acceptance === 'string' && args.acceptance.length > 0) {
-              store.run('UPDATE versions SET acceptance = ? WHERE commit_sha = ?', args.acceptance, args.commit)
+              store.run('UPDATE versions SET acceptance = ? WHERE commit_sha = ?', args.acceptance, target)
               applied.push(`acceptance=${args.acceptance}`)
             }
             const references = Array.isArray(args.references) ? args.references : []
@@ -513,8 +568,8 @@ export function annotateTool(dependencies: ToolDependencies): ToolDefinition {
               store.run(
                 `INSERT INTO graph_edges(id, type, from_node_id, to_node_id)
                  VALUES(?, 'REFERENCES', ?, ?) ON CONFLICT(id) DO NOTHING`,
-                `edge:REFERENCES:version:${args.commit}:${referenceId}`,
-                `version:${args.commit}`,
+                `edge:REFERENCES:version:${target}:${referenceId}`,
+                `version:${target}`,
                 referenceId,
               )
             }
@@ -523,8 +578,8 @@ export function annotateTool(dependencies: ToolDependencies): ToolDefinition {
           return okOutcome(
             'project_version_annotate',
             scope.view,
-            applied.length === 0 ? 'Nothing to annotate.' : `Annotated ${short(args.commit)}: ${applied.join(', ')}.`,
-            { commit: args.commit, applied },
+            applied.length === 0 ? 'Nothing to annotate.' : `Annotated ${short(target)}: ${applied.join(', ')}.`,
+            { commit: target, applied },
             { dryRun: false, details: applied.map((entry) => `· ${entry}`) },
           )
         } finally {
