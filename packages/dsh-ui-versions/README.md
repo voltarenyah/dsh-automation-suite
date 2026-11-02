@@ -17,9 +17,11 @@ DSH 插件（**浏览器半侧**）：在 dsh-web 的**右侧栏**增加一个 *
 - 顶部一行：标题、设备名、**刷新**（重新整文件读取一次；没有文件监听，切回 tab 不会自动重读）；
 - 工具栏：**搜索**（提交号 / 标题 / 意图 / 块名 / 原因）、**All faces** 过滤、**All problems** 过滤
   （问题下拉只在视图里有问题时出现）；
-- **VERSION HISTORY** 面板：计数 `n / total`，一行一个版本 —— 短 sha（10 位）、标题、日期、
-  `checksumPrev → checksum`、徽章（`N block(s)`；没有变更事件的基线提交显示 `Baseline`）；
-- 点版本行展开它的变更事件：变更徽章（`modified` / `added` / `removed`）、块 key（可点击）、
+- **VERSION HISTORY** 面板：计数 `n / total`，一行一个版本，分两行排 ——
+  第一行 短 sha（10 位）+ 标题 + **右上角的修改时间**；第二行 **只显示这次提交产生的校验和** +
+  徽章（`N block(s)`；没有变更事件的基线提交显示 `Baseline`）；
+- 点版本行展开它的变更事件：先在详情里列出**上一版校验和**与本次校验和（有上一版才显示），
+  再是变更徽章（`modified` / `added` / `removed`）、块 key（可点击）、
   `+added -removed`、**每个变化 face 一枚 pill**（`Code change` / `Interface change` …，
   **悬停**才显示该 face 的 `前 10 位 → 后 10 位` 指纹；缺失值显示 `—`）；
   再往下是 `Reason` 与 `Problem`（有才显示）；

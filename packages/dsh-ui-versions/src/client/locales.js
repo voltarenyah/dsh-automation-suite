@@ -44,6 +44,8 @@ export const zh = {
   removed: '删除',
   faceChange: '{face} 变更',
   resize: '拖动调整两栏宽度',
+  checksum: '校验和',
+  checksumPrev: '上一版校验和',
 
   refresh: '刷新',
   loading: '正在读取版本数据…',
@@ -87,6 +89,8 @@ export const en = {
   removed: 'removed',
   faceChange: '{face} change',
   resize: 'Drag to resize the two columns',
+  checksum: 'Checksum',
+  checksumPrev: 'Previous checksum',
 
   refresh: 'Refresh',
   loading: 'Reading version data…',

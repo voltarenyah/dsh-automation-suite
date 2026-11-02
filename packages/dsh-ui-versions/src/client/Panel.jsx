@@ -329,21 +329,29 @@ export function Panel(props) {
                     <span className="vsn-subj" title={version.subject}>
                       {version.subject}
                     </span>
-                    <span className="vsn-meta">
-                      <span className="vsn-date">{formatDate(version.date, i18nLang)}</span>
-                      <span className="vsn-cs">
-                        {version.checksumPrev ? version.checksumPrev : '—'}
-                        <span className="arrow">→</span>
-                        <span className="now">{version.checksum ?? '—'}</span>
-                      </span>
-                      <span className="vsn-badge plain">
-                        {version.events.length === 0
-                          ? t('baseline')
-                          : tv(t, 'blocks', { n: version.events.length })}
-                      </span>
+                    <span className="vsn-date">{formatDate(version.date, i18nLang)}</span>
+                    <span className="vsn-cs" title={`${t('checksum')} ${version.checksum ?? '—'}`}>
+                      {version.checksum ?? '—'}
+                    </span>
+                    <span className="vsn-badge plain">
+                      {version.events.length === 0
+                        ? t('baseline')
+                        : tv(t, 'blocks', { n: version.events.length })}
                     </span>
                   </div>
                   <div className="vsn-events">
+                    {version.checksumPrev ? (
+                      <div className="vsn-facts">
+                        <span className="vsn-fact">
+                          <span className="label">{t('checksumPrev')}</span>
+                          <span className="val">{version.checksumPrev}</span>
+                        </span>
+                        <span className="vsn-fact">
+                          <span className="label">{t('checksum')}</span>
+                          <span className="val">{version.checksum ?? '—'}</span>
+                        </span>
+                      </div>
+                    ) : null}
                     {version.events.length === 0 ? (
                       <div className="vsn-reason">
                         <span className="label">{t('noChange')}</span>

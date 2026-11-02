@@ -195,8 +195,12 @@ export const CSS = `
 .vsn-vrow:last-child { border-bottom: 0; }
 .vsn-vline {
   display: grid;
-  grid-template-columns: 82px minmax(0, 1fr);
-  gap: 8px;
+  grid-template-columns: 82px minmax(0, 1fr) auto;
+  grid-template-areas:
+    "sha subj date"
+    ".   cs   badge";
+  column-gap: 8px;
+  row-gap: 1px;
   align-items: baseline;
   padding: 8px 9px;
   cursor: pointer;
@@ -204,39 +208,58 @@ export const CSS = `
 .vsn-vline:hover { background: var(--dsw-alias-fill-l1, rgba(128, 128, 128, 0.12)); }
 .vsn-vrow.open .vsn-vline { background: var(--dsw-alias-fill-l1, rgba(128, 128, 128, 0.12)); }
 .vsn-sha {
+  grid-area: sha;
   font-family: ui-monospace, "Cascadia Code", Consolas, monospace;
   font-size: 11px;
   color: var(--dsw-alias-state-business-primary, #4176e6);
   white-space: nowrap;
 }
 .vsn-subj {
+  grid-area: subj;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
   font-weight: 500;
 }
-.vsn-meta {
-  grid-column: 2;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
+/* The timestamp belongs to the row, not to the metadata cluster: it sits in the
+   top-right corner so the eye can scan the timeline down the right edge. */
+.vsn-vline > .vsn-date {
+  grid-area: date;
+  justify-self: end;
   color: var(--dsw-alias-label-tertiary, #6b7280);
   font-size: 10.5px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
-.vsn-date { font-variant-numeric: tabular-nums; white-space: nowrap; }
+/* Only the checksum this commit produced; the previous one lives in the
+   expanded detail, where there is room to label it. */
 .vsn-cs {
+  grid-area: cs;
+  min-width: 0;
   font-family: ui-monospace, "Cascadia Code", Consolas, monospace;
   font-size: 10px;
-  color: var(--dsw-alias-label-tertiary, #6b7280);
-  /* Two 17-digit checksums on one line are wider than a sidebar: let them wrap
-     instead of pushing the row past the pane edge. */
-  min-width: 0;
+  color: var(--dsw-alias-label-secondary, #4b5563);
   overflow-wrap: anywhere;
 }
-.vsn-cs .now { color: var(--dsw-alias-label-secondary, #4b5563); }
-.vsn-cs .arrow { margin: 0 3px; }
+.vsn-vline > .vsn-badge { grid-area: badge; justify-self: end; }
+
+.vsn-facts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  padding: 6px 0 2px;
+  border-bottom: 1px solid var(--dsw-alias-border-l1, rgba(128, 128, 128, 0.24));
+  margin-bottom: 2px;
+}
+.vsn-fact { display: inline-flex; align-items: baseline; gap: 5px; min-width: 0; }
+.vsn-fact .label { color: var(--dsw-alias-label-tertiary, #6b7280); font-size: 10px; white-space: nowrap; }
+.vsn-fact .val {
+  font-family: ui-monospace, "Cascadia Code", Consolas, monospace;
+  font-size: 10px;
+  color: var(--dsw-alias-label-secondary, #4b5563);
+  overflow-wrap: anywhere;
+}
 
 .vsn-badge {
   display: inline-flex;
@@ -356,8 +379,14 @@ export const CSS = `
 .vsn-hint { padding: 16px 12px; color: var(--dsw-alias-label-tertiary, #6b7280); font-size: 11px; text-align: center; }
 
 @container vsn (max-width: 560px) {
-  .vsn-vline { grid-template-columns: minmax(0, 1fr); gap: 3px; }
-  .vsn-meta { grid-column: 1; }
+  .vsn-vline {
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas:
+      "sha  date"
+      "subj subj"
+      "cs   badge";
+    row-gap: 2px;
+  }
 }
 @container vsn (min-width: 760px) {
   .vsn-body {

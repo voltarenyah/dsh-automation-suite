@@ -16,7 +16,7 @@ const USED = [
   'baseline', 'blocks', 'noChange', 'baselineNote', 'reason', 'problem',
   'pickBlock', 'noMatch', 'changesCount', 'none',
   'modified', 'added', 'removed',
-  'faceChange', 'resize',
+  'faceChange', 'resize', 'checksum', 'checksumPrev',
   'refresh', 'loading', 'noWorkspace', 'readFailed', 'noView', 'retry',
 ]
 
