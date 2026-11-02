@@ -204,6 +204,28 @@ foreach ($plugin in $plugins) {
   }
 }
 
+# bundles 同样来自蓝图：物化目录里那份只在**首次创建**时拷过去，之后新增插件只更新
+# $pkg.dependencies —— 依赖装上了、loader 却看不到这个 bundle，症状是插件静默不加载
+# （实测 2026-11-02 加 dsh-ui-versions：依赖与 link 都对，boot HTML 里没有它的 client.js）。
+# 这里按蓝图顺序补齐缺失项；只在物化目录里存在、蓝图里没有的条目保留在末尾，不擅自删。
+$blueprintBundles = @((Get-Content (Join-Path $blueprint 'package.json') -Raw | ConvertFrom-Json).dsh.profile.bundles)
+$currentBundles = @($pkg.dsh.profile.bundles)
+$mergedBundles = @($blueprintBundles)
+$mergedBundles += @($currentBundles | Where-Object { $blueprintBundles -notcontains $_ })
+$addedBundles = @($mergedBundles | Where-Object { $currentBundles -notcontains $_ })
+
+if ($addedBundles.Count -gt 0) {
+  Step "同步 bundles: $($addedBundles -join ', ')"
+  $pkg.dsh.profile.bundles = @($mergedBundles)
+  $dirty = $true
+} elseif (($mergedBundles -join '|') -ne ($currentBundles -join '|')) {
+  Step '同步 bundles 顺序（按蓝图）'
+  $pkg.dsh.profile.bundles = @($mergedBundles)
+  $dirty = $true
+} else {
+  Say "bundles 已就绪: $($currentBundles.Count) 条"
+}
+
 if ($dirty) {
   $pkg | ConvertTo-Json -Depth 10 | Set-Content $manifest
   Step '安装 profile 依赖（dsh plugin install）'

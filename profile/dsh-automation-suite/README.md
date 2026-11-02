@@ -17,6 +17,7 @@
 | `dsh-tool-git` | 结构化 Git 工具族 + `gitContext` 服务 + 破坏性命令闸门（vendor 自上游 `lxj808624/dsh-tool-git` v0.1.3）。**模型面工具已拆到 `dsh-tool-git/tools`，只挂 `leader`**；`expert` / `auditor` 看不到 |
 | `dsh-ui-plc-source` | **纯 UI 插件**：右侧栏多一个 **PLC Blocks** 标签页（读 `source/<device>/_manifest.json`，按 device 与 simaticType 筛选，点行打开既有文档预览）。宿主半侧是空 `apply()`，**不注册任何模型可见的东西**；必须在 `dsh-web-app` 之后，浏览器半侧才拿得到客户端座位 |
 | `dsh-ui-tia-console` | **仅浏览器半侧**：会话输入框上方的 **TIA 控制台**（状态 + 打开/保存/编译/关闭/刷新五个按钮，dispatch 现有 `/tia-*` 指令）。同样不注册任何模型可见的东西 |
+| `dsh-ui-versions` | **仅浏览器半侧**：右侧栏多一个 **Versions** 标签页（排队在 PLC Blocks 之后，读工程上下文插件写出的 `.dsh/versions-view.json`；上面是版本历史，点块 key 看该块的跨版本轨迹）。宿主半侧是空 `apply()`，不注册任何模型可见的东西；同样必须在 `dsh-web-app` 之后 |
 | `dsh-opencode-go` | **公共插件**（npm 上的第三方 bundle，不是本仓代码）：OpenCode Go 模型提供方 + 设置页。见下面的「公共插件」一节 |
 
 `dsh-web-app` 是**超出最初清单额外加的**：只列 `dsh-base` 的话 profile 能 `--dump-config`，
@@ -209,7 +210,7 @@ dsh --profile dsh-automation-suite --dump-config | Select-String "engineering-co
 dsh --profile dsh-automation-suite --dump-config
 ```
 
-输出以 **7 个插件行**结尾（6 个本地插件 + 公共的 `dsh-opencode-go`）。行数基线见根 `AGENTS.md` §4 的权威表
+输出以 **8 个插件行**结尾（7 个本地插件 + 公共的 `dsh-opencode-go`）。行数基线见根 `AGENTS.md` §4 的权威表
 （本蓝图加上三个 preset 与 `dsh-opencode-go` 后已重测）。
 
 > ⚠️ `start-env.ps1` 只在 profile 目录**尚不存在**时从蓝图拷贝 `cordis.patch.yml`
@@ -274,7 +275,7 @@ dsh --profile dsh-automation-suite --dump-config
 ```
 
 这条流程已实测通过：`dsh plugin --profile dsh-automation-suite install` 由自带 pnpm（0.2.1-rc.2 上是
-v11.28.5）装完，`--dump-config` exit 0 且以 7 个插件行结尾（行数基线见根 `AGENTS.md` §4）。
+v11.28.5）装完，`--dump-config` exit 0 且以 8 个插件行结尾（行数基线见根 `AGENTS.md` §4）。
 `dsh-opencode-go` 不用换成 tarball —— 它是公共包，保持 `"0.1.15"` 就会从 npm 解析。
 
 > ⚠️ 第 2 步的 tarball 文件名不要硬编码 `@scope-` 前缀：`pnpm pack` 对 `@scope/name` 产出的是
@@ -314,13 +315,16 @@ dsh --profile dsh-automation-suite --dump-config
 # == dsh-ui-tia-console
 - id: ui-tia-console
   name: dsh-ui-tia-console
+# == dsh-ui-versions
+- id: ui-versions
+  name: dsh-ui-versions
 # == dsh-opencode-go
 - id: opencode-go
   name: dsh-opencode-go
 ```
 
-行数（**DSH 0.2.1-rc.2，2026-10-20 重测**）：官方 web 组合 **1183 行**；叠加本蓝图政策层 **1601 行**；
-当前物化的套件 profile **1634 行**（权威表与口径见根 `AGENTS.md` §4）。
+行数（**DSH 0.2.1-rc.2，2026-11-02 重测**）：官方 web 组合 **1177 行**；叠加本蓝图政策层 **1884 行**；
+当前物化的套件 profile **1912 行**（权威表与口径见根 `AGENTS.md` §4）。
 这三个数会随宿主升级、上游 preset 改动、以及增减插件而变，换版本或改蓝图后要重测。
 
 > 注意这两条命令都是对**已物化的 profile**生效的：`--profile` 读的是

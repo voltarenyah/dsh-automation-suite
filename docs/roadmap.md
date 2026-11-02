@@ -15,8 +15,9 @@
 | 名称 | 对应层 | 状态 | 落地位置 |
 |---|---|---|---|
 | 工控软件接口插件族（软件版本：V17/V18…；能力不拆包，由 preset 装配，D31） | ① 接入层 | 🟡 已有 **V17** 成员 | `packages/dsh-tia-openness-v17-min` |
-| 工程上下文插件 | 作用域（横向） | 🟡 **部分实现**（`create_engineering_project` 一个工具：把 TIA 打开的工程另存进 workspace + 重建源文件树 + 经【缝 B】逐设备触发图谱建库；**已登记进蓝图**。P0 的注册表与 P1 的版本层已删除，见该包 D22、图谱这一步见 D25） | `packages/dsh-engineering-context` |
+| 工程上下文插件 | 作用域（横向） | 🟡 **部分实现**（4 个工具：`create_engineering_project` 把 TIA 打开的工程另存进 workspace + 重建源文件树 + 经【缝 B】逐设备触发图谱建库；`project_status` 只读；`project_sync` 只写树、`project_commit` 才写历史（D30 把同步与提交分成两步）。**已登记进蓝图**。P0 的注册表与 P1 的版本层已删除，见该包 D22、图谱这一步见 D25） | `packages/dsh-engineering-context` |
 | 工程知识图谱插件 | ② 语义层 | 🟡 **部分实现**（引擎 + 协议 + 8 个工具 + `knowledgeGraph` 服务；**已登记进蓝图**，并被族 2 的工作流调用） | `packages/dsh-engineering-graph` |
+| Web GUI 视图插件（PLC Blocks / TIA 控制台 / Versions） | 跨层：只读 ② 的落盘产物与会话事件 | ✅ 三个都在跑（前两个已有，**Versions 2026-11-02 落地**；见 §1.1） | `packages/dsh-ui-plc-source`、`packages/dsh-ui-tia-console`、`packages/dsh-ui-versions` |
 
 > 插件不再编号；**只有接口插件族是"一族多成员"**。编号只保留给层（① 接入层 / ② 语义层 /
 > ③ 管理与协作层，见 [`vision.md`](vision.md) §3）。
@@ -28,8 +29,34 @@
    ⬜ V18+ 同轴                                │
         ▲                                      │
         └──────────── 工程上下文插件 ──────────┘
-                        🟡 P0 作用域+注册表
+                        🟡 作用域 + 版本库（注册表已删，D22）
 ```
+
+### 1.1 Web GUI 视图插件（不占三层编号）
+
+这三个客户端插件只**读**上面两层已经落盘的东西，不新增子进程、不新增 HTTP 路由，
+也不往模型工具面里加任何东西：
+
+| 插件 | 读什么 | 落点 | 状态 |
+|---|---|---|---|
+| `dsh-ui-plc-source` | `source/<device>/_manifest.json`（清单不可读时退回目录列举） | 右侧栏 **PLC Blocks** | ✅ |
+| `dsh-ui-tia-console` | 会话里的 `command/*`、`tool/*` 事件 | 输入框上方 **TIA 控制台** | ✅ |
+| `dsh-ui-versions` | `<workspace>/.dsh/versions-view.json` | 右侧栏 **Versions**（PLC Blocks 之后） | ✅ 2026-11-02 |
+
+**`dsh-ui-versions` 读的是派生视图，不是账本。** 那份 JSON 由工程上下文插件写出
+（`src/version/view.ts`：`buildVersionView` + `writeVersionView`，在 `project_version_reindex`、
+提交、`project_version_annotate` 之后各写一次），内容是设备/工作区身份、`counts`
+（版本数 / 变更事件数 / 基线快照数）、版本列表（每版带变更事件与逐 face 指纹、
+`checksumPrev → checksum`）、按块的 `timeline`，以及 `problems`（图谱里 `kind='Problem'` 的名字）。
+删掉这个文件不会丢任何数据：插件只做解析、筛选与展示。
+
+**当前边界**（要动就得先做决定的地方）：
+
+- 面板里唯一的写动作是 `Refresh`（重读 JSON）。它不能触发 reindex 或 annotate ——
+  要加这种按钮，等于给渲染进程一条回写通道，那是新的架构决定，不在当前范围；
+- 指纹只显示 10 位前缀，没有点开看全文的入口；`—` 表示该 face 在这一版没有指纹；
+- 轨迹一次只显示一个块（点块 key 切换），没有"整台设备的块列表"视图；
+- `problems` 只当过滤维度用，不按问题聚合、也不统计每块的复发次数。
 
 ---
 

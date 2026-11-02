@@ -1006,6 +1006,12 @@ region 上下文、以及 `test/13-scl-segmentation.test.mjs`：用真实引擎�
   `tool-subagent.allowedAgentPresets` 含 `auditor`。
 - 行数基线更新：web+patch **1863 → 2003**；物化 profile **1896 → 2036**（增量全部是 persona 文本）。
 
+> **补记（2026-11-02，`dsh-ui-versions` 落地后）**：上面这三条是 D30 当时的值，不再是最新数。
+> 上下文包的测试此后涨到 **128 项**；新增的 `dsh-ui-versions` 再加 **15 项**。现在全仓是
+> TIA 102（101 通过 / 1 跳过）、git 51、上下文 128、图谱 128、ui-plc-source 47、
+> ui-tia-console 22、ui-versions 15。行数基线也已重测为 **1177 / 1884 / 1912**
+> （官方 web / 叠加本蓝图政策层 / 物化 profile），权威表仍以根 `AGENTS.md` §4 为准。
+
 **未做（下一步）**
 
 - 真机链路未跑：需要重启 App，让 leader 对一次 `project_sync` 派 auditor，并观察

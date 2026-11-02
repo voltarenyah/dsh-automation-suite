@@ -11,7 +11,8 @@
     "dsh-opencode-go": "0.1.15",
     "dsh-tool-git": "workspace:^",
     "dsh-ui-plc-source": "workspace:^",
-    "dsh-ui-tia-console": "workspace:^"
+    "dsh-ui-tia-console": "workspace:^",
+    "dsh-ui-versions": "workspace:^"
   },
   "dsh": {
     "profile": {
@@ -25,6 +26,7 @@
         "dsh-tool-git",
         "dsh-ui-plc-source",
         "dsh-ui-tia-console",
+        "dsh-ui-versions",
         "dsh-opencode-go"
       ]
     }

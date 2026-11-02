@@ -218,6 +218,7 @@ always stated separately in this document.
 | `@voltarenyah/dsh-engineering-graph` | plugin bundle | 0.1.0 | **Two Loader rows**: host row = C# engine child process + `knowledgeGraph` service (called per device by family 2's `create_engineering_project`); `/tools` row = **9 tools**: 5 shared tools (`knowledge_workspace` / `knowledge_schema` / `knowledge_ingest` / `knowledge_update` / `knowledge_query`) + 4 drill-down tools (`knowledge_search` / `knowledge_block` / `knowledge_network` / `knowledge_variable_usage`, fixed SQL on the TS side, zero C# changes). `knowledge_update` is the incremental entry point: it replaces changed components by `source_components` and rescans the one-hop dependency closure in a single transaction; the caller falls back to a full rebuild when provenance is missing, a limit is exceeded, or types/tag tables changed. `includeIngest: false` removes the two write tools; `includeDrilldown` has three levels (`none` / `inspect` / `all`): `leader` uses `inspect`, `expert` uses `all` — Simatic ML XML → property graph → SQLite, with the engine running as a net8 child process (`engine/`). **Pure SCL blocks are segmented by `REGION`** (**D27**). `knowledge_workspace` never touches the engine: it reads the session working directory and reports project identity, each device's database path/size/mtime, `device_dir`, and **graphFreshness** (sidecar checksum vs `_evidence.json`), so `knowledge_query`'s `db_path` can be omitted (auto-resolved for a single DB; rejected with candidates for zero/multiple DBs, **D24**). **Not implemented**: on-demand drill-down tools for a specific variable usage, the compatibility layer. For database locations and directory conventions see [`docs/roadmap.md`](docs/roadmap.md) §4 |
 | `dsh-ui-plc-source` | plugin bundle (**browser half + one host pre-step listener**) | 0.1.0 | **One Loader row + one right-sidebar tab type**: adds **PLC Blocks** to the dsh-web right sidebar (after Files / Terminal / Browser). It reads `<workspace>/source/<device>/_manifest.json` and **flattens** every object into one row (type badge / name / number / language / size / post-write verification mark); you can filter by **device** and **simaticType**, and search by name or number. Objects TIA refused to export (`failures[]`) are listed as rows too (marked "refused", hover for the reason). **Single-click selects** (selection does not trigger an action yet); only the **context menu** opens the source file (via the existing document preview) or "mention in chat" (inserts `@'block name'` into the input box; the host half enriches the prompt with the block's device/type/number/language/file path in `agent/pre-step`). Filters/search/selection/scroll position and fetched data live in the slot store, so switching away and back neither loses them nor re-reads the manifest. **UI text follows DSH's language setting** (Settings → General → Language, Chinese/English) and switches without a refresh, including already-open tab chips. The host half does only this (`agent/pre-step` listener, no tools, no child process); when the manifest is unreadable, that device falls back to a directory listing. For feasibility and mechanics see [`docs/ui-plugins.md`](docs/ui-plugins.md); for this plugin's plan and verification see [`docs/ui-plugins-plc-blocks-plan.md`](docs/ui-plugins-plc-blocks-plan.md) |
 | `dsh-ui-tia-console` | plugin bundle (**browser half only**) | 0.1.0 | **One Loader row + a TIA console above the input box**: shows "no project / opening / open · project name / saving / compiling (elapsed) / closing / unavailable" and directly provides the five buttons **Open / Save / Compile / Close / Refresh**. The buttons dispatch the existing `/tia-*` commands, and the state is folded from the session's `command/*` and `tool/*` events — model calls, slash commands, and button presses all show up in real time; it is even visible in an empty session (it sits on `conversation.input.dock` and does not depend on the timeline). Refresh re-synchronizes with the controller via `/tia-info`. It has an expandable panel (project path, latest compile, latest error, latest result). **Step 1 boundary**: state is folded per session; after other sessions or an external TIA close, click Refresh to recalibrate; a global state service is the next step. |
+| `dsh-ui-versions` | plugin bundle (**browser half only**) | 0.1.0 | **One Loader row + one right-sidebar tab type**: adds **Versions** to the dsh-web right sidebar (after PLC Blocks). It reads `<workspace>/.dsh/versions-view.json` — a derived view written by `@voltarenyah/dsh-engineering-context` after `project_version_reindex`, after a commit, and after `project_version_annotate`; the plugin never writes it, adds no HTTP route, and opens no SQLite in the renderer. The upper half is **VERSION HISTORY**: one row per version with a 10-character sha prefix / subject / date / `checksumPrev → checksum` / `N block(s)` or `Baseline`; expanding a row lists that version's change events (change badge, block key button, `+added -removed`, face chips, and one 10-character fingerprint line per changed face); clicking a block key shows that block's cross-version trail in **BLOCK TIMELINE** below (seq / sha / date / subject / face chips / fingerprints / Reason / Problem). Search covers the commit sha, subject, intent, block key, and reason; filters cover face and problem; a missing fingerprint prints `—`. **Width-aware**: two columns only when the pane is ≥ 760px, rows stack below 560px (CSS container queries on the pane, not the window). Colours come only from host semantic tokens; the sole colour is a 4px dot (warning = modified, error = removed). States: no workspace / no view (Retry) / read failed (with `code`, Retry) / no match / loading. **UI text follows DSH's language setting** (Settings → General → Language, Chinese/English) and switches without a refresh. The host half is an empty `apply()` that logs one info line |
 | `profile/dsh-automation-suite` | profile blueprint | 0.1.0 | Stacks the official Web composition (`dsh-base` + `dsh-web-app`) and the local plugins above into a directly startable profile; declares three presets: `leader` (main agent), `auditor` (version management), and `expert` (subagent). It also mounts one **public plugin** row, `dsh-opencode-go@0.1.15` (the OpenCode Go provider + settings page from npm, same version as the desktop profile; version pinned, and `allowBuilds` is declared for it in `pnpm-workspace.yaml` — rationale in that directory's README) |
 | `scripts/start-env.ps1` | launcher | — | One command does "materialize profile + install plugins + start service + open browser with token" |
 | `scripts/clean-build.mjs` | tooling | — | Cleans only `lib/` and `dist/`; links are unlinked, never descended into |
@@ -754,12 +755,12 @@ packages/
     README.md / README.zh.md       upstream README (English/Chinese)
   dsh-engineering-context/         engineering-context plugin: **registered in the blueprint; 3 tools (D22 + S2) + graph builds via seam B (D25)**
     src/                           scope resolution, seams A/B, evidence ledger, locks, shell-free git, 3 workflow tools (tsc → lib/)
-    test/                          node:test suite (73; fake TIA/graph services + real runtime schema checks + real git repos)
+    test/                          node:test suite (128; fake TIA/graph services + real runtime schema checks + real git repos)
     scripts/                       link-dsh-runtime.mjs / tsc.mjs / run-tests.mjs
     docs/                          ARCHITECTURE.md / PATH-RULES.md / decisions.md
   dsh-engineering-graph/           engineering knowledge-graph plugin: **engine + protocol + 8 tools + knowledgeGraph service, registered in the blueprint**
     src/                           NDJSON protocol client, 4 knowledge tools (incl. local discovery), knowledgeGraph service (tsc → lib/)
-    test/                          node:test suite (111; incl. end-to-end through the real engine and transport-fault injection)
+    test/                          node:test suite (128; incl. end-to-end through the real engine and transport-fault injection)
     engine/                        C# engine (net8 + Microsoft.Data.Sqlite): Simatic ML → graph → SQLite
                                    Graph/ Parsing/ Import/ are vendored (namespaces flattened, see D17);
                                    build.ps1 builds into engine/bin (**committed**: without the engine the plugin still loads but every call reports
@@ -769,7 +770,7 @@ packages/
     src/index.ts                   host half: agent/pre-step resolves @'block name' into reference info (tsc → lib/)
     src/model.ts                   pure model: manifest parsing/flattening/filtering/sorting/resource URLs/copy/mention syntax (tsc → lib/)
     src/client/                    apply(ctx) + panel component + styles (esbuild → lib/client.js, the loader wrapper the host recognizes)
-    test/                          node:test suite (20, pure model)
+    test/                          node:test suite (47, pure model)
     scripts/                       tsc.mjs / build.mjs / run-tests.mjs
   dsh-ui-tia-console/              "TIA console" above the input box: status + open/save/compile/close/refresh (browser half only)
     src/index.ts                   host half: empty apply(), only so the package has a row in the Loader
@@ -777,6 +778,12 @@ packages/
     src/client/TiaBar.jsx          console component (status, buttons, expanded details, stopwatch)
     src/client/index.jsx           registers the conversation.input.dock slot
     test/                          node:test suite (22, pure folding + dictionary)
+    scripts/                       tsc.mjs / build.mjs / run-tests.mjs
+  dsh-ui-versions/                 right-sidebar "Versions" tab: version history + per-block trail (browser half only)
+    src/index.ts                   host half: empty apply(), only so the package has a row in the Loader
+    src/model.ts                   pure model: view parsing/filtering/timeline/short sha and date formatting (tsc → lib/)
+    src/client/                    apply(ctx) + panel component + styles (esbuild → lib/client.js, the loader wrapper the host recognizes)
+    test/                          node:test suite (15, pure model 10 + dictionary 5)
     scripts/                       tsc.mjs / build.mjs / run-tests.mjs
 profile/
   dsh-automation-suite/            the distribution's profile blueprint
@@ -810,16 +817,18 @@ pnpm test                 # test the whole repo
 pnpm run clean:build      # clean build artifacts (only lib/ dist/)
 ```
 
-The four plugins use **two test runners**, and `pnpm -r test` runs all six:
+The six local plugins plus the vendored `dsh-tool-git` use **two test runners**, and `pnpm -r test`
+runs all seven:
 
 | Package | Runner | Test size |
 |---|---|---|
-| `dsh-tia-openness-v17-min` | `node:test` (`node --test test/*.test.mjs`) | 97: 96 pass / 1 skip (the skip is the "controller not built" fallback path) |
-| `dsh-tool-git` | `vitest` (`vitest run`) | all 33 pass |
-| `@voltarenyah/dsh-engineering-context` | `node:test` (`node scripts/run-tests.mjs`, build first) | all 56 pass (incl. contract cases through fake `engineeringAccess` / fake `knowledgeGraph` services) |
-| `@voltarenyah/dsh-engineering-graph` | `node:test` (`node scripts/run-tests.mjs`, build first) | all 111 pass (incl. end-to-end through the real engine; when the engine is not built that test is skipped and prints the build command) |
+| `dsh-tia-openness-v17-min` | `node:test` (`node --test test/*.test.mjs`) | 102: 101 pass / 1 skip (the skip is the "controller not built" fallback path) |
+| `dsh-tool-git` | `vitest` (`vitest run`) | all 51 pass |
+| `@voltarenyah/dsh-engineering-context` | `node:test` (`node scripts/run-tests.mjs`, build first) | all 128 pass (incl. contract cases through fake `engineeringAccess` / fake `knowledgeGraph` services) |
+| `@voltarenyah/dsh-engineering-graph` | `node:test` (`node scripts/run-tests.mjs`, build first) | all 128 pass (incl. end-to-end through the real engine; when the engine is not built that test is skipped and prints the build command) |
 | `dsh-ui-plc-source` | `node:test` (`node scripts/run-tests.mjs`, build first; the browser-half `.jsx` is not in `tsc`) | all 47 pass (pure model 33 + host 9 + dictionary 5) |
 | `dsh-ui-tia-console` | `node:test` (`node scripts/run-tests.mjs`, build first) | all 22 pass (pure event folding + dictionary) |
+| `dsh-ui-versions` | `node:test` (`node scripts/run-tests.mjs`, build first) | all 15 pass (pure model 10 + dictionary 5; the browser half is verified in the real dev-env) |
 
 Unit tests need the **real** `@deepseek-ai/*` runtime (not stubs). On a bare checkout, the test
 bootstrap of the first two packages triggers extraction automatically; you can also run it manually:
@@ -864,7 +873,7 @@ npm run skills:build     # TIA: refetch the upstream knowledge base at the pinne
 dsh --profile dsh-automation-suite --dump-config
 ```
 
-The expected tail (3 lines per plugin, 21 lines for 7 plugins — 6 local + the public
+The expected tail (3 lines per plugin, 24 lines for 8 plugins — 7 local + the public
 `dsh-opencode-go`):
 
 ```yaml
@@ -886,6 +895,9 @@ The expected tail (3 lines per plugin, 21 lines for 7 plugins — 6 local + the 
 # == dsh-ui-tia-console
 - id: ui-tia-console
   name: dsh-ui-tia-console
+# == dsh-ui-versions
+- id: ui-versions
+  name: dsh-ui-versions
 # == dsh-opencode-go
 - id: opencode-go
   name: dsh-opencode-go
@@ -1054,6 +1066,7 @@ The differences between `dsh-tool-git` and this repo (package-name policy, runti
 | [`docs/ui-plugins.md`](docs/ui-plugins.md) | **Web GUI UI plugins**: client-plugin loading mechanism (with end-to-end measurements), base-module table, seat directory, the `source/` data plane, a worked design using the "engineering block tree" as an example, and client bundling recipes |
 | [`docs/ui-plugins-plc-blocks-plan.md`](docs/ui-plugins-plc-blocks-plan.md) | **`dsh-ui-plc-source` implementation plan and verification record**: spec, data plane (flattened manifest + device/type filters), degradation, build, wiring, measured results |
 | [`packages/dsh-ui-plc-source/README.md`](packages/dsh-ui-plc-source/README.md) | usage, build (tsc + esbuild), and installation location of the right-sidebar **PLC Blocks** tab |
+| [`packages/dsh-ui-versions/README.md`](packages/dsh-ui-versions/README.md) | the right-sidebar **Versions** tab: the derived view it reads, panel structure, width and theming, build and wiring |
 | [`packages/dsh-engineering-context/README.md`](packages/dsh-engineering-context/README.md) | usage, configuration, and development commands of the engineering-context plugin (**S2 implemented**: create + status + sync) |
 | [`packages/dsh-engineering-context/docs/`](packages/dsh-engineering-context/docs/) | the plugin's design and trade-offs: `ARCHITECTURE.md` (core architecture, scope model, version management, tool surface), `PATH-RULES.md` (in-workspace path rules, ledger/manifest), `decisions.md` (numbered decisions D1–D26) |
 | [`docs/distribution.md`](docs/distribution.md) | **Public release and installation**: measured DSH install surface (`dsh plugin` spec forms, bundle reconciliation, patch semantics, two pnpm 11 errors), comparison of three packaging approaches, release steps, and verification records |
