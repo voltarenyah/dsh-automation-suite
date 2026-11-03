@@ -440,3 +440,27 @@ packages/dsh-drawing/
 **尚未验证**：真机点验（点 tab chip、看图片渲染、agent 调用后侧栏自动翻开）。本轮环境没有浏览器自动化工具，只能验到"bundle 被 shell 加载、宿主文件与调用序列正确"。验收路径：`pwsh -NoProfile -File scripts\start-env.ps1 -Restart` → 打开右侧栏 Drawing → 在对话里让 agent `drawing_show`。
 
 **渲染引擎选择（补充记录）**：P3 实际用 `@hyzyla/pdfium` 而不是计划里的 `@napi-rs/canvas`。理由：canvas 要带平台二进制（win32-x64 各一份），而 pdfium 是 wasm、无需编译、一次 `render()` 出 RGBA；代价是 +14 MB 安装体积（只在宿主侧，浏览器半侧仍 28 KB）。
+
+### 11.5 首次真机实测暴露的问题（session-bd8f59d1，2026-11-03 22:04–23:22）
+
+日志：`C:\Users\Ansel\dsh-automation-suite-home\sessions\--C-Users-Ansel-Documents-dsh-automation-suite-SWT2_PEI_1026_Night--\session-bd8f59d1-…\session.v4.jsonl.zstd`
+（注意：这台机器上有**两个** DSH_HOME，`~/.dsh` 与 `dsh-automation-suite-home`。）
+
+调用统计：`drawing_search` 22 次、`drawing_sheet` 9 次、`drawing_show` **2** 次；同期 `pwsh` **25** 次、`write` 7 次（全是临时 Python 脚本，用来自己算坐标）。
+
+| 现象 | 根因 | 处置 |
+|---|---|---|
+| `drawing_sheet` 在 p1–p4 报 `invalid output: value is not lossless JSON` | 返回值里有 `undefined`（封面无图号/标题/位置时 `?? undefined`），harness 拒绝整条结果 | 可空字段一律 `null`，schema 改 `json`；PARSER_VERSION 2 |
+| `drawing_sheet` 只回一行 "26 element(s), 13 cross reference(s)" | `render()` 只打印统计——**模型只看到 render 文本**，看不到结构化值 | 逐条打印元素（名称/类型/box）与已解析的交叉引用 |
+| `drawing_search` 的命中不带坐标 | 同上，box 只存在于结构化值里 | 每条命中打印 `box x,y,w,h` + 一行坐标空间说明 |
+| 模型用 pypdfium2 自己算坐标、先算错（未旋转空间），迭代 10+ 轮 | 上面两条导致"拿到了页但拿不到位置"；且工具描述没说坐标空间 | 描述里写明 display points（/Rotate 已应用、原点左上、842×595），并提示直接复制 box |
+| `drawing_status` 只回文件名与页数，模型改去读 `.dsh/drawing-manifest.json` | 摘要太薄 | status/open 打印电柜（id/名/页范围/张数）、模板统计、索引质量与注意事项 |
+
+修复后同一问题（`%Q430.2`）的输出：
+
+```
+=== drawing_search %Q430.2 ===
+- cabinet 1 / sheet 276 (p39) · address %Q430.2 box 443.6,112.7,34.1,9 — AG : 4 SAFETY LOGICAL OUTPUTS
+```
+
+这正是模型当时从 `names.json` 里手工 grep 出来的那个框。回归用例已把两条失败钉住（封面页可答、search/sheet 必打印 box）。
