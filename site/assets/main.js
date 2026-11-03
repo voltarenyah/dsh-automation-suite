@@ -1,175 +1,38 @@
-/* Language, reveal-on-scroll, copy — no dependencies. */
+/* Page behaviour: language switch, meta sync, copy.
+   English copy lives in the HTML (authored from site/content.md, kept in sync by hand);
+   the Chinese copy and the per-page metadata live here. No build step. */
 (function () {
   "use strict";
 
   var KEY = "das.lang";
+  var I18N = {"en":{"shared.nav.home":"Home","shared.nav.arch":"Architecture","shared.nav.road":"Roadmap","shared.nav.start":"Get Started","shared.nav.github":"GitHub","shared.skip":"Skip to content","shared.status.verified":"Verified","shared.status.partial":"Partial","shared.status.prototype":"Prototype","shared.table.package":"Package","shared.table.role":"Role","shared.table.tools":"Tools","shared.table.status":"Status","shared.cta.arch.k":"Architecture","shared.cta.arch.t":"Why it's built this way","shared.cta.road.k":"Roadmap","shared.cta.road.t":"Can I use it now?","shared.cta.start.k":"Get Started","shared.cta.start.t":"Run it in one command","shared.copy":"Copy","shared.copied":"Copied","shared.footer.disclaimer":"Unofficial project. Not affiliated with DeepSeek or Siemens. TIA Portal and SIMATIC are trademarks of Siemens AG, named here for reference only.","shared.footer.source":"GitHub","shared.footer.license":"MIT","shared.footer.updated":"Last checked 2026-11-03","meta.home.title":"dsh-automation-suite — agent tool for PLC programming","meta.home.desc":"An unofficial DeepSeek Harness distribution that integrates the Siemens TIA Openness toolkit: TIA Portal V17 block access, an engineering knowledge graph and guard-railed Git.","meta.arch.title":"Architecture — dsh-automation-suite","meta.arch.desc":"Design principles and components: whitelisted operations, transactional writes, read-back verification, structured results.","meta.road.title":"Roadmap — dsh-automation-suite","meta.road.desc":"Maturity, environment compatibility and the planned capability of the distribution.","meta.start.title":"Get Started — dsh-automation-suite","meta.start.desc":"One command to a running DSH instance with the automation suite's plugins.","home.hero.eyebrow":"DeepSeek Harness For Automation (Unofficial)","home.hero.title":"Agent Tool for PLC Programming","home.hero.lead":"DeepSeek Harness integrated with the Siemens TIA Openness toolkit.","home.hero.cta1":"Get started","home.hero.cta2":"See the architecture","home.fact.plugins.n":"8","home.fact.plugins.l":"plugins","home.fact.tools.n":"61","home.fact.tools.l":"tools","home.fact.license.n":"MIT","home.fact.license.l":"license","home.fact.platform.n":"Windows","home.fact.platform.l":"for TIA","home.gap.title":"The gap","home.gap.note":"Where a general-purpose model stalls on PLC work.","home.gap.1.title":"Sealed project files","home.gap.1.desc":"Logic lives in a binary that only the engineering software can read.","home.gap.2.title":"Text is not structure","home.gap.2.desc":"An exported XML is text; the model needs blocks, calls, tags and I/O.","home.gap.3.title":"Unverified edits","home.gap.3.desc":"A change is only real once it compiles and reads back.","home.layers.title":"What ships","home.layers.note":"Three layers, each one unlocking the next.","home.layers.1.title":"Access","home.layers.1.desc":"Read and write TIA Portal V17 blocks through Openness — inside a whitelist.","home.layers.2.title":"Semantics","home.layers.2.desc":"Project sources become a queryable graph of blocks, calls, tags and I/O.","home.layers.3.title":"Governance","home.layers.3.desc":"Export to text, diff, commit and trace versions — with Git as the base.","arch.head.eyebrow":"Architecture","arch.head.title":"A small surface, strictly enforced","arch.head.lead":"The model never gets arbitrary execution. Writes go through a whitelist, a transaction and a read-back check; tools return structured data instead of free-form shell output.","arch.p.title":"Principles","arch.p.note":"Four rules that decide what a tool may do.","arch.p1.title":"Whitelisted operations","arch.p1.desc":"The model expresses paths, block names and enums; the controller runs one of its registered operations.","arch.p2.title":"Transactional writes","arch.p2.desc":"All objects commit or none do — a failed import rolls back.","arch.p3.title":"Read-back verification","arch.p3.desc":"After an import the project is re-read and each block compared by name, number and language.","arch.p4.title":"Structured results","arch.p4.desc":"Every tool returns ok / summary / data / error as data, not as prose to parse.","arch.c.title":"Components","arch.c.note":"Eight packages plus one profile blueprint; each installs on its own.","arch.c.table":"<table class=\"table\"><thead><tr><th>Package</th><th>Role</th><th class=\"num\">Tools</th><th>Status</th></tr></thead><tbody><tr><td><code>@voltarenyah/dsh-tia-openness-v17-min</code></td><td>TIA Portal V17 access</td><td class=\"num\">32</td><td><span class=\"status status--partial\">Partial</span></td></tr><tr><td><code>@voltarenyah/dsh-plcsim-advanced</code></td><td>PLCSIM Advanced runtime</td><td class=\"num\">4</td><td><span class=\"status status--ok\">Verified</span></td></tr><tr><td><code>@voltarenyah/dsh-engineering-context</code></td><td>Project scope and version store</td><td class=\"num\">4</td><td><span class=\"status status--partial\">Partial</span></td></tr><tr><td><code>@voltarenyah/dsh-engineering-graph</code></td><td>Knowledge graph · SQLite + C# engine</td><td class=\"num\">9</td><td><span class=\"status status--proto\">Prototype</span></td></tr><tr><td><code>dsh-tool-git</code></td><td>Guard-railed Git</td><td class=\"num\">12</td><td><span class=\"status status--ok\">Verified</span></td></tr><tr><td><code>dsh-ui-plc-source</code></td><td>Sidebar · PLC Blocks</td><td class=\"num\">—</td><td><span class=\"status status--ok\">Verified</span></td></tr><tr><td><code>dsh-ui-tia-console</code></td><td>Composer · TIA console</td><td class=\"num\">—</td><td><span class=\"status status--ok\">Verified</span></td></tr><tr><td><code>dsh-ui-versions</code></td><td>Sidebar · Versions</td><td class=\"num\">—</td><td><span class=\"status status--ok\">Verified</span></td></tr></tbody></table>","arch.c.profile":"The blueprint assembles them into one profile and splits the tools across three presets: leader (44), auditor (18), expert (16).","arch.r.title":"How it runs","arch.r.note":"One process boundary, because Openness demands it.","arch.r.body":"Openness can only be called from a 64-bit .NET Framework process, so the TIA plugin owns a C# controller subprocess and speaks one JSON object per line over stdio. Requests are serialized; a timeout terminates and restarts the controller.","arch.r.mono":"TiaOpennessV17Min.Controller.exe · x64 · .NET Framework 4.8","road.head.eyebrow":"Roadmap","road.head.title":"Where it stands today","road.head.lead":"An early build. Statuses follow the repository roadmap, and nothing planned is presented as shipped.","road.m.title":"Maturity","road.m.note":"The three layers, as they actually are.","road.m1.title":"Access","road.m1.desc":"Block export and import, compile and project data work on real projects. Twenty operations added in v0.2 are still unverified in the field.","road.m2.title":"Semantics","road.m2.desc":"XML to SQLite graph works on fixtures. Freshness, incremental updates and a compatibility layer are not done.","road.m3.title":"Governance","road.m3.desc":"The Git tools are general-purpose. The version workflow is two steps: sync the source tree, then commit it.","road.env.title":"Compatibility","road.env.note":"What it runs on today.","road.env.os.label":"Operating system","road.env.os.value":"Windows for the TIA tools. Other platforms can load the plugins, but TIA calls fail.","road.env.dsh.label":"DeepSeek Harness","road.env.dsh.value":"Any version that can load bundles; built and tested against 0.2.1-rc.2.","road.env.tia.label":"TIA Portal","road.env.tia.value":"V17 only — V16 and V18 are not compatible.","road.env.node.label":"Node.js","road.env.node.value":"22.19 or newer.","road.env.openness.label":"Openness","road.env.openness.value":"Siemens.Engineering.dll from Portal V17, and membership in the local “Siemens TIA Openness” group.","road.next.title":"Next","road.next.note":"Planned, not promised.","road.n1.title":"V18 member","road.n1.desc":"A second interface-plugin member, sharing the same core.","road.n2.title":"More capability","road.n2.desc":"Hardware configuration, online and download, comparison and libraries.","road.n3.title":"Graph freshness","road.n3.desc":"Incremental updates and a compatibility layer for older exports.","road.n4.title":"Change ledger","road.n4.desc":"A per-block change ledger, with DRAFT and REMOTE workspace states.","road.link":"Full roadmap and open questions","start.head.eyebrow":"Get started","start.head.title":"One command to a running instance","start.head.lead":"The starter materializes the profile, links the plugins, starts dsh and opens a tokenized URL — in its own DSH_HOME.","start.req.title":"Before you start","start.req.note":"What has to be on the machine.","start.req.os.label":"Operating system","start.req.os.value":"Windows 10 or 11 — the TIA tools are Windows-only.","start.req.node.label":"Node.js","start.req.node.value":"22.19 or newer.","start.req.dsh.label":"DeepSeek Harness","start.req.dsh.value":"Installed, and able to load bundles.","start.req.tia.label":"TIA Portal","start.req.tia.value":"V17 with Openness enabled — needed only for the TIA tools.","start.run.title":"Run it","start.run.note":"Three commands, no build step first.","start.run.cmd":"<span class=\"c-prompt\">$</span> git clone https://github.com/voltarenyah/dsh-automation-suite\n<span class=\"c-prompt\">$</span> cd dsh-automation-suite\n<span class=\"c-prompt\">$</span> pwsh -NoProfile -File scripts\\start-env.ps1","start.after.title":"After it starts","start.after.note":"A working session in three moves.","start.a1.title":"Open the printed URL","start.a1.desc":"It carries a one-time token; the bare port returns 401.","start.a2.title":"Add a model API key","start.a2.desc":"Settings → Models, or the first-run prompt. Credentials stay inside this DSH_HOME.","start.a3.title":"Try the TIA console","start.a3.desc":"Open or adopt a project, export a block, then read it back and compile.","start.note":"The environment defaults to %USERPROFILE%\\dsh-suite-env. Delete that folder to roll everything back.","start.link":"Repository README"},"zh":{"shared.nav.home":"首页","shared.nav.arch":"架构","shared.nav.road":"路线图","shared.nav.start":"开始使用","shared.nav.github":"GitHub","shared.skip":"跳到正文","shared.status.verified":"已验证","shared.status.partial":"部分实现","shared.status.prototype":"原型","shared.table.package":"包","shared.table.role":"职责","shared.table.tools":"工具","shared.table.status":"状态","shared.cta.arch.k":"架构","shared.cta.arch.t":"它凭什么可信","shared.cta.road.k":"路线图","shared.cta.road.t":"现在能不能用","shared.cta.start.k":"开始使用","shared.cta.start.t":"一条命令跑起来","shared.copy":"复制","shared.copied":"已复制","shared.footer.disclaimer":"非官方项目，与 DeepSeek 及 Siemens 均无隶属关系。TIA Portal 与 SIMATIC 是 Siemens AG 的商标，此处仅作事实性指称。","shared.footer.source":"GitHub","shared.footer.license":"MIT","shared.footer.updated":"最后核对 2026-11-03","meta.home.title":"dsh-automation-suite — 面向 PLC 编程的 Agent 工具","meta.home.desc":"非官方 DeepSeek Harness 发行版，集成 Siemens TIA Openness 工具链：TIA Portal V17 块级读写、工程知识图谱与受控 Git。","meta.arch.title":"架构 — dsh-automation-suite","meta.arch.desc":"设计原则与组件：白名单操作、事务写入、写后读回、结构化返回。","meta.road.title":"路线图 — dsh-automation-suite","meta.road.desc":"成熟度、环境兼容性与规划中的能力。","meta.start.title":"开始使用 — dsh-automation-suite","meta.start.desc":"一条命令启动带自动化套件插件的 DSH 实例。","home.hero.eyebrow":"面向自动化的 DeepSeek Harness（非官方）","home.hero.title":"面向 PLC 编程的 Agent 工具","home.hero.lead":"DeepSeek Harness 集成 Siemens TIA Openness 工具链。","home.hero.cta1":"开始使用","home.hero.cta2":"看看架构","home.fact.plugins.n":"8","home.fact.plugins.l":"个插件","home.fact.tools.n":"61","home.fact.tools.l":"个工具","home.fact.license.n":"MIT","home.fact.license.l":"许可","home.fact.platform.n":"Windows","home.fact.platform.l":"仅用于 TIA","home.gap.title":"缺口","home.gap.note":"通用模型在 PLC 工程上停在哪里。","home.gap.1.title":"封闭的工程文件","home.gap.1.desc":"程序逻辑锁在只有工程软件能读的二进制里。","home.gap.2.title":"文本不是结构","home.gap.2.desc":"导出的 XML 只是文本；模型要的是块、调用、标签表与 I/O。","home.gap.3.title":"改动无法验证","home.gap.3.desc":"只有编译并读回验证过，改动才算成立。","home.layers.title":"交付了什么","home.layers.note":"三层能力，每层解锁下一层。","home.layers.1.title":"接入层","home.layers.1.desc":"通过 Openness 读写 TIA Portal V17 程序块 —— 走白名单。","home.layers.2.title":"语义层","home.layers.2.desc":"把工程源文件变成可查询的图：块、调用、标签表与 I/O。","home.layers.3.title":"管理与协作层","home.layers.3.desc":"导出为文本、比对、提交、追溯版本 —— 以 Git 为底座。","arch.head.eyebrow":"架构","arch.head.title":"小工具面，硬约束","arch.head.lead":"模型拿不到任意代码执行：写入走白名单、事务与写后读回；工具返回结构化数据，而不是随手拼的 shell 输出。","arch.p.title":"设计原则","arch.p.note":"四条规则，决定一个工具能做什么。","arch.p1.title":"白名单操作","arch.p1.desc":"模型只表达路径、块名与枚举；控制器只执行已登记的操作之一。","arch.p2.title":"事务写入","arch.p2.desc":"全部对象要么一起提交，要么全部回滚。","arch.p3.title":"写后读回","arch.p3.desc":"导入后重新读项目，逐块比对名称、编号与语言。","arch.p4.title":"结构化返回","arch.p4.desc":"每个工具以 ok / summary / data / error 返回数据，而不是待解析的散文。","arch.c.title":"组成","arch.c.note":"八个包加一份 profile 蓝图，每个都能单独安装。","arch.c.table":"<table class=\"table\"><thead><tr><th>包</th><th>职责</th><th class=\"num\">工具</th><th>状态</th></tr></thead><tbody><tr><td><code>@voltarenyah/dsh-tia-openness-v17-min</code></td><td>TIA Portal V17 读写</td><td class=\"num\">32</td><td><span class=\"status status--partial\">部分实现</span></td></tr><tr><td><code>@voltarenyah/dsh-plcsim-advanced</code></td><td>PLCSIM Advanced 运行时</td><td class=\"num\">4</td><td><span class=\"status status--ok\">已验证</span></td></tr><tr><td><code>@voltarenyah/dsh-engineering-context</code></td><td>工程作用域与版本库</td><td class=\"num\">4</td><td><span class=\"status status--partial\">部分实现</span></td></tr><tr><td><code>@voltarenyah/dsh-engineering-graph</code></td><td>知识图谱 · SQLite + C# 引擎</td><td class=\"num\">9</td><td><span class=\"status status--proto\">原型</span></td></tr><tr><td><code>dsh-tool-git</code></td><td>受控 Git</td><td class=\"num\">12</td><td><span class=\"status status--ok\">已验证</span></td></tr><tr><td><code>dsh-ui-plc-source</code></td><td>右侧栏 · PLC Blocks</td><td class=\"num\">—</td><td><span class=\"status status--ok\">已验证</span></td></tr><tr><td><code>dsh-ui-tia-console</code></td><td>输入框 · TIA 控制台</td><td class=\"num\">—</td><td><span class=\"status status--ok\">已验证</span></td></tr><tr><td><code>dsh-ui-versions</code></td><td>右侧栏 · Versions</td><td class=\"num\">—</td><td><span class=\"status status--ok\">已验证</span></td></tr></tbody></table>","arch.c.profile":"蓝图把它们装成一个 profile，并按 preset 分配工具：leader 44、auditor 18、expert 16。","arch.r.title":"它怎么运行","arch.r.note":"一个进程边界，因为 Openness 只能这么调用。","arch.r.body":"Openness 只能被 64 位 .NET Framework 进程调用，所以 TIA 插件持有一个 C# 控制器子进程，用「一行一个 JSON」的协议走 stdio 通信。请求串行化；超时会终止并自动重启控制器。","arch.r.mono":"TiaOpennessV17Min.Controller.exe · x64 · .NET Framework 4.8","road.head.eyebrow":"路线图","road.head.title":"今天站在哪里","road.head.lead":"早期版本。状态以仓库路线图为准，规划中的能力不会被写成已实现。","road.m.title":"成熟度","road.m.note":"三层能力目前的真实状态。","road.m1.title":"接入层","road.m1.desc":"块导入导出、编译与工程数据已在真实项目上跑通；v0.2 新增的 20 个操作尚未真机验证。","road.m2.title":"语义层","road.m2.desc":"XML → SQLite 图谱已在样例上跑通；新鲜度、增量与兼容层未做。","road.m3.title":"管理与协作层","road.m3.desc":"Git 工具是通用底座；版本流程是「同步」与「提交」两步。","road.env.title":"环境兼容性","road.env.note":"今天能在什么环境里跑。","road.env.os.label":"操作系统","road.env.os.value":"TIA 工具仅 Windows；其它平台可加载插件，但 TIA 调用会失败。","road.env.dsh.label":"DeepSeek Harness","road.env.dsh.value":"任何能加载 bundle 的版本；按 0.2.1-rc.2 构建与测试。","road.env.tia.label":"TIA Portal","road.env.tia.value":"仅 V17 —— 不兼容 V16 / V18。","road.env.node.label":"Node.js","road.env.node.value":"22.19 或更新。","road.env.openness.label":"Openness","road.env.openness.value":"Portal V17 的 Siemens.Engineering.dll，且当前用户在本地「Siemens TIA Openness」组内。","road.next.title":"下一步","road.next.note":"规划，不是承诺。","road.n1.title":"V18 成员","road.n1.desc":"第二个接口插件成员，共享同一内核。","road.n2.title":"更多能力","road.n2.desc":"硬件组态、在线下载、比较与库。","road.n3.title":"图谱新鲜度","road.n3.desc":"增量更新，以及面向旧导出物的兼容层。","road.n4.title":"变更台账","road.n4.desc":"逐块变更台账，以及 DRAFT / REMOTE 工作区状态。","road.link":"完整路线图与待决问题","start.head.eyebrow":"开始使用","start.head.title":"一条命令，起一个实例","start.head.lead":"启动器会物化 profile、链入插件、启动 dsh 并打开带 token 的地址 —— 使用独立的 DSH_HOME。","start.req.title":"开始之前","start.req.note":"机器上需要有什么。","start.req.os.label":"操作系统","start.req.os.value":"Windows 10 / 11 —— TIA 工具仅限 Windows。","start.req.node.label":"Node.js","start.req.node.value":"22.19 或更新。","start.req.dsh.label":"DeepSeek Harness","start.req.dsh.value":"已安装，且能加载 bundle。","start.req.tia.label":"TIA Portal","start.req.tia.value":"V17 且启用 Openness —— 只有用 TIA 工具时才需要。","start.run.title":"跑起来","start.run.note":"三条命令，不需要先构建。","start.run.cmd":"<span class=\"c-prompt\">$</span> git clone https://github.com/voltarenyah/dsh-automation-suite\n<span class=\"c-prompt\">$</span> cd dsh-automation-suite\n<span class=\"c-prompt\">$</span> pwsh -NoProfile -File scripts\\start-env.ps1","start.after.title":"起来之后","start.after.note":"三步进入可用会话。","start.a1.title":"打开打印出的地址","start.a1.desc":"地址里带一次性 token；裸端口会返回 401。","start.a2.title":"填一个模型 API key","start.a2.desc":"设置 → Models，或首次运行弹窗。凭据只落在这个 DSH_HOME 里。","start.a3.title":"试一下 TIA 控制台","start.a3.desc":"打开或接管一个工程，导出一个块，再读回并编译。","start.note":"环境默认落在 %USERPROFILE%\\dsh-suite-env；删掉该目录即完全回退。","start.link":"仓库 README"}};
+  var META = {"home":{"en":{"title":"dsh-automation-suite — agent tool for PLC programming","desc":"An unofficial DeepSeek Harness distribution that integrates the Siemens TIA Openness toolkit: TIA Portal V17 block access, an engineering knowledge graph and guard-railed Git."},"zh":{"title":"dsh-automation-suite — 面向 PLC 编程的 Agent 工具","desc":"非官方 DeepSeek Harness 发行版，集成 Siemens TIA Openness 工具链：TIA Portal V17 块级读写、工程知识图谱与受控 Git。"}},"arch":{"en":{"title":"Architecture — dsh-automation-suite","desc":"Design principles and components: whitelisted operations, transactional writes, read-back verification, structured results."},"zh":{"title":"架构 — dsh-automation-suite","desc":"设计原则与组件：白名单操作、事务写入、写后读回、结构化返回。"}},"road":{"en":{"title":"Roadmap — dsh-automation-suite","desc":"Maturity, environment compatibility and the planned capability of the distribution."},"zh":{"title":"路线图 — dsh-automation-suite","desc":"成熟度、环境兼容性与规划中的能力。"}},"start":{"en":{"title":"Get Started — dsh-automation-suite","desc":"One command to a running DSH instance with the automation suite's plugins."},"zh":{"title":"开始使用 — dsh-automation-suite","desc":"一条命令启动带自动化套件插件的 DSH 实例。"}}};
 
-  var I18N = {
-    en: {
-      "nav.what": "What it is",
-      "nav.plugins": "Plugins",
-      "nav.start": "Quick start",
-      "nav.status": "Status",
-      "nav.github": "GitHub",
-
-      "hero.eyebrow": "Unofficial DeepSeek Harness distribution",
-      "hero.title": "A way into PLC projects",
-      "hero.dot": ".",
-      "hero.lead":
-        "dsh-automation-suite adds TIA Portal V17 block access, an engineering knowledge graph and guard-railed Git to a single DeepSeek Harness session.",
-      "hero.cta1": "Quick start",
-      "hero.cta2": "Source on GitHub",
-      "hero.fact.plugins": "plugins",
-      "hero.fact.tools": "tools",
-      "hero.fact.license": "license",
-      "hero.fact.platform": "for TIA",
-
-      "what.title": "What it is",
-      "what.note": "Three layers, each one unlocking the next.",
-      "what.l1.t": "Access",
-      "what.l1.d":
-        "Read and write TIA Portal V17 blocks through Openness — inside a whitelist, never arbitrary code.",
-      "what.l2.t": "Semantics",
-      "what.l2.d":
-        "Project sources become a queryable graph of blocks, calls, tags and I/O.",
-      "what.l3.t": "Governance",
-      "what.l3.d":
-        "Export to text, diff, commit and trace versions — with Git as the base.",
-
-      "status.verified": "Verified",
-      "status.partial": "Partial",
-      "status.prototype": "Prototype",
-
-      "plugins.title": "Plugins",
-      "plugins.note":
-        "Each package installs on its own; the blueprint assembles all of them.",
-      "plugins.col.name": "Package",
-      "plugins.col.role": "Role",
-      "plugins.col.tools": "Tools",
-      "plugins.col.status": "Status",
-      "p.tia": "TIA Portal V17 access",
-      "p.plcsim": "PLCSIM Advanced runtime",
-      "p.ctx": "Project scope and version store",
-      "p.graph": "Knowledge graph · SQLite + C# engine",
-      "p.git": "Guard-railed Git",
-      "p.u1": "Sidebar · PLC Blocks",
-      "p.u2": "Composer · TIA console",
-      "p.u3": "Sidebar · Versions",
-
-      "start.title": "Quick start",
-      "start.note":
-        "Windows · Node 22.19+ · uses its own DSH_HOME, your daily setup stays untouched.",
-      "start.copy": "Copy",
-
-      "status.title": "Status",
-      "status.body":
-        "An early build. The access layer is proven on real projects, the semantic layer has a working prototype, and governance is a general Git base. Statuses on this page follow the repository roadmap.",
-      "status.link": "Read the roadmap",
-
-      "footer.disclaimer":
-        "Unofficial project. Not affiliated with DeepSeek or Siemens. TIA Portal and SIMATIC are trademarks of Siemens AG, named here for reference only.",
-      "footer.source": "GitHub",
-      "footer.license": "MIT",
-      "footer.updated": "Last checked 2026-11-03",
-
-      "meta.title": "dsh-automation-suite — a way into PLC projects",
-      "meta.desc":
-        "An unofficial DeepSeek Harness distribution: TIA Portal V17 block access, an engineering knowledge graph, and guard-railed Git tools."
-    },
-
-    zh: {
-      "nav.what": "是什么",
-      "nav.plugins": "插件",
-      "nav.start": "快速开始",
-      "nav.status": "状态",
-      "nav.github": "GitHub",
-
-      "hero.eyebrow": "非官方 DeepSeek Harness 发行版",
-      "hero.title": "让模型走进 PLC 工程",
-      "hero.dot": "。",
-      "hero.lead":
-        "dsh-automation-suite 把 TIA Portal V17 的块级读写、工程知识图谱与受控 Git 装进同一个 DeepSeek Harness 会话。",
-      "hero.cta1": "快速开始",
-      "hero.cta2": "GitHub 仓库",
-      "hero.fact.plugins": "个插件",
-      "hero.fact.tools": "个工具",
-      "hero.fact.license": "许可",
-      "hero.fact.platform": "仅用于 TIA",
-
-      "what.title": "它是什么",
-      "what.note": "三层能力，每层解锁下一层。",
-      "what.l1.t": "接入层",
-      "what.l1.d": "通过 Openness 读写 TIA Portal V17 的程序块 —— 走白名单，不给任意代码执行。",
-      "what.l2.t": "语义层",
-      "what.l2.d": "把工程源文件变成可查询的图：块、调用、标签表与 I/O。",
-      "what.l3.t": "管理与协作层",
-      "what.l3.d": "导出为文本、比对、提交、追溯版本 —— 以 Git 为底座。",
-
-      "status.verified": "已验证",
-      "status.partial": "部分实现",
-      "status.prototype": "原型",
-
-      "plugins.title": "插件",
-      "plugins.note": "每个包都能单独安装，蓝图把它们装成一套。",
-      "plugins.col.name": "包",
-      "plugins.col.role": "职责",
-      "plugins.col.tools": "工具",
-      "plugins.col.status": "状态",
-      "p.tia": "TIA Portal V17 读写",
-      "p.plcsim": "PLCSIM Advanced 运行时",
-      "p.ctx": "工程作用域与版本库",
-      "p.graph": "知识图谱 · SQLite + C# 引擎",
-      "p.git": "受控 Git",
-      "p.u1": "右侧栏 · PLC Blocks",
-      "p.u2": "输入框 · TIA 控制台",
-      "p.u3": "右侧栏 · Versions",
-
-      "start.title": "快速开始",
-      "start.note":
-        "Windows · Node 22.19+ · 使用独立 DSH_HOME，不动日常环境。",
-      "start.copy": "复制",
-
-      "status.title": "状态",
-      "status.body":
-        "早期版本：接入层已在真实项目上验证，语义层有可用原型，管理与协作层目前是通用 Git 底座。本页状态以仓库路线图为准。",
-      "status.link": "查看路线图",
-
-      "footer.disclaimer":
-        "非官方项目，与 DeepSeek 及 Siemens 均无隶属关系。TIA Portal 与 SIMATIC 是 Siemens AG 的商标，此处仅作事实性指称。",
-      "footer.source": "GitHub",
-      "footer.license": "MIT",
-      "footer.updated": "最后核对 2026-11-03",
-
-      "meta.title": "dsh-automation-suite — 让模型走进 PLC 工程",
-      "meta.desc":
-        "非官方 DeepSeek Harness 发行版：TIA Portal V17 块级读写、工程知识图谱与受控 Git 工具。"
-    }
-  };
-
-  var html = document.documentElement;
-  var nodes = document.querySelectorAll("[data-i18n]");
+  var doc = document.documentElement;
+  var page = (document.body && document.body.dataset.page) || "home";
+  var slots = Array.prototype.slice.call(document.querySelectorAll("[data-block]"));
+  var descMeta = document.querySelector('meta[name="description"]');
   var langBtns = document.querySelectorAll(".lang__btn");
-  var metaDesc = document.querySelector('meta[name="description"]');
+
+  function dict(lang) { return I18N[lang === "zh" ? "zh" : "en"] || {}; }
 
   function apply(lang) {
-    var dict = I18N[lang] || I18N.en;
-
-    nodes.forEach(function (node) {
-      var key = node.getAttribute("data-i18n");
-      if (dict[key] !== undefined) node.textContent = dict[key];
+    var key = lang === "zh" ? "zh" : "en";
+    var blocks = dict(key);
+    slots.forEach(function (el) {
+      var id = el.getAttribute("data-block");
+      if (Object.prototype.hasOwnProperty.call(blocks, id)) el.innerHTML = blocks[id];
     });
-
-    html.lang = lang === "zh" ? "zh-CN" : "en";
-    document.title = dict["meta.title"];
-    if (metaDesc) metaDesc.setAttribute("content", dict["meta.desc"]);
-
+    doc.lang = key === "zh" ? "zh-CN" : "en";
+    var m = (META[page] || {})[key] || {};
+    if (m.title) document.title = m.title;
+    if (m.desc && descMeta) descMeta.setAttribute("content", m.desc);
     langBtns.forEach(function (btn) {
-      var on = btn.dataset.lang === lang;
+      var on = btn.dataset.lang === key;
       btn.classList.toggle("is-on", on);
       btn.setAttribute("aria-pressed", on ? "true" : "false");
     });
-
-    try { localStorage.setItem(KEY, lang); } catch (e) { /* private mode */ }
+    try { localStorage.setItem(KEY, key); } catch (e) { /* private mode */ }
   }
 
   var stored = null;
@@ -182,31 +45,25 @@
     });
   });
 
-  /* copy the command block, without prompt glyphs */
   var copyBtn = document.querySelector(".copy");
   if (copyBtn) {
+    var copyLabel = copyBtn.querySelector("[data-block]");
     copyBtn.addEventListener("click", function () {
       var target = document.getElementById(copyBtn.dataset.copyTarget || "");
       if (!target) return;
-      var text = target.textContent
-        .split("\n")
-        .map(function (line) { return line.replace(/^\s*\$\s?/, ""); })
-        .join("\n")
-        .trim();
-
+      var text = target.textContent.split("\n").map(function (line) {
+        return line.replace(/^\s*\$\s?/, "");
+      }).join("\n").trim();
       var done = function () {
-        var label = copyBtn.querySelector("[data-i18n]") || copyBtn;
-        var original = label.textContent;
-        label.textContent = html.lang === "zh-CN" ? "已复制" : "Copied";
+        if (copyLabel) copyLabel.textContent = dict(doc.lang === "zh-CN" ? "zh" : "en")["shared.copied"] || "Copied";
         copyBtn.classList.add("is-done");
         setTimeout(function () {
-          label.textContent = I18N[html.lang === "zh-CN" ? "zh" : "en"]["start.copy"];
+          if (copyLabel) copyLabel.textContent = dict(doc.lang === "zh-CN" ? "zh" : "en")["shared.copy"] || "Copy";
           copyBtn.classList.remove("is-done");
         }, 1600);
       };
-
       if (navigator.clipboard && navigator.clipboard.writeText) {
-        navigator.clipboard.writeText(text).then(done, function () { done(); });
+        navigator.clipboard.writeText(text).then(done, done);
       } else {
         var ta = document.createElement("textarea");
         ta.value = text;

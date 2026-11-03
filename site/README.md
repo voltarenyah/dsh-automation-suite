@@ -1,52 +1,68 @@
 # 产品介绍页（GitHub Pages）
 
-这个目录**只放站点文件**，`main` 分支上 `site/` 的每次改动都会由
-`.github/workflows/pages.yml` 直接发布到
-<https://voltarenyah.github.io/dsh-automation-suite/>。
+`main` 分支上 `site/` 的每次改动都会由 `.github/workflows/pages.yml` 直接发布到
+<https://voltarenyah.github.io/dsh-automation-suite/>。站点是**纯静态**的：没有构建步骤、没有运行时依赖。
 
-站点是**纯静态**的：没有构建步骤、没有框架、没有运行时依赖。改完文件刷新即可。
+## 现在的结构：模板首页 + 自制子页
 
-## 结构
+| 路径 | 视觉 | 文件 |
+|---|---|---|
+| `/` | **Pixa 模板原样**（点阵、辉光、衬线标题、Try Prompts 窗口、定价、FAQ） | `index.html` + `css/` + `index.js` + `scripts/` + `assets/images/` |
+| `/architecture/` | 自制四页版（浮动玻璃栏、卡片、表格） | `architecture/index.html` |
+| `/roadmap/` | 同上 | `roadmap/index.html` |
+| `/get-started/` | 同上 | `get-started/index.html` |
+
+四页共用一套顶部导航（Home / Architecture / Roadmap / Get Started），所以从模板首页可以进入三个子页，反之亦然。
+
+### 首页相对模板的改动（只有这几处）
+
+1. **顶栏**换成四项导航 + GitHub 按钮（去掉模板的 API/Blog/Solutions/Features/Pricing 与 “Try playground”）；
+   主题切换保留，`index.js` 里对已删除的特性下拉做了空值保护。
+2. **隐藏的 YouTube 视频弹窗整套删除**（`#video-container-bg` 与 iframe），连带删掉首屏的 “Watch video” 按钮。
+3. 首屏 “Get started” 按钮指向 `get-started/`。
+4. 去掉了模板自带的 GTM 空 ID 脚本（`G-`，没有追踪作用）。
+
+其余文案、图片、版式与模板一致。
+
+### 子页的文件
 
 ```
-site/
-  index.html          唯一页面；英文是默认内容，中文由 assets/main.js 切换
-  assets/styles.css   全部样式（浅色编辑风；颜色与字号集中在 :root）
-  assets/main.js      语言切换、滚动揭示、复制命令
-  assets/favicon.svg
-  assets/fonts/       Instrument Sans + IBM Plex Mono（自托管，不依赖 CDN）
+assets/app.css       设计系统（明/暗两套变量）
+assets/main.js       中文文案字典 + 每页 title/description + 语言切换 + 复制命令
+assets/ui.js         主题切换、移动端菜单、滚动揭示
+assets/fonts/        Instrument Sans + IBM Plex Mono（自托管）
+content.md           子页的英文内容底稿（手动同步，不自动渲染）
 ```
+
+- 子页英文在 HTML 里，中文由 `main.js` 按 `data-block` 覆盖；`<html lang>` 与 `<title>` 一起切换。
+- 首页是模板自己的脚本与样式（`tw-` 前缀的 Tailwind + `css/index.css`），不加载 `app.css`、不参与语言切换。
 
 ## 改文案
 
-- **英文**：直接改 `site/index.html` 里的文本（英文是 HTML 源内容，也是无 JS 时的默认）。
-- **中文**：改 `site/assets/main.js` 里 `I18N.zh` 的对应键。
-- 两边用同一批 `data-i18n` 键；新增文案时，HTML 加 `data-i18n="键名"`，两个字典各补一条，
-  否则切换语言时该处会保持原样（不会报错）。
+- **首页**：直接改 `index.html`（模板文案全是普通 HTML，按小节标题搜索即可）。
+- **子页**：改 `content.md` → 同步英文进对应 HTML → 同步中文进 `main.js` 的 `I18N.zh`。
 - 技术名词、包名、命令不翻译。
 
-## 改样式
+## 授权
 
-`assets/styles.css` 顶部 `:root` 是全部设计变量：纸色、墨色、唯一强调色 `--accent`、
-最大宽度 `--maxw`。中文排版差异（字距、行高）在文件末尾 `html[lang="zh-CN"]` 段。
+模板为付费授权（`license-pixa.txt`）：可自用与修改，**不可把模板本身再分发或开源**；
+模板 `package.json` 里写的 MIT 是作者笔误，以 license 原文为准。
 
 ## 本地预览
 
 ```powershell
-# 任选其一
 python -m http.server 4173 --directory site
-# 或直接双击 site/index.html（纯相对路径，file:// 也能打开）
+# 打开 http://127.0.0.1:4173/
 ```
+
+目录形式的地址需要服务器（`/architecture/` 走 `index.html`）；直接双击 `site/index.html` 只能打开首页。
 
 ## 发布
 
-- 首次：仓库 Settings → Pages → Source 选 **GitHub Actions**（或由管理员调用
-  `gh api -X POST repos/<owner>/<repo>/pages -f build_type=workflow` 开启）。
-- 之后：`site/` 有改动 → push 到 `main` → Actions 自动部署，约 30 秒。
-- 只发布 `site/` 目录：仓库其它内容（`docs/`、`packages/`、AGENTS 等）不会上线。
+- Pages 已启用（`build_type=workflow`），`site/**` 有改动 → push 到 `main` → Actions 部署，约 30 秒。
+- 只上传 `site/`：仓库其它内容（`docs/`、`packages/`、AGENTS 等）不会上线。
 
 ## 约定
 
-- 状态文案必须与 `docs/roadmap.md` 一致（✅ 已验证 / 🟡 部分实现 / ⬜ 未开始），不要在这里夸大。
-- 页面不含第三方分析脚本、不加载外部字体与图片。
-- 免责声明（非官方、与 DeepSeek / Siemens 无隶属关系）留在页脚，不要删。
+- 状态文案必须与 `docs/roadmap.md` 一致（✅ 已验证 / 🟡 部分实现 / ⬜ 未开始），不要夸大。
+- 页脚免责声明（非官方、与 DeepSeek / Siemens 无隶属关系）要保留。

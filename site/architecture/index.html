@@ -1,0 +1,149 @@
+<!doctype html>
+<html lang="en" class="no-js">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Architecture — dsh-automation-suite</title>
+<meta name="description" content="Design principles and components: whitelisted operations, transactional writes, read-back verification, structured results.">
+<meta name="color-scheme" content="light dark">
+<link rel="canonical" href="https://voltarenyah.github.io/dsh-automation-suite/architecture/">
+<link rel="icon" href="../assets/favicon.svg" type="image/svg+xml">
+<link rel="preload" href="../assets/fonts/instr-500.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="../assets/fonts/instr-400.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="../assets/app.css">
+<script>document.documentElement.className = 'js';</script>
+</head>
+<body data-page="arch">
+<a class="skip" href="#main" data-block="shared.skip" data-inline>Skip to content</a>
+
+<header class="site-header" id="site-header">
+  <a class="brand" href="../" aria-label="dsh-automation-suite home">
+    <svg viewBox="0 0 20 20" aria-hidden="true">
+      <rect x="1.2" y="1.2" width="17.6" height="17.6" rx="3.4" fill="none" stroke="currentColor" stroke-width="1.3"/>
+      <path d="M6.2 13.4V9.2M10 13.4V6.2M13.8 13.4v-2.6" stroke="currentColor" stroke-width="1.6"/>
+    </svg>
+    <span>dsh-automation-suite</span>
+  </a>
+
+  <nav class="nav" id="nav" aria-label="Main">
+    <a href="../" data-block="shared.nav.home" data-inline>Home</a>
+    <a href="../architecture/" aria-current="page" data-block="shared.nav.arch" data-inline>Architecture</a>
+    <a href="../roadmap/" data-block="shared.nav.road" data-inline>Roadmap</a>
+    <a href="../get-started/" data-block="shared.nav.start" data-inline>Get Started</a>
+  </nav>
+
+  <div class="header-actions">
+    <button class="icon-btn" id="theme-toggle" type="button" aria-label="Toggle theme" aria-pressed="false">
+      <svg class="icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M19.1 4.9l-1.4 1.4M6.3 17.7l-1.4 1.4"/></svg>
+      <svg class="icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" style="display:none"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8Z"/></svg>
+    </button>
+    <div class="lang" role="group" aria-label="Language">
+      <button type="button" class="lang__btn is-on" data-lang="en" aria-pressed="true">EN</button>
+      <button type="button" class="lang__btn" data-lang="zh" aria-pressed="false" lang="zh-CN">中文</button>
+    </div>
+    <a class="btn btn--sm" href="https://github.com/voltarenyah/dsh-automation-suite">
+      <span data-block="shared.nav.github" data-inline>GitHub</span>
+      <span class="arrow" aria-hidden="true">→</span>
+    </a>
+    <button class="icon-btn nav-toggle" id="nav-toggle" type="button" aria-label="Menu" aria-expanded="false">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
+    </button>
+  </div>
+</header>
+
+<main id="main">
+
+  <section class="page-head">
+    <div class="wrap">
+      <p class="eyebrow reveal" data-block="arch.head.eyebrow" data-inline>Architecture</p>
+      <h1 class="reveal" style="--d:.06s"><span data-block="arch.head.title" data-inline>A small surface, strictly enforced</span></h1>
+      <p class="lead reveal" style="--d:.12s" data-block="arch.head.lead">The model never gets arbitrary execution. Writes go through a whitelist, a transaction and a read-back check; tools return structured data instead of free-form shell output.</p>
+    </div>
+  </section>
+
+  <section class="section wrap">
+    <div class="section-head">
+      <p class="kicker">01</p>
+      <h2 data-block="arch.p.title" data-inline>Principles</h2>
+      <p data-block="arch.p.note" data-inline>Four rules that decide what a tool may do.</p>
+    </div>
+
+    <div class="cards cards--2">
+      <article class="card">
+        <p class="num">01</p>
+        <h3 data-block="arch.p1.title" data-inline>Whitelisted operations</h3>
+        <p data-block="arch.p1.desc">The model expresses paths, block names and enums; the controller runs one of its registered operations.</p>
+      </article>
+      <article class="card">
+        <p class="num">02</p>
+        <h3 data-block="arch.p2.title" data-inline>Transactional writes</h3>
+        <p data-block="arch.p2.desc">All objects commit or none do — a failed import rolls back.</p>
+      </article>
+      <article class="card">
+        <p class="num">03</p>
+        <h3 data-block="arch.p3.title" data-inline>Read-back verification</h3>
+        <p data-block="arch.p3.desc">After an import the project is re-read and each block compared by name, number and language.</p>
+      </article>
+      <article class="card">
+        <p class="num">04</p>
+        <h3 data-block="arch.p4.title" data-inline>Structured results</h3>
+        <p data-block="arch.p4.desc">Every tool returns ok / summary / data / error as data, not as prose to parse.</p>
+      </article>
+    </div>
+  </section>
+
+  <section class="section wrap">
+    <div class="section-head">
+      <p class="kicker">02</p>
+      <h2 data-block="arch.c.title" data-inline>Components</h2>
+      <p data-block="arch.c.note" data-inline>Eight packages plus one profile blueprint; each installs on its own.</p>
+    </div>
+
+    <div class="table-wrap" data-block="arch.c.table"></div>
+
+    <p class="prose" style="margin-top: 20px" data-block="arch.c.profile">The blueprint assembles them into one profile and splits the tools across three presets: leader (44), auditor (18), expert (16).</p>
+  </section>
+
+  <section class="section wrap">
+    <div class="section-head">
+      <p class="kicker">03</p>
+      <h2 data-block="arch.r.title" data-inline>How it runs</h2>
+      <p data-block="arch.r.note" data-inline>One process boundary, because Openness demands it.</p>
+    </div>
+
+    <div class="panel">
+      <p class="prose" data-block="arch.r.body">Openness can only be called from a 64-bit .NET Framework process, so the TIA plugin owns a C# controller subprocess and speaks one JSON object per line over stdio. Requests are serialized; a timeout terminates and restarts the controller.</p>
+      <p class="termline" data-block="arch.r.mono" data-inline>TiaOpennessV17Min.Controller.exe · x64 · .NET Framework 4.8</p>
+    </div>
+  </section>
+
+  <section class="section section--tight wrap">
+    <div class="cta-band">
+      <div>
+        <h2 data-block="shared.cta.road.t" data-inline>Can I use it now?</h2>
+      </div>
+      <div class="actions">
+        <a class="btn" href="../roadmap/" data-block="shared.cta.road.k" data-inline>Roadmap</a>
+        <a class="btn btn--ghost" href="../get-started/" data-block="shared.cta.start.t" data-inline>Run it in one command</a>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<footer class="foot">
+  <div class="wrap foot__in">
+    <p class="foot__disc" data-block="shared.footer.disclaimer">Unofficial project. Not affiliated with DeepSeek or Siemens. TIA Portal and SIMATIC are trademarks of Siemens AG, named here for reference only.</p>
+    <div class="foot__meta">
+      <a class="link" href="https://github.com/voltarenyah/dsh-automation-suite" data-block="shared.footer.source" data-inline>GitHub</a>
+      <a class="link" href="https://github.com/voltarenyah/dsh-automation-suite/blob/main/README.md">README</a>
+      <a class="link" href="https://github.com/voltarenyah/dsh-automation-suite/blob/main/LICENSE" data-block="shared.footer.license" data-inline>MIT</a>
+      <span class="mono" data-block="shared.footer.updated" data-inline>Last checked 2026-11-03</span>
+    </div>
+  </div>
+</footer>
+
+<script src="../assets/main.js"></script>
+<script src="../assets/ui.js"></script>
+</body>
+</html>

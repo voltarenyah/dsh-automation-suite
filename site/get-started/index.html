@@ -1,0 +1,169 @@
+<!doctype html>
+<html lang="en" class="no-js">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Get Started — dsh-automation-suite</title>
+<meta name="description" content="One command to a running DSH instance with the automation suite's plugins.">
+<meta name="color-scheme" content="light dark">
+<link rel="canonical" href="https://voltarenyah.github.io/dsh-automation-suite/get-started/">
+<link rel="icon" href="../assets/favicon.svg" type="image/svg+xml">
+<link rel="preload" href="../assets/fonts/instr-500.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="../assets/fonts/instr-400.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="../assets/app.css">
+<script>document.documentElement.className = 'js';</script>
+</head>
+<body data-page="start">
+<a class="skip" href="#main" data-block="shared.skip" data-inline>Skip to content</a>
+
+<header class="site-header" id="site-header">
+  <a class="brand" href="../" aria-label="dsh-automation-suite home">
+    <svg viewBox="0 0 20 20" aria-hidden="true">
+      <rect x="1.2" y="1.2" width="17.6" height="17.6" rx="3.4" fill="none" stroke="currentColor" stroke-width="1.3"/>
+      <path d="M6.2 13.4V9.2M10 13.4V6.2M13.8 13.4v-2.6" stroke="currentColor" stroke-width="1.6"/>
+    </svg>
+    <span>dsh-automation-suite</span>
+  </a>
+
+  <nav class="nav" id="nav" aria-label="Main">
+    <a href="../" data-block="shared.nav.home" data-inline>Home</a>
+    <a href="../architecture/" data-block="shared.nav.arch" data-inline>Architecture</a>
+    <a href="../roadmap/" data-block="shared.nav.road" data-inline>Roadmap</a>
+    <a href="../get-started/" aria-current="page" data-block="shared.nav.start" data-inline>Get Started</a>
+  </nav>
+
+  <div class="header-actions">
+    <button class="icon-btn" id="theme-toggle" type="button" aria-label="Toggle theme" aria-pressed="false">
+      <svg class="icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M19.1 4.9l-1.4 1.4M6.3 17.7l-1.4 1.4"/></svg>
+      <svg class="icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" style="display:none"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8Z"/></svg>
+    </button>
+    <div class="lang" role="group" aria-label="Language">
+      <button type="button" class="lang__btn is-on" data-lang="en" aria-pressed="true">EN</button>
+      <button type="button" class="lang__btn" data-lang="zh" aria-pressed="false" lang="zh-CN">中文</button>
+    </div>
+    <a class="btn btn--sm" href="https://github.com/voltarenyah/dsh-automation-suite">
+      <span data-block="shared.nav.github" data-inline>GitHub</span>
+      <span class="arrow" aria-hidden="true">→</span>
+    </a>
+    <button class="icon-btn nav-toggle" id="nav-toggle" type="button" aria-label="Menu" aria-expanded="false">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
+    </button>
+  </div>
+</header>
+
+<main id="main">
+
+  <section class="page-head">
+    <div class="wrap">
+      <p class="eyebrow reveal" data-block="start.head.eyebrow" data-inline>Get started</p>
+      <h1 class="reveal" style="--d:.06s"><span data-block="start.head.title" data-inline>One command to a running instance</span></h1>
+      <p class="lead reveal" style="--d:.12s" data-block="start.head.lead">The starter materializes the profile, links the plugins, starts dsh and opens a tokenized URL — in its own DSH_HOME.</p>
+    </div>
+  </section>
+
+  <section class="section wrap">
+    <div class="section-head">
+      <p class="kicker">01</p>
+      <h2 data-block="start.req.title" data-inline>Before you start</h2>
+      <p data-block="start.req.note" data-inline>What has to be on the machine.</p>
+    </div>
+
+    <dl class="kv">
+      <div>
+        <dt data-block="start.req.os.label" data-inline>Operating system</dt>
+        <dd data-block="start.req.os.value">Windows 10 or 11 — the TIA tools are Windows-only.</dd>
+      </div>
+      <div>
+        <dt data-block="start.req.node.label" data-inline>Node.js</dt>
+        <dd data-block="start.req.node.value">22.19 or newer.</dd>
+      </div>
+      <div>
+        <dt data-block="start.req.dsh.label" data-inline>DeepSeek Harness</dt>
+        <dd data-block="start.req.dsh.value">Installed, and able to load bundles.</dd>
+      </div>
+      <div>
+        <dt data-block="start.req.tia.label" data-inline>TIA Portal</dt>
+        <dd data-block="start.req.tia.value">V17 with Openness enabled — needed only for the TIA tools.</dd>
+      </div>
+    </dl>
+  </section>
+
+  <section class="section wrap">
+    <div class="section-head">
+      <p class="kicker">02</p>
+      <h2 data-block="start.run.title" data-inline>Run it</h2>
+      <p data-block="start.run.note" data-inline>Three commands, no build step first.</p>
+    </div>
+
+    <div class="term">
+      <div class="term__bar">
+        <span class="mono">PowerShell</span>
+        <button type="button" class="copy" data-copy-target="cmd">
+          <span data-block="shared.copy" data-inline>Copy</span>
+        </button>
+      </div>
+      <pre class="term__body"><code id="cmd" data-block="start.run.cmd"><span class="c-prompt">$</span> git clone https://github.com/voltarenyah/dsh-automation-suite
+<span class="c-prompt">$</span> cd dsh-automation-suite
+<span class="c-prompt">$</span> pwsh -NoProfile -File scripts\start-env.ps1</code></pre>
+    </div>
+  </section>
+
+  <section class="section wrap">
+    <div class="section-head">
+      <p class="kicker">03</p>
+      <h2 data-block="start.after.title" data-inline>After it starts</h2>
+      <p data-block="start.after.note" data-inline>A working session in three moves.</p>
+    </div>
+
+    <ol class="steps">
+      <li>
+        <span class="steps__n" aria-hidden="true">01</span>
+        <div>
+          <h3 data-block="start.a1.title" data-inline>Open the printed URL</h3>
+          <p data-block="start.a1.desc">It carries a one-time token; the bare port returns 401.</p>
+        </div>
+      </li>
+      <li>
+        <span class="steps__n" aria-hidden="true">02</span>
+        <div>
+          <h3 data-block="start.a2.title" data-inline>Add a model API key</h3>
+          <p data-block="start.a2.desc">Settings → Models, or the first-run prompt. Credentials stay inside this DSH_HOME.</p>
+        </div>
+      </li>
+      <li>
+        <span class="steps__n" aria-hidden="true">03</span>
+        <div>
+          <h3 data-block="start.a3.title" data-inline>Try the TIA console</h3>
+          <p data-block="start.a3.desc">Open or adopt a project, export a block, then read it back and compile.</p>
+        </div>
+      </li>
+    </ol>
+
+    <div class="panel" style="margin-top: 18px">
+      <p class="prose" data-block="start.note">The environment defaults to %USERPROFILE%\dsh-suite-env. Delete that folder to roll everything back.</p>
+    </div>
+
+    <p class="linkrow">
+      <a class="link" href="https://github.com/voltarenyah/dsh-automation-suite/blob/main/README.md" data-block="start.link" data-inline>Repository README</a>
+      <span aria-hidden="true">→</span>
+    </p>
+  </section>
+
+</main>
+
+<footer class="foot">
+  <div class="wrap foot__in">
+    <p class="foot__disc" data-block="shared.footer.disclaimer">Unofficial project. Not affiliated with DeepSeek or Siemens. TIA Portal and SIMATIC are trademarks of Siemens AG, named here for reference only.</p>
+    <div class="foot__meta">
+      <a class="link" href="https://github.com/voltarenyah/dsh-automation-suite" data-block="shared.footer.source" data-inline>GitHub</a>
+      <a class="link" href="https://github.com/voltarenyah/dsh-automation-suite/blob/main/README.md">README</a>
+      <a class="link" href="https://github.com/voltarenyah/dsh-automation-suite/blob/main/LICENSE" data-block="shared.footer.license" data-inline>MIT</a>
+      <span class="mono" data-block="shared.footer.updated" data-inline>Last checked 2026-11-03</span>
+    </div>
+  </div>
+</footer>
+
+<script src="../assets/main.js"></script>
+<script src="../assets/ui.js"></script>
+</body>
+</html>
