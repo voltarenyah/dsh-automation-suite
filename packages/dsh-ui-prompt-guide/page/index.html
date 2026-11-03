@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light dark" />
+    <title>Prompt Guide · dsh-automation-suite</title>
+    <link rel="stylesheet" href="./style.css" />
+  </head>
+  <body>
+    <header class="pg-head">
+      <div>
+        <span class="pg-kicker">dsh-automation-suite</span>
+        <h1>Prompt Guide</h1>
+        <p class="pg-lede" id="lede"></p>
+      </div>
+      <div class="pg-tools">
+        <label class="pg-search">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
+            <circle cx="10.5" cy="10.5" r="6.5" />
+            <path d="m15.5 15.5 5 5" />
+          </svg>
+          <input id="search" type="search" autocomplete="off" spellcheck="false" aria-label="搜索" />
+        </label>
+        <div class="pg-lang" role="group" aria-label="语言 / Language">
+          <button type="button" data-lang="zh">中文</button>
+          <button type="button" data-lang="en">EN</button>
+        </div>
+      </div>
+    </header>
+
+    <main class="pg-main">
+      <nav class="pg-nav" id="nav" aria-label="分类"></nav>
+      <section class="pg-content">
+        <section class="pg-notes" id="notes-box" hidden>
+          <h2 id="notes-title"></h2>
+          <ul id="notes"></ul>
+        </section>
+        <div id="cards"></div>
+        <p class="pg-empty" id="empty" hidden></p>
+      </section>
+    </main>
+
+    <footer class="pg-foot">
+      <span id="meta"></span>
+    </footer>
+
+    <script src="./app.js"></script>
+  </body>
+</html>

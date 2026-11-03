@@ -1,0 +1,58 @@
+{
+  "name": "dsh-ui-prompt-guide",
+  "version": "0.1.0",
+  "private": false,
+  "description": "DSH plugin: a 'Prompt Guide' page in the main sidebar — the automation suite's capability map as ready-to-use prompts (what to ask, what happens, which tool/preset runs it), with copy and 'use in a new session' buttons.",
+  "type": "module",
+  "license": "MIT",
+  "engines": {
+    "node": ">=22.19.0"
+  },
+  "main": "./lib/index.js",
+  "exports": {
+    ".": {
+      "default": "./lib/index.js"
+    },
+    "./client": {
+      "default": "./lib/client.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "lib",
+    "page",
+    "cordis.patch.yml",
+    "README.md"
+  ],
+  "dsh": {
+    "manifestVersion": 1,
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "inject": []
+    }
+  },
+  "keywords": [
+    "deepseek-harness",
+    "dsh-plugin",
+    "dsh",
+    "cordis",
+    "ui",
+    "prompt",
+    "guide",
+    "help",
+    "sidebar"
+  ],
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "typecheck": "node scripts/tsc.mjs -p tsconfig.json --noEmit",
+    "test": "node scripts/run-tests.mjs",
+    "check": "node scripts/run-tests.mjs"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "typescript": "^5.6.0"
+  }
+}

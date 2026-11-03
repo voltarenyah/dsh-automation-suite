@@ -86,7 +86,25 @@ importers:
         specifier: ^3.2.0
         version: 3.2.7(@types/node@22.20.5)
 
+  packages/dsh-ui-hardware:
+    devDependencies:
+      '@types/node':
+        specifier: ^22.10.0
+        version: 22.20.5
+      typescript:
+        specifier: ^5.6.0
+        version: 5.9.3
+
   packages/dsh-ui-plc-source:
+    devDependencies:
+      '@types/node':
+        specifier: ^22.10.0
+        version: 22.20.5
+      typescript:
+        specifier: ^5.6.0
+        version: 5.9.3
+
+  packages/dsh-ui-prompt-guide:
     devDependencies:
       '@types/node':
         specifier: ^22.10.0
@@ -136,9 +154,15 @@ importers:
       dsh-tool-git:
         specifier: workspace:^
         version: link:../../packages/dsh-tool-git
+      dsh-ui-hardware:
+        specifier: workspace:^
+        version: link:../../packages/dsh-ui-hardware
       dsh-ui-plc-source:
         specifier: workspace:^
         version: link:../../packages/dsh-ui-plc-source
+      dsh-ui-prompt-guide:
+        specifier: workspace:^
+        version: link:../../packages/dsh-ui-prompt-guide
       dsh-ui-tia-console:
         specifier: workspace:^
         version: link:../../packages/dsh-ui-tia-console

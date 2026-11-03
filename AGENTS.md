@@ -149,12 +149,12 @@ pnpm run clean:build      # 清构建产物（只碰 lib/ dist/）
 ## 4. 测试与验收
 
 ```powershell
-pnpm test          # 全仓：TIA 102 项（101 通过 / 1 跳过）+ dsh-tool-git 51 项 + engineering-context 128 项 + engineering-graph 128 项 + ui-plc-source 47 项 + ui-tia-console 22 项 + ui-versions 15 项
+pnpm test          # 全仓：TIA 102 项（101 通过 / 1 跳过）+ dsh-tool-git 51 项 + engineering-context 128 项 + engineering-graph 128 项 + drawing 23 项 + plcsim-advanced 10 项 + ui-plc-source 47 项 + ui-tia-console 22 项 + ui-versions 15 项 + ui-hardware 9 项 + ui-prompt-guide 23 项
 pnpm -r build
 pnpm -r typecheck
 ```
 
-六个本地插件加 vendor 的 `dsh-tool-git` 用**两种测试运行器**，`pnpm -r test` 会把七者都跑到：
+十个本地插件加 vendor 的 `dsh-tool-git` 用**两种测试运行器**，`pnpm -r test` 会把十一者都跑到：
 
 | 包 | 运行器 | 命令 |
 |---|---|---|
@@ -162,10 +162,13 @@ pnpm -r typecheck
 | `dsh-tool-git` | `vitest` | `vitest run` |
 | `dsh-engineering-context` | `node:test` | `node scripts/run-tests.mjs`（**先构建再跑**，因为它不提交 `lib/`） |
 | `dsh-engineering-graph` | `node:test` | `node scripts/run-tests.mjs`（**先构建再跑**，同上） |
+| `dsh-drawing` | `node:test` | `node scripts/run-tests.mjs`（**先构建再跑**；PDF 索引/检索模型 + 字典，浏览器半侧靠真实图纸验收） |
+| `dsh-plcsim-advanced` | `node:test` | `node --test --test-reporter=spec "test/*.test.mjs"`（纯协议与工具面，控制器不在时降级） |
 | `dsh-ui-plc-source` | `node:test` | `node scripts/run-tests.mjs`（**先构建再跑**，同上；浏览器半侧是 `.jsx`，不进 `tsc`，靠这套纯模型单测 + 浏览器验收） |
 | `dsh-ui-tia-console` | `node:test` | `node scripts/run-tests.mjs`（**先构建再跑**；纯事件折叠 + 字典，浏览器半侧靠真实 `/tia-*` 流程验收） |
 | `dsh-ui-versions` | `node:test` | `node scripts/run-tests.mjs`（**先构建再跑**；纯视图解析/筛选/时间线 + 字典，浏览器半侧靠真实 `.dsh/versions-view.json` 验收） |
 | `dsh-ui-hardware` | `node:test` | `node scripts/run-tests.mjs`（**先构建再跑**；视图解析/筛选/机位面 + 字典，浏览器半侧靠真实 `.dsh/hardware-view.json` 验收） |
+| `dsh-ui-prompt-guide` | `node:test` | `node scripts/run-tests.mjs`（**先构建再跑**；内容数据完整性 + 工具白名单、路径安全/trust fence/路由响应、产物包装与 seat 名；浏览器半侧靠真实 dev-env 验收） |
 
 ⚠️ `dsh-engineering-graph` 还有一个 **C# 引擎**（`engine/`，net8）。`pnpm -r build` 只构建 TypeScript ——
 它的产物 `engine/bin/` **进 git**（与接口插件族的 `controller/bin` 同理），所以 checkout 开箱可用；只有改了 C# 源码才需要 `pwsh -NoProfile -File engine/build.ps1` 重建（输出到 `engine/bin/`，其中 `engine/bin/fixtures/` 与 `engine/obj/` 被 ignore）。
@@ -209,13 +212,16 @@ profile 组合的端到端验收：
 dsh --profile dsh-automation-suite --dump-config
 ```
 
-预期结尾出现 **9 个插件行**（8 个本地插件 + 公共的 `dsh-opencode-go`），顺序与蓝图的
+预期结尾出现 **12 个插件行**（11 个本地插件 + 公共的 `dsh-opencode-go`），顺序与蓝图的
 `dsh.profile.bundles` 一致；其中 `engineering-context` 带 `disabled: true`（它整行搬进了 `leader` preset）：
 
 ```yaml
 # == @voltarenyah/dsh-tia-openness-v17-min
 - id: tia-openness-v17-min
   name: '@voltarenyah/dsh-tia-openness-v17-min'
+# == @voltarenyah/dsh-plcsim-advanced
+- id: plcsim-advanced
+  name: '@voltarenyah/dsh-plcsim-advanced'
 # == @voltarenyah/dsh-engineering-context, patched by …\cordis.patch.yml
 - id: engineering-context
   name: '@voltarenyah/dsh-engineering-context'
@@ -223,6 +229,9 @@ dsh --profile dsh-automation-suite --dump-config
 # == @voltarenyah/dsh-engineering-graph
 - id: engineering-graph
   name: '@voltarenyah/dsh-engineering-graph'
+# == @voltarenyah/dsh-drawing
+- id: drawing
+  name: '@voltarenyah/dsh-drawing'
 # == dsh-tool-git
 - id: tool-git
   name: dsh-tool-git
@@ -238,18 +247,21 @@ dsh --profile dsh-automation-suite --dump-config
 # == dsh-ui-hardware
 - id: ui-hardware
   name: dsh-ui-hardware
+# == dsh-ui-prompt-guide
+- id: ui-prompt-guide
+  name: dsh-ui-prompt-guide
 # == dsh-opencode-go
 - id: opencode-go
   name: dsh-opencode-go
 ```
 
-行数基线（**DSH 0.2.1-rc.2 实测，2026-11-02（加上 `dsh-ui-versions` 之后）**；换宿主版本、改蓝图或增减插件后必须重测。⚠️ 2026-11-03 加入 `dsh-ui-hardware` 后**尚未重测**，下表三个数会各多出若干行）：
+行数基线（**DSH 0.2.1-rc.2 实测，2026-11-03（加上 `dsh-ui-hardware` 与 `dsh-ui-prompt-guide` 之后）**；换宿主版本、改蓝图或增减插件后必须重测）：
 
 | 命令 | 行数 |
 |---|---|
-| `dsh --profile web --dump-config`（官方组合，本机当前） | **1177** |
-| `dsh --profile web --patch profile/dsh-automation-suite/cordis.patch.yml --dump-config` | **1884** |
-| 按蓝图物化的 profile：`dsh --profile dsh-automation-suite --dump-config` | **1912**（比政策层多出的行来自物化目录里应用回写的设置行 —— `ui-settings-general` 与调大过的 `requestTimeoutMs`） |
+| `dsh --profile web --dump-config`（官方组合，本机当前） | **1183** |
+| `dsh --profile web --patch profile/dsh-automation-suite/cordis.patch.yml --dump-config` | **1890** |
+| 按蓝图物化的 profile：`dsh --profile dsh-automation-suite --dump-config` | **1932**（2026-11-03 在临时 `DSH_HOME` 里按 `-Mode link` 物化后实测，含 `dsh-ui-hardware` 与 `dsh-ui-prompt-guide`；比政策层多出的行来自物化目录里应用回写的设置行 —— `ui-settings-general` 与调大过的 `requestTimeoutMs`） |
 
 > ⚠️ 上一版基线 **1235 / 2003 / 2036**（2026-10-20）已作废：2026-11-02 同日重测时官方 `web` 组合
 > 本身就少了几十行（不是本仓改动 —— 那三条命令的第一条不含本仓任何文件）。别拿新旧数值互相解释，

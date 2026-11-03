@@ -209,7 +209,7 @@ window.__ModuleLoader__.load({
 |---|---|---|---|
 | 会话主区的 **View 标签页** | `conversation.view`（**list**，session scope；`id` = 标签身份 + `order` + `label`） | 与 **Chat / Trajectory 并列**的整页视图 | ✅ 另一个首选落点：**会话作用域 + 整页**，见 §2.5.1 |
 | 右侧栏 **tab 类型** | `ctx.sidebarRightTabs.register({ id, kind, title, guide, patterns?, priority?, canOpen?, keepMounted?, multiple? })` + `sidebar.right.pane.tab`（keyed，**key = 定义的 `id`，不是 `kind`**）+ `sidebar.right.pane.tab.title`（keyed）+ 可选 `sidebar.right.tab.guide`（chain）/`.guide.entry`（keyed）/`.menu.item`（list） | 每会话一个停靠面 | **本案例首选**：会话作用域、可与文件预览并排分栏、可全屏 |
-| 主栏全局面板 | `sidebar.panellist`（root **list**，一行一个图标 + `label` + `order`）+ root `main`（**keyed**）+ `ctx.layout.selectPanel(id)` | 整页 | 跨会话的仪表盘；**没有会话就没有 `sessionId`**（见 §4.1 的取舍） |
+| 主栏全局面板 | `sidebar.panellist`（root **list**，一行一个图标 + `label` + `order`）+ root `main`（**keyed**）+ `ctx.layout.selectPanel(id)` | 整页 | 跨会话的仪表盘；**没有会话就没有 `sessionId`**（见 §4.1 的取舍）。本仓实例：`packages/dsh-ui-prompt-guide`（Prompt Guide 整页：宿主静态路由 + iframe，见该包 README） |
 | 会话 header 控件 | `conversation.session.header.actions`（list，标题旁）/`.utilities`（list，右对齐）/`.corner`（single，最右角）/`.lineage`（single） | 小控件 | 状态灯、下拉浮层。**优先用两个 list 座位**，single 会挤掉产品自带的格子 |
 | 设置区 | `settings.section`（list，owner 给 `close()`） | 设置页片段 | 配置项 |
 | 浮动层 | `shell.overlay`（list，root） | 浮动面板 | 悬浮树 |

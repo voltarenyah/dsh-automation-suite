@@ -191,8 +191,8 @@ PLC 对象增删改、监视表与软件单元、F 相关服务、编译与关�
 | `dsh-ui-plc-source` | 插件 bundle（**浏览器半侧 + 一个宿主 pre-step 监听**） | 0.1.0 | **一个 Loader 行 + 一个右侧栏 tab 类型**：在 dsh-web 右侧栏（Files / Terminal / Browser 之后）增加 **PLC Blocks**。读 `<workspace>/source/<device>/_manifest.json`，把每个对象**平铺**成一行（类型徽章 / 名称 / 编号 / 语言 / 大小 / 写后校验标记），可按 **device** 与 **simaticType** 筛选、按名称或编号搜索；TIA 拒绝导出的对象（`failures[]`）同样列成一行（标「拒绝」、可悬停看原因）。**单击是选中**（选中态暂不触发动作），**右键菜单**里才打开源文件（走既有文档预览）或「在对话里提及」（把 `@'块名'` 插进输入框；宿主半侧在 `agent/pre-step` 把该块的 device/类型/编号/语言/文件路径补进 prompt）。筛选/搜索/选中/滚动位置与已读数据放在 slot store 里，切走再切回不丢、也不重读清单。**界面文字跟随 DSH 的语言设置**（设置 → 通用 → 语言，中/英），切换时不用刷新，已打开的 tab chip 也会变。宿主半侧只做这件事（`agent/pre-step` 监听，无工具、无子进程）；清单不可读时该 device 退回目录列举。可行性与机制见 [`docs/ui-plugins.md`](docs/ui-plugins.md)，本插件的计划与验收见 [`docs/ui-plugins-plc-blocks-plan.md`](docs/ui-plugins-plc-blocks-plan.md) |
 | `dsh-ui-tia-console` | 插件 bundle（**仅浏览器半侧**） | 0.1.0 | **一个 Loader 行 + 输入框上方的 TIA 控制台**：显示「无项目 / 正在打开 / 已打开 · 项目名 / 正在保存 / 正在编译（已用时长）/ 正在关闭 / 不可用」，并直接提供 **打开 / 保存 / 编译 / 关闭 / 刷新** 五个按钮。按钮 dispatch 现有 `/tia-*` 指令，状态从会话的 `command/*`、`tool/*` 事件折叠而来 —— 模型调用、斜线指令、按钮三种触发都实时反映；空会话也可见（它挂在 `conversation.input.dock`，不依赖时间线）。刷新用 `/tia-info` 与控制器对齐。带展开面板（项目路径、最近编译、最近错误、最近结果）。**Step 1 边界**：状态按会话折叠，其他会话或外部关闭 TIA 后需点刷新校准；全局状态服务是下一步。 |
 | `dsh-ui-versions` | 插件 bundle（**仅浏览器半侧**） | 0.1.0 | **一个 Loader 行 + 一个右侧栏 tab 类型**：在 dsh-web 右侧栏增加 **Versions**（排在 PLC Blocks 之后）。读 `<workspace>/.dsh/versions-view.json` —— 这份派生视图由 `@voltarenyah/dsh-engineering-context` 在 `project_version_reindex`、提交、`project_version_annotate` 之后写出，插件本身不写它、不新增 HTTP 路由、也不在渲染进程里开 SQLite。上半部是 **VERSION HISTORY**：每行 10 位 sha / subject / 日期 / `checksumPrev → checksum` / `N block(s)` 或 `Baseline`；展开后列出该版本的变更事件（变更类型徽章、块 key 按钮、`+added -removed`、face 芯片、每个变更 face 一行 10 位指纹）；点块 key 在下方 **BLOCK TIMELINE** 看该块的跨版本轨迹（seq / sha / 日期 / subject / face 芯片 / 指纹 / Reason / Problem）。可按提交号、标题、意图、块名、原因搜索，并按 face、problem 过滤；缺失的指纹显示 `—`。**宽度自适应**：面板 ≥ 760px 才分两栏，< 560px 逐行堆叠（CSS 容器查询，看的是面板宽度不是窗口宽度）。颜色只用宿主语义 token，唯一的彩色是 4px 圆点（warning = modified，error = removed）。状态：无工作区 / 无视图（可重试）/ 读取失败（带 code，可重试）/ 无匹配 / 加载中。**界面文字跟随 DSH 的语言设置**（设置 → 通用 → 语言，中/英），切换不用刷新。宿主半侧只有一行空 `apply()` 打 info 日志 |
-| `dsh-ui-hardware` | `node:test`（`node scripts/run-tests.mjs`，先构建再跑） | 9 项全通过（视图解析/筛选/槽位/机位面/格式化；浏览器半侧靠真实 `.dsh/hardware-view.json` 验收） |
 | `dsh-ui-hardware` | 插件 bundle（**仅浏览器半侧**） | 0.1.0 | **一个 Loader 行 + 一个右侧栏 tab 类型**：在右侧栏增加 **Hardware**，把 `.dsh/hardware-view.json` 渲染成「工程机架」——设备按角色分组、槽位画成机位条、选中槽位看型号/订货号/地址窗口，另有网络与信号映射视图。数据由 TIA 插件的 `hardware_view` 工具写入 |
+| `dsh-ui-prompt-guide` | 插件 bundle（**浏览器半侧 + 宿主静态路由**） | 0.1.0 | **一个 Loader 行 + 主栏整页帮助页**：左侧栏「Plugins」下面增加 **Prompt Guide**，点开是 9 个分类、32 条可搜索的 Prompt（中英双语，每条带「什么时候用 / 会发生什么 / 由哪个工具或子 agent 执行」）。卡片可复制，或「在新会话中使用」把 Prompt 填进输入框（不自动发送）。内容在 `src/guide.ts`，宿主经 `/prompt-guide/api/guide` 发出；页面是静态 `page/`，改文案不用重建客户端半侧。宿主路由只发自带文案、不读用户数据，并带最小 trust fence（`Sec-Fetch-Site: cross-site` 或 Origin/Host 不一致直接 403）。机制与验收见该包 README |
 | `profile/dsh-automation-suite` | profile 蓝图 | 0.1.0 | 把官方 Web 组合（`dsh-base` + `dsh-web-app`）与上面的本地插件叠成一个可直接启动的 profile；并声明三个 preset：`leader`（主 agent）、`auditor`（版本管理）与 `expert`（子 agent）。另外挂一行**公共插件** `dsh-opencode-go@0.1.15`（npm 上的 OpenCode Go 提供方 + 设置页，与桌面 profile 同版本；钉死版本、`pnpm-workspace.yaml` 里为它写了 `allowBuilds`，理由见该目录 README） |
 | `scripts/start-env.ps1` | 启动器 | — | 一条命令完成"物化 profile + 装插件 + 起服务 + 带 token 开浏览器" |
 | `scripts/clean-build.mjs` | 工具 | — | 只清理 `lib/`、`dist/`，遇链接只 unlink、不递归下降 |
@@ -429,7 +429,7 @@ pwsh -NoProfile -File install.ps1
 
 它把 profile 的三件套（`package.json` / `cordis.patch.yml` / `pnpm-workspace.yaml`）复制到
 **专用 home** `%USERPROFILE%\dsh-automation-suite-home\profiles\dsh-automation-suite-v<version>\`
-（不是日常 `~/.dsh`），再用 DSH 自带的 pnpm 安装七个插件的 tarball（Release 资产，profile 里是
+（不是日常 `~/.dsh`），再用 DSH 自带的 pnpm 安装十一个本地插件的 tarball（Release 资产，profile 里是
 **直接 URL 依赖**，不需要 npm 账号）。同时在解压目录写下 `install.json`，记录这次用的 home 与 profile。
 
 **双击 `start.cmd` 启动**：它读取 `install.json`、设置 `DSH_HOME`、从 3093 起自动挑一个空闲端口并打开浏览器，
@@ -454,7 +454,7 @@ node scripts/build-distribution.mjs
 
 为什么不能直接 `dsh plugin add` 装整份发行版：命令只接受带 `dsh.bundle.patch` 的 **bundle**，
 而蓝图声明的是 `dsh.profile.bundles`，会被拒为 `not-a-bundle`。方案对比、`ERR_PNPM_*` 两个坑、
-发布与本地验收步骤见 [`docs/distribution.md`](docs/distribution.md)。七个插件本身是标准 bundle，
+发布与本地验收步骤见 [`docs/distribution.md`](docs/distribution.md)。十一个插件本身是标准 bundle，
 仍可单独 `dsh plugin --profile web add <包名或 tarball>`。
 
 桌面图标、独立窗口与安装器属于下一阶段；设计、产物、失败处理与分阶段工作量见
@@ -702,6 +702,14 @@ packages/
     src/client/                    apply(ctx) + 面板组件 + 样式（esbuild → lib/client.js，宿主认的 loader 包装）
     test/                          node:test 套件（15 项，纯模型 10 + 字典 5）
     scripts/                       tsc.mjs / build.mjs / run-tests.mjs
+  dsh-ui-prompt-guide/             主栏「Prompt Guide」整页：9 分类 / 32 条 Prompt，可搜索、复制、开新会话
+    src/guide.ts                   内容数据（分类、条目、工具白名单；中英双语）
+    src/page.ts                    纯函数：路径安全、MIME、trust fence、answer()
+    src/index.ts                   宿主半侧：/prompt-guide 前缀路由（静态页 + /api/guide）
+    src/client/index.jsx           sidebar.panellist + main 座位、主题转发、startSession 桥
+    page/                          静态页 index.html / app.js / style.css（不经构建，改文案刷新即生效）
+    test/                          node:test 套件（23 项：数据 / 路由 / 产物）
+    scripts/                       tsc.mjs / build.mjs / run-tests.mjs
 profile/
   dsh-automation-suite/            发行版的 profile 蓝图
     package.json                   dsh.profile.bundles = 组合顺序
@@ -734,7 +742,7 @@ pnpm test                 # 全仓测试
 pnpm run clean:build      # 清构建产物（只碰 lib/ dist/）
 ```
 
-本地六个插件加 vendor 的 `dsh-tool-git` 用**两种测试运行器**，`pnpm -r test` 会把七者都跑到：
+本地十个插件加 vendor 的 `dsh-tool-git` 用**两种测试运行器**，`pnpm -r test` 会把十一者都跑到：
 
 | 包 | 运行器 | 测试规模 |
 |---|---|---|
@@ -742,9 +750,13 @@ pnpm run clean:build      # 清构建产物（只碰 lib/ dist/）
 | `dsh-tool-git` | `vitest`（`vitest run`） | 51 项全通过 |
 | `@voltarenyah/dsh-engineering-context` | `node:test`（`node scripts/run-tests.mjs`，先构建再跑） | 128 项全通过（含经假 `engineeringAccess` / 假 `knowledgeGraph` 服务的契约用例） |
 | `@voltarenyah/dsh-engineering-graph` | `node:test`（`node scripts/run-tests.mjs`，先构建再跑） | 128 项全通过（含经真实引擎的端到端；引擎没构建时该项 skip 并打印构建命令） |
+| `@voltarenyah/dsh-drawing` | `node:test`（`node scripts/run-tests.mjs`，先构建再跑） | 23 项全通过（PDF 索引/检索模型 + 字典；浏览器半侧靠真实图纸验收） |
+| `@voltarenyah/dsh-plcsim-advanced` | `node:test`（`node --test --test-reporter=spec`） | 10 项全通过（纯协议与工具面） |
 | `dsh-ui-plc-source` | `node:test`（`node scripts/run-tests.mjs`，先构建再跑；浏览器半侧 `.jsx` 不进 `tsc`） | 47 项全通过（纯模型 33 + 宿主 9 + 字典 5） |
 | `dsh-ui-tia-console` | `node:test`（`node scripts/run-tests.mjs`，先构建再跑） | 22 项全通过（纯事件折叠 + 字典） |
 | `dsh-ui-versions` | `node:test`（`node scripts/run-tests.mjs`，先构建再跑） | 15 项全通过（纯模型 10 + 字典 5；浏览器半侧靠真实 dev-env 验收） |
+| `dsh-ui-hardware` | `node:test`（`node scripts/run-tests.mjs`，先构建再跑） | 9 项全通过（视图解析/筛选/槽位/机位面/格式化；浏览器半侧靠真实 `.dsh/hardware-view.json` 验收） |
+| `dsh-ui-prompt-guide` | `node:test`（`node scripts/run-tests.mjs`，先构建再跑） | 23 项全通过（数据完整性/工具白名单 7 + 路由与 fence 10 + 产物与座位 6；浏览器半侧靠真实 dev-env 验收） |
 
 单测都需要**真实的** `@deepseek-ai/*` 运行时（不是 stub）。裸 checkout 首次运行时，
 两个包的测试自举会各自自动触发抽取；也可以手动：
@@ -785,18 +797,24 @@ npm run skills:build     # TIA：按 pinned commit 重新取上游知识库
 dsh --profile dsh-automation-suite --dump-config
 ```
 
-预期结尾出现（每个插件 3 行，8 个插件共 24 行 —— 7 个本地 + 公共的 `dsh-opencode-go`）：
+预期结尾出现（每个插件 3 行："# ==" 注释 + `id` + `name`，**12 个插件行** = 11 个本地插件 + 公共的 `dsh-opencode-go`）：
 
 ```yaml
 # == @voltarenyah/dsh-tia-openness-v17-min
 - id: tia-openness-v17-min
   name: '@voltarenyah/dsh-tia-openness-v17-min'
+# == @voltarenyah/dsh-plcsim-advanced
+- id: plcsim-advanced
+  name: '@voltarenyah/dsh-plcsim-advanced'
 # == @voltarenyah/dsh-engineering-context
 - id: engineering-context
   name: '@voltarenyah/dsh-engineering-context'
 # == @voltarenyah/dsh-engineering-graph
 - id: engineering-graph
   name: '@voltarenyah/dsh-engineering-graph'
+# == @voltarenyah/dsh-drawing
+- id: drawing
+  name: '@voltarenyah/dsh-drawing'
 # == dsh-tool-git
 - id: tool-git
   name: dsh-tool-git
@@ -809,6 +827,9 @@ dsh --profile dsh-automation-suite --dump-config
 # == dsh-ui-versions
 - id: ui-versions
   name: dsh-ui-versions
+# == dsh-ui-prompt-guide
+- id: ui-prompt-guide
+  name: dsh-ui-prompt-guide
 # == dsh-opencode-go
 - id: opencode-go
   name: dsh-opencode-go
@@ -957,6 +978,7 @@ TIA 排障第一步永远是让模型调：
 | [`docs/ui-plugins-plc-blocks-plan.md`](docs/ui-plugins-plc-blocks-plan.md) | **`dsh-ui-plc-source` 的实施计划与验收记录**：规格、数据面（清单平铺 + device/类型筛选）、降级、构建、接线、实测结果 |
 | [`packages/dsh-ui-plc-source/README.md`](packages/dsh-ui-plc-source/README.md) | 右侧栏 **PLC Blocks** 标签页的用法、构建（tsc + esbuild）与安装位置 |
 | [`packages/dsh-ui-versions/README.md`](packages/dsh-ui-versions/README.md) | 右侧栏 **Versions** 标签页：它读的那份派生视图、面板结构、宽度与主题、构建与接线 |
+| [`packages/dsh-ui-prompt-guide/README.md`](packages/dsh-ui-prompt-guide/README.md) | 主栏 **Prompt Guide** 整页：`sidebar.panellist` + `main` 的注入方式、内容怎么改、宿主静态路由与 trust fence 的边界 |
 | [`packages/dsh-engineering-context/README.md`](packages/dsh-engineering-context/README.md) | 工程上下文插件的用法、配置与开发命令（**S2 已实现**：创建 + 状态 + 同步） |
 | [`packages/dsh-engineering-context/docs/`](packages/dsh-engineering-context/docs/) | 该插件的设计与取舍：`ARCHITECTURE.md`（核心架构、作用域模型、版本管理、工具面）、`PATH-RULES.md`（workspace 内路径规则与账本/清单）、`decisions.md`（编号决策 D1–D26） |
 | [`docs/distribution.md`](docs/distribution.md) | **公开发行与安装**：DSH 的安装面实测（`dsh plugin` 的 spec 形式、bundle 对账、patch 语义、pnpm 11 的两个错误）、三种打包方案对比、Release 发布步骤与验收记录 |

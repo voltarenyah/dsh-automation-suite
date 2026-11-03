@@ -14,7 +14,8 @@
     "dsh-ui-plc-source": "workspace:^",
     "dsh-ui-tia-console": "workspace:^",
     "dsh-ui-versions": "workspace:^",
-    "dsh-ui-hardware": "workspace:^"
+    "dsh-ui-hardware": "workspace:^",
+    "dsh-ui-prompt-guide": "workspace:^"
   },
   "dsh": {
     "profile": {
@@ -31,6 +32,7 @@
         "dsh-ui-tia-console",
         "dsh-ui-versions",
         "dsh-ui-hardware",
+        "dsh-ui-prompt-guide",
         "dsh-opencode-go"
       ]
     }

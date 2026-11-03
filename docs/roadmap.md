@@ -18,6 +18,7 @@
 | 工程上下文插件 | 作用域（横向） | 🟡 **部分实现**（4 个工具：`create_engineering_project` 把 TIA 打开的工程另存进 workspace + 重建源文件树 + 经【缝 B】逐设备触发图谱建库；`project_status` 只读；`project_sync` 只写树、`project_commit` 才写历史（D30 把同步与提交分成两步）。**已登记进蓝图**。P0 的注册表与 P1 的版本层已删除，见该包 D22、图谱这一步见 D25） | `packages/dsh-engineering-context` |
 | 工程知识图谱插件 | ② 语义层 | 🟡 **部分实现**（引擎 + 协议 + 8 个工具 + `knowledgeGraph` 服务；**已登记进蓝图**，并被族 2 的工作流调用） | `packages/dsh-engineering-graph` |
 | Web GUI 视图插件（PLC Blocks / TIA 控制台 / Versions） | 跨层：只读 ② 的落盘产物与会话事件 | ✅ 三个都在跑（前两个已有，**Versions 2026-11-02 落地**；见 §1.1） | `packages/dsh-ui-plc-source`、`packages/dsh-ui-tia-console`、`packages/dsh-ui-versions` |
+| 主栏帮助页（Prompt Guide） | 跨层：只读发行版自身的能力说明 | ✅ 2026-11-03 落地（见 §1.2） | `packages/dsh-ui-prompt-guide` |
 
 > 插件不再编号；**只有接口插件族是"一族多成员"**。编号只保留给层（① 接入层 / ② 语义层 /
 > ③ 管理与协作层，见 [`vision.md`](vision.md) §3）。
@@ -58,6 +59,27 @@
   `—` 表示该 face 在这一版没有指纹；
 - 轨迹一次只显示一个块（点块 key 切换），没有"整台设备的块列表"视图；
 - `problems` 只当过滤维度用，不按问题聚合、也不统计每块的复发次数。
+
+### 1.2 Prompt Guide（主栏整页帮助页，✅ 2026-11-03）
+
+`packages/dsh-ui-prompt-guide` 是 §1.1 三个视图插件之外的**另一类**客户端插件：它不读工程数据，而是把
+「这个发行版能做什么、该怎么说」做成可搜索的整页。落点是**主栏全局面板**——`sidebar.panellist` 加 root
+`main`，与已安装的 `dsh-guizang-design` 同一套注入方式（`ctx.slots.inject` + keyed `main`）。
+
+它与 §1.1 的三个插件有三处不同，都是有意为之：
+
+- **新增一条宿主 HTTP 路由**（`/prompt-guide`，`kind: 'prefix'`）来发静态页。这条路由**没有宿主鉴权**
+  （只有 `/api` 有），所以它只发本包自带的页面与文案，**不读工作区、不读会话、不读任何用户数据**，
+  并抄了一份最小的 trust fence（拒绝 `Sec-Fetch-Site: cross-site` 与 Origin/Host 不一致）。
+- **内容是可编辑的数据**（`src/guide.ts`，9 分类 / 32 条 Prompt，中英双语）：改文案刷新页面即生效，
+  不需要重建 `lib/client.js`；只有改客户端半侧（座位、主题转发、`startSession` 桥）才要构建。
+- **能起会话**：页面把 Prompt 通过同源 `postMessage` 交给客户端半侧，由
+  `uiWorkspace.startSession(undefined, { prompt, whenDraftExists: 'replace' })` 填进新会话的输入框
+  （**不自动发送**，用户补上对象名再发）。
+
+**边界**：`tools` 字段由 `TOOL_CATALOG` 白名单校验（新增工具名要到对应包 `src/tools.ts` 核对）；
+页面内容不进模型上下文；slot 名与 `startSession` 都是内部约定，宿主升级要复核。实现说明、四个座位的
+机制与验收见该包 README。
 
 ---
 
