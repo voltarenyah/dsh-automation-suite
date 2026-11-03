@@ -1,0 +1,750 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Hardware — 样板页</title>
+<style>
+/* ============================================================================
+   Hardware panel — "engineering rack" direction.
+
+   The page is a spec sheet, not a card wall: one station is always the focus,
+   its slots are drawn as a physical rack strip, and everything else recedes
+   into monospace supporting data. Neutral surfaces carry the structure; a
+   single accent marks selection, green only marks "I/O present", amber only
+   marks "not exported". Type does the aesthetic work: DIN-flavoured display
+   (Bahnschrift) against a technical mono for every identifier.
+   ========================================================================= */
+:root[data-theme="dark"] {
+  --bg: #0d0f0e;
+  --surface: #141716;
+  --surface-2: #1a1e1c;
+  --surface-3: #202523;
+  --rule: rgba(255,255,255,.09);
+  --rule-strong: rgba(255,255,255,.18);
+  --ink: #e8eae7;
+  --ink-2: #aab0aa;
+  --ink-3: #767d77;
+  --accent: #6d9bff;
+  --accent-soft: color-mix(in srgb, var(--accent) 16%, transparent);
+  --ok: #56b489;
+  --warn: #d0a044;
+  --grain: rgba(255,255,255,.022);
+}
+:root[data-theme="light"] {
+  --bg: #f6f5f2;
+  --surface: #fdfdfc;
+  --surface-2: #f0efeb;
+  --surface-3: #e8e6e1;
+  --rule: rgba(20,24,20,.11);
+  --rule-strong: rgba(20,24,20,.2);
+  --ink: #1a1f1c;
+  --ink-2: #4a514c;
+  --ink-3: #767d77;
+  --accent: #2f5fd0;
+  --accent-soft: color-mix(in srgb, var(--accent) 10%, transparent);
+  --ok: #2c7d5b;
+  --warn: #8d6516;
+  --grain: rgba(20,24,20,.018);
+}
+
+* { box-sizing: border-box; }
+html, body { height: 100%; margin: 0; }
+body {
+  background: var(--bg);
+  color: var(--ink);
+  font: 12px/18px "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+.display { font-family: Bahnschrift, "DIN Alternate", "Segoe UI", sans-serif; font-stretch: 95%; }
+.mono { font-family: "Cascadia Mono", Consolas, ui-monospace, monospace; font-variant-ligatures: none; }
+
+/* --------------------------------------------------------------------- shell */
+.hw-root {
+  height: 100%; display: flex; flex-direction: column; min-height: 0;
+  container-type: inline-size; container-name: hw;
+}
+
+/* The masthead carries a hairline grid, like a drawing sheet. */
+.hw-top {
+  position: sticky; top: 0; z-index: 8;
+  background: linear-gradient(var(--grain), var(--grain)), var(--surface);
+  border-bottom: 1px solid var(--rule-strong);
+}
+.hw-bar { display: flex; align-items: center; gap: 10px; padding: 9px 14px 7px; flex-wrap: wrap; }
+.hw-mark {
+  font-family: Bahnschrift, "DIN Alternate", "Segoe UI", sans-serif;
+  font-size: 11px; font-weight: 600; letter-spacing: .16em; text-transform: uppercase;
+}
+.hw-sep { width: 1px; height: 12px; background: var(--rule-strong); }
+.hw-proj { font-size: 11px; color: var(--ink-3); letter-spacing: .01em; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+@container hw (max-width: 520px) {
+  /* Below ~520px the three actions plus the project name do not fit on one row:
+     the project drops to its own line instead of squeezing a button. */
+  .hw-proj { order: 9; flex: 1 1 100%; }
+  .hw-sep { display: none; }
+}
+.hw-spacer { flex: 1; }
+.hw-act {
+  border: 1px solid var(--rule); background: transparent; color: var(--ink-2);
+  font: inherit; font-size: 10.5px; letter-spacing: .04em; text-transform: uppercase;
+  padding: 4px 8px; min-height: 24px; border-radius: 2px; cursor: pointer;
+}
+.hw-act:hover { color: var(--ink); border-color: var(--rule-strong); }
+.hw-act:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+/* Filter row: search is the only elastic element. */
+.hw-filter { display: flex; gap: 6px; align-items: center; padding: 0 14px 9px; flex-wrap: wrap; }
+.hw-search {
+  flex: 1 1 160px; min-width: 0; min-height: 27px;
+  background: var(--surface-2); border: 1px solid var(--rule); color: var(--ink);
+  border-radius: 2px; font: inherit; font-size: 11.5px; padding: 4px 9px; outline: none;
+}
+.hw-search::placeholder { color: var(--ink-3); }
+.hw-search:focus { border-color: var(--rule-strong); background: var(--surface-3); }
+
+/* Segmented control: our own, because the native popup is painted by the OS. */
+.hw-seg { display: inline-flex; border: 1px solid var(--rule); border-radius: 2px; overflow: hidden; }
+.hw-seg button {
+  border: 0; background: transparent; color: var(--ink-3); font: inherit;
+  font-family: Bahnschrift, "Segoe UI", sans-serif; font-size: 10.5px;
+  letter-spacing: .09em; text-transform: uppercase; padding: 5px 10px; min-height: 27px; cursor: pointer;
+}
+.hw-seg button + button { border-left: 1px solid var(--rule); }
+.hw-seg button[aria-selected="true"] { background: var(--accent-soft); color: var(--ink); }
+
+.hw-select { position: relative; }
+.hw-select > button {
+  display: inline-flex; align-items: center; gap: 6px; min-height: 27px;
+  padding: 4px 9px; font: inherit; font-size: 11px; color: var(--ink-2);
+  background: var(--surface-2); border: 1px solid var(--rule); border-radius: 2px; cursor: pointer;
+}
+.hw-select > button:hover { color: var(--ink); border-color: var(--rule-strong); }
+.hw-caret { color: var(--ink-3); font-size: 8px; }
+.hw-menu {
+  position: absolute; z-index: 30; top: calc(100% + 4px); right: 0; min-width: 190px; max-height: 280px;
+  overflow-y: auto; margin: 0; padding: 4px; list-style: none; background: var(--surface);
+  border: 1px solid var(--rule-strong); border-radius: 3px; box-shadow: 0 10px 28px rgba(0,0,0,.35);
+}
+.hw-menu button {
+  display: flex; width: 100%; justify-content: space-between; gap: 10px; align-items: baseline;
+  border: 0; background: transparent; color: var(--ink); font: inherit; font-size: 11.5px;
+  padding: 5px 8px; border-radius: 2px; cursor: pointer; text-align: left;
+}
+.hw-menu button:hover { background: var(--surface-2); }
+.hw-menu .n { color: var(--ink-3); font-size: 10px; }
+
+/* Stats: a spec row of numbers, hairline-separated, not six cards. */
+.hw-stats {
+  display: flex; align-items: stretch; flex-wrap: wrap;
+  border-top: 1px solid var(--rule); padding: 0 14px;
+}
+.hw-stat { display: flex; align-items: baseline; gap: 7px; padding: 7px 14px 7px 0; margin-right: 14px; border-right: 1px solid var(--rule); white-space: nowrap; }
+.hw-stat:last-child { border-right: 0; margin-right: 0; }
+.hw-stat b { font-family: Bahnschrift, "Segoe UI", sans-serif; font-size: 16px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.hw-stat span {
+  font-family: Bahnschrift, "Segoe UI", sans-serif;
+  font-size: 9px; letter-spacing: .13em; text-transform: uppercase; color: var(--ink-3);
+}
+.hw-stat.warn b { color: var(--warn); }
+
+/* --------------------------------------------------------------------- main */
+.hw-main { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0,1fr); grid-template-rows: minmax(0,1fr); }
+
+/* Rail: role groups, with a hairline spine on the left like a bus. */
+.hw-rail { min-height: 0; overflow-y: auto; scrollbar-width: thin; padding: 4px 0 18px; }
+.hw-rail-group + .hw-rail-group { margin-top: 4px; }
+.hw-rail-head {
+  display: flex; align-items: center; gap: 8px; padding: 10px 14px 5px;
+  font-family: Bahnschrift, "Segoe UI", sans-serif; font-size: 9px;
+  letter-spacing: .15em; text-transform: uppercase; color: var(--ink-3);
+}
+.hw-rail-head::after { content: ""; flex: 1; height: 1px; background: var(--rule); }
+.hw-dev {
+  display: grid; grid-template-columns: 22px minmax(0,1fr) auto; gap: 9px; align-items: center;
+  width: 100%; padding: 6px 14px 6px 12px; border: 0; border-left: 2px solid transparent;
+  background: transparent; color: inherit; font: inherit; text-align: left; cursor: pointer;
+}
+.hw-dev:hover { background: var(--surface-2); }
+.hw-dev[aria-current="true"] { background: var(--surface-2); border-left-color: var(--accent); }
+.hw-badge {
+  display: grid; place-items: center; width: 22px; height: 22px; border-radius: 2px;
+  border: 1px solid var(--rule-strong); color: var(--ink-2);
+  font-family: Bahnschrift, "Segoe UI", sans-serif; font-size: 8px; letter-spacing: .04em;
+}
+.hw-badge[data-role="controller"] { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 45%, transparent); }
+.hw-dev-main { min-width: 0; }
+.hw-dev-name { display: block; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.hw-dev-sub { display: block; font-size: 10px; color: var(--ink-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.hw-dev-meta { text-align: right; font-size: 10px; color: var(--ink-3); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.hw-dot { display: inline-block; width: 5px; height: 5px; border-radius: 50%; background: var(--ok); vertical-align: 1px; }
+.hw-dot.warn { background: var(--warn); }
+
+/* Splitter is a 9px band; the sheet starts with a stronger rule. */
+.hw-grip { display: none; cursor: col-resize; }
+@container hw (min-width: 760px) {
+  .hw-main { grid-template-columns: minmax(200px, calc(var(--hw-split, 34%) - 4px)) 9px minmax(0,1fr); }
+  .hw-grip { display: block; border-left: 1px solid var(--rule); }
+  .hw-grip:hover, .hw-grip[data-drag="1"] { background: var(--accent-soft); border-left-color: var(--accent); }
+  .hw-rail { border-right: 1px solid var(--rule); }
+}
+@container hw (max-width: 759px) {
+  .hw-root[data-pane="detail"] .hw-rail { display: none; }
+  .hw-root[data-pane="list"] .hw-sheet { display: none; }
+  .hw-root[data-pane="detail"] .hw-back { display: inline-grid; }
+}
+.hw-back { display: none; place-items: center; min-width: 24px; }
+
+/* -------------------------------------------------------------------- sheet */
+.hw-sheet { min-height: 0; overflow-y: auto; scrollbar-width: thin; }
+.hw-sheet-in { padding: 14px 16px 28px; }
+
+.hw-station { display: flex; gap: 14px; align-items: flex-start; padding-bottom: 12px; }
+.hw-station-id { min-width: 0; flex: 1; }
+.hw-station-name {
+  font-family: Bahnschrift, "Segoe UI", sans-serif; font-size: 19px; line-height: 24px;
+  font-weight: 600; letter-spacing: -.01em; margin: 0 0 2px;
+}
+.hw-station-mlfb { font-size: 12px; color: var(--ink-2); }
+.hw-chips { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 8px; }
+.hw-chip {
+  display: inline-flex; align-items: center; gap: 5px; padding: 2px 7px; border-radius: 2px;
+  border: 1px solid var(--rule); background: var(--surface-2);
+  font-size: 10px; color: var(--ink-2); white-space: nowrap;
+}
+.hw-chip.mono { font-size: 10.5px; }
+.hw-chip b { color: var(--ink); font-weight: 600; }
+.hw-chip.is-warn { border-color: color-mix(in srgb, var(--warn) 45%, transparent); color: var(--warn); background: color-mix(in srgb, var(--warn) 8%, transparent); }
+.hw-chip.is-ok { border-color: color-mix(in srgb, var(--ok) 40%, transparent); color: var(--ok); background: color-mix(in srgb, var(--ok) 8%, transparent); }
+
+/* The rack strip: the memorable element. Slots read left to right like the
+   physical rack, each cell is the module's face. */
+.hw-rack-label {
+  display: flex; align-items: center; gap: 8px; margin: 6px 0 6px;
+  font-family: Bahnschrift, "Segoe UI", sans-serif; font-size: 9px;
+  letter-spacing: .15em; text-transform: uppercase; color: var(--ink-3);
+}
+.hw-rack-label::after { content: ""; flex: 1; height: 1px; background: var(--rule); }
+.hw-rack {
+  display: flex; gap: 4px; overflow-x: auto; padding: 3px 0 6px;
+  scrollbar-width: thin; scrollbar-color: var(--rule-strong) transparent;
+  scroll-snap-type: x proximity;
+}
+.hw-rack::-webkit-scrollbar { height: 7px; }
+.hw-rack::-webkit-scrollbar-thumb { background: var(--rule-strong); border-radius: 4px; }
+.hw-slot {
+  flex: 0 0 auto; width: 76px; scroll-snap-align: start;
+  display: flex; flex-direction: column; gap: 3px; text-align: left;
+  padding: 6px 7px 7px; border-radius: 2px; cursor: pointer;
+  border: 1px solid var(--rule); background: var(--surface-2); color: inherit; font: inherit;
+  animation: hw-rise .32s ease both;
+}
+/* Fades the right edge only when there is more rack to scroll to; the scrollbar
+   stays visible underneath, so the affordance is not a guessing game. */
+.hw-rack.is-scroll {
+  mask-image: linear-gradient(to right, #000 calc(100% - 30px), transparent);
+  -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 30px), transparent);
+  padding-right: 30px;
+}
+.hw-slot:hover { border-color: var(--rule-strong); }
+.hw-slot[aria-current="true"] { border-color: var(--accent); background: var(--accent-soft); }
+.hw-slot-n { font-size: 9.5px; color: var(--ink-3); letter-spacing: .06em; display: flex; justify-content: space-between; }
+.hw-slot-n i { font-style: normal; color: var(--warn); font-weight: 600; }
+.hw-slot-v { font-family: Bahnschrift, "Segoe UI", sans-serif; font-size: 12.5px; font-weight: 600; letter-spacing: .02em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.hw-slot-t { font-size: 9.5px; color: var(--ink-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+@keyframes hw-rise { from { opacity: 0; transform: translateY(3px); } to { opacity: 1; transform: none; } }
+
+/* Selected slot detail: address windows + channels, dense and monospace. */
+.hw-slot-detail {
+  border: 1px solid var(--rule); border-radius: 2px; background: var(--surface);
+  padding: 10px 12px; margin-bottom: 14px;
+  animation: hw-fade .2s ease both;
+}
+@keyframes hw-fade { from { opacity: .4; } to { opacity: 1; } }
+.hw-slot-title { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; margin-bottom: 7px; }
+.hw-slot-title .t { font-family: Bahnschrift, "Segoe UI", sans-serif; font-size: 13px; font-weight: 600; }
+.hw-slot-title .m { font-size: 11px; color: var(--ink-2); }
+.hw-kv { display: grid; grid-template-columns: max-content minmax(0,1fr); gap: 2px 12px; font-size: 11px; }
+.hw-kv dt { color: var(--ink-3); }
+.hw-kv dd { margin: 0; min-width: 0; overflow-wrap: anywhere; }
+
+/* Two supporting columns; they collapse to one below 900. */
+.hw-cols { display: grid; grid-template-columns: minmax(0,1fr); gap: 14px; }
+@container hw (min-width: 900px) { .hw-cols { grid-template-columns: minmax(0,1fr) minmax(0,1fr); } }
+.hw-sec-head {
+  display: flex; align-items: center; gap: 8px; margin-bottom: 6px;
+  font-family: Bahnschrift, "Segoe UI", sans-serif; font-size: 9px;
+  letter-spacing: .15em; text-transform: uppercase; color: var(--ink-3);
+}
+.hw-sec-head::after { content: ""; flex: 1; height: 1px; background: var(--rule); }
+.hw-list-mini { list-style: none; margin: 0; padding: 0; font-size: 11px; }
+.hw-list-mini li { display: grid; grid-template-columns: minmax(0,1fr) auto; gap: 10px; padding: 3px 0; border-bottom: 1px solid var(--rule); }
+.hw-list-mini li:last-child { border-bottom: 0; }
+.hw-list-mini .l { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hw-list-mini .r { color: var(--ink-3); white-space: nowrap; font-size: 10.5px; }
+
+.hw-note {
+  display: flex; gap: 9px; align-items: flex-start; margin: 0 0 12px;
+  border: 1px solid color-mix(in srgb, var(--warn) 40%, transparent);
+  background: color-mix(in srgb, var(--warn) 7%, transparent);
+  border-radius: 2px; padding: 9px 11px; color: var(--ink-2);
+}
+.hw-note .tag { color: var(--warn); font-family: Bahnschrift, "Segoe UI", sans-serif; font-size: 9px; letter-spacing: .12em; text-transform: uppercase; }
+
+/* Dense tables are reserved for the full-width views. */
+.hw-tablewrap { overflow-x: auto; scrollbar-width: thin; }
+table.hw-table { width: 100%; border-collapse: collapse; font-size: 11.5px; }
+.hw-table th {
+  text-align: left; font-family: Bahnschrift, "Segoe UI", sans-serif; font-weight: 500;
+  font-size: 9px; letter-spacing: .13em; text-transform: uppercase; color: var(--ink-3);
+  padding: 5px 9px; border-bottom: 1px solid var(--rule-strong); white-space: nowrap;
+  position: sticky; top: 0; background: var(--bg); z-index: 1;
+}
+.hw-table td { padding: 4px 9px; border-bottom: 1px solid var(--rule); vertical-align: top; }
+.hw-table tr:hover td { background: var(--surface-2); }
+.hw-table .num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.hw-table .ord { color: var(--ink-3); font-size: 10.5px; white-space: nowrap; }
+.hw-table .type { color: var(--ink-2); white-space: nowrap; }
+
+.hw-empty { padding: 16px; color: var(--ink-3); }
+.hw-foot {
+  flex: 0 0 auto; display: flex; gap: 10px; align-items: center; flex-wrap: wrap;
+  padding: 6px 14px; border-top: 1px solid var(--rule); color: var(--ink-3); font-size: 10px;
+  background: var(--surface);
+}
+.hw-foot .mono { color: var(--ink-2); }
+
+@media (prefers-reduced-motion: reduce) {
+  .hw-slot, .hw-slot-detail { animation: none; }
+}
+</style>
+</head>
+<body>
+<div class="hw-root" id="root" data-pane="list">
+  <div class="hw-top">
+    <div class="hw-bar">
+      <button class="hw-act hw-back" id="back" title="Back">←</button>
+      <span class="hw-mark">Hardware</span>
+      <span class="hw-sep"></span>
+      <span class="hw-proj mono" id="project"></span>
+      <span class="hw-spacer"></span>
+      <button class="hw-act" id="lang">EN</button>
+      <button class="hw-act" id="theme">Light</button>
+      <button class="hw-act" id="refresh">Refresh</button>
+    </div>
+    <div class="hw-filter">
+      <input class="hw-search" id="search" placeholder="Search device, module, order number, signal…">
+      <div class="hw-select">
+        <button id="groupBtn" aria-haspopup="listbox" aria-expanded="false"><span id="groupLabel">All groups</span><span class="hw-caret">▼</span></button>
+        <ul class="hw-menu" id="groupMenu" role="listbox" hidden></ul>
+      </div>
+      <div class="hw-seg" role="tablist" id="views">
+        <button role="tab" data-view="devices" aria-selected="true">Devices</button>
+        <button role="tab" data-view="network" aria-selected="false">Network</button>
+        <button role="tab" data-view="signals" aria-selected="false">Signals</button>
+      </div>
+    </div>
+    <div class="hw-stats" id="stats"></div>
+  </div>
+
+  <div class="hw-main">
+    <aside class="hw-rail" id="rail"></aside>
+    <div class="hw-grip" id="grip" role="separator" aria-orientation="vertical" tabindex="0" aria-label="Resize"></div>
+    <section class="hw-sheet" id="sheet"><div class="hw-sheet-in" id="sheetIn"></div></section>
+  </div>
+
+  <div class="hw-foot" id="foot"></div>
+</div>
+
+<script>
+const DATA = /*__DATA__*/null;
+
+const I18N = {
+  zh: {
+    refresh: '刷新', search: '搜索设备、模块、订货号、信号…',
+    tabDevices: '设备', tabNetwork: '网络', tabSignals: '信号',
+    sDevices: '设备', sModules: '模块', sChannels: '通道', sSubnets: '子网', sSignals: '信号', sMissing: '未导出',
+    allGroups: '全部组',
+    roleController: '控制器', roleIo: '分布式 I/O', roleDrive: '驱动', roleThirdParty: '第三方', roleNetwork: '网络设备', roleHmi: '上位机', roleOther: '其他',
+    rack: '机架', slot: '槽', slots: '槽', addressWindow: '地址窗口', channels: '通道', network: '网络',
+    signals: '信号映射', signalsFrom: '标签映射（该 CPU 拥有）', signalsOf: '条', noSignals: '该设备没有通道到标签的映射',
+    model: '型号', order: '订货号', firmware: '固件', group: '用户组', pname: 'PROFINET 名', iface: '接口', subnet: '子网',
+    ip: 'IP', mask: '掩码', missingTag: '未导出', missingHint: 'CAx 无法导出该对象：它存在于工程里，但不在 AML 中',
+    needsProject: '需打开工程读取', emptySearch: '没有匹配项', more: '仅显示前 {n} 条',
+    snapshot: 'AML 快照（导出时点）', sha: '校验和', bytes: '大小', generated: '生成于',
+    slotEmpty: '选择上方槽位查看明细', di: 'DI', do: 'DO', ai: 'AI', ao: 'AO',
+    portLinks: '端口↔端口', subnetLinks: '节点→子网', ioLinks: '接口→IO', links: '连线'
+  },
+  en: {
+    refresh: 'Refresh', search: 'Search device, module, order number, signal…',
+    tabDevices: 'Devices', tabNetwork: 'Network', tabSignals: 'Signals',
+    sDevices: 'Devices', sModules: 'Modules', sChannels: 'Channels', sSubnets: 'Subnets', sSignals: 'Signals', sMissing: 'Not exported',
+    allGroups: 'All groups',
+    roleController: 'Controller', roleIo: 'Distributed I/O', roleDrive: 'Drives', roleThirdParty: 'Third-party', roleNetwork: 'Infrastructure', roleHmi: 'HMI', roleOther: 'Other',
+    rack: 'Rack', slot: 'Slot', slots: 'slots', addressWindow: 'Address window', channels: 'Channels', network: 'Network',
+    signals: 'Signals', signalsFrom: 'Tag mappings (owned by this CPU)', signalsOf: 'mapped', noSignals: 'No channel-to-tag mapping for this device',
+    model: 'Model', order: 'Order number', firmware: 'Firmware', group: 'Group', pname: 'PROFINET name', iface: 'Interface', subnet: 'Subnet',
+    ip: 'IP', mask: 'Mask', missingTag: 'Not exported', missingHint: 'CAx cannot export this object: it exists in the project but not in the AML',
+    needsProject: 'Needs an open project', emptySearch: 'Nothing matches', more: 'showing first {n}',
+    snapshot: 'AML snapshot at export time', sha: 'Checksum', bytes: 'Size', generated: 'Generated',
+    slotEmpty: 'Pick a slot above', di: 'DI', do: 'DO', ai: 'AI', ao: 'AO',
+    portLinks: 'port↔port', subnetLinks: 'node→subnet', ioLinks: 'interface→IO', links: 'Links'
+  }
+};
+let lang = DATA.lang === 'en' ? 'en' : 'zh';
+const t = (k) => I18N[lang][k] ?? k;
+const fill = (s, n) => String(s).replace('{n}', n);
+const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const countLabel = (n, word) => n + ' ' + (lang === 'en' && n !== 1 ? word + 's' : word);
+const ROLE_ORDER = ['controller', 'io', 'drive', 'thirdParty', 'network', 'hmi', 'other'];
+const ROLE_BADGE = { controller: 'PLC', io: 'IO', drive: 'DRV', thirdParty: 'GSD', network: 'NET', hmi: 'HMI', other: 'DEV' };
+const ROLE_LABEL = (r) => t('role' + r.charAt(0).toUpperCase() + r.slice(1));
+
+const state = { view: 'devices', query: '', group: '', device: DATA.devices[0]?.name ?? null, slot: null };
+
+/* --------------------------------------------------------------------- stats */
+function renderStats() {
+  const c = DATA.counts;
+  const missing = DATA.devices.filter((d) => d.status === 'missing').length;
+  const rows = [
+    ['sDevices', c.devices, false],
+    ['sModules', c.modules, false],
+    ['sChannels', c.channels.total, false],
+    ['sSubnets', DATA.networks.subnets.length, false],
+    ['sSignals', DATA.content.signals, false],
+    ['sMissing', missing, missing > 0],
+  ];
+  document.getElementById('stats').innerHTML = rows
+    .map(([k, v, warn]) => `<div class="hw-stat${warn ? ' warn' : ''}"><b>${v}</b><span>${esc(t(k))}</span></div>`)
+    .join('');
+}
+
+/* ---------------------------------------------------------------------- rail */
+function devicesInScope() {
+  const q = state.query.trim().toLowerCase();
+  return DATA.devices.filter((d) => {
+    if (state.group && d.groupPath !== state.group) return false;
+    if (!q) return true;
+    const hay = [d.name, d.orderNumber, d.typeName, d.ip, d.profinetName, ...(d.modules ?? []).map((m) => `${m.name} ${m.orderNumber ?? ''} ${m.typeName ?? ''}`)]
+      .join(' ').toLowerCase();
+    return hay.includes(q);
+  });
+}
+
+function renderRail() {
+  const rail = document.getElementById('rail');
+  const devices = devicesInScope();
+  rail.style.display = state.view === 'devices' ? '' : 'none';
+  document.getElementById('grip').style.display = state.view === 'devices' ? '' : 'none';
+  if (state.view !== 'devices') { rail.innerHTML = ''; return; }
+  if (!devices.length) { rail.innerHTML = `<div class="hw-empty">${esc(t('emptySearch'))}</div>`; return; }
+
+  const out = [];
+  for (const role of ROLE_ORDER) {
+    const rows = devices.filter((d) => d.role === role);
+    if (!rows.length) continue;
+    out.push(`<div class="hw-rail-group"><div class="hw-rail-head">${esc(ROLE_LABEL(role))} <span>${rows.length}</span></div>`);
+    for (const d of rows) {
+      const warn = d.status === 'missing';
+      out.push(`
+        <button class="hw-dev" data-device="${esc(d.name)}" aria-current="${state.device === d.name}">
+          <span class="hw-badge" data-role="${esc(d.role)}">${ROLE_BADGE[d.role] ?? 'DEV'}</span>
+          <span class="hw-dev-main">
+            <span class="hw-dev-name"><span class="hw-dot${warn ? ' warn' : ''}"></span> ${esc(d.name)}</span>
+            <span class="hw-dev-sub mono">${esc(d.orderNumber || d.typeName || '—')}</span>
+          </span>
+          <span class="hw-dev-meta">${esc(d.ip || '—')}<br>${warn ? esc(t('missingTag')) : `${countLabel(d.kpis.modules, t("slots"))}`}</span>
+        </button>`);
+    }
+    out.push('</div>');
+  }
+  rail.innerHTML = out.join('');
+}
+
+/* --------------------------------------------------------------------- sheet */
+function chipsOf(device) {
+  const chips = [];
+  if (device.orderNumber) chips.push(`<span class="hw-chip mono"><b>${esc(device.orderNumber)}</b></span>`);
+  if (device.firmware) chips.push(`<span class="hw-chip">${esc(t('firmware'))} <b>${esc(device.firmware)}</b></span>`);
+  if (device.groupPath) chips.push(`<span class="hw-chip">${esc(t('group'))} <b>${esc(device.groupPath)}</b></span>`);
+  if (device.ip) chips.push(`<span class="hw-chip mono">${esc(t('iface'))} ${esc(device.interface || '—')} · <b>${esc(device.ip)}</b></span>`);
+  if (device.profinetName) chips.push(`<span class="hw-chip mono">${esc(t('pname'))} <b>${esc(device.profinetName)}</b></span>`);
+  if (device.subnet) chips.push(`<span class="hw-chip">${esc(t('subnet'))} <b>${esc(device.subnet)}</b></span>`);
+  const c = device.kpis;
+  if (c.di + c.do + c.ai + c.ao > 0) {
+    chips.push(`<span class="hw-chip is-ok">${t('di')} ${c.di} · ${t('do')} ${c.do} · ${t('ai')} ${c.ai} · ${t('ao')} ${c.ao}</span>`);
+  }
+  return chips.join('');
+}
+
+/** The module face reads like the printed label on a rack: function first
+ *  (IM / DI / DQ / AI / F-DI), physical name second. */
+function moduleFace(m) {
+  if (m.deviceItemType === 'HeadModule') return 'IM';
+  let token = (m.typeName || '').split(/[\s,]+/)[0];
+  // 'F-RS' is a real face; 'BU-Cover' is not - shorten only when it is long.
+  if (token.length > 7) token = token.split('-')[0];
+  if (token) return token.toUpperCase();
+  return String(m.name || 'MOD').replace(/^\d+MOD/, 'MOD');
+}
+
+function slotChip(m, index) {
+  const isF = (m.typeName || '').startsWith('F-');
+  return `<button class="hw-slot" data-slot="${esc(m.slot ?? index)}" aria-current="${String(state.slot) === String(m.slot)}"
+      title="${esc(m.name + ' · ' + (m.typeName || '') + ' · ' + (m.orderNumber || ''))}"
+      style="animation-delay:${Math.min(index, 12) * 18}ms">
+      <span class="hw-slot-n"><span class="mono">${esc(m.slot ?? '—')}</span>${isF ? '<i>F</i>' : ''}</span>
+      <span class="hw-slot-v">${esc(moduleFace(m))}</span>
+      <span class="hw-slot-t">${esc(m.name || '—')}</span>
+    </button>`;
+}
+
+function slotDetail(device) {
+  const m = device.modules.find((x) => String(x.slot) === String(state.slot)) ?? device.modules[0];
+  if (!m) return `<div class="hw-empty">${esc(t('slotEmpty'))}</div>`;
+  const addr = (m.addresses ?? []).map((a) => `${a.ioType} <b class="mono">${a.start}</b> +${a.length}`).join(' · ') || '—';
+  const c = m.channels ?? {};
+  const f = (device.f ?? []).find((g) => String(g.slot) === String(m.slot));
+  const fRows = f ? f.values.map((v) => `<li><span class="l mono">${esc(v.name)}</span><span class="r">${esc(v.value)}</span></li>`).join('') : '';
+  return `<div class="hw-slot-detail">
+    <div class="hw-slot-title">
+      <span class="t">${esc(t('slot'))} ${esc(m.slot ?? '—')}</span>
+      <span class="m mono">${esc(m.name || '')}</span>
+      <span class="m">${esc((m.typeName || '') === (m.name || '') ? '' : (m.typeName || ''))}</span>
+      ${m.deviceItemType ? `<span class="hw-chip">${esc(m.deviceItemType)}</span>` : ''}
+      ${(m.typeName || '').startsWith('F-') ? `<span class="hw-chip is-warn">F</span>` : ''}
+    </div>
+    <dl class="hw-kv">
+      <dt>${esc(t('order'))}</dt><dd class="mono">${esc(m.orderNumber || '—')}</dd>
+      <dt>${esc(t('addressWindow'))}</dt><dd class="mono">${addr}</dd>
+      ${(c.di || c.do || c.ai || c.ao) ? `<dt>${esc(t('channels'))}</dt><dd>${t('di')} ${c.di ?? 0} · ${t('do')} ${c.do ?? 0} · ${t('ai')} ${c.ai ?? 0} · ${t('ao')} ${c.ao ?? 0}</dd>` : ''}
+      ${m.firmware ? `<dt>${esc(t('firmware'))}</dt><dd>${esc(m.firmware)}</dd>` : ''}
+    </dl>
+    ${f ? `<div class="hw-sec-head" style="margin-top:10px">${esc(t('needsProject'))}</div>
+      <ul class="hw-list-mini">${fRows}</ul>` : ''}
+  </div>`;
+}
+
+function renderSheet() {
+  const box = document.getElementById('sheetIn');
+  const device = DATA.devices.find((d) => d.name === state.device);
+  if (!device) { box.innerHTML = `<div class="hw-empty">${esc(t('emptySearch'))}</div>`; return; }
+
+  if (device.status === 'missing') {
+    box.innerHTML = `
+      <div class="hw-station">
+        <div class="hw-station-id">
+          <h1 class="hw-station-name">${esc(device.name)}</h1>
+          <div class="hw-station-mlfb">${esc(t('missingTag'))} · ${esc(device.profinetName || '')}</div>
+          <div class="hw-chips">${device.ip ? `<span class="hw-chip mono"><b>${esc(device.ip)}</b></span>` : ''}
+            ${device.subnet ? `<span class="hw-chip">${esc(t('subnet'))} <b>${esc(device.subnet)}</b></span>` : ''}</div>
+        </div>
+      </div>
+      <div class="hw-note"><span class="tag">${esc(t('missingTag'))}</span>
+        <span>${esc(t('missingHint'))}<br><span class="mono">${esc(device.reason || '')}</span></span></div>`;
+    return;
+  }
+
+  if (state.slot === null && device.modules.length) state.slot = device.modules[0].slot;
+
+  const isTagSide = device.role === 'controller';
+  const signals = isTagSide ? (device.tagSignals ?? []) : (device.signals ?? []);
+  const network = device.ip || device.profinetName
+    ? `<ul class="hw-list-mini">
+        <li><span class="l">${esc(t('iface'))}</span><span class="r mono">${esc(device.interface || '—')}</span></li>
+        <li><span class="l">${esc(t('ip'))}</span><span class="r mono">${esc(device.ip || '—')}</span></li>
+        ${device.mask ? `<li><span class="l">${esc(t('mask'))}</span><span class="r mono">${esc(device.mask)}</span></li>` : ''}
+        <li><span class="l">${esc(t('pname'))}</span><span class="r mono">${esc(device.profinetName || '—')}</span></li>
+        <li><span class="l">${esc(t('subnet'))}</span><span class="r">${esc(device.subnet || '—')}</span></li>
+      </ul>` : '';
+
+  box.innerHTML = `
+    <div class="hw-station">
+      <div class="hw-station-id">
+        <h1 class="hw-station-name">${esc(device.name)}</h1>
+        <div class="hw-station-mlfb">${esc(device.typeName || '')}</div>
+        <div class="hw-chips">${chipsOf(device)}</div>
+      </div>
+    </div>
+    <div class="hw-rack-label">${esc(t('rack'))} <span class="mono">${countLabel(device.modules.length, t("slots"))}</span></div>
+    <div class="hw-rack">${device.modules.map(slotChip).join('')}</div>
+    ${slotDetail(device)}
+    <div class="hw-cols">
+      <div>${network ? `<div class="hw-sec-head">${esc(t('network'))}</div>${network}` : ''}</div>
+      <div>
+        <div class="hw-sec-head">${esc(isTagSide ? t('signalsFrom') : t('signals'))} <span>${signals.length} ${esc(t('signalsOf'))}</span></div>
+        ${signals.length
+          ? `<ul class="hw-list-mini">${signals.slice(0, 8).map((s) => `<li><span class="l mono">${esc(s.channel)} → ${esc(s.tag)}</span><span class="r mono">${esc(s.address || '')}</span></li>`).join('')}</ul>
+             ${signals.length > 8 ? `<div class="hw-dev-sub" style="padding-top:4px">${esc(fill(t('more'), 8))}</div>` : ''}`
+          : `<div class="hw-empty" style="padding:6px 0">${esc(t('noSignals'))}</div>`}
+      </div>
+    </div>`;
+  requestAnimationFrame(flagRackOverflow);
+}
+
+/* ---------------------------------------------------------------- other views */
+function renderNetwork() {
+  const q = state.query.trim().toLowerCase();
+  const parts = [];
+  parts.push(`<div class="hw-chips" style="margin-bottom:12px">
+    <span class="hw-chip">${esc(t('portLinks'))} <b>${DATA.links.port}</b></span>
+    <span class="hw-chip">${esc(t('subnetLinks'))} <b>${DATA.links.subnet}</b></span>
+    <span class="hw-chip">${esc(t('ioLinks'))} <b>${DATA.links.ioSystem}</b></span>
+  </div>`);
+  for (const subnet of DATA.networks.subnets) {
+    const nodes = subnet.nodes.filter((n) => !q || `${n.device} ${n.ip ?? ''} ${n.pnName ?? ''}`.toLowerCase().includes(q));
+    if (!nodes.length) continue;
+    parts.push(`<div class="hw-sec-head">${esc(subnet.name)} <span>${nodes.length} · ${esc(subnet.type || '')}</span></div>
+      <div class="hw-tablewrap"><table class="hw-table">
+        <thead><tr><th>Device</th><th>${esc(t('iface'))}</th><th>${esc(t('ip'))}</th><th>${esc(t('mask'))}</th><th>${esc(t('pname'))}</th></tr></thead>
+        <tbody>${nodes.map((n) => `<tr><td>${esc(n.device)}</td><td class="type">${esc(n.interface || '—')}</td>
+          <td class="ord">${esc(n.ip || '—')}</td><td class="ord">${esc(n.mask || '—')}</td>
+          <td class="ord">${esc(n.pnName || '—')}</td></tr>`).join('')}</tbody></table></div>`);
+  }
+  return parts.join('<div style="height:14px"></div>');
+}
+
+function renderSignals() {
+  const q = state.query.trim().toLowerCase();
+  const rows = [];
+  for (const d of DATA.devices) for (const s of d.signals ?? []) {
+    if (q && !`${d.name} ${s.module} ${s.channel} ${s.tag} ${s.address ?? ''}`.toLowerCase().includes(q)) continue;
+    rows.push({ dev: d.name, ...s });
+  }
+  if (!rows.length) return `<div class="hw-empty">${esc(t('emptySearch'))}</div>`;
+  const shown = rows.slice(0, 200);
+  return `<div class="hw-sec-head">${esc(t('signals'))} <span>${rows.length} ${esc(t('signalsOf'))}</span></div>
+    <div class="hw-tablewrap"><table class="hw-table">
+      <thead><tr><th>Device</th><th>${esc(t('slot'))}</th><th>Module</th><th>Channel</th><th>Tag</th><th>Address</th><th>Type</th></tr></thead>
+      <tbody>${shown.map((s) => `<tr><td>${esc(s.dev)}</td><td class="ord">${esc(s.slot ?? '—')}</td>
+        <td class="ord">${esc(s.module || '—')}</td><td class="ord">${esc(s.channel)}</td>
+        <td>${esc(s.tag)}</td><td class="ord">${esc(s.address || '—')}</td><td class="type">${esc(s.dataType || '—')}</td></tr>`).join('')}</tbody>
+    </table></div>${rows.length > shown.length ? `<div class="hw-dev-sub" style="padding-top:6px">${esc(fill(t('more'), shown.length))} / ${rows.length}</div>` : ''}`;
+}
+
+function renderBody() {
+  const sheet = document.getElementById('sheetIn');
+  renderRail();
+  if (state.view === 'devices') renderSheet();
+  else sheet.innerHTML = state.view === 'network' ? renderNetwork() : renderSignals();
+}
+
+function renderFoot() {
+  const a = DATA.aml;
+  document.getElementById('foot').innerHTML = `
+    <span>${esc(t('snapshot'))}</span>
+    <span>${esc(t('sha'))} <span class="mono">${esc(a.sha256.slice(0, 12))}</span></span>
+    <span>${esc(t('bytes'))} <span class="mono">${(a.bytes / 1048576).toFixed(2)} MB</span></span>
+    <span class="mono">CAEX ${esc(a.schemaVersion)}</span>
+    <span>${esc(t('generated'))} <span class="mono">${esc(DATA.generatedAt)}</span></span>`;
+}
+
+function renderChrome() {
+  document.getElementById('project').textContent = DATA.project;
+  document.getElementById('search').placeholder = t('search');
+  document.getElementById('refresh').textContent = t('refresh');
+  document.querySelectorAll('#views button').forEach((b) => { b.textContent = t('tab' + b.dataset.view[0].toUpperCase() + b.dataset.view.slice(1)); });
+  document.getElementById('groupLabel').textContent = state.group || t('allGroups');
+  document.getElementById('lang').textContent = lang === 'zh' ? 'EN' : '中';
+  document.getElementById('theme').textContent = document.documentElement.dataset.theme === 'dark' ? 'Light' : 'Dark';
+  const groups = [...new Set(DATA.devices.map((d) => d.groupPath).filter(Boolean))].sort();
+  document.getElementById('groupMenu').innerHTML =
+    `<li><button data-group="">${esc(t('allGroups'))}<span class="n">${DATA.devices.length}</span></button></li>` +
+    groups.map((g) => `<li><button data-group="${esc(g)}">${esc(g.split('/').pop())}
+      <span class="n">${DATA.devices.filter((d) => d.groupPath === g).length}</span></button></li>`).join('');
+}
+
+/* -------------------------------------------------------------------- events */
+document.getElementById('search').addEventListener('input', (e) => { state.query = e.target.value; renderBody(); });
+
+document.querySelectorAll('#views button').forEach((b) => b.addEventListener('click', () => {
+  state.view = b.dataset.view;
+  document.querySelectorAll('#views button').forEach((x) => x.setAttribute('aria-selected', String(x === b)));
+  renderBody();
+}));
+
+document.getElementById('rail').addEventListener('click', (e) => {
+  const row = e.target.closest('[data-device]');
+  if (!row) return;
+  state.device = row.dataset.device;
+  state.slot = null;
+  document.getElementById('root').dataset.pane = 'detail';
+  renderBody();
+});
+
+document.getElementById('sheetIn').addEventListener('click', (e) => {
+  const chip = e.target.closest('[data-slot]');
+  if (!chip) return;
+  state.slot = chip.dataset.slot;
+  renderSheet();
+});
+
+document.getElementById('back').addEventListener('click', () => { document.getElementById('root').dataset.pane = 'list'; });
+
+const groupBtn = document.getElementById('groupBtn');
+const groupMenu = document.getElementById('groupMenu');
+groupBtn.addEventListener('click', () => {
+  const open = groupMenu.hidden;
+  groupMenu.hidden = !open;
+  groupBtn.setAttribute('aria-expanded', String(open));
+});
+groupMenu.addEventListener('click', (e) => {
+  const b = e.target.closest('[data-group]');
+  if (!b) return;
+  state.group = b.dataset.group;
+  groupMenu.hidden = true;
+  groupBtn.setAttribute('aria-expanded', 'false');
+  renderChrome(); renderBody();
+});
+document.addEventListener('click', (e) => {
+  if (!e.target.closest('.hw-select')) { groupMenu.hidden = true; groupBtn.setAttribute('aria-expanded', 'false'); }
+});
+
+document.getElementById('lang').addEventListener('click', () => {
+  lang = lang === 'zh' ? 'en' : 'zh';
+  function flagRackOverflow() {
+  const rack = document.getElementById('sheetIn').querySelector('.hw-rack');
+  if (!rack) return;
+  rack.classList.toggle('is-scroll', rack.scrollWidth > rack.clientWidth + 2);
+}
+
+renderChrome(); renderStats(); renderBody(); renderFoot();
+document.getElementById('sheetIn').addEventListener('scroll', flagRackOverflow, { passive: true });
+window.addEventListener('resize', flagRackOverflow);
+});
+document.getElementById('theme').addEventListener('click', () => {
+  const root = document.documentElement;
+  root.dataset.theme = root.dataset.theme === 'dark' ? 'light' : 'dark';
+  renderChrome();
+});
+
+const main = document.querySelector('.hw-main');
+const grip = document.getElementById('grip');
+let dragging = false;
+grip.addEventListener('pointerdown', (e) => { dragging = true; grip.dataset.drag = '1'; grip.setPointerCapture(e.pointerId); });
+grip.addEventListener('pointermove', (e) => {
+  if (!dragging) return;
+  const rect = main.getBoundingClientRect();
+  const pct = Math.min(62, Math.max(18, ((e.clientX - rect.left) / rect.width) * 100));
+  document.documentElement.style.setProperty('--hw-split', pct + '%');
+});
+grip.addEventListener('pointerup', (e) => { dragging = false; delete grip.dataset.drag; grip.releasePointerCapture(e.pointerId); });
+grip.addEventListener('keydown', (e) => {
+  if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
+  e.preventDefault();
+  const now = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--hw-split')) || 34;
+  document.documentElement.style.setProperty('--hw-split', Math.min(62, Math.max(18, now + (e.key === 'ArrowLeft' ? -3 : 3))) + '%');
+});
+
+function flagRackOverflow() {
+  const rack = document.getElementById('sheetIn').querySelector('.hw-rack');
+  if (!rack) return;
+  rack.classList.toggle('is-scroll', rack.scrollWidth > rack.clientWidth + 2);
+}
+
+renderChrome(); renderStats(); renderBody(); renderFoot();
+document.getElementById('sheetIn').addEventListener('scroll', flagRackOverflow, { passive: true });
+window.addEventListener('resize', flagRackOverflow);
+</script>
+</body>
+</html>
