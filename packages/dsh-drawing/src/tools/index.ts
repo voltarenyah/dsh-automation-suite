@@ -541,18 +541,15 @@ export function registerTools(
           title: { type: 'string' },
           highlight: { type: 'json' },
           image: { type: 'json' },
+          viewPath: { type: 'string' },
           caption: { type: 'string' },
           error: { type: 'string' },
         },
       },
       render: (_args, value) => {
         if (value.ok !== true) return [{ type: 'text', text: `drawing_show: ${value.error ?? 'failed'}` }]
-        return [
-          {
-            type: 'text',
-            text: `Shown: ${value.document} · cabinet ${value.cabinet} / sheet ${value.sheet ?? '—'} (p${value.page})${value.title === undefined ? '' : ` · ${value.title}`}`,
-          },
-        ]
+        const head = `Shown: ${value.document} · cabinet ${value.cabinet} / sheet ${value.sheet ?? '—'} (p${value.page})${value.title === undefined ? '' : ` · ${value.title}`}`
+        return [{ type: 'text', text: value.viewPath === undefined ? head : `${head}\nview: ${value.viewPath}` }]
       },
     },
     async execute(args, exec) {
@@ -594,6 +591,7 @@ export function registerTools(
         log.warn?.(`drawing_show: rendering page ${target.page} failed: ${String(error)}`)
       }
 
+      const viewPath = join(scope.cwd, '.dsh', 'drawing-view.json')
       const view: DrawingView = {
         document: entry.file,
         pdfPath: entry.path,
@@ -611,7 +609,9 @@ export function registerTools(
       })
 
       // The browser half folds this payload out of the session's tool results
-      // and turns the tab to it; the model only gets the confirmation line.
+      // and turns the tab to it; the model only gets the confirmation line. The
+      // view path is printed because the client cannot always learn the session
+      // cwd — it parses this line instead of guessing.
       return {
         ok: true,
         document: entry.file,
@@ -622,6 +622,7 @@ export function registerTools(
         highlight,
         caption: args.caption,
         image,
+        viewPath,
       }
     },
   })
@@ -633,6 +634,7 @@ export function registerTools(
 export function artifactsOf(scope: Scope, file: string): string {
   return documentDir(scope.drawingDir, join(scope.drawingDir, file))
 }
+
 
 
 

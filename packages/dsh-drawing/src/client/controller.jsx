@@ -51,9 +51,16 @@ export function Controller(props) {
     if (source === undefined || source === null) return undefined
     let disposed = false
 
-    const load = async () => {
-      if (typeof cwd !== 'string' || cwd === '') return
-      const answer = await readTextFile(joinPath(cwd, VIEW_FILE))
+    const load = async (resultText) => {
+      // The tool prints the absolute path of the view state, so the controller
+      // does not have to know the session cwd: a dock seat may not receive the
+      // `useSessions` derived prop that the tab body does. Fall back to cwd.
+      const fromText =
+        typeof resultText === 'string' ? /([A-Za-z]:[\\/][^\s"']*drawing-view\.json)/.exec(resultText) : null
+      const path =
+        fromText?.[1] ?? (typeof cwd === 'string' && cwd !== '' ? joinPath(cwd, VIEW_FILE) : undefined)
+      if (path === undefined) return
+      const answer = await readTextFile(path)
       if (disposed || answer?.ok !== true) return
       let view
       try {
@@ -95,7 +102,12 @@ export function Controller(props) {
         const first = Array.isArray(message.content) ? message.content[0] : undefined
         if (first?.isError === true) continue
         handled.current = callId
-        void load()
+        const rendered = Array.isArray(first?.content)
+          ? first.content.map((block) => (typeof block?.text === 'string' ? block.text : '')).join('\n')
+          : typeof first?.content === 'string'
+            ? first.content
+            : ''
+        void load(rendered)
       }
     }
 

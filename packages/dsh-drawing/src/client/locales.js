@@ -14,6 +14,7 @@ export const zh = {
   'empty.title': '这个工作区还没有图纸',
   'empty.hint': '把图纸 PDF 的路径告诉 agent，或在对话里上传附件；它会复制到 drawing/ 并建立索引。',
   'loading': '读取索引…',
+  'lookedIn': '查找过',
   'noIndex': '未建索引',
   'sheets': '张图纸',
   'pages': '页',
@@ -36,6 +37,7 @@ export const en = {
   'empty.title': 'No drawing in this workspace yet',
   'empty.hint': 'Give the agent a PDF path (or upload the file in chat); it is copied into drawing/ and indexed.',
   'loading': 'Reading index…',
+  'lookedIn': 'Looked in',
   'noIndex': 'not indexed',
   'sheets': 'sheets',
   'pages': 'pages',
@@ -50,4 +52,5 @@ export const en = {
   'documents': 'Drawings',
   'error': 'read failed',
 }
+
 

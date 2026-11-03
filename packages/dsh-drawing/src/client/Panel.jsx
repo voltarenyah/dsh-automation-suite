@@ -17,9 +17,10 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 
-import { getView, subscribeView } from './store.js'
+import { getView, setView, subscribeView } from './store.js'
 
 const MANIFEST = '.dsh/drawing-manifest.json'
+const VIEW_FILE = '.dsh/drawing-view.json'
 
 /** Join an absolute base with a forward-slash relative path. */
 function joinPath(base, rel) {
@@ -47,6 +48,7 @@ export function Panel(props) {
   const [imageUrl, setImageUrl] = useState(null)
   const [pdfUrl, setPdfUrl] = useState(null)
   const [error, setError] = useState(null)
+  const [lookedIn, setLookedIn] = useState(null)
   const imageUrlRef = useRef(null)
   const pdfUrlRef = useRef(null)
 
@@ -74,11 +76,20 @@ export function Panel(props) {
     if (typeof cwd !== 'string' || cwd === '') return undefined
     let cancelled = false
     void (async () => {
-      const value = await readJsonFile(joinPath(cwd, MANIFEST))
+      // The host writes the manifest both beside the drawings and at the fixed
+      // `.dsh/` path; try the fixed one first, then the drawing-directory copy
+      // (a project may have moved or the plugin may be configured with `dir`).
+      const candidates = [joinPath(cwd, MANIFEST), joinPath(cwd, 'drawing/manifest.json')]
+      let value
+      for (const path of candidates) {
+        value = await readJsonFile(path)
+        if (value !== undefined) break
+      }
       if (cancelled) return
       if (value === undefined) {
         setManifest(null)
         setPhase('empty')
+        setLookedIn(candidates.join(' · '))
         return
       }
       setManifest(value)
@@ -96,6 +107,25 @@ export function Panel(props) {
     const documents = Array.isArray(manifest?.documents) ? manifest.documents : []
     return documents.find((entry) => entry.file === selectedFile)
   }, [manifest, selectedFile])
+
+  // ---- view state on mount -------------------------------------------------
+  // The controller normally pushes the view as soon as `drawing_show` returns,
+  // but the tab may be opened *after* the call (or mounted in a fresh page):
+  // seed the store from the file so the last located sheet is still there.
+  useEffect(() => {
+    if (typeof cwd !== 'string' || cwd === '') return undefined
+    let cancelled = false
+    void (async () => {
+      const value = await readJsonFile(joinPath(cwd, VIEW_FILE))
+      if (cancelled || value === null || typeof value !== 'object') return
+      const current = getView(sessionId)
+      if (current !== undefined && current.ts === value.ts) return
+      setView(sessionId, value)
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [cwd, readJsonFile, sessionId])
 
   // ---- profile + sheet list ------------------------------------------------
   useEffect(() => {
@@ -188,6 +218,11 @@ export function Panel(props) {
       <div className="dsh-drawing">
         <div className="dsh-drawing__title">{t('empty.title')}</div>
         <div className="dsh-drawing__muted">{t('empty.hint')}</div>
+        {lookedIn === null ? null : (
+          <div className="dsh-drawing__muted">
+            {t('lookedIn')}: {lookedIn}
+          </div>
+        )}
       </div>
     )
   }
@@ -319,3 +354,4 @@ export function Panel(props) {
     </div>
   )
 }
+
