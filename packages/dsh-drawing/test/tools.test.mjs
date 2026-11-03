@@ -17,9 +17,13 @@ import { test } from 'node:test'
 import { registerTools } from '../lib/tools/index.js'
 
 const SHEETS = [
-  { cabinet: 1, sheet: 210, page: 25, title: 'AG : 8 SAFETY LOGICAL INPUTS', template: 'schematic', loc: 'AG', prev: 201, next: 211 },
-  { cabinet: 1, sheet: 3000, page: 58, title: 'Cable : W021,W025', template: 'cable', loc: null, prev: 604, next: 3001 },
-  { cabinet: 2, sheet: 210, page: 98, title: 'BASE-A : SAFETY OUTPUTS', template: 'schematic', loc: 'COF-BASE-A', prev: 201, next: 220 },
+  { cabinet: 1, sheet: 210, page: 25, title: 'AG : 8 SAFETY LOGICAL INPUTS', template: 'schematic', loc: 'AG', prev: 201, next: 211, frame: { width: 842, height: 595 } },
+  { cabinet: 1, sheet: 3000, page: 58, title: 'Cable : W021,W025', template: 'cable', loc: null, prev: 604, next: 3001, frame: { width: 842, height: 595 } },
+  { cabinet: 1, sheet: 220, page: 27, title: 'AG : 4 SAFETY LOGICAL OUTPUTS', template: 'schematic', loc: 'AG', prev: 210, next: 230, frame: { width: 842, height: 595 } },
+  { cabinet: 2, sheet: 210, page: 98, title: 'BASE-A : SAFETY OUTPUTS', template: 'schematic', loc: 'COF-BASE-A', prev: 201, next: 220, frame: { width: 842, height: 595 } },
+  // A cover sheet: no sheet number, no locality — the shape that used to make
+  // the tool return `undefined` and trip the harness's lossless-JSON check.
+  { cabinet: 1, sheet: null, page: 1, title: 'MAIN PAGE', template: 'main', loc: null, prev: null, next: null, frame: { width: 842, height: 595 } },
 ]
 
 const XREFS = [
@@ -107,7 +111,12 @@ function boot(cwd) {
   })
   const exec = { signal: new AbortController().signal, agent: { session: { header: { cwd } } } }
   const call = (name, args) => definitions.get(name).execute(args, exec)
-  return { call, names: [...definitions.keys()] }
+  /** The model-facing text of a tool's result — what the transcript actually shows. */
+  const render = (name, value) => {
+    const blocks = definitions.get(name).output.render({}, value)
+    return blocks.map((block) => (typeof block?.text === 'string' ? block.text : '')).join('\n')
+  }
+  return { call, render, names: [...definitions.keys()] }
 }
 
 test('registers exactly the five P0 tools', async () => {
@@ -178,6 +187,36 @@ test('drawing_show returns the location payload, not page text', async () => {
   assert.deepEqual(shown.highlight, { x: 108.6, y: 249.2, w: 25.8, h: 8 })
   assert.equal(shown.caption, '220KA3')
   assert.equal('text' in shown, false)
+})
+
+test('a cover sheet is answerable instead of throwing "not lossless JSON"', async () => {
+  const cwd = await makeWorkspace()
+  const { call, render } = boot(cwd)
+  const cover = await call('drawing_sheet', { page: 1 })
+  assert.equal(cover.ok, true)
+  assert.equal(cover.sheet, null, 'no sheet number is a fact, not an absence')
+  assert.equal(cover.loc, null)
+  // Nothing may be `undefined` inside the returned value: the harness rejects
+  // the whole result when it cannot serialise it losslessly.
+  assert.doesNotThrow(() => JSON.stringify(cover))
+  assert.equal(JSON.stringify(cover).includes('undefined'), false)
+  assert.match(render('drawing_sheet', cover), /MAIN PAGE/)
+})
+
+test('search and sheet print the element boxes the model needs for drawing_show', async () => {
+  const cwd = await makeWorkspace()
+  const { call, render } = boot(cwd)
+
+  const found = await call('drawing_search', { query: '220KA3' })
+  const searchText = render('drawing_search', found)
+  assert.match(searchText, /box 108\.6,249\.2,25\.8,8/, 'the hit prints its box')
+  assert.match(searchText, /display points/, 'and names the coordinate space')
+
+  const sheet = await call('drawing_sheet', { cabinet: 1, sheet: 210 })
+  const sheetText = render('drawing_sheet', sheet)
+  assert.match(sheetText, /frame 842x595/)
+  assert.match(sheetText, /tag 220KA3\s+box 108\.6,249\.2,25\.8,8/)
+  assert.match(sheetText, /\(220-14\) → cabinet 1 \/ sheet 220 \(p27\) col 14/)
 })
 
 test('tools report a usable error when the workspace has no drawing', async () => {

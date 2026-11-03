@@ -111,15 +111,35 @@ function xrefsOnPage(index: Index, page: number): Xref[] {
   return index.xrefs.filter((xref) => xref.page === page)
 }
 
-/** Text rendering of a hit list, kept under a few hundred tokens. */
+/**
+ * Text rendering of a hit list.
+ *
+ * The model only sees this text — the structured value is for programmatic
+ * consumers — so the box has to be printed. Without it, locating an element
+ * (`drawing_show`) means re-deriving coordinates from the PDF by hand, which is
+ * exactly what the first real test session ended up doing.
+ */
 function renderHits(document: string, hits: readonly Hit[]): string {
   if (hits.length === 0) return `No match in ${document}.`
-  const lines = hits.map(
-    (hit) =>
-      `- cabinet ${hit.cabinet} / sheet ${hit.sheet ?? '—'} (p${hit.page}) ${hit.kind} ${hit.text}` +
-      (hit.detail === undefined ? '' : ` — ${hit.detail}`),
-  )
-  return `${hits.length} match(es) in ${document}:\n${lines.join('\n')}`
+  const lines = hits.map((hit) => {
+    const place = `cabinet ${hit.cabinet} / sheet ${hit.sheet ?? '—'} (p${hit.page}) · ${hit.kind} ${hit.text}`
+    const box =
+      typeof hit.x === 'number' && typeof hit.y === 'number'
+        ? ` box ${hit.x},${hit.y},${hit.w ?? 0},${hit.h ?? 0}`
+        : ''
+    const extra =
+      hit.targetPage !== null && hit.targetPage !== undefined
+        ? ` → p${hit.targetPage}${hit.column === undefined ? '' : ` col ${hit.column}`}`
+        : ''
+    const detail = hit.detail === undefined ? '' : ` — ${hit.detail}`
+    return `- ${place}${box}${extra}${detail}`
+  })
+  return [
+    `${hits.length} match(es) in ${document}.`,
+    'box = x,y,w,h in display points (landscape sheets are 842x595, origin top-left, /Rotate already applied) —',
+    'pass the box straight to drawing_show to mark it on screen.',
+    ...lines,
+  ].join('\n')
 }
 
 /** Register all five tools; returns the disposers. */
@@ -134,7 +154,8 @@ export function registerTools(
     description:
       'List the electrical drawings available in this workspace and whether each has been indexed. ' +
       'Call this first whenever the user mentions drawings, schematics, wiring, terminals or cables: ' +
-      'it is a cheap directory probe and never parses a PDF.',
+      'it is a cheap directory probe and never parses a PDF. Prints the cabinets (id, name, page range, ' +
+      'sheet count), sheet-type counts and the caveats of each indexed drawing — no follow-up needed to learn the layout.',
     parameters: {},
     output: {
       schema: {
@@ -151,13 +172,46 @@ export function registerTools(
       render: (_args, value) => {
         const documents = Array.isArray(value.documents) ? value.documents : []
         if (documents.length === 0) {
-          return [{ type: 'text', text: 'No drawing in this workspace yet.' }] as ContentBlock[]
+          return [{ type: 'text', text: `${String(value.hint ?? 'No drawing in this workspace yet.')}` }] as ContentBlock[]
         }
-        const lines = documents.map((entry) => {
-          const row = entry as { file?: string; indexed?: boolean; pages?: number }
-          return `- ${row.file ?? '?'}${row.indexed === true ? ` (indexed, ${row.pages ?? '?'} pages)` : ' (not indexed)'}`
-        })
-        return [{ type: 'text', text: lines.join('\n') }] as ContentBlock[]
+        const blocks: string[] = []
+        for (const entry of documents) {
+          const row = entry as {
+            file?: string
+            indexed?: boolean
+            pages?: number | null
+            project?: string | null
+            vendor?: string | null
+            cabinets?: Array<{ id: number; name: string; sheets: number; pages?: number[] }>
+            templates?: Record<string, number>
+            quality?: Record<string, number>
+            caveats?: string[]
+          }
+          const head = `${row.file ?? '?'}${row.indexed === true ? '' : ' (NOT indexed yet — call drawing_open)'}`
+          blocks.push(head)
+          if (row.project !== null && row.project !== undefined) blocks.push(`  project: ${row.project}`)
+          if (row.pages !== null && row.pages !== undefined) blocks.push(`  pages: ${row.pages}`)
+          const cabinets = Array.isArray(row.cabinets) ? row.cabinets : []
+          for (const cabinet of cabinets) {
+            const range = Array.isArray(cabinet.pages) ? ` pages ${cabinet.pages[0]}–${cabinet.pages[1]},` : ''
+            blocks.push(`  cabinet ${cabinet.id}: ${cabinet.name} —${range} ${cabinet.sheets} sheets`)
+          }
+          const quality = row.quality ?? {}
+          if (typeof quality.xrefs === 'number') {
+            blocks.push(
+              `  index: ${quality.entities ?? '?'} elements, ${quality.xrefs} cross references ` +
+                `(${quality.xrefsResolved ?? '?'} resolved)`,
+            )
+          }
+          const templates = row.templates ?? {}
+          const types = Object.entries(templates)
+            .sort((left, right) => right[1] - left[1])
+            .map(([name, count]) => `${name} ${count}`)
+            .join(', ')
+          if (types !== '') blocks.push(`  sheet types: ${types}`)
+          for (const caveat of row.caveats ?? []) blocks.push(`  ! ${caveat}`)
+        }
+        return [{ type: 'text', text: blocks.join('\n') }] as ContentBlock[]
       },
     },
     async execute(_args, exec) {
@@ -174,6 +228,14 @@ export function registerTools(
           pages: entry.pages ?? null,
           project: entry.profile?.project?.name ?? null,
           vendor: entry.profile?.vendor ?? null,
+          cabinets: (entry.profile?.cabinets ?? []).map((cabinet) => ({
+            id: cabinet.id,
+            name: cabinet.name,
+            sheets: cabinet.sheets,
+            pages: cabinet.pages,
+          })),
+          templates: entry.profile?.templates ?? {},
+          quality: entry.profile?.quality ?? {},
           caveats: entry.profile?.caveats ?? [],
         })),
         hint:
@@ -220,17 +282,36 @@ export function registerTools(
       render: (_args, value) => {
         if (value.ok !== true) return [{ type: 'text', text: `drawing_open failed: ${value.error ?? 'unknown'}` }]
         const cabinets = Array.isArray(value.cabinets) ? value.cabinets : []
-        const names = cabinets
-          .map((cabinet) => (cabinet as { name?: string }).name ?? '?')
-          .join(', ')
-        return [
-          {
-            type: 'text',
-            text:
-              `${value.document}: ${value.pages ?? '?'} pages, cabinets ${names || '—'}` +
-              `${value.cached === true ? ' (cached)' : ` (parsed in ${value.millis ?? '?'} ms)`}`,
-          },
+        const project = value.project as { name?: string | null; number?: string | null; revision?: string | null } | undefined
+        const quality = value.quality as Record<string, number> | undefined
+        const templates = value.templates as Record<string, number> | undefined
+        const lines = [
+          `${value.document}: ${value.pages ?? '?'} pages${value.cached === true ? ' (cached index)' : ` (parsed in ${value.millis ?? '?'} ms)`}`,
         ]
+        if (project?.name !== undefined && project?.name !== null) lines.push(`project: ${project.name}`)
+        if (project?.number !== undefined && project?.number !== null) {
+          lines.push(`drawing no: ${project.number}${project.revision ? ` rev ${project.revision}` : ''}`)
+        }
+        for (const cabinet of cabinets) {
+          const row = cabinet as { id: number; name: string; sheets: number; pages?: number[] }
+          const range = Array.isArray(row.pages) ? ` pages ${row.pages[0]}–${row.pages[1]},` : ''
+          lines.push(`cabinet ${row.id}: ${row.name} —${range} ${row.sheets} sheets`)
+        }
+        if (templates !== undefined) {
+          lines.push(
+            `sheet types: ${Object.entries(templates)
+              .sort((left, right) => right[1] - left[1])
+              .map(([name, count]) => `${name} ${count}`)
+              .join(', ')}`,
+          )
+        }
+        if (quality !== undefined) {
+          lines.push(
+            `index: ${quality.entities ?? '?'} elements, ${quality.xrefs ?? '?'} cross references (${quality.xrefsResolved ?? '?'} resolved), ${quality.oddOrientationPages ?? 0} portrait sheets`,
+          )
+        }
+        for (const caveat of (value.caveats as string[] | undefined) ?? []) lines.push(`! ${caveat}`)
+        return [{ type: 'text', text: lines.join('\n') }]
       },
     },
     async execute(args, exec) {
@@ -264,8 +345,10 @@ export function registerTools(
     name: 'drawing_search',
     description:
       'Search an indexed drawing for an element and get the pages that draw it: device tags (220KA3), ' +
-      'wire numbers (210.VS4), cables (W015), PLC addresses (%I400.3), terminal strips (X3), ' +
-      'cross references, or free text from sheet titles. Returns locations with boxes, not page text.',
+      'wire numbers (210.VS4), cables (W015), PLC addresses (%Q430.2), terminal strips (X3), ' +
+      'cross references, or free text from sheet titles. Returns locations, not page text: each hit prints ' +
+      '`box x,y,w,h` in display points (page frame after /Rotate, origin top-left; most sheets are 842x595) — ' +
+      'that box goes straight into drawing_show.',
     parameters: {
       query: { type: 'string', required: true, description: 'Exact identifier, or a fragment for text search.' },
       document: { type: 'string', description: 'PDF file name (or unique prefix). Optional when one drawing exists.' },
@@ -405,9 +488,10 @@ export function registerTools(
   const sheet = defineTool({
     name: 'drawing_sheet',
     description:
-      'Read one sheet of an indexed drawing: its title block, the elements drawn on it (tags, wires, cables, ' +
-      'addresses, terminals) and its cross references already resolved to target sheets. ' +
-      'Use after drawing_search, or when the user names a sheet number.',
+      'Read one sheet of an indexed drawing: its title block, the page frame, every element drawn on it ' +
+      '(tag, wire, cable, address, terminal — each with its box), and its cross references already resolved ' +
+      'to target sheets. Use after drawing_search, or when the user names a sheet number. The boxes are in ' +
+      'display points, so a highlight never has to be computed from the PDF by hand.',
     parameters: {
       cabinet: { type: 'integer', description: 'Cabinet id (1-based). Required when the sheet number repeats across cabinets.' },
       sheet: { type: 'integer', description: 'Sheet number as printed in the title block.' },
@@ -422,11 +506,12 @@ export function registerTools(
           ok: { type: 'boolean' },
           document: { type: 'string' },
           cabinet: { type: 'integer' },
-          sheet: { type: 'integer' },
+          sheet: { type: 'json' },
           page: { type: 'integer' },
-          title: { type: 'string' },
+          title: { type: 'json' },
           template: { type: 'string' },
-          loc: { type: 'string' },
+          loc: { type: 'json' },
+          frame: { type: 'json' },
           elements: { type: 'array', items: { type: 'json' } },
           xrefs: { type: 'array', items: { type: 'json' } },
           incoming: { type: 'integer' },
@@ -438,14 +523,46 @@ export function registerTools(
         if (value.ok !== true) return [{ type: 'text', text: `drawing_sheet: ${value.error ?? 'failed'}` }]
         const elements = Array.isArray(value.elements) ? value.elements : []
         const xrefs = Array.isArray(value.xrefs) ? value.xrefs : []
+        const frame = value.frame as { width?: number; height?: number } | undefined
+        const head =
+          `${value.document} · cabinet ${value.cabinet} / sheet ${value.sheet ?? '—'} (p${value.page})\n` +
+          `${value.title ?? '—'} · ${value.template ?? '?'}${value.loc === undefined || value.loc === null ? '' : ` · loc ${value.loc}`}` +
+          `${frame === undefined ? '' : `\nframe ${frame.width ?? '?'}x${frame.height ?? '?'} display points (origin top-left, /Rotate applied)`}`
+        const elementLines = elements.slice(0, 60).map((element) => {
+          const row = element as { kind?: string; name?: string; x?: number; y?: number; w?: number; h?: number }
+          return `  ${row.kind ?? '?'} ${row.name ?? '?'}  box ${row.x ?? 0},${row.y ?? 0},${row.w ?? 0},${row.h ?? 0}`
+        })
+        const more = elements.length > elementLines.length ? [`  … ${elements.length - elementLines.length} more element(s)`] : []
+        const xrefLines = xrefs.slice(0, 40).map((xref) => {
+          const row = xref as {
+            raw?: string
+            target?: number
+            column?: number
+            side?: string | null
+            targetPage?: number | null
+            targetSheet?: number | null
+            targetCabinet?: number | null
+          }
+          const destination =
+            row.targetPage === null || row.targetPage === undefined
+              ? 'unresolved'
+              : `→ cabinet ${row.targetCabinet ?? '?'} / sheet ${row.targetSheet ?? '—'} (p${row.targetPage})`
+          return `  ${row.raw ?? '?'} ${destination}${row.column === undefined ? '' : ` col ${row.column}`}`
+        })
         return [
           {
             type: 'text',
-            text:
-              `${value.document} · cabinet ${value.cabinet} / sheet ${value.sheet ?? '—'} (p${value.page}) · ${value.title ?? '—'}\n` +
-              `${elements.length} element(s), ${xrefs.length} cross reference(s), ${value.incoming ?? 0} incoming.`,
+            text: [
+              head,
+              `elements (${elements.length}):`,
+              ...(elementLines.length === 0 ? ['  (none drawn as tagged elements)'] : elementLines),
+              ...more,
+              `cross references (${xrefs.length}):`,
+              ...(xrefLines.length === 0 ? ['  (none)'] : xrefLines),
+              `referenced from other sheets: ${value.incoming ?? 0}`,
+            ].join('\n'),
           },
-        ]
+        ] as ContentBlock[]
       },
     },
     async execute(args, exec) {
@@ -489,6 +606,7 @@ export function registerTools(
         column: xref.column,
         side: xref.side,
         targetPage: xref.targetPage,
+        targetCabinet: xref.targetCabinet,
         targetSheet: xref.targetPage === null ? null : (lookup.get(`page:${xref.targetPage}`)?.sheet ?? null),
       }))
       const incoming = index.xrefs.filter(
@@ -499,11 +617,14 @@ export function registerTools(
         ok: true,
         document: entry.file,
         cabinet: target.cabinet,
-        sheet: target.sheet ?? undefined,
+        // Never `undefined`: the harness validates the returned value as
+        // lossless JSON, and a cover sheet legitimately has no number/title.
+        sheet: target.sheet,
         page: target.page,
-        title: target.title ?? undefined,
+        title: target.title,
         template: target.template,
-        loc: target.loc ?? undefined,
+        loc: target.loc,
+        frame: target.frame ?? null,
         elements,
         xrefs: outgoing,
         incoming,
@@ -516,7 +637,8 @@ export function registerTools(
     description:
       'Show a sheet in the right-sidebar Drawing tab: it opens the tab, turns to the page and highlights the ' +
       'given element box. Use it once you know which page answers the question, so the user can verify it. ' +
-      'Returns one line of confirmation, never an image.',
+      'x/y/w/h are display points: copy the box from a drawing_search hit or a drawing_sheet element instead ' +
+      'of deriving coordinates from the PDF. Returns one line of confirmation, never an image.',
     parameters: {
       cabinet: { type: 'integer', description: 'Cabinet id (1-based).' },
       sheet: { type: 'integer', description: 'Sheet number as printed.' },
@@ -536,20 +658,25 @@ export function registerTools(
           ok: { type: 'boolean' },
           document: { type: 'string' },
           cabinet: { type: 'integer' },
-          sheet: { type: 'integer' },
+          sheet: { type: 'json' },
           page: { type: 'integer' },
-          title: { type: 'string' },
+          title: { type: 'json' },
           highlight: { type: 'json' },
           image: { type: 'json' },
           viewPath: { type: 'string' },
-          caption: { type: 'string' },
+          caption: { type: 'json' },
           error: { type: 'string' },
         },
       },
       render: (_args, value) => {
         if (value.ok !== true) return [{ type: 'text', text: `drawing_show: ${value.error ?? 'failed'}` }]
-        const head = `Shown: ${value.document} · cabinet ${value.cabinet} / sheet ${value.sheet ?? '—'} (p${value.page})${value.title === undefined ? '' : ` · ${value.title}`}`
-        return [{ type: 'text', text: value.viewPath === undefined ? head : `${head}\nview: ${value.viewPath}` }]
+        const head = `Shown: ${value.document} · cabinet ${value.cabinet} / sheet ${value.sheet ?? '—'} (p${value.page})${value.title === undefined || value.title === null ? '' : ` · ${value.title}`}`
+        const box = value.highlight as { x?: number; y?: number; w?: number; h?: number } | null | undefined
+        const mark =
+          box === null || box === undefined
+            ? 'no highlight box (page only)'
+            : `highlight box ${box.x ?? 0},${box.y ?? 0},${box.w ?? 0},${box.h ?? 0} (display points)`
+        return [{ type: 'text', text: `${head}\n${mark}${value.viewPath === undefined ? '' : `\nview: ${value.viewPath}`}` }]
       },
     },
     async execute(args, exec) {
@@ -616,11 +743,11 @@ export function registerTools(
         ok: true,
         document: entry.file,
         cabinet: target.cabinet,
-        sheet: target.sheet ?? undefined,
+        sheet: target.sheet,
         page: target.page,
-        title: target.title ?? undefined,
+        title: target.title,
         highlight,
-        caption: args.caption,
+        caption: args.caption ?? null,
         image,
         viewPath,
       }

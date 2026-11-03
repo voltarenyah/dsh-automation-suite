@@ -22,7 +22,7 @@ import { copyFile, mkdir, readFile, rename, writeFile } from 'node:fs/promises'
 import { basename, extname, join, relative, resolve } from 'node:path'
 
 /** Bumped whenever the index shape or the rules change; invalidates caches. */
-export const PARSER_VERSION = 1
+export const PARSER_VERSION = 2
 
 /** The artifact directory name for a PDF path. */
 export function documentDirName(pdfPath: string): string {
@@ -104,4 +104,5 @@ export async function ingest(drawingDir: string, sourcePath: string): Promise<st
   if (!existsSync(shadow)) await copyFile(absolute, shadow)
   return shadow
 }
+
 

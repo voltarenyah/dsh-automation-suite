@@ -50,6 +50,13 @@ export type Sheet = {
   loc: string | null
   prev: number | null
   next: number | null
+  /**
+   * Display size of the page in points, `/Rotate` applied. Stored because every
+   * coordinate the plugin reports is in this frame: a consumer that wants to
+   * place a box needs to know it (most sheets are 842x595, the 24 portrait
+   * connector sheets are 595x842).
+   */
+  frame: { width: number; height: number }
 }
 
 /** One cross reference, resolved against the sheet inventory when possible. */
@@ -222,6 +229,7 @@ export function buildIndex(document: string, sha256: string, pages: PageText[]):
       loc: block.loc,
       prev: block.prev,
       next: block.next,
+      frame: { width: page.geometry.width, height: page.geometry.height },
     })
   }
 
