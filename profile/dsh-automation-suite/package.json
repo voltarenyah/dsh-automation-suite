@@ -4,6 +4,7 @@
   "private": true,
   "description": "DSH profile blueprint for the dsh-automation-suite distribution: the shipped Web composition plus this suite's plugins.",
   "dependencies": {
+    "@voltarenyah/dsh-drawing": "workspace:^",
     "@voltarenyah/dsh-engineering-context": "workspace:^",
     "@voltarenyah/dsh-engineering-graph": "workspace:^",
     "@voltarenyah/dsh-plcsim-advanced": "workspace:^",
@@ -23,6 +24,7 @@
         "@voltarenyah/dsh-plcsim-advanced",
         "@voltarenyah/dsh-engineering-context",
         "@voltarenyah/dsh-engineering-graph",
+        "@voltarenyah/dsh-drawing",
         "dsh-tool-git",
         "dsh-ui-plc-source",
         "dsh-ui-tia-console",

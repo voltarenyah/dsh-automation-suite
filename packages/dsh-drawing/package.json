@@ -1,0 +1,65 @@
+{
+  "name": "@voltarenyah/dsh-drawing",
+  "version": "0.1.0",
+  "private": false,
+  "description": "DSH plugin: electrical drawings — ingest PDF drawing sets into a workspace index (sheets, cross-references, entities), retrieve pages and elements for the model, and show the located page in a right-sidebar 'Drawing' tab.",
+  "type": "module",
+  "license": "MIT",
+  "engines": {
+    "node": ">=22.19.0"
+  },
+  "main": "./lib/index.js",
+  "exports": {
+    ".": {
+      "default": "./lib/index.js"
+    },
+    "./client": {
+      "default": "./lib/client.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "lib",
+    "cordis.patch.yml",
+    "README.md"
+  ],
+  "dsh": {
+    "manifestVersion": 1,
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "inject": [
+        "@deepseek-ai/dsh-api-workspace-files",
+        "@deepseek-ai/dsh-client-ui-sidebar-right",
+        "@deepseek-ai/dsh-client-ui-session"
+      ]
+    }
+  },
+  "keywords": [
+    "deepseek-harness",
+    "dsh-plugin",
+    "dsh",
+    "cordis",
+    "electrical",
+    "drawing",
+    "pdf",
+    "see-electrical"
+  ],
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "typecheck": "node scripts/tsc.mjs -p tsconfig.json --noEmit",
+    "test": "node scripts/run-tests.mjs",
+    "check": "node scripts/run-tests.mjs"
+  },
+  "dependencies": {
+    "@hyzyla/pdfium": "^3.0.0",
+    "pngjs": "^7.0.0",
+    "unpdf": "^2.1.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "typescript": "^5.6.0"
+  }
+}

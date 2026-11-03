@@ -58,3 +58,11 @@ knowledge/**/*.db*
 # while investigating a workspace. Never a deliverable: disposable by definition,
 # so it stays out of git. Deliverable reports go to the workspace root instead.
 /temp/
+# Electrical drawings ingested by the drawing plugin (packages/dsh-drawing):
+#   drawing/<name>.pdf   the copy made at ingest — a large binary whose source of
+#                        truth is wherever the user keeps it
+#   drawing/<name>/      the derived index (sheets/xrefs/names/profile), rebuilt
+#                        from the PDF in about three seconds
+# Both are derived state; a project that wants a drawing under version control
+# can opt in with a negation rule for the specific file.
+/drawing/
