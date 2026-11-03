@@ -56,26 +56,43 @@ async function readTextFile(context, sessionId, path, signal) {
  * @param {any} ctx - client root context.
  */
 export function apply(ctx) {
+  const say = (step, detail) => {
+    try {
+      ctx.logger?.info?.(`${ID}: ${step}${detail === undefined ? '' : ` ${JSON.stringify(detail)}`}`)
+    } catch {
+      /* logging must never break the plugin */
+    }
+  }
+  say('apply:start', { effect: typeof ctx.effect, inject: typeof ctx.inject, slots: typeof ctx.slots })
   try {
     ensureStyle(ID)
+    say('style:ok')
   } catch (error) {
     ctx.logger?.warn?.(`${ID}: stylesheet injection failed: ${String(error)}`)
+    say('style:failed', String(error))
   }
 
   // Dictionaries first: registration is what lets the labels below translate.
-  ctx.effect(() => ctx.locale.register(NS, { zh, en }), `${ID}: dictionaries`)
+  try {
+    ctx.effect(() => ctx.locale.register(NS, { zh, en }), `${ID}: dictionaries`)
+    say('locale:ok', NS)
+  } catch (error) {
+    say('locale:failed', String(error))
+  }
   const t = ctx.locale.bind(NS)
 
   ctx.effect(
     () =>
       ctx.inject(['sidebarRightTabs'], (injected) => {
+        say('inject:sidebarRightTabs', { hasGet: typeof injected?.get })
         const tabs = typeof injected?.get === 'function' ? injected.get('sidebarRightTabs') : undefined
+        say('tabs', { type: typeof tabs, register: typeof tabs?.register })
         if (tabs === undefined || tabs === null) {
           ctx.logger?.warn?.(`${ID}: sidebarRightTabs is unavailable; the tab type is not registered`)
           return () => {}
         }
         try {
-          return tabs.register({
+          const disposer = tabs.register({
             id: ID,
             kind: KIND,
             // A thunk, not a string: the chip follows the active locale.
@@ -89,8 +106,11 @@ export function apply(ctx) {
               },
             ],
           })
+          say('tab:registered')
+          return disposer
         } catch (error) {
           ctx.logger?.warn?.(`${ID}: registering the tab type failed: ${String(error)}`)
+          say('tab:failed', String(error))
           return () => {}
         }
       }),

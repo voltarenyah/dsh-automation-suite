@@ -325,6 +325,7 @@ export function Panel(props) {
   const [deviceName, setDeviceName] = useState(null)
   const [slot, setSlot] = useState(null)
   const [ratio, setRatio] = useState(0.34)
+  const [pickerOpen, setPickerOpen] = useState(false)
   const rackRef = useRef(null)
 
   const lang = (typeof document !== 'undefined' && document.documentElement.lang) || 'zh'
@@ -500,7 +501,40 @@ export function Panel(props) {
     }
 
     if (device === null) return <div className="hwv-empty">{t('empty.search')}</div>
-    return <Sheet device={device} slot={slot} onPickSlot={setSlot} rackRef={rackRef} t={t} lang={i18nLang} />
+    return (
+      <>
+        {/* The rail disappears below 760px, so the station needs a picker here;
+            without it the first device of the file would be the only reachable one. */}
+        <div className="hwv-picker" style={{ padding: '12px 16px 0' }}>
+          <span className="lbl">{t('stat.devices')}</span>
+          <div className="hwv-select">
+            <button type="button" onClick={() => setPickerOpen((open) => !open)}>
+              <span>{device.name}</span>
+              <span className="hwv-caret">▼</span>
+            </button>
+            {pickerOpen ? (
+              <ul className="hwv-menu">
+                {devices.map((entry) => (
+                  <li key={entry.name}>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        pick(entry)
+                        setPickerOpen(false)
+                      }}
+                    >
+                      {entry.name}
+                      <span className="n">{countLabel(entry.kpis.modules, t('slots'), i18nLang)}</span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            ) : null}
+          </div>
+        </div>
+        <Sheet device={device} slot={slot} onPickSlot={setSlot} rackRef={rackRef} t={t} lang={i18nLang} />
+      </>
+    )
   }
 
   const stats = data === null ? [] : [
@@ -577,13 +611,10 @@ export function Panel(props) {
         </div>
       </div>
 
-      <div
-        className="hwv-main"
-        style={{
-          gridTemplateColumns:
-            view === 'devices' ? `minmax(200px, calc(${(ratio * 100).toFixed(1)}% - 4px)) 9px minmax(0,1fr)` : undefined,
-        }}
-      >
+      {/* The split ratio is a custom property, not an inline grid definition:
+          an inline column list would outrank the container query and squeeze the
+          sheet to the rail's width in a narrow pane. */}
+      <div className="hwv-main" style={{ '--hwv-split': `${(ratio * 100).toFixed(1)}%` }}>
         <aside className="hwv-rail" style={{ display: view === 'devices' ? undefined : 'none' }}>
           {ROLE_ORDER.map((role) => {
             const rows = devices.filter((entry) => entry.role === role)

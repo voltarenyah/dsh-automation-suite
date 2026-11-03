@@ -183,6 +183,15 @@ export const CSS = `
 }
 .hwv-back { display: none; place-items: center; min-width: 24px; }
 
+/* Below 760px the rail is hidden (single pane), so the station needs a picker of
+   its own — otherwise the first device is the only one reachable. */
+.hwv-picker { display: none; align-items: center; gap: 8px; padding-bottom: 10px; }
+.hwv-picker .lbl {
+  font-family: Bahnschrift, "Segoe UI", sans-serif; font-size: 9px;
+  letter-spacing: .15em; text-transform: uppercase; color: var(--ink-3);
+}
+@container hw (max-width: 759px) { .hwv-picker { display: flex; } }
+
 /* -------------------------------------------------------------------- sheet */
 .hwv-sheet { min-height: 0; overflow-y: auto; scrollbar-width: thin; }
 .hwv-sheet-in { padding: 14px 16px 28px; }
