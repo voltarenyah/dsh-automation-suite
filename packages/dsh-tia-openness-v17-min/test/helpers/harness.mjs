@@ -86,6 +86,7 @@ export const EXPECTED_TOOLS = [
   'hardware_inventory',
   'hardware_configuration',
   'hardware_parameters',
+  'hardware_view',
   'controller_status',
 ]
 

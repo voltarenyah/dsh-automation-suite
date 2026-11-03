@@ -83,6 +83,7 @@ namespace TiaOpennessV17Min.Controller
         public const string HardwareInventory = "HardwareInventory";
         public const string HardwareConfiguration = "HardwareConfiguration";
         public const string HardwareParameters = "HardwareParameters";
+        public const string HardwareView = "HardwareView";
 
         // Online surface (OperationsOnline.cs). Discovery is read-only; the
         // session operations are stateful and share one controller-held session.
@@ -100,7 +101,7 @@ namespace TiaOpennessV17Min.Controller
             PortalSettings,
             ListPlcObjects, CreatePlcObjects, DeletePlcObjects, WriteTags, SetBlockAttributes, ProtectBlocks,
             GenerateSource, WatchAndForceTables, SoftwareUnits,
-            ExportHardwareConfig, HardwareInventory, HardwareConfiguration, HardwareParameters,
+            ExportHardwareConfig, HardwareInventory, HardwareConfiguration, HardwareParameters, HardwareView,
             SafetyStatus, SetSafetySettings, SafetySignatures,
             AdoptOpenProject, OnlineTargets, OnlineConnect, OnlineStatus, OnlineDisconnect, Download,
             PlcChecksum, SyncScan,

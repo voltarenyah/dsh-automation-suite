@@ -160,6 +160,8 @@ namespace TiaOpennessV17Min.Controller
                     return HardwareConfiguration(parameters, log, changes, progress);
                 case OperationCatalog.HardwareParameters:
                     return HardwareParameters(parameters, log, changes, progress);
+                case OperationCatalog.HardwareView:
+                    return HardwareView(parameters, log, changes, progress);
 
                 // F-related Openness.
                 case OperationCatalog.SafetyStatus:

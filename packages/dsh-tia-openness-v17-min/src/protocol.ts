@@ -47,6 +47,7 @@ export const OPERATIONS = [
   'HardwareInventory',
   'HardwareConfiguration',
   'HardwareParameters',
+  'HardwareView',
   'SafetyStatus',
   'SetSafetySettings',
   'SafetySignatures',

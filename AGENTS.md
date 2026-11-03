@@ -165,6 +165,7 @@ pnpm -r typecheck
 | `dsh-ui-plc-source` | `node:test` | `node scripts/run-tests.mjs`（**先构建再跑**，同上；浏览器半侧是 `.jsx`，不进 `tsc`，靠这套纯模型单测 + 浏览器验收） |
 | `dsh-ui-tia-console` | `node:test` | `node scripts/run-tests.mjs`（**先构建再跑**；纯事件折叠 + 字典，浏览器半侧靠真实 `/tia-*` 流程验收） |
 | `dsh-ui-versions` | `node:test` | `node scripts/run-tests.mjs`（**先构建再跑**；纯视图解析/筛选/时间线 + 字典，浏览器半侧靠真实 `.dsh/versions-view.json` 验收） |
+| `dsh-ui-hardware` | `node:test` | `node scripts/run-tests.mjs`（**先构建再跑**；视图解析/筛选/机位面 + 字典，浏览器半侧靠真实 `.dsh/hardware-view.json` 验收） |
 
 ⚠️ `dsh-engineering-graph` 还有一个 **C# 引擎**（`engine/`，net8）。`pnpm -r build` 只构建 TypeScript ——
 它的产物 `engine/bin/` **进 git**（与接口插件族的 `controller/bin` 同理），所以 checkout 开箱可用；只有改了 C# 源码才需要 `pwsh -NoProfile -File engine/build.ps1` 重建（输出到 `engine/bin/`，其中 `engine/bin/fixtures/` 与 `engine/obj/` 被 ignore）。
@@ -208,7 +209,7 @@ profile 组合的端到端验收：
 dsh --profile dsh-automation-suite --dump-config
 ```
 
-预期结尾出现 **8 个插件行**（7 个本地插件 + 公共的 `dsh-opencode-go`），顺序与蓝图的
+预期结尾出现 **9 个插件行**（8 个本地插件 + 公共的 `dsh-opencode-go`），顺序与蓝图的
 `dsh.profile.bundles` 一致；其中 `engineering-context` 带 `disabled: true`（它整行搬进了 `leader` preset）：
 
 ```yaml
@@ -234,12 +235,15 @@ dsh --profile dsh-automation-suite --dump-config
 # == dsh-ui-versions
 - id: ui-versions
   name: dsh-ui-versions
+# == dsh-ui-hardware
+- id: ui-hardware
+  name: dsh-ui-hardware
 # == dsh-opencode-go
 - id: opencode-go
   name: dsh-opencode-go
 ```
 
-行数基线（**DSH 0.2.1-rc.2 实测，2026-11-02（加上 `dsh-ui-versions` 之后）**；换宿主版本、改蓝图或增减插件后必须重测）：
+行数基线（**DSH 0.2.1-rc.2 实测，2026-11-02（加上 `dsh-ui-versions` 之后）**；换宿主版本、改蓝图或增减插件后必须重测。⚠️ 2026-11-03 加入 `dsh-ui-hardware` 后**尚未重测**，下表三个数会各多出若干行）：
 
 | 命令 | 行数 |
 |---|---|

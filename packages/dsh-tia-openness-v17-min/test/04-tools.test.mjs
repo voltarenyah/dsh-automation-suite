@@ -281,7 +281,7 @@ test('controller_status never talks to the controller and hides the captured out
   const verboseValue = await byName['controller_status'].execute({ include_controller_output: true }, {})
   assert.deepEqual(verboseValue.data.stderrTail, ['a stderr line'])
 
-  assert.equal(context.definitions.length, 36)
+  assert.equal(context.definitions.length, 37)
 })
 
 test('only whitelisted operations ever reach the controller', async (t) => {

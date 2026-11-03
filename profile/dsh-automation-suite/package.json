@@ -13,7 +13,8 @@
     "dsh-tool-git": "workspace:^",
     "dsh-ui-plc-source": "workspace:^",
     "dsh-ui-tia-console": "workspace:^",
-    "dsh-ui-versions": "workspace:^"
+    "dsh-ui-versions": "workspace:^",
+    "dsh-ui-hardware": "workspace:^"
   },
   "dsh": {
     "profile": {
@@ -29,6 +30,7 @@
         "dsh-ui-plc-source",
         "dsh-ui-tia-console",
         "dsh-ui-versions",
+        "dsh-ui-hardware",
         "dsh-opencode-go"
       ]
     }

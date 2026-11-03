@@ -13,7 +13,8 @@
  * touches TIA Portal.
  */
 
-import { isAbsolute, join } from 'node:path'
+import { dirname, isAbsolute, join } from 'node:path'
+import { mkdir, writeFile } from 'node:fs/promises'
 
 import type { Context } from '@deepseek-ai/cordis'
 import { defineTool, type InferValue, type JsonValue, type ToolRunContext } from '@deepseek-ai/dsh-tools'
@@ -2765,6 +2766,78 @@ export function registerTools(ctx: Context, dependencies: ToolDependencies): str
         if (args.include !== undefined) params['include'] = args.include
         if (args.offset !== undefined) params['offset'] = args.offset
         return asJsonOutcome(await runOperation(dependencies, 'HardwareParameters', params, exec.signal))
+      },
+    }),
+  )
+  register(
+    defineTool({
+      name: 'hardware_view',
+      description:
+        'Build the merged hardware model that the Hardware sidebar panel renders and write it to ' +
+        '`<workspace>/.dsh/hardware-view.json`. One call, one file: devices with role and identity, their slots ' +
+        'with order numbers and address windows, subnet membership, cabling and signal counts, and the export ' +
+        'metadata. It is the join of hardware_inventory and hardware_configuration, parsed once so the two halves ' +
+        'cannot disagree — and it is what makes the panel cheap: the browser reads one JSON file and never touches ' +
+        'XML. ' +
+        'Read-only for the project and needs no open project (it parses the export file). Call it after ' +
+        'export_hardware_config, or whenever the project changes and the panel should follow. ' +
+        'The file is a snapshot of the export, not live state, and it carries no parameter values — those need an ' +
+        'open project, see hardware_parameters. ' +
+        'Fails with scope_unavailable (no workspace to write into), hardware_aml_not_found, invalid_aml or ' +
+        'view_write_failed.',
+      parameters: {
+        aml_path: {
+          type: 'string',
+          description: 'Absolute path of the AML export. Omit to use `<workspace>/hardware/globalHardware.aml`.',
+        },
+        output_path: {
+          type: 'string',
+          description: 'Where to write the view. Defaults to `<workspace>/.dsh/hardware-view.json`.',
+        },
+      },
+      output: {
+        schema: OUTCOME_SCHEMA,
+        render: (_args, value) => [{ type: 'text', text: renderValue(value, verbose) }],
+      },
+      async execute(args, exec) {
+        const workspace = sessionCwd(exec)
+        if (workspace === undefined && args.output_path === undefined) {
+          return asJsonOutcome(
+            localFailure(
+              'HardwareView',
+              'scope_unavailable',
+              'The hardware view is written into the workspace, but this session supplied no working directory. ' +
+                'Pass an absolute `output_path`.',
+            ),
+          )
+        }
+        const amlPath = args.aml_path ?? (workspace === undefined ? null : join(workspace, HARDWARE_DIR_NAME, HARDWARE_AML_NAME))
+        if (amlPath === null) {
+          return asJsonOutcome(
+            localFailure('HardwareView', 'scope_unavailable', 'No AML path: this session has no working directory.'),
+          )
+        }
+        const outputPath = args.output_path ?? join(workspace as string, '.dsh', 'hardware-view.json')
+
+        const outcome = await runOperation(dependencies, 'HardwareView', { aml_path: amlPath }, exec.signal)
+        if (!outcome.ok || outcome.data === null) return asJsonOutcome(outcome)
+
+        try {
+          await mkdir(dirname(outputPath), { recursive: true })
+          const body = `${JSON.stringify(outcome.data)}\n`
+          await writeFile(outputPath, body, 'utf8')
+          return asJsonOutcome({
+            ...outcome,
+            data: { ...outcome.data, view: outputPath, viewBytes: Buffer.byteLength(body) },
+            summary: `${outcome.summary} Wrote ${outputPath} (${(Buffer.byteLength(body) / 1024).toFixed(0)} KB).`,
+          })
+        } catch (error) {
+          return asJsonOutcome(
+            localFailure('HardwareView', 'view_write_failed', `The view could not be written to ${outputPath}: ${String(error)}`, {
+              outputPath,
+            }),
+          )
+        }
       },
     }),
   )
