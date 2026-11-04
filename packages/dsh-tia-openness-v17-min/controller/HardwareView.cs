@@ -130,6 +130,9 @@ namespace TiaOpennessV17Min.Controller
                 deviceRow.AddIfPresent("interface", InterfaceOf(nodes, name));
                 deviceRow.AddIfPresent("subnet", SubnetOf(links, name));
                 deviceRow.Add("status", "ok");
+                // The sheet shows the module count per station; the channel totals
+                // alone left it at zero.
+                deviceChannels["modules"] = moduleRows.Count;
                 deviceRow.Add("kpis", ToJson(deviceChannels));
                 deviceRow.Add("modules", moduleRows);
                 List<JsonObject> owned;

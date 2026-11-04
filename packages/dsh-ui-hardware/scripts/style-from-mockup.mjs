@@ -25,6 +25,10 @@ const tokens = `.hwv-root {
   --surface: var(--dsw-alias-fill-l1, rgba(128, 128, 128, 0.08));
   --surface-2: color-mix(in srgb, var(--dsw-alias-fill-l1, rgba(128, 128, 128, 0.08)) 60%, transparent);
   --surface-3: color-mix(in srgb, var(--dsw-alias-fill-l2, rgba(128, 128, 128, 0.14)) 70%, transparent);
+  /* A popup floats over content, so it needs an opaque fill. The host paints
+     floating surfaces with this token; mapping a translucency here made the
+     station picker unreadable. */
+  --popup: var(--dsw-alias-button-floating-fill, #ffffff);
   --rule: var(--dsw-alias-border-l1, rgba(128, 128, 128, 0.22));
   --rule-strong: var(--dsw-alias-border-l2, rgba(128, 128, 128, 0.34));
   --ink: var(--dsw-alias-label-primary, #1f2328);
