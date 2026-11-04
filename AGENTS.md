@@ -101,7 +101,8 @@ DSH 的解析机制有两条独立路径，**两者都靠包名**：
    工作目录/模型名本来就在 runtime context 里，persona 不必再插值一遍。
 
 验证政策是否真的进了提示词，不必猜：会话日志（`<DSH_HOME>/sessions/**/session.v4.jsonl.zstd`，
-多帧 zstd）里有真实的 `system/message` 事件，可直接读渲染后的全文。
+多帧 zstd；解压命令与"按 sessionID 找会话"见 §6「3095 测试会话在哪」）里有真实的 `system/message`
+事件，可直接读渲染后的全文。
 
 ---
 
@@ -337,7 +338,8 @@ Config 字段（如 `opennessDir`，或 git 插件的 `destructivePolicy`），�
 pwsh -NoProfile -File scripts\start-env.ps1
 ```
 
-- 默认 `DSH_HOME=%USERPROFILE%\dsh-suite-env`，**不碰日常 `~/.dsh`**；删掉该目录即完全回退。
+- 默认 `DSH_HOME=%USERPROFILE%\dsh-automation-suite-home`（**当前维护的那套**），**不碰日常 `~/.dsh`**；
+  删掉该目录即完全回退。旧的 `%USERPROFILE%\dsh-suite-env`（3092）已于 2026-11-04 删除，别再起它。
 - 默认 `-Mode link`：把**蓝图里指到 `packages/` 的每个本地插件**以 `link:` 链进 profile，验的是
   **当前工作树**（每次启动会先 `pnpm -r build`，所以改完 `src/` 直接重启即可）；
   `-Mode pack` 改为逐个 `pnpm pack` 出 tarball 再装，验**真实交付物**。
@@ -346,7 +348,7 @@ pwsh -NoProfile -File scripts\start-env.ps1
   所以新增插件只要建目录 + 把包名写进蓝图 bundles，本脚本无需改动。
 - 本机 `pnpm` 与 `dsh` **都不在 PATH 上**（`node` 在），脚本自己从 DSH 安装目录解析它们；
   可用 `$env:DSH_APP_ROOT` 覆盖安装目录。
-- 其它开关：`-DshHome`、`-Port`（默认 3092，`0` 为随机）、`-Restart`、`-NoOpen`、`-Reset`、`-SkipBuild`。
+- 其它开关：`-DshHome`、`-Port`（默认 3095，`0` 为随机）、`-Restart`、`-NoOpen`、`-Reset`、`-SkipBuild`。
 - 启动后 `dsh` 会打印带 token 的 URL；**不加 `--no-open` 时它会自动用默认浏览器打开**。
   token 每次启动都换、不落盘，裸地址会 401。
 - 首次进入要由使用者自己配模型：**设置 → Models 填 API key**（或首次运行弹窗
@@ -377,7 +379,7 @@ pwsh -NoProfile -File scripts\start-env.ps1 -Restart
 的用法，用来避免无意中重启掉正在用的实例：
 
 ```powershell
-Get-NetTCPConnection -State Listen -LocalPort 3092 -ErrorAction SilentlyContinue |
+Get-NetTCPConnection -State Listen -LocalPort 3095 -ErrorAction SilentlyContinue |
   ForEach-Object { Get-Process -Id $_.OwningProcess }
 ```
 
@@ -394,6 +396,53 @@ Get-NetTCPConnection -State Listen -LocalPort 3092 -ErrorAction SilentlyContinue
 在该实例的窗口里 `Ctrl+C`。窗口已丢时：`Stop-Process -Id <harness pid> -Force`，
 控制器会随后读到 stdin EOF 自行退出；用 `Get-Process TiaOpennessV17Min.Controller`
 确认已无残留。**不要**用会跟进链接的递归删除去清那个 home（见第 3 节）。
+
+### 3095 测试会话在哪、怎么按 sessionID 找
+
+使用者给的 sessionID 来自哪套 home，决定了它在磁盘上的位置。**测试（3095）的会话只在
+`%USERPROFILE%\dsh-automation-suite-home` 里** —— 不在日常 `~/.dsh`，也不在已删除的
+`%USERPROFILE%\dsh-suite-env`（2026-11-04 删）。在 `~/.dsh` 里搜不到就断言"没有这个会话"，
+是 2026-11-03 的真实误判，别再犯。
+
+- **会话目录按工作区 cwd 编码**：`<home>\sessions\--<cwd 编码>--\`，编码规则是去掉盘符的冒号、
+  把 `\` 与 `:` 都换成 `-`。测试工作区通常是 `C:\Users\Ansel\Documents\dsh-automation-suite\<项目>`，
+  所以目录形如 `--C-Users-Ansel-Documents-dsh-automation-suite-<项目>--`。
+- **一个会话一个子目录**：`<home>\sessions\<编码 cwd>\<sessionID>\session.v4.jsonl.zstd`，
+  `sessionID` 就是会话 id 全文（形如 `session-3a96b402-…`）。子 agent 的会话是**平级**的另一个目录
+  `<child-uuid>\session.v4.jsonl.zstd`（父会话的 `projcache` 里能在 `subagentCatalog` 看到它的 id）。
+- **只知道 sessionID 时先按 id 找**（不依赖 cwd 拼目录；只记得 uuid 后半段时用 `-Filter '*<uuid>*'`）：
+
+  ```powershell
+  $home_ = "$env:USERPROFILE\dsh-automation-suite-home"
+  Get-ChildItem "$home_\sessions" -Recurse -Directory -Filter '<sessionID>' |
+    Select-Object -ExpandProperty FullName
+  ```
+
+- **不需要解压就能核对是哪个会话**：`<home>\storages\session_projcache\sessions\<sessionID>.json`
+  里有 `record.identity.cwd`、`title`、`turnOutline`（每轮 prompt/response 的开头，已截断）和
+  `subagentCatalog`。它是**派生缓存**，老会话可能没有对应文件；没有就直接走下面的 jsonl 解压。路径：
+
+  ```powershell
+  $home_ = "$env:USERPROFILE\dsh-automation-suite-home"
+  Get-Item "$home_\storages\session_projcache\sessions\<sessionID>.json"
+  ```
+
+- **读全文要按多帧解压**：`session.v4.jsonl.zstd` 是**多帧** zstd，Node 的
+  `zlib.zstdDecompressSync` 只解第一帧（实测 96 KB 的文件只出 245 B，很容易误判成"空会话"）。
+  用本机 Python 的 `zstandard`（已装 0.25.0），**必须带 `-X utf8`** —— 否则 Windows 控制台默认
+  cp1252，打印中文事件会直接 `UnicodeEncodeError`：
+
+  ```powershell
+  $py = "C:\Users\Ansel\AppData\Local\Programs\Python\Python313\python.exe"
+  & $py -X utf8 -c "import sys,zstandard;d=zstandard.ZstdDecompressor();print(d.stream_reader(open(sys.argv[1],'rb'),read_across_frames=True).read().decode('utf-8'))" `
+    "<session.v4.jsonl.zstd 的绝对路径>"
+  ```
+
+  第一行是 `{"type":"session",...,"id":"session-…","cwd":"…"}`，拿它核对 id 与工作区；
+  后面每行一个事件（`system/message`、`turn/*`、`tool/*` …）。
+
+- 当前日常 GUI（3082）的会话在 `%USERPROFILE%\.dsh\sessions\**`；两套 home 互不可见，
+  报 sessionID 时先问一句"哪个 app 里测的"最省事。
 
 ---
 

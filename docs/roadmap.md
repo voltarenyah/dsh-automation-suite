@@ -15,7 +15,7 @@
 | 名称 | 对应层 | 状态 | 落地位置 |
 |---|---|---|---|
 | 工控软件接口插件族（软件版本：V17/V18…；能力不拆包，由 preset 装配，D31） | ① 接入层 | 🟡 已有 **V17** 成员 | `packages/dsh-tia-openness-v17-min` |
-| 工程上下文插件 | 作用域（横向） | 🟡 **部分实现**（4 个工具：`create_engineering_project` 把 TIA 打开的工程另存进 workspace + 重建源文件树 + 经【缝 B】逐设备触发图谱建库；`project_status` 只读；`project_sync` 只写树、`project_commit` 才写历史（D30 把同步与提交分成两步）。**已登记进蓝图**。P0 的注册表与 P1 的版本层已删除，见该包 D22、图谱这一步见 D25） | `packages/dsh-engineering-context` |
+| 工程上下文插件 | 作用域（横向） | 🟡 **部分实现**（4 个工具：`create_engineering_project` 把工程接进 workspace —— 按 `source_project` 的类型打开 `.ap17` 或取回 `.zap17`（解包到 `tia/`）—— 另存 + 重建源文件树 + 经【缝 B】逐设备触发图谱建库；`project_status` 只读；`project_sync` 只写树、`project_commit` 才写历史（D30 把同步与提交分成两步）。**已登记进蓝图**。P0 的注册表与 P1 的版本层已删除，见该包 D22、图谱这一步见 D25、归档取回见该包 D27） | `packages/dsh-engineering-context` |
 | 工程知识图谱插件 | ② 语义层 | 🟡 **部分实现**（引擎 + 协议 + 8 个工具 + `knowledgeGraph` 服务；**已登记进蓝图**，并被族 2 的工作流调用） | `packages/dsh-engineering-graph` |
 | Web GUI 视图插件（PLC Blocks / TIA 控制台 / Versions） | 跨层：只读 ② 的落盘产物与会话事件 | ✅ 三个都在跑（前两个已有，**Versions 2026-11-02 落地**；见 §1.1） | `packages/dsh-ui-plc-source`、`packages/dsh-ui-tia-console`、`packages/dsh-ui-versions` |
 | 主栏帮助页（Prompt Guide） | 跨层：只读发行版自身的能力说明 | ✅ 2026-11-03 落地（见 §1.2） | `packages/dsh-ui-prompt-guide` |

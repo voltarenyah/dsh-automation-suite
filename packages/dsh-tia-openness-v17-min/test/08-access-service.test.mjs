@@ -92,7 +92,17 @@ test('apply exposes engineeringAccess, and unloading takes it away', async () =>
   plugin.apply(harness.ctx, {})
   const service = harness.ctx.get(ENGINEERING_ACCESS_SERVICE)
   assert.notEqual(service, undefined, 'apply must register the service the engineering-context plugin looks up')
-  for (const method of ['status', 'openProject', 'closeProject', 'listObjects', 'exportObjects', 'readPlcChecksum', 'syncScan']) {
+  for (const method of [
+    'status',
+    'openProject',
+    'closeProject',
+    'listObjects',
+    'exportObjects',
+    'readPlcChecksum',
+    'syncScan',
+    'saveProjectAs',
+    'retrieveProject',
+  ]) {
     assert.equal(typeof service[method], 'function', `${method} must be callable`)
   }
   assert.equal(harness.ctx.engineeringAccess, service)
@@ -517,6 +527,72 @@ test('saveProjectAs sends the target directory and surfaces what TIA actually pr
   assert.deepEqual(calls[1].params, { save_as_dir: 'C:\\w\\tia\\Proj' })
 
   await assert.rejects(() => service.saveProjectAs(''), TypeError)
+})
+
+test('retrieveProject sends the retrieve action and surfaces where TIA unpacked the project', async () => {
+  const { service, calls } = serviceWith(() =>
+    frame('ArchiveProject', undefined, {
+      data: {
+        action: 'retrieve',
+        archivePath: 'C:\\archives\\Line1.zap17',
+        targetDir: 'C:\\w\\tia\\Proj',
+        upgraded: false,
+        projectOpenMode: 'primary',
+        projectName: 'Line1',
+        projectPath: 'C:\\w\\tia\\Proj\\Line1\\Line1.ap17',
+      },
+    }),
+  )
+
+  const result = await service.retrieveProject('C:\\archives\\Line1.zap17', 'C:\\w\\tia\\Proj')
+  assert.equal(calls[0].operation, 'ArchiveProject')
+  // Same wire parameters the archive_project tool sends for action=retrieve.
+  assert.deepEqual(calls[0].params, {
+    action: 'retrieve',
+    archive_path: 'C:\\archives\\Line1.zap17',
+    target_dir: 'C:\\w\\tia\\Proj',
+    upgrade: false,
+    project_open_mode: 'primary',
+    with_window: false,
+  })
+  assert.equal(result.ok, true)
+  assert.equal(result.data.archivePath, 'C:\\archives\\Line1.zap17')
+  assert.equal(result.data.targetDir, 'C:\\w\\tia\\Proj')
+  assert.equal(result.data.projectName, 'Line1')
+  assert.equal(result.data.projectPath, 'C:\\w\\tia\\Proj\\Line1\\Line1.ap17')
+
+  await service.retrieveProject('C:\\archives\\Old.zap15_1', 'C:\\w\\tia\\Proj', {
+    upgrade: true,
+    withWindow: true,
+    openMode: 'secondary',
+  })
+  assert.equal(calls[1].params.upgrade, true, 'upgrading an older archive must be opt-in on the wire')
+  assert.equal(calls[1].params.with_window, true)
+  assert.equal(calls[1].params.project_open_mode, 'secondary')
+
+  await assert.rejects(() => service.retrieveProject('', 'C:\\w\\tia\\Proj'), TypeError)
+  await assert.rejects(() => service.retrieveProject('C:\\a.zap17', ''), TypeError)
+})
+
+test('retrieveProject keeps a refusal as data and fills the requested paths when the controller omits them', async () => {
+  const refused = serviceWith(() =>
+    frame('ArchiveProject', undefined, {
+      ok: false,
+      data: null,
+      error: { code: 'archive_not_found', message: 'No archive exists at C:\\nope.zap17.' },
+    }),
+  )
+  const failure = await refused.service.retrieveProject('C:\\nope.zap17', 'C:\\w\\tia\\Proj')
+  assert.equal(failure.ok, false)
+  assert.equal(failure.error.code, 'archive_not_found')
+  assert.equal(failure.data, null)
+
+  const sparse = serviceWith((operation, params) => frame(operation, params, { data: { action: 'retrieve' } }))
+  const filled = await sparse.service.retrieveProject('C:\\a.zap17', 'C:\\w\\tia\\Proj')
+  assert.equal(filled.data.archivePath, 'C:\\a.zap17')
+  assert.equal(filled.data.targetDir, 'C:\\w\\tia\\Proj')
+  assert.equal(filled.data.projectName, null)
+  assert.equal(filled.data.projectPath, null)
 })
 
 test('readTiaSession never starts the controller and reads the open project when it can', async () => {

@@ -47,6 +47,17 @@ function sessionReport(overrides = {}) {
   }
 }
 
+/** What the TIA service reports when the controller runs but holds no project. */
+function nothingOpen() {
+  return sessionReport({
+    projectOpen: false,
+    projectName: null,
+    projectPath: null,
+    software: [],
+    reason: 'the controller is running but no project is open',
+  })
+}
+
 /** What the TIA service reports after a rebuild, in the layout it owns. */
 function rebuildReport(sourceRoot, overrides = {}) {
   const device = (name, software, counts) => ({
@@ -145,6 +156,30 @@ function fakeAccess(options = {}) {
         },
       }
     },
+    async retrieveProject(archivePath, targetDir, request = {}) {
+      calls.push({ operation: 'retrieveProject', archivePath, targetDir, options: request })
+      if (options.retrieveThrows !== undefined) throw options.retrieveThrows
+      if (options.retrieve !== undefined) return options.retrieve
+      // A real retrieval extracts the archive's own project folder below the
+      // target directory and opens it — unlike a save-as, the name is the
+      // archive's, not the directory's.
+      await mkdir(join(targetDir, 'FromArchive'), { recursive: true })
+      return {
+        ok: true,
+        error: null,
+        summary: 'Retrieved the archive.',
+        data: {
+          action: 'retrieve',
+          archivePath,
+          targetDir,
+          upgraded: request.upgrade === true,
+          projectName: 'FromArchive',
+          projectPath: join(targetDir, 'FromArchive', 'FromArchive.ap17'),
+          isModified: false,
+          plcSoftware: { count: 1, items: [{ device: 'S7-1500', software: 'PLC_1', blockCount: 3 }] },
+        },
+      }
+    },
     async rebuildSource(sourceRoot, request = {}) {
       calls.push({ operation: 'rebuildSource', sourceRoot, options: request })
       if (options.rebuildThrows !== undefined) throw options.rebuildThrows
@@ -209,6 +244,9 @@ function fakeAccess(options = {}) {
       }
     },
   }
+  // An interface plugin built before archive retrieval has no such method: the
+  // workflow has to report a coded absence instead of crashing on it.
+  if (options.withoutRetrieve === true) delete service.retrieveProject
   return { service, calls }
 }
 
@@ -361,6 +399,173 @@ test('a named project is opened, then saved and exported', async (t) => {
   assert.equal(calls[3].directory, join(root, 'tia', basename(root)))
   assert.equal(calls[4].sourceRoot, join(root, 'source'))
   assert.equal(outcome.data.project.name, 'PEI_SinoARP')
+})
+
+test('a .zap17 source is retrieved into tia/ and exported, with no save-as', async (t) => {
+  const root = await tempWorkspace(t)
+  const archive = join(root, 'Line1.zap17')
+  await makeFile(archive, 'archive bytes')
+  const { tool, calls } = setup({ session: nothingOpen() })
+
+  const outcome = assertEnvelope(
+    await executeTool(tool, { source_project: archive, dry_run: false }, fakeExec(root)),
+  )
+
+  assert.equal(outcome.ok, true)
+  // Retrieval is the "open" step for an archive: there is nothing to save
+  // afterwards, because TIA already wrote the project into the target directory.
+  assert.deepEqual(operations(calls), [
+    'readTiaSession',
+    'retrieveProject',
+    'readPlcChecksum',
+    'rebuildSource',
+    'syncScan',
+  ])
+  assert.equal(calls[1].archivePath, archive)
+  assert.equal(calls[1].targetDir, join(root, 'tia', basename(root)), 'the extraction target is the save-as directory')
+  assert.equal(calls[1].options.withWindow, true, 'a visible TIA window is the default')
+  assert.equal(calls[1].options.upgrade, false, 'a V17 archive is never upgraded implicitly')
+
+  assert.equal(outcome.data.project.name, 'FromArchive', 'retrieval keeps the archive\'s own project name')
+  assert.equal(outcome.data.project.retrieved, true)
+  assert.equal(outcome.data.project.archive, archive)
+  assert.equal(outcome.data.project.skipSave, true)
+  assert.match(outcome.summary, /^Retrieved FromArchive/u)
+  assert.match(outcome.details.join('\n'), /Retrieved by TIA: .*FromArchive\.ap17/u)
+
+  // The index is the identity next time: it records the archive, not a path.
+  const index = JSON.parse(await readFile(join(root, 'source', '_dsh-engineering-context.json'), 'utf8'))
+  assert.equal(index.project.name, 'FromArchive')
+  assert.equal(index.project.archive, archive)
+  assert.equal(index.project.path, null, 'a retrieval starts from no open project')
+  assert.match(index.project.savedAs, /FromArchive\.ap17$/u)
+})
+
+test('a plan recognises a .zap17 and retrieves nothing at all', async (t) => {
+  const root = await tempWorkspace(t)
+  const archive = join(root, 'Line1.zap17')
+  await makeFile(archive, 'archive bytes')
+  const { tool, calls } = setup({ session: nothingOpen() })
+
+  const outcome = assertEnvelope(await executeTool(tool, { source_project: archive }, fakeExec(root)))
+
+  assert.equal(outcome.ok, true)
+  assert.equal(outcome.dryRun, true)
+  assert.deepEqual(operations(calls), ['readTiaSession'], 'a plan must not retrieve (or open) anything')
+  assert.equal(outcome.data.plan.retrieve.targetDirectory, `tia/${basename(root)}`)
+  assert.equal(outcome.data.plan.retrieve.requestedArchive, archive)
+  assert.equal(outcome.data.plan.skipSave, true)
+  assert.match(outcome.details.join('\n'), /Retrieval: TIA will extract/u)
+  assert.match(renderedText(tool, { source_project: archive }, outcome), /would retrieve the archive/u)
+
+  await assert.rejects(stat(join(root, 'tia')), 'a plan must not create the extraction directory')
+})
+
+test('an archive is never retrieved while a project is open', async (t) => {
+  const root = await tempWorkspace(t)
+  const archive = join(root, 'Line1.zap17')
+  await makeFile(archive, 'archive bytes')
+  const { tool, calls } = setup() // a project is open elsewhere
+
+  const outcome = await executeTool(tool, { source_project: archive, dry_run: false }, fakeExec(root))
+
+  assert.equal(outcome.ok, false)
+  assert.equal(outcome.error.code, 'project_already_open')
+  assert.match(outcome.error.message, /nothing open/u)
+  assert.deepEqual(operations(calls), ['readTiaSession'], 'retrieval must not be attempted with a project open')
+})
+
+test('re-running with the archive that produced the open project refreshes instead of retrieving again', async (t) => {
+  const root = await tempWorkspace(t)
+  const archive = join(root, 'Line1.zap17')
+  await makeFile(archive, 'archive bytes')
+
+  const first = setup({ session: nothingOpen() })
+  const firstRun = assertEnvelope(await executeTool(first.tool, { source_project: archive, dry_run: false }, fakeExec(root)))
+  assert.equal(firstRun.ok, true)
+
+  // Next call: TIA still has the retrieved project open, and the same archive is
+  // named again. Its path is not the archive path, so only the index can tell
+  // that this is the same project.
+  const second = setup({
+    session: sessionReport({
+      projectName: 'FromArchive',
+      projectPath: join(root, 'tia', basename(root), 'FromArchive', 'FromArchive.ap17'),
+      software: [{ device: 'S7-1500', software: 'PLC_1', blockCount: 3 }],
+    }),
+  })
+  const outcome = await executeTool(second.tool, { source_project: archive, dry_run: false }, fakeExec(root))
+
+  assert.equal(outcome.ok, true)
+  assert.equal(operations(second.calls).includes('retrieveProject'), false, 'the open project is not retrieved again')
+  assert.equal(outcome.data.project.retrieved, true)
+  assert.equal(outcome.data.project.skipSave, true)
+})
+
+test('an older archive waits for allow_upgrade before TIA rewrites the extracted copy', async (t) => {
+  const root = await tempWorkspace(t)
+  const archive = join(root, 'Old.zap15_1')
+  await makeFile(archive, 'archive bytes')
+
+  const refused = setup({ session: nothingOpen() })
+  const outcome = await executeTool(refused.tool, { source_project: archive, dry_run: false }, fakeExec(root))
+
+  assert.equal(outcome.ok, false)
+  assert.equal(outcome.error.code, 'archive_upgrade_required')
+  assert.match(outcome.error.message, /archive itself is never modified/u)
+  assert.deepEqual(operations(refused.calls), ['readTiaSession'], 'no retrieval before the user agrees to the upgrade')
+
+  // A plan does not retrieve, but it can already say that consent will be needed.
+  const planned = setup({ session: nothingOpen() })
+  const plan = assertEnvelope(await executeTool(planned.tool, { source_project: archive }, fakeExec(root)))
+  assert.equal(plan.dryRun, true)
+  assert.ok(plan.warnings.some((warning) => /allow_upgrade=true/u.test(warning)))
+  assert.deepEqual(operations(planned.calls), ['readTiaSession'])
+
+  const agreed = setup({ session: nothingOpen() })
+  const upgraded = assertEnvelope(
+    await executeTool(agreed.tool, { source_project: archive, allow_upgrade: true, dry_run: false }, fakeExec(root)),
+  )
+  assert.equal(upgraded.ok, true)
+  assert.equal(agreed.calls[1].options.upgrade, true)
+})
+
+test('an archive TIA cannot find, and a retrieval TIA refuses, are coded failures', async (t) => {
+  const root = await tempWorkspace(t)
+  const archive = join(root, 'Nope.zap17')
+  await makeFile(archive, 'archive bytes')
+
+  const missing = setup({
+    session: nothingOpen(),
+    retrieve: { ok: false, error: { code: 'archive_not_found', message: 'No archive exists.' }, summary: '' },
+  })
+  const notFound = await executeTool(missing.tool, { source_project: archive, dry_run: false }, fakeExec(root))
+  assert.equal(notFound.ok, false)
+  assert.equal(notFound.error.code, 'source_project_not_found')
+
+  const refused = setup({
+    session: nothingOpen(),
+    retrieve: { ok: false, error: { code: 'retrieve_failed', message: 'the archive is damaged' }, summary: '' },
+  })
+  const failed = await executeTool(refused.tool, { source_project: archive, dry_run: false }, fakeExec(root))
+  assert.equal(failed.ok, false)
+  assert.equal(failed.error.code, 'retrieve_failed')
+  assert.match(failed.error.message, /the archive is damaged/u)
+  assert.match(failed.error.message, /allow_upgrade/u)
+})
+
+test('an interface plugin without retrieveProject refuses a .zap17 with a coded absence', async (t) => {
+  const root = await tempWorkspace(t)
+  const archive = join(root, 'Line1.zap17')
+  await makeFile(archive, 'archive bytes')
+  const { tool, calls } = setup({ session: nothingOpen(), withoutRetrieve: true })
+
+  const outcome = await executeTool(tool, { source_project: archive, dry_run: false }, fakeExec(root))
+
+  assert.equal(outcome.ok, false)
+  assert.equal(outcome.error.code, 'retrieve_unsupported')
+  assert.match(outcome.error.message, /retrieveProject/u)
+  assert.deepEqual(operations(calls), ['readTiaSession'])
 })
 
 test('a different project is never acted on silently', async (t) => {

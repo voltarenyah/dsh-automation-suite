@@ -313,6 +313,10 @@ interface EngineeringAccess {
   saveProjectAs(directory: string, opts?: { dryRun?: boolean; signal?: AbortSignal }): Promise<AccessCallResult>
     // 另存只认目录、工程名不可改（D20 实测）；回读 savedAs / requestedSaveAsDir / projectPath，
     // 调用方必须记录 TIA 实际落点，而不是它请求的路径
+  retrieveProject(archivePath: string, targetDir: string, opts?: { withWindow?: boolean; upgrade?: boolean; openMode?: 'primary' | 'secondary'; signal?: AbortSignal }): Promise<AccessCallResult>
+    // 归档取回（本插件 D27）：TIA 把 .zap* 解包进 targetDir 并打开其中的工程；
+    // **工程名取归档里的名字**（与另存"用目录名命名"不同），调用方记录回读的
+    // projectName / projectPath，不要自己拼路径；TIA 有工程开着时拒绝
   readTiaSession(opts?: { signal?: AbortSignal }): Promise<AccessTiaSession>
     // 报"控制器在不在 + TIA 开着哪个项目 + 设备清单"；**从不启动控制器**
     // （停着就回 running:false，一个操作都不发）；没项目时 project_not_open 是状态不是异常
@@ -553,8 +557,8 @@ TIA（权威，二进制，不进 git）
 
 | # | 工具 | 回答什么问题 | 写？ | 依赖 | 状态 |
 |---|---|---|---|---|---|
-| 1 | `create_engineering_project` | 把工程接进 workspace：没打开就**打开**（`source_project`），另存进 `tia/`，把**源文件树**重建到 `source/<device>/`，再逐设备把图谱库重建到 `knowledge/<device>/`；默认只给计划 | 是（TIA 写工程、接口插件写源文件、图谱插件写 `.db`、本插件维护 `.gitignore` 的三行） | ① + 缝 A + 缝 B | ✅ **已实现** |
-| 2 | `project_status` | 这个 workspace 现在是什么状态：哪个 PLC、账本/清单在不在、git 看到什么、锁有没有被占、下一步该做什么（`open_project` / `compile` / `sync` / `commit` / `git_init` / `clean`） | 否（`verify: true` 时只读 checksum） | 缝 A | ✅ **已实现**（S2） |
+| 1 | `create_engineering_project` | 把工程接进 workspace：没打开就按 `source_project` 的类型**打开 `.ap17`** 或**取回 `.zap17`**（解包进 `tia/`），另存进 `tia/`，把**源文件树**重建到 `source/<device>/`，再逐设备把图谱库重建到 `knowledge/<device>/`；默认只给计划 | 是（TIA 写工程、接口插件写源文件、图谱插件写 `.db`、本插件维护 `.gitignore` 的三行） | ① + 缝 A + 缝 B | ✅ **已实现**（D27 加取回） |
+| 2 | `project_status` | 这个 workspace 现在是什么状态：哪个 PLC、账本/清单在不在、git 看到什么、锁有没有被占、下一步该做什么（`create` / `open_project` / `compile` / `sync` / `commit` / `git_init` / `clean`） | 否（`verify: true` 时只读 checksum） | 缝 A | ✅ **已实现**（S2） |
 | 3 | `project_sync` | 让 SOURCE 与 TIA 对齐：checksum 快路径 → 需要时全量扫描、只导出差异到 STAGE → 提升进 SOURCE → 写账本/清单，**不提交**（返回 `pending.paths` + `pending.suggestedMessage`）；默认只给计划 | 是（SOURCE + `.dsh/local/stage`） | 缝 A（`syncScan`）+ git（只读状态） | ✅ **已实现**（S2 + D30） |
 | 4 | `project_commit` | 把上一次同步留下的脏树提交成历史：`message` 必填、默认只给计划、插件补 trailer、没有账本拒绝（`not_synced`） | 是（一次 git commit，限定 `source/<device>`） | git | ✅ **已实现**（D30） |
 | 5 | `eng_context` | 工程变更台账：`record` / `list` / `resolve` / `pending` | 状态 | 台账存储 | ⬜ P3 |

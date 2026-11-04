@@ -9,7 +9,7 @@
 
 import assert from 'node:assert/strict'
 import { execFile } from 'node:child_process'
-import { readdir, readFile, rm, stat } from 'node:fs/promises'
+import { mkdir, readdir, readFile, rm, stat } from 'node:fs/promises'
 import { join } from 'node:path'
 import { beforeEach, test } from 'node:test'
 import { promisify } from 'node:util'
@@ -273,6 +273,31 @@ test('status without the TIA service fails closed, naming the service', async (t
   assert.equal(outcome.ok, false)
   assert.equal(outcome.error.code, 'tia_access_unavailable')
   assert.match(outcome.error.message, /engineeringAccess/u)
+})
+
+test('status tells an empty workspace to create, not to open an archive first', async (t) => {
+  const root = await tempWorkspace(t)
+  const session = sessionReport({
+    projectOpen: false,
+    projectName: null,
+    projectPath: null,
+    software: [],
+    reason: 'no project is open',
+  })
+  const { service } = fakeAccess({ session })
+
+  const empty = assertEnvelope(await executeTool(tools(service).status, {}, fakeExec(root)))
+  assert.equal(empty.ok, true)
+  // An empty workspace has nothing to open: the next action is the one-time
+  // import (which retrieves a .zap17 itself), not `open_project`.
+  assert.equal(empty.data.nextAction, 'create')
+  assert.match(empty.details.join('\n'), /no source tree yet/u)
+
+  // A workspace that already owns a source tree but has TIA closed is different:
+  // the project exists, so the next action is to open it.
+  await mkdir(join(root, 'source', DEVICE), { recursive: true })
+  const withTree = assertEnvelope(await executeTool(tools(service).status, {}, fakeExec(root)))
+  assert.equal(withTree.data.nextAction, 'open_project')
 })
 
 test('status reports an open project, the missing ledger/manifest and the next action', async (t) => {

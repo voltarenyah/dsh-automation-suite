@@ -159,21 +159,21 @@ export const ENTRIES: PromptEntry[] = [
     order: 10,
     title: { zh: '把现有工程带进工作区', en: 'Bring an existing project into the workspace' },
     when: {
-      zh: '工作区还没有工程，而你在 TIA Portal 里已经有一个 .ap17。',
-      en: 'The workspace has no project yet and you already have an .ap17 in TIA Portal.',
+      zh: '工作区还没有工程，而你手里有一个 .ap17 工程文件或 .zap17 归档。',
+      en: 'The workspace has no project yet and you have an .ap17 project file or a .zap17 archive.',
     },
     prompt: {
-      zh: '把这个 TIA 工程建到当前工作区：<工程路径>.ap17',
-      en: 'Bring this TIA project into the current workspace: <path>.ap17',
+      zh: '把这个 TIA 工程建到当前工作区：<路径>.ap17 或 <路径>.zap17',
+      en: 'Bring this TIA project into the current workspace: <path>.ap17 or <path>.zap17',
     },
     outcome: {
-      zh: 'TIA 打开（或复用）该工程，另存到工作区 tia/ 下，把源树导出到 source/，再逐设备建知识图谱库。默认先给计划、什么都不写；确认后才执行。',
-      en: 'TIA opens (or reuses) the project, saves it under the workspace tia/, exports the source tree into source/, and builds a knowledge database per device. It plans first and writes nothing until you confirm.',
+      zh: 'TIA 打开（或复用）该 .ap17，或把 .zap17 取回并解包到工作区 tia/ 下；随后把源树导出到 source/，再逐设备建知识图谱库。默认先给计划、什么都不写；确认后才执行。',
+      en: 'TIA opens (or reuses) the .ap17, or retrieves a .zap17 archive into the workspace tia/; then exports the source tree into source/ and builds a knowledge database per device. It plans first and writes nothing until you confirm.',
     },
     tools: ['create_engineering_project'],
     note: {
-      zh: '另存会改变 TIA 当前持有的工程位置，所以是显式确认的一步；源目录里的文件不会被改。一个工作区只归一个工程。',
-      en: 'Save-as moves the project TIA holds, which is why it is an explicit confirmation; files in the source folder are not modified. One workspace belongs to one project.',
+      zh: '另存会改变 TIA 当前持有的工程位置，所以是显式确认的一步；取回只读归档、把解包副本写进工作区，归档本身不会被改。一个工作区只归一个工程。',
+      en: 'Save-as moves the project TIA holds, which is why it is an explicit confirmation; retrieval only reads the archive and writes the extracted copy into the workspace. One workspace belongs to one project.',
     },
   },
   {

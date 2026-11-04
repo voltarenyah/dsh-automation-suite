@@ -22,7 +22,7 @@ DeepSeek Harness 插件（**工程上下文插件**）：把一个 **TIA Portal 
 |---|---|
 | **workspace** | 宿主已有的 workspace 注册表（`@deepseek-ai/dsh-workspace`）。本插件**只读**它，不新建、不改动 |
 | **作用域根** | 会话的工作目录 `exec.agent.session.header.cwd` —— 宿主也用它判定会话归属 |
-| **工程本身（TIA）** | `<workspace>/tia/<workspace 名>/` —— TIA 另存进来的二进制工程（**权威，不进 git**）。目录用 workspace 名，是因为 TIA 会拿目录名给工程命名 |
+| **工程本身（TIA）** | `<workspace>/tia/<workspace 名>/` —— TIA 另存进来的二进制工程（**权威，不进 git**）。目录用 workspace 名，是因为 TIA 会拿目录名给工程命名。给的是 `.zap17` 时同一个目录是**解包目标**：TIA 把归档里的工程解到这里并打开，工程名保留归档里的名字 |
 | **源文件树（SOURCE）** | `<workspace>/source/<device>/{blocks,types,tag_tables}/` —— 可读、可 diff、进 git；旁边是 `_evidence.json`（权威账本）与 `_manifest.json`（派生清单） |
 | **本机临时状态** | `<workspace>/.dsh/local/` —— workspace 锁与 STAGE；同步成功或失败都清掉，**不进 git** |
 | **知识图谱库** | `<workspace>/knowledge/<device>/<device>_knowledge.db` —— 由工程知识图谱插件（`knowledgeGraph` 服务）从 SOURCE 重建，二进制、**不进 git** |
@@ -38,8 +38,8 @@ DeepSeek Harness 插件（**工程上下文插件**）：把一个 **TIA Portal 
 
 | 工具 | 干什么 | 写？ |
 |---|---|---|
-| `create_engineering_project` | 把 TIA **当前打开**的工程另存进 `<workspace>/tia/<workspace 名>/`，把源文件树重建到 `<workspace>/source/<device>/`，逐设备写 `_evidence.json` + `_manifest.json`（`adoptExisting`：校验已有文件并收编，不再导出第二遍），逐设备重建知识图谱库，最后写入基线提交；默认 `dry_run: true`（只给计划）。工程已经在 workspace 里时跳过另存，只刷新源文件树与图谱 | 是（TIA 写工程、接口插件写源文件、图谱插件写 `.db`、本插件维护 `.gitignore`/`.gitattributes`、必要时的 `git init` 与基线提交） |
-| `project_status` | 只读报告：哪个 PLC、账本/清单在不在、git 看到什么、锁有没有被占，并给出 `nextAction`（`open_project` / `compile` / `sync` / `commit` / `git_init` / `clean`）。`verify: true` 才读 checksum（约 3 s），否则明确标 **NOT CHECKED**；`data.wouldSync` / `data.syncReason` 只在真的读到 checksum 时下结论（`no-evidence` / `no-manifest` / `checksum-differs` / `in-sync`，读不到时 `null` / `unavailable`，未验证时 `null` / `not-checked`），成功读到的 checksum 同时写入 30 s 进程内缓存 | 否 |
+| `create_engineering_project` | 把工程带进工作区并重建源文件树：TIA 没开工程时按 `source_project` 的**文件类型**处理 —— `.ap17` 走打开，`.zap17`（或更早版本的 `.zap*`，需要 `allow_upgrade`）走 Openness 取回，解包进 `<workspace>/tia/<workspace 名>/` 并打开其中工程；随后把源文件树重建到 `<workspace>/source/<device>/`，逐设备写 `_evidence.json` + `_manifest.json`（`adoptExisting`：校验已有文件并收编，不再导出第二遍），逐设备重建知识图谱库，最后写入基线提交；默认 `dry_run: true`（只给计划）。工程已经在 workspace 里时跳过另存/取回，只刷新源文件树与图谱。取回保留归档里的工程名（另存则用目录名给工程命名），源归档不被修改 | 是（TIA 写工程、接口插件写源文件、图谱插件写 `.db`、本插件维护 `.gitignore`/`.gitattributes`、必要时的 `git init` 与基线提交） |
+| `project_status` | 只读报告：哪个 PLC、账本/清单在不在、git 看到什么、锁有没有被占，并给出 `nextAction`（`create` / `open_project` / `compile` / `sync` / `commit` / `git_init` / `clean`；空 workspace 报 `create`，有源树但 TIA 没开工程才是 `open_project`）。`verify: true` 才读 checksum（约 3 s），否则明确标 **NOT CHECKED**；`data.wouldSync` / `data.syncReason` 只在真的读到 checksum 时下结论（`no-evidence` / `no-manifest` / `checksum-differs` / `in-sync`，读不到时 `null` / `unavailable`，未验证时 `null` / `not-checked`），成功读到的 checksum 同时写入 30 s 进程内缓存 | 否 |
 | `project_sync` | 让 SOURCE 与 TIA 对齐：checksum 快路径 → 需要时慢路径扫描 → 只把差异提升进 SOURCE → 写账本/清单，**然后停下**：返回 `pending.paths` 与 `pending.suggestedMessage`，不提交。默认只读 checksum 并报告 `wouldSync`；计划命中上一个只读调用写入的缓存时不再读 TIA，并标 `checksumCached: true`；`dry_run: false` 永不用缓存做决定、总是重新扫描。`refresh_knowledge: true` 时导出后刷新图谱：块级小改动走增量，类型/标签表或超过 20 个文件走全量；图谱失败只警告。写盘必须 `dry_run: false` | 是（SOURCE + `.dsh/local/stage`；可选图谱刷新） |
 | `project_commit` | 提交 `source/<device>`。`message` 必填（空消息 → `invalid_commit_message`，超 8000 字符同样拒绝），默认只给计划——列出会提交的路径、账本事实与**最终信息全文**；`dry_run: false` 才写历史。插件在信息末尾追加 `Tia-Op` / `Tia-Checksum` / `Tia-State` trailer（信息里已有 trailer 块时不重复）。没有可读账本时以 `not_synced` 拒绝；工作树干净时返回"无需提交"而不是报错。提交路径限定在该 device 目录，别处的脏文件不会被带走 | 是（一次 git commit） |
 
@@ -79,8 +79,8 @@ DeepSeek Harness 插件（**工程上下文插件**）：把一个 **TIA Portal 
 `push` / `reset` / `--force`。
 
 **dry-run 规则**：三个写工具（create / sync / commit）都默认只给计划。`create_engineering_project`
-的另存是本插件唯一难以撤销的动作；`project_sync` 会写 SOURCE；`project_commit` 会写历史。
-要真做必须显式 `dry_run: false`。
+的打开/取回与另存是本插件唯一难以撤销的动作（计划连工程都不打开）；`project_sync` 会写 SOURCE；
+`project_commit` 会写历史。要真做必须显式 `dry_run: false`。
 
 **checksum 缓存（30 s，仅进程内）**：`project_status(verify: true)` 成功后把 checksum 写进一份
 按 **workspace + device + software** 键控的内存缓存；紧随其后的 `project_sync` 默认计划直接复用，
@@ -104,7 +104,7 @@ DeepSeek Harness 插件（**工程上下文插件**）：把一个 **TIA Portal 
 
 ```
 <workspace>/
-├── tia/<workspace 名>/           # TIA 另存的工程（二进制，整个 tia/ 写进 .gitignore）
+├── tia/<workspace 名>/           # TIA 另存/解包取回的工程（二进制，整个 tia/ 写进 .gitignore）
 ├── source/                       # 重建的源文件树（进 git）+ _dsh-engineering-context.json（索引）
 │   └── <device>/
 │       ├── blocks|types|tag_tables/…

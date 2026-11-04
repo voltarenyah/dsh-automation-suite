@@ -826,3 +826,32 @@ Openness 用户组 `isMember: true`）；`npm run matrix:build` + `matrix:check`
 **验证**：全仓 `pnpm -r build` + `pnpm -r test` 全过（TIA 101 / context 56 / graph 115 /
 ui 47+22 / git 33）；控制器自测 17/17；图谱引擎重建后 `--self-test` 通过。
 真机对 `SyncScan` 的 manifest 生成与标签表 only-changed 提升，留到 S2 接上上下文插件后一起验。
+
+---
+
+## D28. 服务面补上 `retrieveProject`：`.zap17` 归档取回也走"缝 A"
+
+**背景**：`archive_project` 工具早就能 `action=retrieve`（控制器 `OpennessHost.Project.cs` 的
+`RetrieveProjectFrom` → `Projects.Retrieve` / `RetrieveWithUpgrade`），但工程上下文插件建工作区时
+只会用 `.ap17`：`create_engineering_project` 的 `source_project` 只接受工程文件，遇到 `.zap17`
+没有入口，只能让用户先在 TIA 里手工取回。取回与打开是同一件事的两种来源（工程文件 vs 归档），
+所以它属于**服务面**，而不是再给模型加一个必须手工编排的工具。
+
+**决定**：
+
+1. **`engineeringAccess` 新增 `retrieveProject(archivePath, targetDir, opts)`**，映射
+   `ArchiveProject` + `action=retrieve`，参数与 `archive_project` 工具的 retrieve 分支**逐字一致**
+   （`archive_path` / `target_dir` / `upgrade` / `project_open_mode` / `with_window`），
+   复用 `runOperation`，与既有方法同一套失败约定（操作级失败回数据，传输级失败抛出）。
+2. **回读 TIA 的实际落点**：结果里显式带上 `archivePath` / `targetDir` / `projectName` /
+   `projectPath`。取回**保留归档里的工程名**（TIA 解包归档里的工程文件夹），与另存
+   "用目录名命名"不同，调用方必须记录返回值而不是自己拼路径。
+3. **`upgrade` 默认 false**：只有更早版本写的归档才需要 `RetrieveWithUpgrade`，而它会把解包出来的
+   副本改写成 V17（归档本身不动）。是否同意由调用方决定，服务不替它默认。
+4. **不新增模型工具**：模型面仍是 36 个工具；取回由上下文插件在建工程时按文件类型自动选择。
+   覆盖矩阵的 `TOOL_GAPS` 不需要新条目（该能力早已通过 `archive_project` 暴露）。
+
+**验证**：`test/08-access-service.test.mjs` 新增 2 项（参数逐字一致 + `upgrade`/窗口/打开模式透传、
+操作级拒绝保持为数据、控制器省略路径时回填请求值；方法清单覆盖 `retrieveProject`）。
+真机对 `.zap17` 的取回尚未验证 —— README §10 把"archive_project 的取回"列在待实测清单里，
+在工作流里默认采用它之前，需要先按 `docs/VERIFICATION-PLAN.md` §2.5 跑一次。

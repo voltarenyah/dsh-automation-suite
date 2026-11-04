@@ -67,6 +67,35 @@ export interface SaveResult {
   projectName: string | null
 }
 
+/**
+ * The outcome of retrieving (extracting) a `.zap*` archive.
+ *
+ * Unlike a save-as, retrieval keeps the project name the archive carries; the
+ * caller records the reported paths rather than building them.
+ */
+export interface RetrieveResult {
+  ok: boolean
+  error: AccessError | null
+  summary: string
+  /** The archive that was asked for. */
+  requestedArchive: string
+  /** The directory the archive was asked to be extracted into. */
+  requestedTargetDir: string
+  /** The archive path TIA reports. */
+  archivePath: string | null
+  /** The directory TIA reports the project was extracted into. */
+  targetDir: string | null
+  /** The project name TIA reports after retrieval. */
+  projectName: string | null
+  /** The project path TIA reports after retrieval. */
+  projectPath: string | null
+  /** True when TIA rewrote the extracted copy to V17 (`RetrieveWithUpgrade`). */
+  upgraded: boolean
+  isModified: boolean | null
+  /** The PLC software the retrieved project holds. */
+  software: TiaSoftware[]
+}
+
 /** One family's outcome inside one device's source tree. */
 export interface RebuildFamily {
   exported: number
@@ -244,6 +273,16 @@ export interface EngineeringAccessLike {
   ): Promise<unknown>
   saveProjectAs(directory: string, options?: { signal?: AbortSignal }): Promise<unknown>
   /**
+   * Optional: an interface plugin built before `.zap*` retrieval was wired into
+   * this service has no such method. A caller that needs it must check for the
+   * method and report a coded absence instead of assuming it exists.
+   */
+  retrieveProject?(
+    archivePath: string,
+    targetDir: string,
+    options?: { withWindow?: boolean; upgrade?: boolean; openMode?: 'primary' | 'secondary'; signal?: AbortSignal },
+  ): Promise<unknown>
+  /**
    * There is deliberately no `dryRun` here: this plugin never asks TIA to plan a
    * rebuild — its own plan-only mode is computed from `readTiaSession` — so it
    * must not start depending on an option the interface plugin is free to drop.
@@ -408,6 +447,37 @@ export function normalizeSave(raw: unknown, requested: string): SaveResult {
     savedAs: text(data['savedAs']) ?? null,
     projectPath: text(data['projectPath']) ?? null,
     projectName: text(data['projectName']) ?? null,
+  }
+}
+
+/**
+ * Normalize a `retrieveProject` return value.
+ *
+ * The archive path and the target directory are echoed back so a caller can
+ * state what it asked for even when TIA reports nothing; the project's own name
+ * and path are TIA's facts and stay null when it did not report them.
+ *
+ * @param raw - the service's return value.
+ * @param requestedArchive - the archive that was asked for.
+ * @param requestedTargetDir - the directory that was asked for.
+ */
+export function normalizeRetrieve(raw: unknown, requestedArchive: string, requestedTargetDir: string): RetrieveResult {
+  const source = record(raw) ?? {}
+  const data = record(source['data']) ?? {}
+  const isModified = data['isModified']
+  return {
+    ok: boolOr(source['ok'], false),
+    error: errorOf(source['error']),
+    summary: text(source['summary']) ?? '',
+    requestedArchive: text(data['archivePath']) ?? requestedArchive,
+    requestedTargetDir: text(data['targetDir']) ?? requestedTargetDir,
+    archivePath: text(data['archivePath']) ?? null,
+    targetDir: text(data['targetDir']) ?? null,
+    projectName: text(data['projectName']) ?? null,
+    projectPath: text(data['projectPath']) ?? null,
+    upgraded: data['upgraded'] === true,
+    isModified: typeof isModified === 'boolean' ? isModified : null,
+    software: softwareOf(record(data['plcSoftware'])?.['items']),
   }
 }
 

@@ -29,6 +29,14 @@ export type EngineeringErrorCode =
   | 'project_already_open'
   /** TIA refused to open the requested project. */
   | 'open_failed'
+  /** The named source file does not exist (today only checked for archives TIA cannot find). */
+  | 'source_project_not_found'
+  /** The archive is older than V17 and retrieving it needs `allow_upgrade` consent. */
+  | 'archive_upgrade_required'
+  /** The archive retrieval was attempted and TIA refused it. */
+  | 'retrieve_failed'
+  /** The interface plugin has no `retrieveProject`, so a `.zap*` source cannot be used. */
+  | 'retrieve_unsupported'
   /** The workspace's source tree already belongs to a different project. */
   | 'source_belongs_to_another_project'
   /** TIA reported no usable project name, so the workspace folder cannot be named. */

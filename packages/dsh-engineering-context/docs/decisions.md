@@ -787,3 +787,54 @@ status→计划共用一次 checksum 读、真实同步刷新缓存、缓存 TTL
 真实同步八种（首次提交与四个 trailer、unchanged 不提交、损坏账本重建、迁移后目录回退、
 删除 + 不可导出保留、非仓库拒绝、锁被占、扫描失败清 STAGE）。
 本包 **56 → 77 项全通过、无跳过**。
+
+---
+
+## D27. `source_project` 先认文件类型：`.ap17` 打开，`.zap17` 取回（解包目标 = 另存目录）
+
+**背景**（使用者 2026-11-04 的需求）：建工作区时用户手里常常只有一个 `.zap17` 归档，而不是解包后的
+`.ap17`。归档要用 Openness 的**取回**（`Projects.Retrieve`）打开，等价于一次解包，且必须指定解包目录。
+使用者定的规则：**不要再问用户解包路径**，默认就用本插件放 TIA 工程的目录（`tia/<workspace 名>/`）——
+与另存的目标目录同一条规则。最终效果是：模型只看 `source_project` 指向哪个文件，工作流自己决定
+调用"打开"还是"取回"，其余（源树、证据账本、图谱库、git 基线）完全不变。
+
+**决定**：
+
+1. **按扩展名识别，识别结果决定操作**：`.zap17` → 取回；其余任何路径仍按工程文件打开
+   （`.ap15` 这类旧工程照旧交给 TIA 判断并要 `allow_upgrade`，本插件不从扩展名替 TIA 下结论）。
+   `.zap` / `.zap14` / `.zap15_1` / `.zap16` 也是归档，但 V17 只能 `RetrieveWithUpgrade`，
+   所以**必须显式 `allow_upgrade: true`**，否则 `archive_upgrade_required`，一个字节都不写。
+2. **解包目标就是另存目录**：`tia/<workspace 名>/`，由同一个 `projectDirectoryPath` 推出，
+   参数里没有目标路径（PATH-RULES §3 第 1 条不变）。取回后**不再另存**：TIA 已经把工程写进这个目录，
+   再另存一次只会多搬几百 MB 并改掉工程名。
+3. **名字归 TIA**：取回保留归档里的工程名（另存才用目录名命名），所以结果是
+   `tia/<workspace 名>/<归档工程名>/<归档工程名>.ap17`。工具记录回读的 `projectName` /
+   `projectPath`，不自己拼路径；计划里明确说"取回的文件夹可能按工程名而不是 workspace 名命名"。
+4. **TIA 有工程开着时取回是不可能成功的**（控制器 `EnsureNoProject`）：直接 `project_already_open`
+   并给一条指令"先关掉当前工程"。**唯一例外**是索引里记着"这个工程就是从这个归档取回的"
+   （`project.archive` 命中调用方给的归档路径）——那是重跑，跳过取回、只刷新源树。
+5. **索引加第三个身份字段 `archive`**：`path` = 运行开始时打开的工程（取回时为空），
+   `savedAs` = TIA 实际写出的副本，`archive` = 取回来源。身份判定 = 三条路径任一命中；
+   旧索引没有 `archive` 时按 `null` 读（= 这份树来自 `.ap17`，不是 `.zap*`）。
+6. **错误码不动摇失败语义**：`source_project_not_found`（TIA 报 `archive_not_found`）、
+   `retrieve_failed`（TIA 拒绝取回）、`archive_upgrade_required`（缺升级同意）、
+   `retrieve_unsupported`（接口插件没有 `retrieveProject`，旧版的降级路径）。
+   全部是 `ok:false` + 结构化 `error`，与既有约定一致。
+7. **`retrieveProject` 是缝 A 的可选成员**：接口插件补了它（该包 D28），本插件按名取服务、
+   检查方法是否存在；缺失时**不抛 TypeError**，而是给出 `retrieve_unsupported` 让模型去升级插件
+   或改用 `.ap17`。这与 `readPlcChecksum` / `syncScan` 的处理方式一致。
+
+**为什么不用"先取回到临时目录再另存"来让工程名等于 workspace 名**：代价是把一个几百 MB 的工程
+复制两次、耗时翻倍，而且另存会把"归档里原本叫什么"这个事实抹掉。名字的作用是身份，身份已经由
+`archive` / `savedAs` 两条路径表达清楚；用户关心的是"这个工作区管的是哪个工程"，不是文件夹字面。
+
+**代价（必须承认）**：① 首次取回比打开 `.ap17` 慢（解包 + TIA 打开）；② `tia/<workspace 名>/`
+下可能同时存在"另存来的 `<workspace 名>/`"与"取回来的 `<归档名>/`"——后者只在用户主动换工程时出现，
+且会被 `source_belongs_to_another_project` 拦在写源树之前；③ 真机上 `.zap17` 的取回尚未实测
+（接口插件 README §10 把它列在待验证清单里），第一次真实运行要按 VERIFICATION-PLAN 记录结果。
+
+**验证**：`test/02-create-project.test.mjs` 新增 7 项 —— 取回后**不调用** `saveProjectAs`、
+解包目录 = `tia/<workspace 名>`、`with_window`/`upgrade` 透传、计划只读会话不取回、
+有工程开着时拒绝取回、索引记 `archive` 且重跑能识别、旧归档缺 `allow_upgrade` 时零写入、
+`archive_not_found` / `retrieve_failed` 的码、以及接口插件缺方法时的 `retrieve_unsupported`。
+本包 **128 → 135 项全通过、无跳过**。

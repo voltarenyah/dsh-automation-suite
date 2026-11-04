@@ -7,8 +7,9 @@
  *   workspace layout      the session working directory IS the engineering scope
  *                         (`exec.agent.session.header.cwd`); the host's workspace
  *                         registry is read, never modified, for the display identity
- *   create                `create_engineering_project` — save the project TIA has open
- *                         into `<workspace>/<tia dir>/<project>/` and rebuild its
+ *   create                `create_engineering_project` — bring the project in (open the
+ *                         named `.ap17`, or retrieve the named `.zap17` archive), save
+ *                         it into `<workspace>/<tia dir>/<project>/` and rebuild its
  *                         source tree into `<workspace>/<source dir>/<device>/`
  *   status                `project_status` — read the evidence ledger, manifest, git
  *                         status and lock; never writes

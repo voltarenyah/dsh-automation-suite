@@ -31,8 +31,9 @@
 <workspace>/                                  ← = session cwd，宿主 registry 认领
 │
 ├── tia/                                      ← **TIA 的工程**（二进制，整个目录不进 git）
-│   └── <workspace 名>/                        ← 另存的目标目录；TIA 会**用它**命名工程
-│       └── <workspace 名>.ap17                 ← 工程文件本身
+│   └── <workspace 名>/                        ← 另存/解包的目标目录；另存时 TIA 会**用它**命名工程
+│       ├── <workspace 名>.ap17                 ← 工程文件本身（`.ap17` 路径）
+│       └── <归档里的工程名>/                   ← `.zap17` 路径：取回把归档里的工程解到这里，名字保留
 │
 ├── source/                                   ← **重建的源文件树**（文本，进 git）
 │   ├── _dsh-engineering-context.json         ← 本插件的索引：这棵树属于哪个工程、上次导出产出了什么（§8）
@@ -59,6 +60,14 @@ A5 的 session ↔ workspace 绑定），而 **TIA 会用目标目录名给工�
 `tia/` 之后，工程就叫 `tia`，源工程名丢了。所以目录名取**workspace 的名字**（宿主 registry 的
 title，没有就用目录名）：它确定、在打开任何工程之前就知道，于是磁盘上的工程名也确定
 （`tia/<workspace 名>/<workspace 名>.ap17`），而不是由"我们恰好选了哪个目录"决定。
+
+**`.zap17` 走同一条路径规则、但不改名**：归档取回（Openness `Projects.Retrieve`）是一个解包动作，
+归档里的工程文件夹被原样解到 `tia/<workspace 名>/`，TIA **保留归档里的工程名** —— 与另存"用目录名
+命名"相反。所以同一个目录下可能出现 `tia/<workspace 名>/<归档工程名>/<归档工程名>.ap17`；工具记录
+**回读**的 `projectName` / `projectPath`，不自己拼目录，也不为了让名字等于 workspace 名再另存一次
+（那会多搬一次几百 MB 的工程，且把"归档里叫什么"这个事实丢掉）。两种情况都写进索引：`path` 是运行
+开始时打开的那个工程（取回时为空），`savedAs` 是 TIA 实际写出的副本，`archive` 是取回时的归档来源
+（`.ap17` 路径为 `null`）——身份比对按这三条路径里的任意一条命中即可。
 
 工程自身的名字仍然作为**身份**记在 `source/_dsh-engineering-context.json` 里，工具在写之前比对 ——
 发现是**另一个工程**就拒绝（`source_belongs_to_another_project`），而不是让两棵树的 device 目录
@@ -130,9 +139,11 @@ title，没有就用目录名）：它确定、在打开任何工程之前就知
 
 1. **一切写入路径由插件解析，模型不给目标路径。**
    `create_engineering_project` 的**目标**目录由 workspace 根 + 配置的目录名推出（§5），
-   参数里没有它们。唯一例外是 `source_project`：**要打开哪个工程**天生是一个磁盘路径
-   （接口插件的 `openProject` 只接受绝对路径），而它只在 TIA 没有打开工程时用得上；
-   不知道路径时**向用户要**，不要自己去磁盘上找 —— 这条写在工具描述里。
+   参数里没有它们。唯一例外是 `source_project`：**要打开/取回哪个工程**天生是一个磁盘路径
+   （接口插件的 `openProject` / `retrieveProject` 只接受绝对路径），而它只在 TIA 没有打开工程时
+   用得上；类型按扩展名识别（`.ap17` 打开，`.zap*` 取回，更早版本的归档还要 `allow_upgrade`），
+   取回的解包目标与另存目标同一个目录。不知道路径时**向用户要**，不要自己去磁盘上找 ——
+   这条写在工具描述里。
 
 2. **目标目录在写之前必须过 `realpath` 包含性校验。**
    候选路径不存在时，对**最近的已存在祖先**归一后再接回剩余段 —— 不允许"因为不存在所以跳过校验"。
@@ -183,6 +194,10 @@ assertInsideWith(config, workspaceRoot, candidate):
 | 控制器没在跑 | `tia_controller_not_running` | 状态，不是异常；**一个操作都不发** |
 | 控制器在跑但 TIA 没开工程 | `tia_project_not_open` | 同上 |
 | TIA 没报出可用的项目名 | `project_name_unavailable` | 不猜目录名 |
+| 取回时 TIA 找不到归档 | `source_project_not_found` | 只由归档路径触发；不动磁盘 |
+| 更早版本的归档没有 `allow_upgrade` | `archive_upgrade_required` | 解包副本会被改写成 V17；归档本身不动 |
+| 取回被 TIA 拒绝 | `retrieve_failed` | 操作级失败，工作区什么都没写 |
+| 接口插件没有 `retrieveProject` | `retrieve_unsupported` | 旧版接口插件的降级路径 |
 
 ---
 

@@ -400,6 +400,7 @@ commit `b5c7041`）**逐字**打进包里，并注册成模型可见的**一个*
 | `listObjects(query)` | `ListPlcObjects` | 把每族的 `{count,items,truncated}` 摊平成一行一对象；默认 `max_items=1000` |
 | `exportObjects(query)` | `ExportBlocks` | 与 `export_blocks` 同参；只写文件，不动工程 |
 | `saveProjectAs(dir)` | `SaveProject` + `save_as_dir` | 另存到指定目录；**回读** TIA 实际产出的路径（项目名改不了，只有目录是新的） |
+| `retrieveProject(archive, dir, opts)` | `ArchiveProject` + `action=retrieve` | 把 `.zap17`（或更早版本的归档）解包到指定目录并打开；**回读** `projectName` / `projectPath`（取回保留归档里的工程名，与另存不同）；`upgrade` 默认 false（更早归档要先得到调用方同意） |
 | `readTiaSession()` | `ProjectInfo` | 控制器在不在 + TIA 开着哪个项目 + 设备清单；**从不启动控制器** |
 | `rebuildSource(root, opts)` | `ProjectInfo` + 每 device 两次 `ExportBlocks` | **`<root>/<device>/{blocks,types,tag_tables}/…` 的布局由它定死**；被 TIA 拒绝的对象逐条回报 |
 | `readPlcChecksum()` | `PlcChecksum` | 读 `PlcChecksumProvider.Software`；空值以 `checksum_unavailable` 回报（未编译/改动后未再编译） |

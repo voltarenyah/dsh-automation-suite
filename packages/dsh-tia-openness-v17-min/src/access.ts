@@ -20,10 +20,12 @@
  *      block is missing) comes back as `ok: false` plus a coded `error`, while a
  *      transport failure (controller missing, timeout, protocol mismatch) is
  *      thrown — the caller decides how loudly to report that.
- *   3. **Reads are what it is for.** The only write it can perform on a project
- *      is `openProject` with `allowUpgrade` (off by default), exactly like the
- *      tool. Everything else writes files (an export) or closes a session, and
- *      `closeProject` deliberately makes the caller state `dryRun` explicitly.
+ *   3. **Reads are what it is for.** The only writes it can perform on a project
+ *      are `openProject` with `allowUpgrade` (off by default) and
+ *      `retrieveProject` (which extracts an archive into a directory and opens
+ *      it), exactly like the tools. Everything else writes files (an export) or
+ *      closes a session, and `closeProject` deliberately makes the caller state
+ *      `dryRun` explicitly.
  *
  * @module dsh-tia-openness-v17-min/access
  */
@@ -314,6 +316,21 @@ export interface ExportObjectsQuery {
 }
 
 export interface SaveProjectAsOptions {
+  signal?: AbortSignal
+}
+
+export interface RetrieveProjectOptions {
+  /** True to attach to a running TIA Portal or start a visible one. */
+  withWindow?: boolean
+  /**
+   * True to let TIA upgrade an archive written by an older version while it
+   * retrieves it (`Projects.RetrieveWithUpgrade`). Off by default: the extracted
+   * copy is rewritten to V17, which cannot be undone — the archive itself is
+   * never modified.
+   */
+  upgrade?: boolean
+  /** Open the retrieved project as the primary or a secondary project. */
+  openMode?: 'primary' | 'secondary'
   signal?: AbortSignal
 }
 
@@ -867,6 +884,59 @@ export class EngineeringAccess extends Service {
               ...data,
               savedAs: data['savedAs'] ?? null,
               requestedSaveAsDir: data['requestedSaveAsDir'] ?? directory,
+              projectPath: data['projectPath'] ?? null,
+            },
+    }
+  }
+
+  /**
+   * Retrieve (extract) a `.zap*` archive into a directory and open the project.
+   *
+   * This is the archive counterpart of {@link openProject}: TIA unpacks the
+   * archive's project folder below `targetDir` and opens it, so the project
+   * **keeps the name it had inside the archive** (unlike a save-as, which names
+   * the copy after the target directory). The controller refuses the call when a
+   * project is already open (`project_already_open`), and every path below
+   * `targetDir` is TIA's decision — the caller records `projectPath` /
+   * `projectName` from the result, never a path it built itself.
+   *
+   * @param archivePath - absolute path of the `.zap17` (or older) archive.
+   * @param targetDir - directory the archive is extracted into; created when missing.
+   * @param options - window, upgrade consent, open mode and cancellation.
+   */
+  async retrieveProject(
+    archivePath: string,
+    targetDir: string,
+    options: RetrieveProjectOptions = {},
+  ): Promise<AccessCallResult> {
+    if (typeof archivePath !== 'string' || archivePath.trim().length === 0) {
+      throw new TypeError('retrieveProject needs a non-empty archive path')
+    }
+    if (typeof targetDir !== 'string' || targetDir.trim().length === 0) {
+      throw new TypeError('retrieveProject needs a non-empty target directory')
+    }
+    const params: JsonRecord = {
+      action: 'retrieve',
+      archive_path: archivePath,
+      target_dir: targetDir,
+      upgrade: options.upgrade ?? false,
+      project_open_mode: options.openMode ?? 'primary',
+      with_window: options.withWindow ?? false,
+    }
+    const outcome = await runOperation(this.dependencies, 'ArchiveProject', params, options.signal)
+    const result = toCallResult(outcome)
+    const data = outcome.data
+    return {
+      ...result,
+      // Surfaced explicitly: these are the facts a caller must not guess at.
+      data:
+        data === null
+          ? null
+          : {
+              ...data,
+              archivePath: data['archivePath'] ?? archivePath,
+              targetDir: data['targetDir'] ?? targetDir,
+              projectName: data['projectName'] ?? null,
               projectPath: data['projectPath'] ?? null,
             },
     }

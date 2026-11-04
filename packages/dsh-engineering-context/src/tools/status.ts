@@ -22,6 +22,8 @@ import {
   evidencePathForDevice,
   localStateDirectoryPath,
   manifestPathForDevice,
+  sourceDirectoryPath,
+  sourceIndexPath,
   type PluginConfig,
 } from '../config.js'
 import type { DeviceInfo } from '../device.js'
@@ -247,8 +249,9 @@ export function statusTool(dependencies: ToolDependencies): ToolDefinition {
       'Report the state of the workspace engineering project without writing anything: which PLC the source tree belongs to, whether the ' +
       'evidence ledger and manifest are present, what git sees for the device directory, and whether a lock is held. ' +
       'Pass verify=true to also read the PLC checksum from TIA (a few seconds) and learn whether TIA still matches the ledger; ' +
-      'without it the checksum is reported as NOT CHECKED, never as clean. The result names the next action (open_project, compile, sync, ' +
-      'commit, clean) — this tool never performs it: `sync` belongs to project_sync, `commit` to project_commit.',
+      'without it the checksum is reported as NOT CHECKED, never as clean. The result names the next action (create, open_project, ' +
+      'compile, sync, commit, clean) — this tool never performs it: `create` is the one-time import (delegated to the auditor; it ' +
+      'accepts an .ap17 or a .zap17), `sync` belongs to project_sync, `commit` to project_commit.',
     parameters: PARAMETERS,
     async execute(args, exec) {
       let scope: ResolvedScope | null = null
@@ -377,8 +380,22 @@ export function statusTool(dependencies: ToolDependencies): ToolDefinition {
           syncReason = 'in-sync'
         }
 
+        // A workspace with no source tree at all has no project to open: the next
+        // action is `create`, the one-time import that also retrieves a `.zap17`
+        // archive inside the call. Reporting `open_project` here reads as "retrieve
+        // or open the archive first" and invites a two-step plan that the create
+        // call then refuses with `project_already_open` (a live session on
+        // 2026-11-04 did exactly that). A tree/index on disk but no open project
+        // keeps `open_project`: the workspace has a project, TIA just has it closed.
+        const workspaceEmpty =
+          device !== null
+            ? false
+            : tia['projectOpen'] !== true &&
+              (await describePath(root, sourceIndexPath(scope.config, root))).kind === 'missing' &&
+              (await describePath(root, sourceDirectoryPath(scope.config, root))).kind === 'missing'
+
         let nextAction: string
-        if (device === null) nextAction = 'open_project'
+        if (device === null) nextAction = workspaceEmpty ? 'create' : 'open_project'
         else if (checksumState === 'unavailable') nextAction = 'compile'
         else if (evidence === null) nextAction = 'sync'
         else if (drift === true) nextAction = 'sync'
@@ -389,7 +406,9 @@ export function statusTool(dependencies: ToolDependencies): ToolDefinition {
 
         const details = [
           device === null
-            ? `TIA: no project / no PLC (${String(tia['code'] ?? 'unknown')}).`
+            ? workspaceEmpty
+              ? `TIA: no project / no PLC (${String(tia['code'] ?? 'unknown')}); this workspace has no source tree yet.`
+              : `TIA: no project / no PLC (${String(tia['code'] ?? 'unknown')}).`
             : `PLC: ${device.device} / ${device.software} → ${device.directory}`,
           evidence === null
             ? `Evidence: ${evidenceFile === null ? 'no device' : `${evidenceFile} is missing`}.`

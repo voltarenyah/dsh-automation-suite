@@ -15,13 +15,14 @@
   所以新增插件只需在 packages\ 建目录并把包名写进蓝图的 bundles，本脚本无需改动。
 
 .PARAMETER DshHome
-  独立 DSH_HOME 的路径。默认 %USERPROFILE%\dsh-suite-env。
+  独立 DSH_HOME 的路径。默认 %USERPROFILE%\dsh-automation-suite-home（当前维护的那套，3082/3095 之外的
+  本地发行版环境；旧的 %USERPROFILE%\dsh-suite-env 已于 2026-11-04 删除）。
 
 .PARAMETER Profile
   profile 名，同时决定用哪个蓝图（profile\<名字>\）。默认 dsh-automation-suite。
 
 .PARAMETER Port
-  监听端口。默认 3092；传 0 让系统挑一个空闲端口。
+  监听端口。默认 3095（当前维护的环境）；传 0 让系统挑一个空闲端口。
 
 .PARAMETER Mode
   link（默认）：用 link: 把仓库里的插件包链进 profile —— 验的是**当前工作树**，
@@ -48,9 +49,9 @@
 #>
 [CmdletBinding()]
 param(
-  [string]$DshHome = "$env:USERPROFILE\dsh-suite-env",
+  [string]$DshHome = "$env:USERPROFILE\dsh-automation-suite-home",
   [string]$Profile = 'dsh-automation-suite',
-  [int]$Port = 3092,
+  [int]$Port = 3095,
   [ValidateSet('link', 'pack')][string]$Mode = 'link',
   [switch]$SkipBuild,
   [switch]$Reset,

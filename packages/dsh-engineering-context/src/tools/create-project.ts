@@ -32,6 +32,7 @@ import {
   normalizeChecksum,
   normalizeOpen,
   normalizeRebuild,
+  normalizeRetrieve,
   normalizeSave,
   normalizeSession,
   type EngineeringAccessLike,
@@ -39,6 +40,7 @@ import {
   type OpenResult,
   type RebuildResult,
   type RebuiltDevice,
+  type RetrieveResult,
   type SyncScanCounts,
   type TiaSoftware,
 } from '../access.js'
@@ -84,21 +86,23 @@ const CREATE_PARAMETERS = {
   source_project: {
     type: 'string',
     description:
-      'Absolute path of the .ap17 to open, for example C:\\Projects\\Line1\\Line1.ap17. Required only when TIA has no project ' +
-      'open — a project that is already open is used as it is. If you do not know the path, ask the user for it: never search ' +
-      'the disk for project files.',
+      'Absolute path of the project to bring in: either a .ap17 project file to open, for example ' +
+      'C:\\Projects\\Line1\\Line1.ap17, or a .zap17 archive to retrieve (TIA extracts it into the workspace and opens the project ' +
+      'it contains). Required only when TIA has no project open — a project that is already open is used as it is. If you do not ' +
+      'know the path, ask the user for it: never search the disk for project files.',
   },
   with_window: {
     type: 'boolean',
     description:
-      'Default TRUE when this tool opens a project: attach to a visible TIA Portal instance the operator can watch (and see the ' +
-      'export happen in). Pass false for a headless instance no operator can interact with.',
+      'Default TRUE when this tool opens or retrieves a project: attach to a visible TIA Portal instance the operator can watch (and ' +
+      'see the export happen in). Pass false for a headless instance no operator can interact with.',
   },
   allow_upgrade: {
     type: 'boolean',
     description:
-      'Default false. True lets TIA Portal upgrade and rewrite a project created by an older version — that MODIFIES the project ' +
-      'file irreversibly, so only pass it when the user explicitly asked for it.',
+      'Default false. True lets TIA Portal upgrade and rewrite a project created by an older version — either opening an older ' +
+      '.ap* project or retrieving an older .zap* archive — and that MODIFIES the copy on disk irreversibly (the source file or ' +
+      'archive itself is untouched), so only pass it when the user explicitly asked for it.',
   },
   dry_run: {
     type: 'boolean',
@@ -180,6 +184,83 @@ async function samePath(left: string, right: string | null): Promise<boolean> {
   }
 }
 
+/** What the caller named: a project file TIA opens, or an archive TIA retrieves. */
+interface SourceFile {
+  kind: 'project' | 'archive'
+  /** True for an archive written by a version older than V17 (`RetrieveWithUpgrade`). */
+  needsUpgrade: boolean
+  /** The spelling to report in messages. */
+  raw: string
+}
+
+/**
+ * Classify the source path by its extension.
+ *
+ * Only archives change the operation. Every other path is treated as a project
+ * file: opening is what TIA is asked to do with it, and its own refusal is a
+ * better answer than a guess made from an extension (`.ap15` is a real case that
+ * only TIA can judge, with `allow_upgrade`).
+ */
+function sourceFileOf(path: string): SourceFile {
+  const name = basename(path).toLowerCase()
+  if (name.endsWith('.zap17')) return { kind: 'archive', needsUpgrade: false, raw: path }
+  // .zap, .zap14, .zap15_1, .zap16 …: V17 can retrieve them only by upgrading.
+  if (/\.zap(?:\d+(?:_\d+)?)?$/u.test(name)) return { kind: 'archive', needsUpgrade: true, raw: path }
+  return { kind: 'project', needsUpgrade: false, raw: path }
+}
+
+/** Options one retrieval runs with. */
+interface RetrieveOptions {
+  withWindow: boolean
+  allowUpgrade: boolean
+  signal?: AbortSignal
+}
+
+/**
+ * Retrieve an archive into the workspace copy through the interface plugin.
+ *
+ * Two refusals belong to this plugin, not to TIA: an interface plugin without
+ * `retrieveProject` (an older build) and an older archive that TIA would have to
+ * upgrade without the user's consent. Everything else comes back from TIA as
+ * data and is mapped to a coded failure by the caller.
+ */
+async function retrieveIntoWorkspace(
+  service: EngineeringAccessLike,
+  source: SourceFile,
+  targetDirectory: string,
+  options: RetrieveOptions,
+): Promise<RetrieveResult> {
+  if (typeof service.retrieveProject !== 'function') {
+    throw new EngineeringContextError(
+      'retrieve_unsupported',
+      `The TIA interface plugin in this composition has no retrieveProject method, so the archive ${source.raw} cannot be ` +
+        'retrieved. Install a build of @voltarenyah/dsh-tia-openness-v17-min that provides it, or pass the path of an .ap17 ' +
+        'project instead.',
+      { method: 'engineeringAccess.retrieveProject' },
+    )
+  }
+  if (source.needsUpgrade && !options.allowUpgrade) {
+    throw new EngineeringContextError(
+      'archive_upgrade_required',
+      `${source.raw} was archived by an older TIA version, so retrieving it means TIA rewrites the extracted copy to V17. The ` +
+        'archive itself is never modified, but the copy cannot go back to the older version. Ask the user whether that is all ' +
+        'right, then pass allow_upgrade=true.',
+      { archive: source.raw },
+    )
+  }
+  return normalizeRetrieve(
+    await callService('retrieveProject', () =>
+      service.retrieveProject!(source.raw, targetDirectory, {
+        withWindow: options.withWindow,
+        upgrade: source.needsUpgrade && options.allowUpgrade,
+        signal: options.signal,
+      }),
+    ),
+    source.raw,
+    targetDirectory,
+  )
+}
+
 /** What the tool recorded about the source tree of this workspace. */
 interface SourceIndex {
   /** The project name it belongs to, or null when the file is there but unusable. */
@@ -188,6 +269,8 @@ interface SourceIndex {
   savedAs: string | null
   /** The project that was open when the run recorded it, or null. */
   path: string | null
+  /** The archive the project was retrieved from, or null when it was opened from a project file. */
+  archive: string | null
 }
 
 /**
@@ -203,18 +286,23 @@ async function readSourceIndex(file: string): Promise<SourceIndex | null> {
     raw = await readFile(file, 'utf8')
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === 'ENOENT') return null
-    return { project: null, savedAs: null, path: null }
+    return { project: null, savedAs: null, path: null, archive: null }
   }
   try {
-    const parsed = JSON.parse(raw) as { project?: { name?: unknown; savedAs?: unknown; path?: unknown } }
+    const parsed = JSON.parse(raw) as {
+      project?: { name?: unknown; savedAs?: unknown; path?: unknown; archive?: unknown }
+    }
     const name = parsed.project?.name
     return {
       project: typeof name === 'string' && name.length > 0 ? name : null,
       savedAs: typeof parsed.project?.savedAs === 'string' ? parsed.project.savedAs : null,
       path: typeof parsed.project?.path === 'string' ? parsed.project.path : null,
+      // Absent in an index written before archives were supported: that tree came
+      // from an .ap17, never from a .zap*, which is exactly what null means.
+      archive: typeof parsed.project?.archive === 'string' ? parsed.project.archive : null,
     }
   } catch {
-    return { project: null, savedAs: null, path: null }
+    return { project: null, savedAs: null, path: null, archive: null }
   }
 }
 
@@ -234,10 +322,32 @@ async function isRecordedProject(recorded: SourceIndex, projectPath: string | nu
   return false
 }
 
+/**
+ * Whether the archive in play is the one the index says produced this tree.
+ *
+ * A retrieved project keeps the archive's own name and stays inside the
+ * workspace copy, so passing the same archive again while TIA has that project
+ * open is a re-run, not a second project. Without this the call would refuse
+ * with `project_already_open` — the archive was never opened by path, so no path
+ * comparison could recognise it.
+ */
+async function isRecordedArchive(recorded: SourceIndex | null, archivePath: string | null): Promise<boolean> {
+  if (recorded === null || archivePath === null || recorded.archive === null) return false
+  return samePath(recorded.archive, archivePath)
+}
+
 /** The index document, as it is written to disk. */
 interface SourceIndexDocument {
   schemaVersion: number
-  project: { name: string; path: string | null; savedAs: string | null; directory: string; sourceRoot: string }
+  project: {
+    name: string
+    path: string | null
+    savedAs: string | null
+    /** The archive this project was retrieved from, or null when it was opened from a project file. */
+    archive: string | null
+    directory: string
+    sourceRoot: string
+  }
   exportedAt: string
   devices: Array<{
     device: string
@@ -936,17 +1046,24 @@ export function createProjectTool(dependencies: ToolDependencies): ToolDefinitio
   return defineOutcomeTool({
     name: CREATE_PROJECT_TOOL,
     description:
-      'Bring an engineering project into this workspace: open it in TIA Portal when it is not open yet, save it into the workspace ' +
-      'copy, and rebuild its source tree, so the conversation has a project on disk to talk about. Name the project with ' +
-      'source_project (the absolute .ap17 path) when TIA has none open — if you do not know the path, ASK THE USER; never search the ' +
-      'disk for project files and never guess which project was meant. The target directories are derived from the workspace root ' +
-      '(the session working directory) and the configured directory names, so this tool takes no target path. Defaults to a plan ' +
-      '(`dry_run: true`), which opens nothing at all: the save-as moves the project TIA has open, so pass `dry_run: false` ' +
-      'deliberately. **This deployment manages one TIA instance with one project**: if TIA already has a project open that is not the one the call named, the call stops immediately with one instruction — have the user close it (the interface plugin\'s close_project also works) and call again — and it never investigates process lists, lock files or the filesystem, and never works around it. **It acts on whatever project TIA has open when the call does not name one** — so if the user asked for a ' +
-      'specific project, either pass its source_project or confirm with them which project is open; do not assume the open one is ' +
-      'the one they meant. One workspace manages one project: if it already holds another project\'s source tree this refuses ' +
-      'instead of mixing them. It never deletes anything and never modifies the user\'s original project files; if the project is ' +
-      'already inside the workspace it skips the save-as and only refreshes the source tree. After the tree is written it also ' +
+      'Bring an engineering project into this workspace: when TIA has nothing open, open the .ap17 named by source_project — or, when ' +
+      'the named file is a .zap17 archive, retrieve it: TIA extracts the project into the workspace copy and opens it (the archive ' +
+      'itself is never modified) — then save into the workspace copy and rebuild the source tree, so the conversation has a project ' +
+      'on disk to talk about. The file type is recognised from the path, so pass whichever the user has: the absolute .ap17 or ' +
+      '.zap17 path. If you do not know the path, ASK THE USER; never search the disk for project files and never guess which project ' +
+      'was meant. The target directories are derived from the workspace root (the session working directory) and the configured ' +
+      'directory names, so this tool takes no target path. Defaults to a plan (`dry_run: true`), which opens and retrieves nothing ' +
+      'at all: opening is a real action and the save-as moves the project TIA has open, so pass `dry_run: false` deliberately. ' +
+      '**This deployment manages one TIA instance with one project**: if TIA already has a project open that is not the one the call ' +
+      'named, the call stops immediately with one instruction — have the user close it (the interface plugin\'s close_project also ' +
+      'works) and call again — and it never investigates process lists, lock files or the filesystem, and never works around it. ' +
+      'A .zap17 is retrieved only while TIA has nothing open (retrieval is what opens it); the one exception is a re-run with the ' +
+      'same archive this workspace already imported, which refreshes the source tree instead. **It acts on whatever project TIA has ' +
+      'open when the call does not name one** — so if the user asked for a specific project, either pass its source_project or ' +
+      'confirm with them which project is open; do not assume the open one is the one they meant. One workspace manages one ' +
+      'project: if it already holds another project\'s source tree this refuses instead of mixing them. It never deletes anything ' +
+      'and never modifies the user\'s original project files or archives; if the project is already inside the workspace it skips ' +
+      'the save-as and only refreshes the source tree. After the tree is written it also ' +
       'rebuilds every device\'s knowledge database through the engineering-graph plugin (one FULL rebuild per device, into ' +
       'knowledge/<device>/<device>_knowledge.db) — that is the only way the graph is ever refreshed, it adds real time on a large ' +
       'project, and it never fails this call: when that plugin or its engine is absent (or the engine cannot be reached) the result ' +
@@ -993,40 +1110,82 @@ export function createProjectTool(dependencies: ToolDependencies): ToolDefinitio
           await callService('readTiaSession', () => service.readTiaSession({ signal: exec.signal })),
         )
         const requested = trimmed(args.source_project)
+        // The named file decides the operation: a `.ap17` is opened, a `.zap17`
+        // (or an older archive) is retrieved — TIA unpacks it and opens the
+        // project inside. Every other path is treated as a project file, because
+        // opening is what TIA is asked to do with it and its own refusal is the
+        // honest answer.
+        const source = requested === undefined ? null : sourceFileOf(requested)
+
+        // TIA names a project after the directory it is saved into (measured on a
+        // live project), so the target directory carries the WORKSPACE's name: the
+        // saved project's name is then stable, predictable, and known before
+        // anything is opened — `tia/<workspace name>/<workspace name>.ap17`.
+        // Retrieval uses the very same directory as its extraction target; TIA
+        // then keeps the project name the archive carries (reported back below).
+        const workspaceName = folderName((scope.workspace.title ?? '').trim() || basename(root))
+
+        const projectDir = await canonicalizeLoose(projectDirectoryPath(config, root, workspaceName))
+        const sourceRoot = await canonicalizeLoose(sourceDirectoryPath(config, root))
+        assertInsideWith(config, root, projectDir, 'The project directory')
+        assertInsideWith(config, root, sourceRoot, 'The source tree root')
+
+        // One workspace manages one project: the index the tool writes beside the
+        // tree is what makes that checkable instead of aspirational. It is read
+        // before anything is opened or retrieved, because it also remembers which
+        // archive produced a project TIA may still have open.
+        const indexFile = sourceIndexPath(config, root)
+        const recorded = await readSourceIndex(indexFile)
 
         // Which project are we about to act on? Either TIA already has one open, or
-        // the caller named one to open. A different project must never be acted on
-        // silently, and — because this deployment manages ONE TIA instance with ONE
-        // project — a project someone else opened is a **stop-the-call** condition:
-        // the answer is "have the user close it", not an investigation.
+        // the caller named a source file to open/retrieve. A different project must
+        // never be acted on silently, and — because this deployment manages ONE TIA
+        // instance with ONE project — a project someone else opened is a
+        // **stop-the-call** condition: the answer is "have the user close it", not
+        // an investigation.
         let opened: OpenResult | null = null
+        let retrieved: RetrieveResult | null = null
+        // True when the open project is the very one an earlier call retrieved from
+        // this archive: a re-run then refreshes the source tree instead of reading
+        // the archive again (which TIA refuses while a project is open).
+        let reuseRetrieved = false
+
         if (!session.projectOpen) {
-          if (requested === undefined) {
+          if (requested === undefined || source === null) {
             throw new EngineeringContextError(
               'source_project_required',
               (session.running
                 ? 'TIA Portal has no project open. '
                 : `No TIA Openness controller is running, so no project is open. ${session.reason ?? ''}`) +
-                'Pass source_project (the absolute .ap17 path) and this tool will open it — ask the user for the path rather than ' +
-                'searching the disk for project files.',
+                'Pass source_project — the absolute path of a .ap17 project to open, or of a .zap17 archive to retrieve — and ' +
+                'this tool will bring it in; ask the user for the path rather than searching the disk for project files.',
               { reason: session.reason },
             )
           }
-          // A plan opens nothing: opening is a real action, and it is exactly what
-          // provokes the interface plugin's own refusal below. Nothing in a plan
-          // needs the open — the target directories no longer depend on the
-          // project's name (it carries the workspace's name instead).
+          // A plan opens and retrieves nothing: both are real actions, and opening
+          // is exactly what provokes the interface plugin's own refusal below.
+          // Nothing in a plan needs it — for a project file the target directory no
+          // longer depends on the project's name, and for an archive it is the same
+          // directory either way.
           if (!dryRun) {
-            opened = normalizeOpen(
-              await callService('openProject', () =>
-                service.openProject(requested, {
-                  withWindow: args.with_window !== false,
-                  allowUpgrade: args.allow_upgrade === true,
-                  signal: exec.signal,
-                }),
-              ),
-              requested,
-            )
+            if (source.kind === 'archive') {
+              retrieved = await retrieveIntoWorkspace(service, source, projectDir, {
+                withWindow: args.with_window !== false,
+                allowUpgrade: args.allow_upgrade === true,
+                signal: exec.signal,
+              })
+            } else {
+              opened = normalizeOpen(
+                await callService('openProject', () =>
+                  service.openProject(requested, {
+                    withWindow: args.with_window !== false,
+                    allowUpgrade: args.allow_upgrade === true,
+                    signal: exec.signal,
+                  }),
+                ),
+                requested,
+              )
+            }
           }
           if (opened !== null && !opened.ok) {
             if (opened.error?.code === 'project_already_open') {
@@ -1049,47 +1208,92 @@ export function createProjectTool(dependencies: ToolDependencies): ToolDefinitio
               { requestedPath: requested, code: opened.error?.code ?? null },
             )
           }
-        } else if (requested !== undefined && !(await samePath(requested, session.projectPath))) {
-          throw new EngineeringContextError(
-            'project_already_open',
-            `TIA Portal already has a different project open (${session.projectPath ?? session.projectName ?? 'unknown'}), so ` +
-              `${requested} was not opened. This deployment manages one TIA instance with one project at a time: tell the user to ` +
-              'close that project in TIA Portal (or use the interface plugin\'s close_project) and call this tool again once it is ' +
-              'closed — or omit source_project if the open project is the one they mean.',
-            { openProject: session.projectPath, requested },
-          )
+          if (retrieved !== null && !retrieved.ok) {
+            const code = retrieved.error?.code ?? 'retrieve_failed'
+            if (code === 'project_already_open') {
+              throw new EngineeringContextError(
+                'project_already_open',
+                `TIA Portal already has a project open, so the archive ${requested} cannot be retrieved. Retrieving an archive opens ` +
+                  'the project it contains, which needs TIA to have nothing open. Tell the user to close the open project in TIA ' +
+                  'Portal (the interface plugin\'s close_project tool does it too) and call this tool again.',
+                { requestedPath: requested, code, openProject: session.projectPath },
+              )
+            }
+            if (code === 'archive_not_found') {
+              throw new EngineeringContextError(
+                'source_project_not_found',
+                `No archive exists at ${requested}, so there is nothing to retrieve. Ask the user for the correct path rather than ` +
+                  'searching the disk for archive files.',
+                { requestedPath: requested, code },
+              )
+            }
+            throw new EngineeringContextError(
+              'retrieve_failed',
+              `TIA Portal refused to retrieve ${requested}: ${retrieved.error?.message ?? (retrieved.summary || 'no reason reported')}. ` +
+                (args.allow_upgrade === true
+                  ? 'Nothing was written by this plugin.'
+                  : 'If the archive was written by an older TIA version it needs allow_upgrade — but that REWRITES the extracted ' +
+                    'copy to V17 (the archive itself is untouched), so ask the user before passing it.'),
+              { requestedPath: requested, code },
+            )
+          }
+        } else if (requested !== undefined && source !== null) {
+          if (source.kind === 'archive') {
+            // Retrieval itself opens the project, so TIA must have nothing open.
+            // The one exception is a re-run: the open project is the one an earlier
+            // call retrieved from THIS archive, which the index remembers.
+            reuseRetrieved = await isRecordedArchive(recorded, requested)
+            if (!reuseRetrieved) {
+              throw new EngineeringContextError(
+                'project_already_open',
+                `TIA Portal already has a project open, so the archive ${requested} cannot be retrieved. Retrieving an archive opens ` +
+                  'the project it contains, which needs TIA to have nothing open. Tell the user to close the open project in TIA ' +
+                  'Portal (the interface plugin\'s close_project tool does it too), wait for them to do it, and then call this tool ' +
+                  'again.',
+                { openProject: session.projectPath, requested },
+              )
+            }
+          } else if (!(await samePath(requested, session.projectPath))) {
+            throw new EngineeringContextError(
+              'project_already_open',
+              `TIA Portal already has a different project open (${session.projectPath ?? session.projectName ?? 'unknown'}), so ` +
+                `${requested} was not opened. This deployment manages one TIA instance with one project at a time: tell the user to ` +
+                'close that project in TIA Portal (or use the interface plugin\'s close_project) and call this tool again once it is ' +
+                'closed — or omit source_project if the open project is the one they mean.',
+              { openProject: session.projectPath, requested },
+            )
+          }
         }
 
-        let projectPath = opened?.projectPath ?? session.projectPath
+        let projectPath = retrieved?.projectPath ?? opened?.projectPath ?? session.projectPath
         // A plan with nothing open cannot know the project's name: TIA reports it
-        // when the project is opened, and a plan never opens anything.
+        // when the project is opened or the archive is retrieved, and a plan does
+        // neither.
         const name =
           dryRun && !session.projectOpen
             ? null
-            : projectNameOf(opened?.projectName ?? session.projectName, projectPath)
-        const software = opened === null ? session.software : opened.software
+            : projectNameOf(retrieved?.projectName ?? opened?.projectName ?? session.projectName, projectPath)
+        const software = retrieved !== null ? retrieved.software : opened === null ? session.software : opened.software
         // The project the run started from, recorded before the save-as moves it.
-        const openedFrom = projectPath
+        // A retrieved project starts from no project at all: `archiveOrigin` keeps
+        // where it came from instead.
+        const openedFrom = retrieved === null ? projectPath : null
+        const archiveOrigin = source !== null && source.kind === 'archive' ? source.raw : null
+        // True when this run reads the archive (real run does, a plan only says so).
+        const retrieves = source !== null && source.kind === 'archive' && !reuseRetrieved
 
-        // TIA names a project after the directory it is saved into (measured on a
-        // live project), so the target directory carries the WORKSPACE's name: the
-        // saved project's name is then stable, predictable, and known before
-        // anything is opened — `tia/<workspace name>/<workspace name>.ap17`.
-        const workspaceName = folderName((scope.workspace.title ?? '').trim() || basename(root))
-
-        const projectDir = await canonicalizeLoose(projectDirectoryPath(config, root, workspaceName))
-        const sourceRoot = await canonicalizeLoose(sourceDirectoryPath(config, root))
-        assertInsideWith(config, root, projectDir, 'The project directory')
-        assertInsideWith(config, root, sourceRoot, 'The source tree root')
-
-        // One workspace manages one project: the index the tool writes beside the
-        // tree is what makes that checkable instead of aspirational.
-        const indexFile = sourceIndexPath(config, root)
-        const recorded = await readSourceIndex(indexFile)
         const recordedNameMatches =
           name !== null && recorded !== null && recorded.project !== null && recorded.project.toLowerCase() === name.toLowerCase()
         const recordedArtifactMatches = recorded === null ? false : await isRecordedProject(recorded, projectPath)
-        if (name !== null && recorded !== null && recorded.project !== null && !recordedNameMatches && !recordedArtifactMatches) {
+        const recordedArchiveMatches = await isRecordedArchive(recorded, archiveOrigin)
+        if (
+          name !== null &&
+          recorded !== null &&
+          recorded.project !== null &&
+          !recordedNameMatches &&
+          !recordedArtifactMatches &&
+          !recordedArchiveMatches
+        ) {
           throw new EngineeringContextError(
             'source_belongs_to_another_project',
             `This workspace's ${toPortable(root, sourceRoot)}/ belongs to the project ${recorded.project}, but the project in play ` +
@@ -1099,13 +1303,15 @@ export function createProjectTool(dependencies: ToolDependencies): ToolDefinitio
           )
         }
 
-        const skipSave = await alreadyInside(projectPath, projectDir)
+        // Retrieval writes the project into `projectDir` itself, so there is no
+        // save-as afterwards; for an already-open project, the path decides.
+        const skipSave = retrieves || (await alreadyInside(projectPath, projectDir))
         const ignore = await readIgnoreFile(root, ignoreRules(config))
         const projectDirStatus = await describePath(root, projectDir)
         const sourceStatus = await describePath(root, sourceRoot)
 
         const warnings = [...scope.view.warnings]
-        if (session.isModified === true && opened === null) {
+        if (session.isModified === true && opened === null && !skipSave) {
           warnings.push(
             'TIA reports the open project as modified; the save-as writes those unsaved changes into the workspace copy.',
           )
@@ -1113,6 +1319,20 @@ export function createProjectTool(dependencies: ToolDependencies): ToolDefinitio
         if (opened !== null && opened.upgraded) {
           warnings.push(
             `TIA Portal upgraded ${name} to V17 while opening it — the project file was rewritten and this cannot be undone.`,
+          )
+        }
+        if (retrieved !== null && retrieved.upgraded) {
+          warnings.push(
+            `TIA Portal upgraded the project while retrieving ${source?.raw ?? 'the archive'} — the extracted copy was rewritten to ` +
+              'V17 and that cannot be undone. The archive itself is unchanged.',
+          )
+        }
+        if (retrieves && source?.needsUpgrade === true && args.allow_upgrade !== true) {
+          // A deterministic condition that needs no TIA round trip: say it now, so
+          // the plan also carries the consent this call will need.
+          warnings.push(
+            `${source.raw} was archived by an older TIA version, so retrieving it means TIA upgrades the extracted copy to V17. ` +
+              'Pass allow_upgrade=true with dry_run=false once the user agrees; nothing has been retrieved yet.',
           )
         }
         if (opened === null && requested === undefined) {
@@ -1138,14 +1358,20 @@ export function createProjectTool(dependencies: ToolDependencies): ToolDefinitio
           )
         } else if (name === null && recorded !== null && recorded.project !== null) {
           warnings.push(
-            `The index records the project ${recorded.project}; this plan cannot compare it because nothing is open yet — the check ` +
-              'runs when the plan is executed.',
+            source !== null && source.kind === 'archive'
+              ? `The index records the project ${recorded.project}; this plan cannot compare it because an archive's project name is ` +
+                  'only known after retrieval — the check runs when the plan is executed.'
+              : `The index records the project ${recorded.project}; this plan cannot compare it because nothing is open yet — the check ` +
+                  'runs when the plan is executed.',
           )
         }
-        if (!skipSave && projectDirStatus.kind !== 'missing') {
+        if ((!skipSave || retrieves) && projectDirStatus.kind !== 'missing') {
           warnings.push(
-            `The directory ${projectDirStatus.port}/ already exists, so TIA may refuse the save-as or write beside what is there. ` +
-              'Nothing is deleted either way.',
+            retrieves
+              ? `The directory ${projectDirStatus.port}/ already exists, so TIA may refuse the retrieval or extract beside what is ` +
+                  'there. Nothing is deleted either way.'
+              : `The directory ${projectDirStatus.port}/ already exists, so TIA may refuse the save-as or write beside what is there. ` +
+                  'Nothing is deleted either way.',
           )
         }
         if (sourceStatus.kind !== 'missing' && args.overwrite !== true) {
@@ -1159,26 +1385,39 @@ export function createProjectTool(dependencies: ToolDependencies): ToolDefinitio
 
         const windowFlag = args.with_window !== false ? 'yes' : 'no'
         const projectLine =
-          opened !== null
-            ? `Project: ${requested} → opened as ${name} (visible TIA window: ${windowFlag})`
-            : !session.projectOpen
-              ? `Project: will open ${requested} (visible TIA window: ${windowFlag}); TIA reports the project name after opening.`
-              : requested === undefined
-                ? `Project: ${name} (already open in TIA at ${projectPath ?? '?'}) — NOBODY named this project in this call; confirm it is the one the user means.`
-                : `Project: ${name} (already open in TIA at ${projectPath ?? '?'})`
+          retrieved !== null
+            ? `Project: ${requested} → retrieved as ${name} (visible TIA window: ${windowFlag})`
+            : opened !== null
+              ? `Project: ${requested} → opened as ${name} (visible TIA window: ${windowFlag})`
+              : !session.projectOpen
+                ? source !== null && source.kind === 'archive'
+                  ? `Project: will retrieve the archive ${requested} (visible TIA window: ${windowFlag}); TIA reports the project name after retrieval.`
+                  : `Project: will open ${requested} (visible TIA window: ${windowFlag}); TIA reports the project name after opening.`
+                : requested === undefined
+                  ? `Project: ${name} (already open in TIA at ${projectPath ?? '?'}) — NOBODY named this project in this call; confirm it is the one the user means.`
+                  : reuseRetrieved
+                    ? `Project: ${name} (already open in TIA at ${projectPath ?? '?'}; retrieved earlier from ${requested})`
+                    : `Project: ${name} (already open in TIA at ${projectPath ?? '?'})`
         const deviceLine =
           software.length > 0
             ? `${software.length} PLC software (${deviceLines(software).join(', ')})`
             : !session.projectOpen
-              ? 'the device list comes from TIA after opening'
+              ? 'the device list comes from TIA after opening or retrieval'
               : 'none'
 
         const plan = [
           projectLine,
-          `Project directory: ${projectDirStatus.port}/ (named after this workspace, so TIA names the saved project ${workspaceName})`,
-          skipSave
-            ? `Save-as: not needed — TIA already has this project at ${projectPath ?? '?'}, inside that directory.`
-            : `Save-as: TIA will save the open project into ${projectDirStatus.port}/ (currently ${projectPath ?? 'unknown'}; its files there are not touched).`,
+          source !== null && source.kind === 'archive'
+            ? `Project directory: ${projectDirStatus.port}/ (the extraction target — the same directory a save-as uses; TIA keeps ` +
+                'the archive\'s own project name, so the extracted folder may be named after the project rather than the workspace)'
+            : `Project directory: ${projectDirStatus.port}/ (named after this workspace, so TIA names the saved project ${workspaceName})`,
+          retrieves
+            ? `Retrieval: TIA will extract ${requested} into ${projectDirStatus.port}/ and open the project it contains` +
+                `${source?.needsUpgrade === true ? ' (upgrading the extracted copy to V17)' : ''}; no save-as follows and the archive ` +
+                'is not modified.'
+            : skipSave
+              ? `Save-as: not needed — TIA already has this project at ${projectPath ?? '?'}, inside that directory.`
+              : `Save-as: TIA will save the open project into ${projectDirStatus.port}/ (currently ${projectPath ?? 'unknown'}; its files there are not touched).`,
           `Source tree: ${sourceStatus.port}/ ← ${deviceLine}`,
           'Layout below the source root is written by the interface plugin: <device>/blocks|types|tag_tables/, one manifest per device covering all three.',
           `Knowledge graph: after the export, one full rebuild per device through the engineering-graph plugin ` +
@@ -1193,12 +1432,24 @@ export function createProjectTool(dependencies: ToolDependencies): ToolDefinitio
             CREATE_PROJECT_TOOL,
             scope.view,
             !session.projectOpen
-              ? `Dry run: would open ${requested} and save it into ${projectDirStatus.port}/ (TIA reports the project name after opening). Pass dry_run=false to do it.`
+              ? source !== null && source.kind === 'archive'
+                ? `Dry run: would retrieve the archive ${requested} into ${projectDirStatus.port}/ (TIA reports the project name after retrieval). Pass dry_run=false to do it.`
+                : `Dry run: would open ${requested} and save it into ${projectDirStatus.port}/ (TIA reports the project name after opening). Pass dry_run=false to do it.`
               : `Dry run: would ${skipSave ? 'refresh the source tree of' : 'save'} ${name ?? 'the open project'} in ${projectDirStatus.port}/ (${software.length} device(s)). Pass dry_run=false to do it.`,
             {
               plan: {
                 name,
                 open: opened === null ? null : { requestedPath: opened.requestedPath, withWindow: args.with_window !== false, allowUpgrade: args.allow_upgrade === true },
+                retrieve:
+                  source !== null && source.kind === 'archive'
+                    ? {
+                        requestedArchive: requested ?? null,
+                        targetDirectory: projectDirStatus.port,
+                        withWindow: args.with_window !== false,
+                        allowUpgrade: args.allow_upgrade === true,
+                        alreadyRetrieved: reuseRetrieved,
+                      }
+                    : null,
                 projectDirectory: projectDirStatus,
                 sourceRoot: sourceStatus,
                 skipSave,
@@ -1227,7 +1478,9 @@ export function createProjectTool(dependencies: ToolDependencies): ToolDefinitio
         // a refused call from writing anything at all.
         const compiled = await readCompiledChecksums(service, software, exec.signal)
 
-        let savedAs: string | null = null
+        // A retrieval already wrote the project; a re-run of the same archive keeps
+        // the path TIA reports for the project it has open.
+        let savedAs: string | null = retrieved !== null ? retrieved.projectPath : reuseRetrieved ? projectPath : null
         if (!skipSave) {
           const save = normalizeSave(
             await callService('saveProjectAs', () => service.saveProjectAs(projectDir, { signal: exec.signal })),
@@ -1318,9 +1571,11 @@ export function createProjectTool(dependencies: ToolDependencies): ToolDefinitio
         const totals = rebuilt.totals
         const details = [
           ...plan,
-          skipSave
-            ? `Save-as: skipped — the project was already inside ${projectDirStatus.port}/.`
-            : `Saved by TIA as: ${savedAs ?? projectPath ?? 'unknown'} (requested directory: ${projectDirStatus.port}/)`,
+          retrieves
+            ? `Retrieved by TIA: ${savedAs ?? projectPath ?? 'unknown'} (extracted from ${requested}; requested directory: ${projectDirStatus.port}/)`
+            : skipSave
+              ? `Save-as: skipped — the project was already inside ${projectDirStatus.port}/.`
+              : `Saved by TIA as: ${savedAs ?? projectPath ?? 'unknown'} (requested directory: ${projectDirStatus.port}/)`,
           describeIgnoreAction(ignore, ignoreAction),
           `Source rebuild: ${totals.planned} object(s) planned — ${totals.written} written, ${totals.skipped} already present, ` +
             `${totals.refused} refused by TIA${totals.verificationFailed === 0 ? '' : `, ${totals.verificationFailed} written but unreadable`}.`,
@@ -1376,10 +1631,14 @@ export function createProjectTool(dependencies: ToolDependencies): ToolDefinitio
         const indexAction = await writeSourceIndex(indexFile, {
           schemaVersion: 1,
           project: {
-            // The real run always has a name (it opened or adopted a project).
+            // The real run always has a name (it opened, retrieved or adopted a project).
             name: name ?? 'unknown',
             path: openedFrom,
             savedAs,
+            // Where a retrieved project came from: the archive is the origin a
+            // path comparison cannot express, and a re-run with the same archive
+            // uses it to recognise the project TIA already has open.
+            archive: archiveOrigin,
             directory: toPortable(root, projectDir),
             sourceRoot: toPortable(root, sourceRoot),
           },
@@ -1491,7 +1750,7 @@ export function createProjectTool(dependencies: ToolDependencies): ToolDefinitio
           scope.view,
           (nothingWritten
             ? `Nothing was written: all ${totals.skipped} file(s) the export reached were already present. ${name} is in ${toPortable(root, projectDir)}/; pass overwrite=true to refresh the source tree.`
-            : `Saved ${name} into ${toPortable(root, projectDir)}/ and wrote ${totals.written} object(s) into ${toPortable(root, sourceRoot)}/` +
+            : `${retrieves ? 'Retrieved' : 'Saved'} ${name} into ${toPortable(root, projectDir)}/ and wrote ${totals.written} object(s) into ${toPortable(root, sourceRoot)}/` +
               `${totals.skipped === 0 ? '' : `, ${totals.skipped} already present`}${totals.refused === 0 ? '' : `, ${totals.refused} refused by TIA`}.`) +
             describeKnowledgeSummary(knowledge) +
             (baseline.committed
@@ -1506,6 +1765,10 @@ export function createProjectTool(dependencies: ToolDependencies): ToolDefinitio
               requestedSaveAsDir: projectDirStatus.port,
               savedAs,
               projectPath,
+              // Where the project came from: an opened project file, or an archive
+              // TIA extracted (both null/absent when TIA only had one open).
+              archive: archiveOrigin,
+              retrieved: retrieves || reuseRetrieved,
             },
             index: { file: toPortable(root, indexFile), action: indexAction },
             ignore: ignorePayload(ignore, ignoreAction.action, ignoreAction.added),
