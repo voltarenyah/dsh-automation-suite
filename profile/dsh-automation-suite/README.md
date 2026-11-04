@@ -26,14 +26,26 @@
 ### 公共插件：`dsh-opencode-go`
 
 这是本蓝图里**唯一一行不来自本仓 `packages/` 的依赖**，直接取自 npm（`publishConfig.access: public`），
-和日常桌面 profile 用的是同一份东西、**同一个版本 `0.1.15`**（精确钉死，不是 `^`）。
+和日常桌面 profile 用的是同一份东西、**同一个版本 `0.1.24`**（精确钉死，不是 `^`）。
 
 - 它是个**标准 bundle**（manifest 里有 `dsh.bundle.patch`），所以只需 `dependencies` + `dsh.profile.bundles`
-  两处；它的 `cordis.patch.yml` 自己 `insert` 一行 `id: opencode-go`。
-- **固定 `0.1.15` 是有意的**：从 `0.1.16` 起上游把模型提供方 ID 从 `opencode-go` 改成了
-  `dsh-opencode-go`（旧会话/旧配置里的 `provider: opencode-go` 会失效）；而上游的宿主兼容矩阵
-  只验证到 `0.2.1-alpha.1`，本机宿主是 `0.2.1-rc.2` —— `0.1.15` 是桌面 profile 在这台机器上
-  **实际跑通**的版本。要升级，先在一个环境里验过，再连同 `cordis.patch.yml` 里任何 `provider:` 引用一起改。
+  两处；它的 `cordis.patch.yml` 自己 `insert` 一行 `id: opencode-go`。注意**行 id 一直是 `opencode-go`**，
+  改名的是它注册的**模型提供方 ID**（下一条）—— 两者不要混。
+- **`0.1.24` 是对 `0.1.15` 的一次必要升级（见 D32）**：`0.1.15` 把 models.dev 元数据只放内存、内置表里
+  又没有 `deepseek-v4.1-flash`，只要新进程在 30 s 内抓不到 `https://models.dev/api.json`（那个文件已涨到
+  ~6 MB，这条线路上常常 20 s 以上甚至直接卡死），网关列出的该模型就报
+
+  ```
+  opencode-go model "deepseek-v4.1-flash" is advertised but cannot be configured
+  MODEL_METADATA_UNAVAILABLE
+  ```
+
+  `0.1.24` 把 `deepseek-v4.1-flash` 直接写进内置表，并把抓到的元数据缓存到
+  `<DSH_HOME>/cache/dsh-opencode-go/models.dev.api.json`（含 ETag，可条件请求），网络抖动不再等于模型不可用。
+- **代价：提供方 ID 从 `opencode-go` 改成了 `dsh-opencode-go`**（上游 0.1.16 起的行为）。所以
+  `agent-default-model` 的 `provider:` 必须一起改（本文件已改），旧会话里存的 `provider: opencode-go`
+  需要重选一次模型。上游的宿主兼容矩阵只验证到 `0.2.1-alpha.1`，而本机宿主是 `0.2.1-rc.2` ——
+  这个组合已在两台实例上**实测跑通真实对话**（桌面 3082 与本地 3095，2026-11-04）。
 - **pnpm 11 会因为它失败一次**：它的传递依赖 `@google/genai` / `protobufjs` 带构建脚本，
   pnpm 11 把它们记成 "ignored builds" 并以 `ERR_PNPM_IGNORED_BUILDS` 让整次
   `dsh plugin install` 退出 1。`pnpm-workspace.yaml` 里的 `allowBuilds`（两项都 `false`）就是
@@ -276,7 +288,7 @@ dsh --profile dsh-automation-suite --dump-config
 
 这条流程已实测通过：`dsh plugin --profile dsh-automation-suite install` 由自带 pnpm（0.2.1-rc.2 上是
 v11.28.5）装完，`--dump-config` exit 0 且以 8 个插件行结尾（行数基线见根 `AGENTS.md` §4）。
-`dsh-opencode-go` 不用换成 tarball —— 它是公共包，保持 `"0.1.15"` 就会从 npm 解析。
+`dsh-opencode-go` 不用换成 tarball —— 它是公共包，保持 `"0.1.24"` 就会从 npm 解析。
 
 > ⚠️ 第 2 步的 tarball 文件名不要硬编码 `@scope-` 前缀：`pnpm pack` 对 `@scope/name` 产出的是
 > `scope-name-<version>.tgz`（剥掉 `@`、`/`→`-`），对不带 scope 的包就是 `dsh-tool-git-0.1.3.tgz`。

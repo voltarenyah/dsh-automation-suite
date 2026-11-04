@@ -752,8 +752,9 @@
 # 桌面 profile 拿它当日常提供方，这里保持同一套策略：
 #   • 隐藏暂时不用的模型，模型选择器里不出现陌生项；
 #   • 新会话默认模型指向 OpenCode Go 的 deepseek-v4.1-flash。
-# ⚠️ provider ID `opencode-go` 是插件 0.1.15 的 ID；升到 0.1.16+ 时上游把它改名为
-#    `dsh-opencode-go`，这两处的 provider 引用要一起改（见本目录 README「公共插件」）。
+# ⚠️ provider ID：0.1.24 注册的是 `dsh-opencode-go`（0.1.15 的 `opencode-go` 已经不用了）。
+#    下面 `agent-default-model` 的 provider 必须与插件版本匹配，否则新会话拿不到默认模型。
+#    注意行 id 仍是 `opencode-go`（插件自己的 patch 就这么 insert），别把两者搞混。
 # ⚠️ 物化目录里这两行会随应用设置回写而变化；同步时改块内容，不要整文件覆盖。
 - id: opencode-go
   name: dsh-opencode-go
@@ -771,5 +772,5 @@
 - id: agent-default-model
   name: '@deepseek-ai/dsh-agent-default-model'
   config:
-    provider: opencode-go
+    provider: dsh-opencode-go
     model: deepseek-v4.1-flash

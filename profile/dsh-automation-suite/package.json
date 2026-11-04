@@ -9,7 +9,7 @@
     "@voltarenyah/dsh-engineering-graph": "workspace:^",
     "@voltarenyah/dsh-plcsim-advanced": "workspace:^",
     "@voltarenyah/dsh-tia-openness-v17-min": "workspace:^",
-    "dsh-opencode-go": "0.1.15",
+    "dsh-opencode-go": "0.1.24",
     "dsh-tool-git": "workspace:^",
     "dsh-ui-plc-source": "workspace:^",
     "dsh-ui-tia-console": "workspace:^",

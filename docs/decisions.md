@@ -1067,3 +1067,63 @@ region 上下文、以及 `test/13-scl-segmentation.test.mjs`：用真实引擎�
 **验证**：本轮只落文档，不改代码。下一个能力（在线或硬件）的验收要求：声明该能力行的 preset
 （`leader`）在工具面里看得到、没声明的 preset（`expert`）看不到；`--dump-config` 里该行与
 配置可读。这条与 D23 的"按 preset 分发"是同一套机制，不是新增机制。
+
+---
+
+## D32 · `dsh-opencode-go` 升到 0.1.24：内置表 + 元数据磁盘缓存，模型可用性不再取决于 models.dev 抖动 ✅
+
+**背景**：2026-11-04 白天，本地 3095 与桌面 3082 都出现同一句失败：
+
+```
+opencode-go model "deepseek-v4.1-flash" is advertised but cannot be configured:
+no usable configuration was found for this OpenCode Go model; refresh the model list to retry
+MODEL_METADATA_UNAVAILABLE
+```
+
+逐条实测后的结论：
+
+- **网关侧没问题**：`GET https://opencode.ai/zen/go/v1/models` 无需鉴权、200、28 个 id，含
+  `deepseek-v4.1-flash` —— 这就是报错里 "advertised" 的来源。
+- **插件 0.1.15 的模型配置只来自** `https://models.dev/api.json`（它的内置表来自
+  `@earendil-works/pi-ai@0.85.1`，那里只有 `deepseek-v4-flash`，**没有**带点号的 4.1），
+  而且**没有落盘缓存**，只有进程内存。
+- 那个文件已涨到 **~6 MB**，抓取超时却写死 **30 s**（`METADATA_FETCH_TIMEOUT_MS`）。本机线路上 HTTPS
+  常常 TTFB 20–60 s 甚至直接断流（同一条线路上 `registry.npmjs.org` 的 1.2 MB 包 1.2 s 下完，可排除
+  "整网坏了"）：连续 5 次直连全部失败（3× 32 s 超时 + 2× 10.5 s 连接超时），成功那次 **23.4 s / 5,957,478 B**。
+- 于是**新进程**几乎必然抓不到元数据，而**旧进程只要曾经抓到过就能靠内存继续跑** —— 这正是
+  "3082 好用、3095 报错"的真正原因（3082 是 10-28 起的常驻进程，11:13 还成功抓过一次）。
+
+**决定**：两个 profile 的 `dsh-opencode-go` 都从 `0.1.15` 升到 **`0.1.24`**（蓝图与桌面 profile 同版本）。
+
+1. `0.1.24` 的**内置表自带** `deepseek-v4.1-flash`（协议 / baseUrl / 1M 上下文 / 384k 输出 / 思考档），
+   模型能不能用不再取决于 models.dev 是否抓得到；
+2. 它把抓到的元数据**缓存到磁盘** `<DSH_HOME>/cache/dsh-opencode-go/models.dev.api.json`
+   （带 ETag，走条件请求），一次成功就够重启后继续用；
+3. **代价**：提供方 ID 从 `opencode-go` 改成 `dsh-opencode-go`（上游 0.1.16 起的行为）。连带必改项：
+   `profile/dsh-automation-suite/cordis.patch.yml` 里 `agent-default-model.provider`（已改）、桌面 profile
+   同名行（应用已自行回写）、旧会话里存的 `provider: opencode-go` 需要重选一次模型。插件 patch 的
+   **行 id 仍是 `opencode-go`**，所以 `- id: opencode-go` 的 `modelVisibility` 覆盖不受影响。
+
+**后果**：
+
+- 同步改了：蓝图 `package.json`、根 `pnpm-lock.yaml`、根 `README.md` / `README.en.md` 的版本表述、
+  本蓝图 README 的「公共插件」一节、`cordis.patch.yml` 的 provider 行与注释。
+- 回退：版本号与 `provider:` 一起改回 `0.1.15` / `opencode-go`，`dsh plugin install` 后重启，约 2 分钟。
+- **仍未做**：App 升到 `0.2.1-rc.5` + 插件升 `0.2.0`。0.2.0 要求宿主 ≥ rc.5 且重写了设置/用量面，
+  属于独立任务，要连带重新生成 preset 与重测行数基线（见 AGENTS §1、§4）。
+
+**验证**（实机，2026-11-04）：
+
+- 3095（`%USERPROFILE%\dsh-automation-suite-home`）：`dsh plugin install` → `0.1.24`；
+  `start-env.ps1 -Restart` 的启动日志无 `entries did not activate`；选择器里 `DeepSeek V4.1 Flash` 可选，
+  实测 `just reply hello` → `hello`，`Completed in 4s`（38.3K tok / 1500 tok/s）。
+- 3082（`%USERPROFILE%\.dsh`）：同法升级后重启，会话即以 `dsh-opencode-go/deepseek-v4.1-flash` 继续。
+- 两个 home 的 `cache/dsh-opencode-go/models.dev.api.json` 均已生成（235 个 provider、opencode-go 37 个
+  模型，`deepseek-v4.1-flash` 的 `limit.context = 1,000,000`）。
+
+**顺带记一个坑**（不是本仓代码，但会让整套环境"看起来坏了"）：3095 的会话目录里出现过一个
+`session-1b633084-…/session.v4.jsonl`，**内容是 zstd 压缩、扩展名却是 `.jsonl`**。启动时
+`@deepseek-ai/dsh-session-persistence-jsonl` 报 `encodingMismatch`，`workspace` 整层起不来，连带
+`session-controller` / `workspace-controller` / `schedule` / `ui-deliverables` 全部停在 `pending` ——
+界面症状是"模型选择空白、发消息没反应"，和模型配置问题长得完全不一样，容易误判。
+处理：把那个会话目录整体挪出 `sessions/`（本次挪到 `<home>/sessions-quarantine/`），**不要删**。
