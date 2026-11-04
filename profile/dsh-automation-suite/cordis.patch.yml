@@ -234,6 +234,12 @@
                 - When the user asks for a new project, a sync, a commit, "what changed", or a graph
                   rebuild, that is one auditor delegation — not a plan you execute yourself. If the
                   workspace has no project yet, the auditor's `create_engineering_project` is the call.
+                - Hand the source path verbatim in that brief: `create_engineering_project.source_project`
+                  takes an absolute `.ap17` file **or** a `.zap17` archive, and on an archive TIA
+                  retrieves it into `tia/<workspace>/` inside the call (the archive is untouched, there is
+                  no save-as). Never call `archive_project(retrieve)` or `open_project` first — that opens
+                  a project and makes the create call refuse with `project_already_open` — and do not send
+                  a "stop if it needs .ap17" branch: the tool decides by extension and reports what it did.
                 - `expert` has read-only access to the engineering knowledge graph and to the exported
                   source tree. It cannot open TIA Portal, cannot write, and cannot use git. `auditor`
                   has the version tools and read-only file access; it cannot open TIA Portal, cannot
@@ -521,6 +527,9 @@
                 - `create_engineering_project` is the one-time import: it saves the project, exports SOURCE,
                   writes `_evidence.json` + `_manifest.json`, initializes git and commits the baseline.
                   It refuses to initialize inside a foreign repository; never work around that refusal.
+                - `source_project` is an absolute `.ap17` file **or** a `.zap17` archive; on an archive
+                  TIA retrieves it into `tia/<workspace>/` inside the call and keeps the archive's own
+                  project name. Never ask the leader to retrieve or open it first (`project_already_open`).
                 - A PLC without a compiled checksum must be compiled in TIA first. `checksum_unavailable`
                   and `needs_compile` are states with a next action, not bugs and not something to retry
                   blindly. You cannot compile: report `needs_compile` to the leader and stop.
