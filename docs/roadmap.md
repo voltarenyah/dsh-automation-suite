@@ -121,7 +121,8 @@
 | 工程生命周期与工程数据（创建/保存/归档/取回/属性/语言/文本/TIA 设置） | ⏳ | v0.2：`OperationsProject.cs` + 8 个工具；契约 `docs/EXTENDED-SURFACE.md` |
 | PLC 对象增删改（组/表/变量/常量/监视表/软件单元/单实例 DB） | ⏳ | v0.2：`OperationsPlc.cs` + 9 个工具 |
 | F 相关（`GlobalSettings` 两个动作、`SafetySettings`、F 签名） | ⏳ | v0.2：`OperationsSafety.cs` + 3 个工具；需装 STEP 7 Safety 与 F-CPU 才能验证 |
-| 白名单 + 事务 + 写后读回验证 + dry-run 默认开 | ✅ | 控制器只接受 25 个操作；`ExclusiveAccess` + `Transaction`；`matrix:check` 逐条比对插件侧 `OPERATIONS` |
+| 在 TIA 的块编辑器里打开程序块（批量，单次 ≤100） | ✅ | v0.3：`OperationsEditor.cs` + `show_blocks_in_editor`；真机 2026-11-04 实测（782 块工程：单块 3.1 s / 三块 5.2 s 全开，不存在的名字整单拒绝且不开编辑器）；无界面会话与保护块弹框未验（该包 `docs/decisions.md` **D29**、`docs/VERIFICATION-PLAN.md` §3.10） |
+| 白名单 + 事务 + 写后读回验证 + dry-run 默认开 | ✅ | 控制器只接受 39 个操作；`ExclusiveAccess` + `Transaction`；`matrix:check` 逐条比对插件侧 `OPERATIONS` |
 | 子进程生命周期（`ctx.effect`、超时终止与重启） | ✅ | 71 项测试中 70 通过 / 1 跳过（实测 2026-10-14）；真实宿主加载/退出验证 |
 | **给工程上下文插件的服务 `engineeringAccess`**（缝 A / D12） | ✅ | `packages/dsh-tia-openness-v17-min/src/access.ts` + `test/08-access-service.test.mjs`（9 项）；该包 `docs/decisions.md` **D20** |
 | 随包出货的 Openness 知识库 skill（文档交付物的雏形） | 🟡 | `skills/`（31 个上游 SKILL.md + 路由 skill）；**尚未逐能力覆盖"何时/怎么/数据怎么用"三问** |
@@ -130,7 +131,7 @@
 
 | 缺口 | 影响 | 备注 |
 |---|---|---|
-| **工具面按控制器操作切分** | 26 个工具一一对应 25 个白名单操作，模型必须自己编排流程；批量数据（指纹、逐文件清单）全进上下文，列表还被渲染层截到 20 行 | 调研与提案见 [`tool-surface.md`](tool-surface.md)；待 A14–A17 拍板 |
+| **工具面按控制器操作切分** | 38 个工具一一对应 39 个白名单操作（其中 2 个服务专用），模型必须自己编排流程；批量数据（指纹、逐文件清单）全进上下文，列表还被渲染层截到 20 行 | 调研与提案见 [`tool-surface.md`](tool-surface.md)；待 A14–A17 拍板 |
 | **只有基础能力** | 大量 Openness 能力域没有对应工具 | 能力形态已定（D31）：不拆包、按行由 preset 装配；剩下的是"先做哪些能力" |
 | **软件版本只有 V17** | V16/V18+ 用户不可用 | 族内需要新成员，共享内核形态待定 → **A3** |
 | **文档未按能力逐条覆盖** | 模型不知道什么时候该用哪个工具、结果怎么读 | 现状是"知识库 + 工具 description"，不是覆盖手册的能力文档 |
