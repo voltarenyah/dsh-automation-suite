@@ -855,3 +855,115 @@ ui 47+22 / git 33）；控制器自测 17/17；图谱引擎重建后 `--self-tes
 操作级拒绝保持为数据、控制器省略路径时回填请求值；方法清单覆盖 `retrieveProject`）。
 真机对 `.zap17` 的取回尚未验证 —— README §10 把"archive_project 的取回"列在待实测清单里，
 在工作流里默认采用它之前，需要先按 `docs/VERIFICATION-PLAN.md` §2.5 跑一次。
+
+---
+
+## D29. 块编辑器操作 `ShowBlocksInEditor`：能开，但只在带界面的会话里开
+
+**背景**：使用者的诉求是"agent 按要求打开某个程序块时，在 TIA 里把块编辑器打开，并支持批量"。
+Openness 里这件事只有一条路：`Siemens.Engineering.IShowable.ShowInEditor()`。V17 的
+`Siemens.Engineering.dll`（17.0.0.0）反射实证：该接口只有一个成员、无参、返回 `void`；
+13 个类型实现它 —— `PlcBlock` 与 `OB`/`FB`/`FC`/`DataBlock` 各族，另有 `PlcTagTable`、
+`PlcWatchTable`、`PlcForceTable`。**没有批量重载**，所以"批量"必须由控制器循环 + 一次请求承担。
+
+**决定**：
+
+1. **新增白名单操作 `ShowBlocksInEditor` + 工具 `show_blocks_in_editor`**，参数只有
+   `block_names`（必填，`Name` 或 `Group/Name`）与 `device_name`/`software_name`。
+   不复用 `list_plc_objects`：那个是读，这个是界面动作，混在一个操作里会让"有没有写"更难判。
+2. **只支持块，不做标签表/监视表**。同样是 `IShowable`，但那三类的"打开"是另一组编辑器，
+   与程序块的诉求不同；先做被真正需要的那个，别把三套 UI 语义塞进一个操作。
+3. **无界面实例直接拒绝（`editor_unavailable`），不尝试"顺手起一个可见实例"**：
+   工程属于打开它的那个 TIA Portal 实例，句柄不能跨实例搬，`ShowInEditor` 也只有在有 UI 的
+   实例里才有意义。错误信息给出唯一可行的补救：`close_project` → `open_project(with_window=true)`，
+   或 `adopt_open_project` 接管操作者已经开好的窗口。为此 `OpennessHost` 记录
+   `HasUserInterface`（创建时的模式；附加到运行中实例时读 `TiaPortalProcess.Mode`），
+   `open_project`/`create_project`/`archive_project(retrieve)` 回报的 `withUserInterface`
+   也改成**实际**模式而不是请求值 —— 否则"请求可见但附加到了无界面实例"会撒谎。
+4. **先解析、后打开；重名即报错**。`block_not_found` 与 `block_ambiguous` 都在第一个编辑器
+   打开之前抛出：打错一个字不该让界面上留下半批页签；裸名字在多个用户组里存在时，宁可要求
+   `Group/Name` 也不"取第一个"（那是会打开错块的静默错误，现有 `FindBlock` 的取首个语义在这里不合适）。
+5. **逐块容错，只有全败才失败**。被 TIA 拒绝的单块（典型：know-how 保护块的密码框）进
+   `data.failed`，其余继续；`editor_show_failed` 只在 `opened` 为空时抛出，并带上完整失败清单。
+6. **上限 100 块**（`too_many_blocks`）。参考工程 1155 个块，一个块一个编辑器页签，
+   不设上限等于给"把界面埋掉"留了一条一键路径。
+7. **没有 `dry_run`**（沿用 D22 的判据）：它不写工程，预览只是复述名单；真正的风险（弹框挂住）
+   不在参数里，而在界面里，预演救不了。
+8. **`changes` 记 `block shown_in_editor`**。它不是工程改动，但它是这次请求在界面上**实际
+   发生的事**，而 `changes` 正是消费方（`/tia-*` 卡片、ui-tia-console）读的那条流。
+
+**验证**：`npm run build` + `npm test`（112 项，111 通过 / 1 跳过）；`controller/build.ps1`
+重编 + `--self-test` 全过（白名单 39 条逐一比对）；`matrix:build` 后 `matrix:check` 通过，
+覆盖矩阵把手册条目 "Starting the block editor" 从"未适配"改为"已适配"（仍带前置条件 D=界面）。
+
+**真机实测（2026-11-04，V17）**：接管一个带界面的 TIA Portal 会话里已打开的工程
+`PEI_HF_M4L_ZRW_Test_V5.1`（782 块，`data.withUserInterface:true`）后：
+
+| 调用 | 结果 |
+|---|---|
+| `ShowBlocksInEditor(["Main_Cav_A"])` | `ok`，3.1 s，1 块：`kind:"OB"` / `group:"01_Cavité_A/"` / LAD / number 123；`changes` 一条 `block shown_in_editor` |
+| `ShowBlocksInEditor(["Time error interrupt", "999_Bibliotheque/Fonctions méthode/1001_SCP_IN/SCP_IN", "Default_SupervisionDB"])` | `ok`，5.2 s，3 块全成功（OB/LAD、FB/SCL、InstanceDB/DB），`kind` 分别报 `OB`/`FB`/`InstanceDB`；组路径里的空格与非 ASCII（`méthode`、`Cavité`）都能解析 |
+| `ShowBlocksInEditor(["NoSuchBlockXYZ"])` | `block_not_found`（1.9 s），`data` 为空、**一个编辑器都没开**，`details.availableCount:782` |
+
+结论：`IShowable.ShowInEditor()` 在带界面的 V17 上确实把块开进编辑器；逐块约 1.7 s；
+"先解析后打开"在真机上兑现（未命中不会留下半个页签）。**尚未验证**：`editor_unavailable`
+（无界面会话，被前置检查挡住没有触发过）与保护块弹框（需要刻意给块加保护再试）。
+
+---
+
+## D30. 默认带界面：`with_window` 的默认值从 false 翻成 true
+
+**背景**：使用者反馈"打开 TIA 项目时经常是 headless 打开，需要看界面的时候看不到"。根因是默认值
+分布在三层且都写了 false：工具层（`open_project` 等干脆不传，交给控制器）、服务层
+（`openProject`/`retrieveProject` 的 `?? false`）、控制器层（`p.Bool("with_window", false)`）。
+任何一层漏掉，上层再想"默认可见"都无效；而模型调用 `open_project` 时几乎不会显式传这个参数。
+
+**决定**：
+
+1. **三层默认值统一为 true**：`src/tools.ts` 的每个 `with_window` 参数都显式发送
+   `args.with_window ?? true`（不再省略）；`src/access.ts` 的 `openProject`/`retrieveProject`
+   同样 `?? true`；控制器 `Operations*.cs` 的 `p.Bool("with_window", true)`。
+   因此**只有显式 `with_window: false` 才走 headless** —— 这就是"极少数指定的情况"：
+   无人值守/批处理/没有交互桌面的机器。
+2. **可见请求绝不附加到 headless 实例**：`EnsurePortal` 原实现附加到
+   `TiaPortal.GetProcesses()[0]`，只要排在第一的是无界面实例，`with_window=true` 也会落进
+   一个看不见的窗口。现在 `FindVisibleProcess()` 只挑 `TiaPortalProcess.Mode == WithUserInterface`
+   的实例；只有 headless 在跑时记一条日志并**新起一个可见实例**，而不是静默附加。
+3. **附加对象按用途挑，且一次只能装一个工程**：V17 一个实例只允许一个 primary 工程。操作者
+   常常开着一个带界面的 TIA 窗口做别的事，若把"打开工程"附加到它，`Projects.Open` 必然报
+   "Another project is already open"。所以可见请求带一个用途枚举：打开/新建/取回要
+   `FreeInstance`（优先 `ProjectPath == null` 的可见实例；都被占用时**新起一个**可见实例；
+   只有路径正好就是请求的工程时才附加它），设置/安全读用 `Any`（占用的窗口也能读全局设置，
+   不为读一个设置再开一个窗口），`adopt_open_project` 用 `OpenProject`（要那个已经开了工程的
+   窗口）。附带一条更准的错误：附加到的窗口已经持有工程时，`open_project` 直接回
+   `project_already_open`（details 带 `openProject` 路径与 `hint: adopt_open_project`），
+   而不是让 `Projects.Open` 抛 TIA 的泛化文案。
+4. **回报实际模式**：`open_project`/`create_project`/`archive_project(retrieve)` 的
+   `data.withUserInterface` 用 `HasUserInterface`（创建时的模式；附加时读 `TiaPortalProcess.Mode`），
+   不再复述请求值。与 D29 的实现共用同一个字段。
+5. **headless 仍然是一等公民**：`with_window: false` 的语义、参数与返回不变，只是从默认变成显式。
+
+**为什么不做成配置项**：本仓库的 profile 配置是给部署方调超时/路径这类环境参数的；"要不要看见
+窗口"是**这一次调用**的意图，写进工具参数比写进 profile 更准确，也避免一个 profile 里两种默认值
+并存。若将来出现"整台机器永远无桌面"的部署，再讨论 `defaultWithWindow` 配置项。
+
+**验证**：`npm run build`、`npm test`（`04-tools` 断言默认 true + 显式 false 的 opt-out；
+`08-access-service` 断言服务层同样发送 true）、`controller/build.ps1` 重编 + `--self-test`（20 项全过）、
+`matrix:build` 后 `matrix:check` 通过。
+
+**真机实测（2026-11-04，V17，PEI_SinoARP_SWT2）**：机器上已有一个操作者开着的带界面 TIA
+（`Siemens.Automation.Portal.exe` pid 21224，主窗口标题是另一个工程 `PEI_HF_M4L_ZRW_Test_V5.1`）。
+直接用控制器 stdio 发 `OpenProject`（**不传** `with_window`）：
+
+| 观察点 | 结果 |
+|---|---|
+| `progress` 第一行 | `Starting TIA Portal V17 (with user interface)` —— 没有附加到那个已占用工程的操作者实例，而是新起了一个 |
+| 新进程窗口 | `Siemens.Automation.Portal.exe` pid 15908，`MainWindowHandle != 0`，标题从 `Siemens` 变为工程路径 |
+| `result` | `ok=true`，44.3 s，`data.withUserInterface=true`，`projectName=PEI_SinoARP_SWT2`，1155 块 |
+| `CloseProject{close_portal:true}` | `closed=true` / `portalClosed=true`；只关掉了测试实例，操作者的 21224 未受影响 |
+
+顺带发现并固化：重建 exe 后**第一次**附加/启动可能因 Openness 白名单（哈希变了）卡住约 200 s 并报
+`EngineeringSecurityException: Security error. The operation has timed out.`，重试即通过 —— 与
+`HANDOFF-PLCSIM-DOWNLOAD.md` 记录一致，不是本次改动的回归。两个**未**在真机覆盖的分支：
+"只有 headless 实例在跑时新起可见实例"（当时没有 headless 实例）与 `project_already_open` 的
+新文案（附加到已占窗口的分支被 `FreeInstance` 策略绕开了）。

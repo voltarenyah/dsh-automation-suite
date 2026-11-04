@@ -213,7 +213,7 @@ export const SECTIONS = [
       },
       'Accessing the TIA Portal': {
         status: 'done',
-        note: '已实现：无界面自启实例、附加到运行中实例（with_window）。',
+        note: '已实现：带界面的自启实例（默认）与 headless 自启（with_window=false）；附加到运行中实例时只挑带界面且未占用的那个（with_window，默认 true），被占用时新起可见实例而不是借用。',
       },
     },
   },
@@ -281,7 +281,8 @@ export const SECTIONS = [
     reject: [],
     default: 'partial',
     note:
-      '进程内/进程外与用户界面模式配置。插件用 TiaPortalMode 覆盖了无界面自启与附加运行中实例两条路径，' +
+      '进程内/进程外与用户界面模式配置。插件用 TiaPortalMode 覆盖了带界面自启（默认）、headless 自启' +
+      '（with_window=false）与附加运行中实例（只附加带界面的实例）三条路径，' +
       '其余配置项（语言、进程复用策略等）未适配。',
   },
 
@@ -707,7 +708,18 @@ export const SECTIONS = [
       'Generating from source of known source format': { status: 'done', note: '已实现：SCL/STL/DB/UDT 源文件生成。' },
       'Deleting user data type': { status: 'done', note: '已实现：delete_plc_objects 的 type_names（PlcType.Delete）。' },
       'Deleting an external file': { status: 'done', note: '已实现：keep_source=false 时生成完删除外部源。' },
-      'Starting the block editor': { status: 'none', pre: ['D'], note: '未适配：属界面行为。' },
+      'Starting the block editor': {
+        status: 'done',
+        pre: ['D'],
+        note:
+          '已实现：show_blocks_in_editor（ShowBlocksInEditor）对每个块调 Siemens.Engineering.IShowable.ShowInEditor()' +
+          '（V17 反射实证：该接口只有无参无返回的这个方法，PlcBlock 与 OB/FB/FC/DataBlock 等 13 个类型实现它），' +
+          '一次请求按名单批量打开、逐块回报，未命中/重名在读第一块之前就整单失败。' +
+          '必须运行在带界面的 TIA Portal 上：无界面实例报 editor_unavailable（并提示 close_project + 可见重开）。' +
+          '真机实测 2026-11-04：带界面会话 + PEI_HF_M4L_ZRW_Test_V5.1（782 块），单块 3.1 s、三块 5.2 s 全部开出编辑器' +
+          '（OB/FB/InstanceDB 的 kind 正确，含空格与非 ASCII 的组路径可解析），不存在的名字整单失败且不开任何编辑器。' +
+          '仍未覆盖：标签表编辑器（PlcTagTable 同样实现 IShowable）未暴露；单次上限 100 个块；保护块的密码弹框未验。',
+      },
       'Changing blocks using fingerprints': {
         status: 'done',
         note:

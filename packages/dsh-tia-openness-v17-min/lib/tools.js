@@ -670,6 +670,36 @@ function renderData(operation, data, verbose) {
             }
             break;
         }
+        case 'ShowBlocksInEditor': {
+            const opened = list(data['opened']);
+            lines.push(`Blocks opened in the TIA Portal block editor: ${numberOf(data['count']) ?? opened.length} of ` +
+                `${numberOf(data['requestedCount']) ?? opened.length} requested`);
+            const device = text(data['device']);
+            const software = text(data['software']);
+            if (device !== undefined || software !== undefined) {
+                lines.push(`PLC software: ${[device, software].filter((part) => part !== undefined).join(' / ')}`);
+            }
+            for (const item of opened.slice(0, MAX_LISTED)) {
+                const entry = record(item);
+                if (entry === null)
+                    continue;
+                const group = text(entry['group']);
+                const language = text(entry['programmingLanguage']);
+                lines.push(`  ${text(entry['name']) ?? '?'}${group === undefined ? '' : ` (${group})`} — ${text(entry['kind']) ?? '?'}` +
+                    `${language === undefined ? '' : `, ${language}`}`);
+            }
+            const failed = list(data['failed']);
+            if (failed.length > 0) {
+                lines.push(`Could not be opened: ${failed.length}`);
+                for (const item of failed.slice(0, MAX_LISTED)) {
+                    const entry = record(item);
+                    if (entry === null)
+                        continue;
+                    lines.push(`  FAILED ${text(entry['name']) ?? '?'}: ${text(entry['code']) ?? '?'} — ${text(entry['message']) ?? ''}`.trimEnd());
+                }
+            }
+            break;
+        }
         case 'SafetyStatus': {
             const globalSettings = record(data['globalSettings']);
             if (globalSettings !== null) {
@@ -973,13 +1003,17 @@ export function registerTools(ctx, dependencies) {
     };
     register(defineTool({
         name: 'open_project',
-        description: 'Open a TIA Portal V17 project for the PLC block tools (export/import/compile). Starts a headless TIA Portal ' +
-            'instance or attaches to a running one, and keeps the project open until close_project is called. This is the ' +
-            'first call of every workflow that touches a project. ' +
+        description: 'Open a TIA Portal V17 project for the PLC block tools (export/import/compile). By default it starts or ' +
+            'attaches to a VISIBLE TIA Portal an operator can watch — it prefers a visible instance that has no project ' +
+            'open, and starts a new visible window when the running one already holds a different project — and keeps the ' +
+            'project open until close_project is called. Pass with_window=false only for an unattended or batch run: it ' +
+            'starts a headless instance nobody can interact with, and a visible request never attaches to a headless ' +
+            'one. This is the first call of every workflow that touches a project. ' +
             'Writing: opening never modifies the project unless allow_upgrade is set, which rewrites an older project to ' +
             'V17; that is the explicit opt-in for the only write this tool can perform. dry_run validates the path and ' +
             'reports what would happen without opening anything. ' +
-            'Fails with project_not_found, project_already_open, project_open_failed, openness_unavailable or ' +
+            'Fails with project_not_found, project_already_open (including when the attached window already owns a ' +
+            'project — then close that project, or use adopt_open_project), project_open_failed, openness_unavailable or ' +
             'openness_load_failed.',
         parameters: {
             project_path: {
@@ -989,8 +1023,8 @@ export function registerTools(ctx, dependencies) {
             },
             with_window: {
                 type: 'boolean',
-                description: 'True to attach to an already running TIA Portal or start a visible one; false (the default) starts a ' +
-                    'headless instance that no operator can interact with.',
+                description: 'True (the default) to attach to a running visible TIA Portal or start a visible one; false starts a ' +
+                    'headless instance that no operator can interact with — only for unattended or batch runs.',
             },
             allow_upgrade: {
                 type: 'boolean',
@@ -1007,9 +1041,9 @@ export function registerTools(ctx, dependencies) {
             render: (_args, value) => [{ type: 'text', text: renderValue(value, verbose) }],
         },
         async execute(args, exec) {
-            const params = { project_path: args.project_path };
-            if (args.with_window !== undefined)
-                params['with_window'] = args.with_window;
+            // Sent explicitly rather than left to the controller: the visible window
+            // must survive every layer between the tool and TIA Portal.
+            const params = { project_path: args.project_path, with_window: args.with_window ?? true };
             if (args.allow_upgrade !== undefined)
                 params['allow_upgrade'] = args.allow_upgrade;
             if (args.dry_run !== undefined)
@@ -1249,8 +1283,9 @@ export function registerTools(ctx, dependencies) {
         name: 'create_project',
         description: 'Create a new TIA Portal V17 project: make the project folder and .ap17 file below project_dir and open it ' +
             'in the TIA Portal instance the controller holds, so the other project tools can work on it immediately. ' +
-            'author and comment are the optional creation parameters, and with_window=true creates the project in a ' +
-            'visible TIA Portal instead of the default headless instance. Maps to the ' +
+            'author and comment are the optional creation parameters, and with_window defaults to true: the project is ' +
+            'created in a visible TIA Portal an operator can watch. Pass with_window=false only for an unattended or ' +
+            'batch run. Maps to the ' +
             'CreateProject operation. Fails with project_already_open, project_create_failed or invalid_params.',
         parameters: {
             project_dir: {
@@ -1267,7 +1302,7 @@ export function registerTools(ctx, dependencies) {
             comment: { type: 'string', description: 'Optional project comment stored in the new project.' },
             with_window: {
                 type: 'boolean',
-                description: 'True to create the project in a visible TIA Portal instance; false (the default) uses a headless instance.',
+                description: 'True (the default) creates the project in a visible TIA Portal instance; false uses a headless instance, for an unattended run.',
             },
         },
         output: {
@@ -1278,7 +1313,7 @@ export function registerTools(ctx, dependencies) {
             const params = {
                 project_dir: args.project_dir,
                 project_name: args.project_name,
-                with_window: args.with_window ?? false,
+                with_window: args.with_window ?? true,
             };
             if (args.author !== undefined)
                 params['author'] = args.author;
@@ -1325,7 +1360,8 @@ export function registerTools(ctx, dependencies) {
             '(the default) writes target_dir/target_name using mode none, compressed (the default), ' +
             'discard_restorable_data or discard_restorable_data_and_compressed. action=retrieve reads archive_path into ' +
             'target_dir, optionally upgrading the project (upgrade) and opening it in a visible TIA Portal instance ' +
-            '(with_window) with project_open_mode primary or secondary. Archiving writes the archive file; ' +
+            '(with_window, the default; false keeps it headless for an unattended run) with project_open_mode primary ' +
+            'or secondary. Archiving writes the archive file; ' +
             'retrieving opens a project. Maps to the ArchiveProject operation. Fails with project_not_open, project_not_saved ' +
             '(unsaved changes), archive_failed, project_already_open, archive_not_found or retrieve_failed.',
         parameters: {
@@ -1354,7 +1390,7 @@ export function registerTools(ctx, dependencies) {
             },
             with_window: {
                 type: 'boolean',
-                description: 'Retrieve only: true opens the retrieved project in a visible TIA Portal instance. Defaults to false.',
+                description: 'Retrieve only: true (the default) opens the retrieved project in a visible TIA Portal instance; false keeps it headless.',
             },
         },
         output: {
@@ -1376,7 +1412,7 @@ export function registerTools(ctx, dependencies) {
                     params['archive_path'] = args.archive_path;
                 params['upgrade'] = args.upgrade ?? false;
                 params['project_open_mode'] = args.project_open_mode ?? 'primary';
-                params['with_window'] = args.with_window ?? false;
+                params['with_window'] = args.with_window ?? true;
             }
             return asJsonOutcome(await runOperation(dependencies, 'ArchiveProject', params, exec.signal));
         },
@@ -1541,7 +1577,8 @@ export function registerTools(ctx, dependencies) {
         description: 'Read or change TIA Portal settings, which live outside the project. action=list (the default) reports ' +
             'every setting folder and its settings with valueType, value and writeable; action=set changes the single ' +
             'setting named by setting in folder (default General) to value, which the controller converts according to ' +
-            'value_type (auto, string, boolean, integer or culture). Only action=set writes; with_window=true uses a visible TIA Portal instance, which some settings require. Maps to the ' +
+            'value_type (auto, string, boolean, integer or culture). Only action=set writes; with_window defaults to true ' +
+            'and uses a visible TIA Portal instance, which some settings require. Maps to the ' +
             'PortalSettings operation. Fails with setting_not_found (details.availableFolders / ' +
             'details.availableSettings), setting_change_failed or invalid_params.',
         parameters: {
@@ -1564,7 +1601,7 @@ export function registerTools(ctx, dependencies) {
             },
             with_window: {
                 type: 'boolean',
-                description: 'True to use a visible TIA Portal instance; false (the default) uses the headless one. Some settings only exist with a window.',
+                description: 'True (the default) to use a visible TIA Portal instance; false uses the headless one, for an unattended run. Some settings only exist with a window.',
             },
         },
         output: {
@@ -1576,7 +1613,7 @@ export function registerTools(ctx, dependencies) {
                 action: args.action ?? 'list',
                 folder: args.folder ?? 'General',
                 value_type: args.value_type ?? 'auto',
-                with_window: args.with_window ?? false,
+                with_window: args.with_window ?? true,
             };
             if (args.setting !== undefined)
                 params['setting'] = args.setting;
@@ -2094,17 +2131,59 @@ export function registerTools(ctx, dependencies) {
         },
     }));
     register(defineTool({
+        name: 'show_blocks_in_editor',
+        description: 'Open PLC blocks of the open project in the TIA Portal block editor, one editor per block, in ONE call — ' +
+            'the batch form of double-clicking a block in the project tree. The project must be open in a TIA Portal ' +
+            'instance WITH a user interface (open_project with with_window=true, which is the default, or ' +
+            'adopt_open_project for a project the operator already opened): a headless instance has no editor to put a ' +
+            'block in, and the call fails with editor_unavailable before touching any block. ' +
+            'Read-only for the project: it opens editors, changes no object and saves nothing, so it has no dry_run. ' +
+            'Every name is resolved before the first editor opens, so a typo never leaves half the batch open: an unknown ' +
+            'name fails the whole call with block_not_found (listing available blocks when there are few), and a bare ' +
+            'name that exists in several user groups fails with block_ambiguous. Names may be plain ("Main") or ' +
+            'group-qualified ("Motors/FB_Motor"); a group-qualified name is the way to open one of two same-named blocks. ' +
+            'At most 100 blocks per call (too_many_blocks), because TIA keeps one tab per block. ' +
+            'A block TIA refuses to open — for example a know-how protected block that raises its password prompt — is ' +
+            "reported per block under data.failed while the rest of the batch still opens; the call fails with " +
+            'editor_show_failed only when no block could be opened. Program blocks (OB/FB/FC) and data blocks (DB) both ' +
+            'have an editor. Fails with project_not_open, editor_unavailable, block_not_found, block_ambiguous, ' +
+            'too_many_blocks, editor_show_failed or invalid_params.',
+        parameters: {
+            block_names: {
+                type: 'array',
+                required: true,
+                items: { type: 'string' },
+                description: 'Blocks to open, in this order: plain names ("Main", "FB_Motor") or group-qualified ("Group/Main"). ' +
+                    'A name that appears twice is opened once.',
+            },
+            device_name: { type: 'string', description: 'Device that owns the PLC software. Only needed when the project has several PLCs.' },
+            software_name: { type: 'string', description: 'PLC software name. Only needed when one device holds several PLC software instances.' },
+        },
+        output: {
+            schema: OUTCOME_SCHEMA,
+            render: (_args, value) => [{ type: 'text', text: renderValue(value, verbose) }],
+        },
+        async execute(args, exec) {
+            const params = { block_names: args.block_names ?? [] };
+            if (args.device_name !== undefined)
+                params['device_name'] = args.device_name;
+            if (args.software_name !== undefined)
+                params['software_name'] = args.software_name;
+            return asJsonOutcome(await runOperation(dependencies, 'ShowBlocksInEditor', params, exec.signal));
+        },
+    }));
+    register(defineTool({
         name: 'safety_status',
         description: 'Report the F-related Openness state of the open project and of one PLC software: the global settings, ' +
             'the safety settings and the safety administration, plus every runtime group when ' +
             'include_runtime_groups is true (the default). A PLC that does not support F is not an error — the ' +
-            'affected section reports available=false with a reason. Read-only, with no dry_run; with_window=true ' +
+            'affected section reports available=false with a reason. Read-only, with no dry_run; with_window (the default) ' +
             'reads through a visible TIA Portal instance. Maps to the SafetyStatus operation. Fails with ' +
             'project_not_open or openness_unavailable.',
         parameters: {
             include_runtime_groups: { type: 'boolean', description: 'True (the default) to include the F runtime groups with their FOB and cycle times.' },
             include_settings: { type: 'boolean', description: 'True (the default) to include the safety settings section.' },
-            with_window: { type: 'boolean', description: 'True to read through a visible TIA Portal instance; false (the default) uses the headless one.' },
+            with_window: { type: 'boolean', description: 'True (the default) reads through a visible TIA Portal instance; false uses the headless one.' },
         },
         output: {
             schema: OUTCOME_SCHEMA,
@@ -2114,7 +2193,7 @@ export function registerTools(ctx, dependencies) {
             const params = {
                 include_runtime_groups: args.include_runtime_groups ?? true,
                 include_settings: args.include_settings ?? true,
-                with_window: args.with_window ?? false,
+                with_window: args.with_window ?? true,
             };
             return asJsonOutcome(await runOperation(dependencies, 'SafetyStatus', params, exec.signal));
         },
@@ -2218,7 +2297,7 @@ export function registerTools(ctx, dependencies) {
             device_name: { type: 'string', description: 'Restrict discovery to one device. Omit to inspect every device of the project.' },
             include_offline_nodes: { type: 'boolean', description: 'True (the default) to read each device’s configured IP / subnet mask / subnet; false skips that traversal.' },
             max_items: { type: 'integer', description: 'Cap on the nodes reported per device (default 200).' },
-            with_window: { type: 'boolean', description: 'True to read through a visible TIA Portal instance; false (the default) uses the headless one.' },
+            with_window: { type: 'boolean', description: 'True (the default) reads through a visible TIA Portal instance; false uses the headless one.' },
         },
         output: {
             schema: OUTCOME_SCHEMA,
@@ -2228,7 +2307,7 @@ export function registerTools(ctx, dependencies) {
             const params = {
                 include_offline_nodes: args.include_offline_nodes ?? true,
                 max_items: args.max_items ?? 200,
-                with_window: args.with_window ?? false,
+                with_window: args.with_window ?? true,
             };
             if (args.device_name !== undefined)
                 params['device_name'] = args.device_name;
@@ -2264,7 +2343,7 @@ export function registerTools(ctx, dependencies) {
                 description: 'Fail with online_kind_mismatch unless the resolved PC interface is classified as this kind. Use "virtual" to guarantee a PLCSIM target and "physical" to guarantee a real one; the classification itself is a name heuristic (PLCSIM / Virtual).',
             },
             owner: { type: 'string', description: 'Optional label recorded in the session, so a shared controller can say who holds the connection.' },
-            with_window: { type: 'boolean', description: 'True to connect through a visible TIA Portal instance; false (the default) uses the headless one.' },
+            with_window: { type: 'boolean', description: 'True (the default) connects through a visible TIA Portal instance; false uses the headless one.' },
         },
         output: {
             schema: OUTCOME_SCHEMA,
@@ -2277,7 +2356,7 @@ export function registerTools(ctx, dependencies) {
                 pc_interface_number: args.pc_interface_number ?? 1,
                 timeout_ms: args.timeout_ms ?? 60000,
                 replace: args.replace ?? false,
-                with_window: args.with_window ?? false,
+                with_window: args.with_window ?? true,
             };
             if (args.pc_interface !== undefined)
                 params['pc_interface'] = args.pc_interface;
@@ -2299,14 +2378,14 @@ export function registerTools(ctx, dependencies) {
             'Disconnecting). Never connects or disconnects. Maps to the OnlineStatus operation; it cannot fail ' +
             'for a missing project because it reads controller state only.',
         parameters: {
-            with_window: { type: 'boolean', description: 'True to read through a visible TIA Portal instance; false (the default) uses the headless one.' },
+            with_window: { type: 'boolean', description: 'True (the default) reads through a visible TIA Portal instance; false uses the headless one.' },
         },
         output: {
             schema: OUTCOME_SCHEMA,
             render: (_args, value) => [{ type: 'text', text: renderValue(value, verbose) }],
         },
         async execute(args, exec) {
-            return asJsonOutcome(await runOperation(dependencies, 'OnlineStatus', { with_window: args.with_window ?? false }, exec.signal));
+            return asJsonOutcome(await runOperation(dependencies, 'OnlineStatus', { with_window: args.with_window ?? true }, exec.signal));
         },
     }));
     register(defineTool({
@@ -2317,14 +2396,14 @@ export function registerTools(ctx, dependencies) {
         parameters: {
             device_name: { type: 'string', description: 'Device whose online state should be dropped when force=true and the controller holds no session.' },
             force: { type: 'boolean', description: 'True to call GoOffline on the device even when the controller holds no session — needed after adopting a UI project that is still online.' },
-            with_window: { type: 'boolean', description: 'True to go offline through a visible TIA Portal instance; false (the default) uses the headless one.' },
+            with_window: { type: 'boolean', description: 'True (the default) goes offline through a visible TIA Portal instance; false uses the headless one.' },
         },
         output: {
             schema: OUTCOME_SCHEMA,
             render: (_args, value) => [{ type: 'text', text: renderValue(value, verbose) }],
         },
         async execute(args, exec) {
-            const params = { force: args.force ?? false, with_window: args.with_window ?? false };
+            const params = { force: args.force ?? false, with_window: args.with_window ?? true };
             if (args.device_name !== undefined)
                 params['device_name'] = args.device_name;
             return asJsonOutcome(await runOperation(dependencies, 'OnlineDisconnect', params, exec.signal));
@@ -2364,7 +2443,7 @@ export function registerTools(ctx, dependencies) {
             password: { type: 'string', description: 'Password for a protected module (module read/write access and the generic download password).' },
             block_binding_password: { type: 'string', description: 'Password for block binding; falls back to password when omitted.' },
             max_messages: { type: 'integer', description: 'Cap on the returned result messages (default 200).' },
-            with_window: { type: 'boolean', description: 'True to download through a visible TIA Portal instance; false (the default) uses the headless one.' },
+            with_window: { type: 'boolean', description: 'True (the default) downloads through a visible TIA Portal instance; false uses the headless one.' },
         },
         output: {
             schema: OUTCOME_SCHEMA,
@@ -2378,7 +2457,7 @@ export function registerTools(ctx, dependencies) {
                 confirm_real_device: args.confirm_real_device ?? false,
                 options: args.options ?? 'software',
                 max_messages: args.max_messages ?? 200,
-                with_window: args.with_window ?? false,
+                with_window: args.with_window ?? true,
             };
             if (args.password !== undefined)
                 params['password'] = args.password;

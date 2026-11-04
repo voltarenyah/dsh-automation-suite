@@ -73,6 +73,7 @@ export const EXPECTED_TOOLS = [
   'generate_source',
   'watch_and_force_tables',
   'software_units',
+  'show_blocks_in_editor',
   'safety_status',
   'set_safety_settings',
   'safety_signatures',

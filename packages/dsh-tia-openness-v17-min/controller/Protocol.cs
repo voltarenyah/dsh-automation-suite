@@ -94,6 +94,12 @@ namespace TiaOpennessV17Min.Controller
         public const string OnlineDisconnect = "OnlineDisconnect";
         public const string Download = "Download";
 
+        // Presenting blocks in the TIA Portal UI (OperationsEditor.cs). The only
+        // operation of this catalog whose effect is a UI action rather than a
+        // project or file change: it needs a TIA Portal started WITH a user
+        // interface and it never writes to the project.
+        public const string ShowBlocksInEditor = "ShowBlocksInEditor";
+
         private static readonly string[] Names =
         {
             OpenProject, ExportBlocks, ImportBlocks, CompilePlc, CloseProject,
@@ -105,6 +111,7 @@ namespace TiaOpennessV17Min.Controller
             SafetyStatus, SetSafetySettings, SafetySignatures,
             AdoptOpenProject, OnlineTargets, OnlineConnect, OnlineStatus, OnlineDisconnect, Download,
             PlcChecksum, SyncScan,
+            ShowBlocksInEditor,
         };
 
         /// <summary>The whitelist in declaration order; used by diagnostics and the self test.</summary>

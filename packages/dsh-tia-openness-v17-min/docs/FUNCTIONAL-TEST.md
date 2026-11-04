@@ -42,7 +42,7 @@ open_project({ "project_path": "D:\\Demo\\Demo.ap17" })
 - 如果项目是旧版本创建的：不加 `allow_upgrade` 会失败（`project_open_failed`），
   这是**设计如此**——升级会重写项目文件，必须显式传 `allow_upgrade: true`。
 
-同时观察任务管理器：会出现一个 `TiaPortal.exe`（headless，看不到窗口）。这是正常的。
+同时观察任务管理器：会出现一个 `TiaPortal.exe`，**默认带界面窗口**（`with_window` 默认 true）。只有无人值守运行时才传 `with_window: false`，那时看不到窗口，这是正常的。
 
 ---
 
@@ -181,7 +181,7 @@ close_project({ "save": true, "close_portal": true, "dry_run": false })  // 连 
 ```
 
 **期望**：`data.saved: true`，`data.closed: true`；（可选）`data.portalClosed: true`，
-并且任务管理器里那个 headless `TiaPortal.exe` 消失。
+并且任务管理器里那个 `TiaPortal.exe` 消失（默认是带界面的那个；`with_window: false` 时是无界面的）。
 
 最后卸载插件（禁用/移除该 bundle，或结束 DSH 进程），确认：
 

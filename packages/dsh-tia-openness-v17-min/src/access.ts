@@ -257,7 +257,11 @@ export type AccessCategory =
   | 'units'
 
 export interface OpenProjectOptions {
-  /** True to attach to a running TIA Portal or start a visible one. */
+  /**
+   * True to attach to a running visible TIA Portal or start a visible one; the
+   * default, so an operator can watch the work. False starts a headless
+   * instance and never attaches to a visible one — only for unattended runs.
+   */
   withWindow?: boolean
   /**
    * True to let TIA rewrite a project created by an older version. Off by
@@ -320,7 +324,10 @@ export interface SaveProjectAsOptions {
 }
 
 export interface RetrieveProjectOptions {
-  /** True to attach to a running TIA Portal or start a visible one. */
+  /**
+   * True to attach to a running visible TIA Portal or start a visible one; the
+   * default. False retrieves into a headless instance (unattended runs).
+   */
   withWindow?: boolean
   /**
    * True to let TIA upgrade an archive written by an older version while it
@@ -642,8 +649,7 @@ export class EngineeringAccess extends Service {
     if (typeof projectPath !== 'string' || projectPath.trim().length === 0) {
       throw new TypeError('openProject needs a non-empty project path')
     }
-    const params: JsonRecord = { project_path: projectPath }
-    if (options.withWindow !== undefined) params['with_window'] = options.withWindow
+    const params: JsonRecord = { project_path: projectPath, with_window: options.withWindow ?? true }
     if (options.allowUpgrade !== undefined) params['allow_upgrade'] = options.allowUpgrade
     if (options.dryRun !== undefined) params['dry_run'] = options.dryRun
     return toCallResult(await runOperation(this.dependencies, 'OpenProject', params, options.signal))
@@ -921,7 +927,7 @@ export class EngineeringAccess extends Service {
       target_dir: targetDir,
       upgrade: options.upgrade ?? false,
       project_open_mode: options.openMode ?? 'primary',
-      with_window: options.withWindow ?? false,
+      with_window: options.withWindow ?? true,
     }
     const outcome = await runOperation(this.dependencies, 'ArchiveProject', params, options.signal)
     const result = toCallResult(outcome)

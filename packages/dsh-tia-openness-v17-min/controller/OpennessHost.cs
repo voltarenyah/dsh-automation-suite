@@ -78,6 +78,7 @@ namespace TiaOpennessV17Min.Controller
         private Project _project;
         private bool _adoptedProject;
         private bool _disposed;
+        private bool _portalWithUserInterface;
 
         public OpennessHost(DiagnosticLog log)
         {
@@ -88,15 +89,54 @@ namespace TiaOpennessV17Min.Controller
 
         public bool HasPortal { get { return _portal != null; } }
 
+        /// <summary>
+        /// Whether the held TIA Portal instance has a user interface. Only a
+        /// portal started (or attached) WITH one can show a block in an editor:
+        /// <c>IShowable.ShowInEditor()</c> is a UI action, and a headless portal
+        /// has no editor to show anything in.
+        ///
+        /// An attached instance reports its own mode
+        /// (<c>TiaPortalProcess.Mode</c>), so attaching to a headless instance is
+        /// reported as headless as well.
+        /// </summary>
+        public bool HasUserInterface { get { return _portal != null && _portalWithUserInterface; } }
+
         public Project Project { get { return _project; } }
 
         // ---------------------------------------------------------------- portal
 
+        /// <summary>What a visible request is looking for among running TIA Portal instances.</summary>
+        private enum VisiblePortalNeed
+        {
+            /// <summary>Any visible instance; a settings or safety read can use an occupied one.</summary>
+            Any,
+            /// <summary>
+            /// An instance with no project open, because a project is about to be
+            /// opened or created in it (TIA allows one primary project per instance).
+            /// </summary>
+            FreeInstance,
+            /// <summary>The instance that already owns a project (adoption).</summary>
+            OpenProject
+        }
+
         /// <summary>
         /// Creates the TIA Portal instance, or attaches to a running one when the
-        /// caller asked for a visible session and one exists.
+        /// caller asked for a visible session and a suitable visible one exists.
+        ///
+        /// A visible request never attaches to a headless instance: that would run
+        /// the work in a window nobody can see, which is exactly the failure mode
+        /// the parameter exists to avoid. A headless instance that is running is
+        /// reported and left alone; a new visible instance is started instead.
+        ///
+        /// <paramref name="need"/> decides which visible instance is suitable. An
+        /// operator usually has a TIA Portal window open with a project, and TIA
+        /// refuses a second primary project in the same instance — attaching to it
+        /// would make every open of a different project fail. Hence
+        /// <see cref="VisiblePortalNeed.FreeInstance"/>, which starts a new window
+        /// instead of borrowing the occupied one.
         /// </summary>
-        private void EnsurePortal(bool withWindow, IProgressSink progress)
+        private void EnsurePortal(bool withWindow, IProgressSink progress,
+            string projectPath = null, VisiblePortalNeed need = VisiblePortalNeed.Any)
         {
             if (_portal != null)
             {
@@ -113,23 +153,15 @@ namespace TiaOpennessV17Min.Controller
 
             if (withWindow)
             {
-                List<TiaPortalProcess> processes = new List<TiaPortalProcess>();
-                try
+                TiaPortalProcess visible = FindVisibleProcess(projectPath, need);
+                if (visible != null)
                 {
-                    processes.AddRange(TiaPortal.GetProcesses());
-                }
-                catch (Exception ex)
-                {
-                    _log.Warning("Running TIA Portal instances could not be enumerated: " + ex.Message);
-                }
-
-                if (processes.Count > 0)
-                {
-                    TiaPortalProcess existing = processes[0];
-                    progress.Report("open", "Attaching to the running TIA Portal process " + existing.Id + ".");
-                    _log.Info("Attached to TIA Portal process " + existing.Id
-                        + (existing.ProjectPath != null ? " (" + existing.ProjectPath + ")" : string.Empty));
-                    _portal = existing.Attach();
+                    FileInfo heldFile = SafeProcessProjectFile(visible);
+                    progress.Report("open", "Attaching to the visible TIA Portal process " + visible.Id + ".");
+                    _log.Info("Attached to the visible TIA Portal process " + visible.Id
+                        + (heldFile != null ? " (" + heldFile + ")" : string.Empty));
+                    _portal = visible.Attach();
+                    _portalWithUserInterface = true;
                     return;
                 }
             }
@@ -137,7 +169,124 @@ namespace TiaOpennessV17Min.Controller
             TiaPortalMode mode = withWindow ? TiaPortalMode.WithUserInterface : TiaPortalMode.WithoutUserInterface;
             progress.Report("open", "Starting TIA Portal V17 (" + (withWindow ? "with" : "without") + " user interface).");
             _portal = new TiaPortal(mode);
+            _portalWithUserInterface = withWindow;
             _log.Info("Started a new TIA Portal instance in mode " + mode + ".");
+        }
+
+        /// <summary>
+        /// The running TIA Portal instance that fits the request, or null when a
+        /// new visible instance has to be started (none is visible, none is free
+        /// when a free one is required, or the process list could not be read).
+        /// Headless instances are never returned: a visible request that attached
+        /// to one would run the work in a window nobody can see.
+        /// </summary>
+        private TiaPortalProcess FindVisibleProcess(string projectPath, VisiblePortalNeed need)
+        {
+            List<TiaPortalProcess> processes = new List<TiaPortalProcess>();
+            try
+            {
+                processes.AddRange(TiaPortal.GetProcesses());
+            }
+            catch (Exception ex)
+            {
+                _log.Warning("Running TIA Portal instances could not be enumerated: " + ex.Message);
+                return null;
+            }
+
+            List<TiaPortalProcess> visible = new List<TiaPortalProcess>();
+            int headless = 0;
+            foreach (TiaPortalProcess process in processes)
+            {
+                if (SafeProcessMode(process) == TiaPortalMode.WithUserInterface) visible.Add(process);
+                else headless++;
+            }
+
+            if (visible.Count == 0)
+            {
+                if (headless > 0)
+                {
+                    _log.Info("Only headless TIA Portal instances are running (" + headless
+                        + "); a new visible instance is started instead of attaching to one of them.");
+                }
+                return null;
+            }
+
+            if (need == VisiblePortalNeed.Any) return visible[0];
+
+            if (need == VisiblePortalNeed.OpenProject)
+            {
+                foreach (TiaPortalProcess process in visible)
+                {
+                    if (SafeProcessProjectFile(process) != null) return process;
+                }
+                return visible[0];
+            }
+
+            // FreeInstance: an instance with no project is the one that can take
+            // the project about to be opened or created.
+            foreach (TiaPortalProcess process in visible)
+            {
+                if (SafeProcessProjectFile(process) == null) return process;
+            }
+
+            if (!string.IsNullOrEmpty(projectPath))
+            {
+                foreach (TiaPortalProcess process in visible)
+                {
+                    FileInfo heldFile = SafeProcessProjectFile(process);
+                    if (heldFile != null && SamePath(heldFile.FullName, projectPath)) return process;
+                }
+            }
+
+            _log.Info("Every visible TIA Portal instance already has a project open; a new visible instance is started "
+                + "instead of borrowing one of them.");
+            return null;
+        }
+
+        /// <summary>Whether two paths name the same file (Windows comparison).</summary>
+        private static bool SamePath(string left, string right)
+        {
+            if (string.IsNullOrEmpty(left) || string.IsNullOrEmpty(right)) return false;
+            try
+            {
+                return string.Equals(Path.GetFullPath(left), Path.GetFullPath(right), StringComparison.OrdinalIgnoreCase);
+            }
+            catch (Exception)
+            {
+                return string.Equals(left, right, StringComparison.OrdinalIgnoreCase);
+            }
+        }
+
+        /// <summary>
+        /// The project file a running instance reports, or null when it holds none
+        /// (or the process vanished between the enumeration and the read).
+        /// </summary>
+        private static FileInfo SafeProcessProjectFile(TiaPortalProcess process)
+        {
+            try
+            {
+                return process.ProjectPath;
+            }
+            catch (Exception)
+            {
+                return null;
+            }
+        }
+
+        /// <summary>Reads <c>TiaPortalProcess.Mode</c>, tolerating a process that vanished meanwhile.</summary>
+        private TiaPortalMode SafeProcessMode(TiaPortalProcess process)
+        {
+            try
+            {
+                return process.Mode;
+            }
+            catch (Exception ex)
+            {
+                _log.Warning("The mode of the running TIA Portal process could not be read: " + ex.Message);
+                // A visible instance is the safe assumption: the editor operation
+                // still fails cleanly per block if the window is not usable.
+                return TiaPortalMode.WithUserInterface;
+            }
         }
 
         /// <summary>Drops the current portal handle, disposing it first when possible.</summary>
@@ -155,6 +304,7 @@ namespace TiaOpennessV17Min.Controller
                 _log.Info("Disposing the TIA Portal handle failed (dropping it anyway): " + ex.Message);
             }
             _portal = null;
+            _portalWithUserInterface = false;
         }
 
         /// <summary>
@@ -219,7 +369,39 @@ namespace TiaOpennessV17Min.Controller
                     + "allow_upgrade will fail, and allow_upgrade rewrites the project to V17.");
             }
 
-            EnsurePortal(withWindow, progress);
+            EnsurePortal(withWindow, progress, fullPath, VisiblePortalNeed.FreeInstance);
+
+            // TIA allows one primary project per instance. An attached window can
+            // already own one (the operator opened it, or it is the project asked
+            // for); Open() would then fail with an unspecific TIA message, so report
+            // the state together with the route that does work — adoption.
+            int heldCount = 0;
+            string heldName = null;
+            string heldPath = null;
+            try
+            {
+                heldCount = _portal.Projects.Count;
+                if (heldCount > 0)
+                {
+                    Project held = _portal.Projects[0];
+                    heldName = held.Name;
+                    heldPath = Convert.ToString(held.Path);
+                }
+            }
+            catch (Exception ex)
+            {
+                _log.Warning("The projects already open in the TIA Portal instance could not be listed: " + ex.Message);
+            }
+            if (heldCount > 0)
+            {
+                throw new ControllerException(
+                    "project_already_open",
+                    "The TIA Portal instance already has a project open (" + Text.Quote(heldName ?? "?") + "), and TIA "
+                        + "Portal allows one primary project per instance, so this controller cannot open "
+                        + Text.Quote(fullPath) + " there. Close that project in the window, or use AdoptOpenProject when "
+                        + "that open project is the one to work on.",
+                    JsonObject.Of("openProject", heldPath, "hint", "adopt_open_project"));
+            }
 
             FileInfo file = new FileInfo(fullPath);
             progress.Report("open", (allowUpgrade ? "Opening and upgrading " : "Opening ") + fullPath);
@@ -239,7 +421,7 @@ namespace TiaOpennessV17Min.Controller
                     // One retry on a fresh instance is enough.
                     _log.Warning("Opening the project hit a disposed TIA Portal instance; retrying with a fresh instance.");
                     ResetPortal();
-                    EnsurePortal(withWindow, progress);
+                    EnsurePortal(withWindow, progress, fullPath, VisiblePortalNeed.FreeInstance);
                 }
                 catch (Exception ex)
                 {
@@ -256,7 +438,7 @@ namespace TiaOpennessV17Min.Controller
             data.Add("projectPath", SafeProjectPath());
             data.Add("requestedPath", fullPath);
             data.Add("upgraded", allowUpgrade);
-            data.Add("withUserInterface", withWindow);
+            data.Add("withUserInterface", HasUserInterface);
             data.Add("openDurationMs", (long)(DateTime.UtcNow - started).TotalMilliseconds);
             data.Add("isModified", SafeIsModified());
             data.Add("plcSoftware", DescribePlcSoftware());
@@ -278,7 +460,7 @@ namespace TiaOpennessV17Min.Controller
         {
             if (_project == null)
             {
-                EnsurePortal(true, progress);
+                EnsurePortal(true, progress, null, VisiblePortalNeed.OpenProject);
                 if (_portal.Projects.Count == 0)
                 {
                     throw new ControllerException(
@@ -294,7 +476,7 @@ namespace TiaOpennessV17Min.Controller
             data.Add("projectName", SafeProjectName());
             data.Add("projectPath", SafeProjectPath());
             data.Add("adopted", true);
-            data.Add("withUserInterface", true);
+            data.Add("withUserInterface", HasUserInterface);
             data.Add("isModified", SafeIsModified());
             data.Add("plcSoftware", DescribePlcSoftware());
             data.Add("blockSummary", DescribeBlockSummary());
@@ -1401,6 +1583,7 @@ namespace TiaOpennessV17Min.Controller
             if (_portal != null)
             {
                 session.Add("portalMode", Convert.ToString(_portal.GetType().Name));
+                session.Add("withUserInterface", HasUserInterface);
             }
             session.Add("projectOpen", _project != null);
             if (_project != null)

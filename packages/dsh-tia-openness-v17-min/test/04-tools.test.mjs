@@ -87,15 +87,21 @@ async function harness(t, reply) {
   return { tools, context, calls: recording.calls, byName }
 }
 
-test('open_project forwards only the parameters it was given', async (t) => {
+test('open_project sends the visible default and forwards everything else', async (t) => {
   const { calls, byName } = await harness(t)
 
   await byName['open_project'].execute({ project_path: 'C:\\P\\P.ap17' }, {})
   assert.deepEqual(calls[0].operation, 'OpenProject')
-  assert.deepEqual(calls[0].params, { project_path: 'C:\\P\\P.ap17' })
+  // with_window is sent explicitly rather than left to the controller: the
+  // visible instance must survive every layer between the tool and TIA Portal.
+  assert.deepEqual(calls[0].params, { project_path: 'C:\\P\\P.ap17', with_window: true })
 
   await byName['open_project'].execute({ project_path: 'C:\\P\\P.ap17', with_window: true, allow_upgrade: true, dry_run: true }, {})
   assert.deepEqual(calls[1].params, { project_path: 'C:\\P\\P.ap17', with_window: true, allow_upgrade: true, dry_run: true })
+
+  // The headless instance is the explicit opt-out, for unattended runs only.
+  await byName['open_project'].execute({ project_path: 'C:\\P\\P.ap17', with_window: false }, {})
+  assert.deepEqual(calls[2].params, { project_path: 'C:\\P\\P.ap17', with_window: false })
 })
 
 test('export_blocks applies its documented defaults and writes directly', async (t) => {
@@ -281,7 +287,55 @@ test('controller_status never talks to the controller and hides the captured out
   const verboseValue = await byName['controller_status'].execute({ include_controller_output: true }, {})
   assert.deepEqual(verboseValue.data.stderrTail, ['a stderr line'])
 
-  assert.equal(context.definitions.length, 37)
+  assert.equal(context.definitions.length, 38)
+})
+
+test('show_blocks_in_editor sends the batch and renders every opened block', async (t) => {
+  const { calls, byName } = await harness(t)
+
+  await byName['show_blocks_in_editor'].execute({ block_names: ['Main', 'Motors/FB_Motor', 'Main'] }, {})
+  assert.equal(calls[0].operation, 'ShowBlocksInEditor')
+  assert.deepEqual(calls[0].params, { block_names: ['Main', 'Motors/FB_Motor', 'Main'] })
+  assert.ok(!('dry_run' in calls[0].params), 'opening an editor writes nothing, so the tool has no dry run')
+
+  await byName['show_blocks_in_editor'].execute(
+    { block_names: ['OB1'], device_name: 'PLC_1', software_name: 'Sino_PEI' },
+    {},
+  )
+  assert.deepEqual(calls[1].params, { block_names: ['OB1'], device_name: 'PLC_1', software_name: 'Sino_PEI' })
+})
+
+test('show_blocks_in_editor renders the opened blocks and the per-block failures', async (t) => {
+  const { byName } = await harness(t, (operation) => ({
+    type: 'result',
+    protocol: 1,
+    id: 'stub',
+    operation,
+    ok: true,
+    durationMs: 120,
+    data: {
+      device: 'PLC_1',
+      software: 'Sino_PEI',
+      withUserInterface: true,
+      requestedCount: 3,
+      count: 1,
+      opened: [{ name: 'Main', group: 'Blocks/', kind: 'OB', programmingLanguage: 'LAD' }],
+      failedCount: 1,
+      failed: [{ name: 'FB_Secret', kind: 'FB', code: 'editor_show_failed', message: "'FB_Secret': password required" }],
+      maxEditorBlocks: 100,
+      dryRun: false,
+    },
+    changes: [{ kind: 'block', target: 'Blocks/Main', action: 'shown_in_editor' }],
+    diagnostics: [],
+  }))
+
+  const args = { block_names: ['Main', 'FB_Secret'] }
+  const value = await byName['show_blocks_in_editor'].execute(args, {})
+  const text = renderedText(byName['show_blocks_in_editor'], args, value)
+  assert.match(text, /Blocks opened in the TIA Portal block editor: 1 of 3 requested/)
+  assert.match(text, /Main \(Blocks\/\) — OB, LAD/)
+  assert.match(text, /FAILED FB_Secret: editor_show_failed/)
+  assert.match(text, /block shown_in_editor: Blocks\/Main/)
 })
 
 test('only whitelisted operations ever reach the controller', async (t) => {
@@ -697,10 +751,10 @@ test('the online tools forward exactly their documented parameters', async (t) =
 
   await byName['online_targets'].execute({}, {})
   assert.deepEqual(calls[0].operation, 'OnlineTargets')
-  assert.deepEqual(calls[0].params, { include_offline_nodes: true, max_items: 200, with_window: false })
+  assert.deepEqual(calls[0].params, { include_offline_nodes: true, max_items: 200, with_window: true })
 
   await byName['online_targets'].execute({ device_name: 'PLC_1', include_offline_nodes: false }, {})
-  assert.deepEqual(calls[1].params, { include_offline_nodes: false, max_items: 200, with_window: false, device_name: 'PLC_1' })
+  assert.deepEqual(calls[1].params, { include_offline_nodes: false, max_items: 200, with_window: true, device_name: 'PLC_1' })
 
   await byName['online_connect'].execute(
     { device_name: 'PLC_1', pc_interface: 'PLCSIM Virtual Eth. Adapter', target_interface: '1 X1' },
@@ -713,7 +767,7 @@ test('the online tools forward exactly their documented parameters', async (t) =
     pc_interface_number: 1,
     timeout_ms: 60000,
     replace: false,
-    with_window: false,
+    with_window: true,
     pc_interface: 'PLCSIM Virtual Eth. Adapter',
     target_interface: '1 X1',
   })
@@ -725,20 +779,20 @@ test('the online tools forward exactly their documented parameters', async (t) =
     pc_interface_number: 1,
     timeout_ms: 60000,
     replace: false,
-    with_window: false,
+    with_window: true,
     address: '192.168.0.10',
     expect_kind: 'virtual',
   })
 
   await byName['online_status'].execute({}, {})
-  assert.deepEqual(calls[4].params, { with_window: false })
+  assert.deepEqual(calls[4].params, { with_window: true })
 
   await byName['online_disconnect'].execute({}, {})
   assert.deepEqual(calls[5].operation, 'OnlineDisconnect')
-  assert.deepEqual(calls[5].params, { force: false, with_window: false })
+  assert.deepEqual(calls[5].params, { force: false, with_window: true })
 
   await byName['online_disconnect'].execute({ device_name: 'PLC_1', force: true }, {})
-  assert.deepEqual(calls[6].params, { force: true, with_window: false, device_name: 'PLC_1' })
+  assert.deepEqual(calls[6].params, { force: true, with_window: true, device_name: 'PLC_1' })
 
   await byName['download'].execute({ device_name: 'PLC_1' }, {})
   assert.deepEqual(calls[7].operation, 'Download')
@@ -749,7 +803,7 @@ test('the online tools forward exactly their documented parameters', async (t) =
     confirm_real_device: false,
     options: 'software',
     max_messages: 200,
-    with_window: false,
+    with_window: true,
   })
 
   await byName['download'].execute({ device_name: 'PLC_1', confirm: true, confirm_real_device: true, options: 'both', password: 'p' }, {})
@@ -760,7 +814,7 @@ test('the online tools forward exactly their documented parameters', async (t) =
     confirm_real_device: true,
     options: 'both',
     max_messages: 200,
-    with_window: false,
+    with_window: true,
     password: 'p',
   })
 
@@ -783,7 +837,7 @@ test('the online tools forward exactly their documented parameters', async (t) =
     confirm_real_device: false,
     options: 'software',
     max_messages: 200,
-    with_window: false,
+    with_window: true,
     mode: 'PN/IE',
     pc_interface: 'PLCSIM',
     pc_interface_number: 1,

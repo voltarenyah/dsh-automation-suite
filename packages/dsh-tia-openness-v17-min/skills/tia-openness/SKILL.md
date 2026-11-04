@@ -38,6 +38,7 @@ V17 的行为也不能从 V21 文本直接推。判不准时以本机 V17 实测
 | 打开/关闭/attach 已运行实例、归档、项目生命周期 | `session-and-project/SKILL.md` |
 | 工程语言、工程注释（多语言文本）、工程历史、TIA Portal 设置项 | `engineering-objects/SKILL.md`、`session-and-project/SKILL.md` |
 | 块导出/导入/编译、块口令保护、InstanceDB/GlobalDB 接口成员、交叉引用 | `blocks/SKILL.md` |
+| 要在 TIA 里**打开**程序块编辑器（按名单批量把块显示出来） | 本包 `show_blocks_in_editor`（工具描述即契约）；底层是 `IShowable.ShowInEditor()`，**必须带界面**的 TIA Portal，无界面实例报 `editor_unavailable`，补救是 `close_project` 后 `with_window=true` 重开 |
 | 块/UDT 的指纹（FingerprintProvider）与"变了什么" | `change-detection/SKILL.md` |
 | `PlcSoftware` 下的组层级（BlockGroup/TypeGroup/TagTableGroup/ExternalSourceGroup） | `software-hierarchy/SKILL.md` |
 | 独占访问与事务、属性读写、`GetService` 模式、对象树导航 | `engineering-objects/SKILL.md` |
@@ -58,8 +59,8 @@ V17 的行为也不能从 V21 文本直接推。判不准时以本机 V17 实测
 | 工艺对象（TO，运动控制） | `technology-objects/SKILL.md` |
 
 > 驱动、安全、在线下载、硬件组态这些上游章节回答的是「**Openness 能不能做**」，
-> 不是「**这个插件能不能做**」：本插件的 33 个工具覆盖工程生命周期与工程数据、PLC 块/类型/标签表/
-> 变量/监视表/软件单元、F 相关服务，以及**硬件组态的只读导出**（`export_hardware_config`，
+> 不是「**这个插件能不能做**」：本插件的 38 个工具覆盖工程生命周期与工程数据、PLC 块/类型/标签表/
+> 变量/监视表/软件单元、F 相关服务、块编辑器的批量打开（`show_blocks_in_editor`），以及**硬件组态的只读导出**（`export_hardware_config`，
 > 输出一个 CAEX 2.15 的 AML 文件），边界以 `README.md` §10 与 `docs/EXTENDED-SURFACE.md` 为准。
 
 ## 硬件组态怎么"读"（本插件只有这一条路）

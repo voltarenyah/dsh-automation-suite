@@ -24,7 +24,7 @@ namespace TiaOpennessV17Min.Controller
         {
             bool includeRuntimeGroups = p.Bool("include_runtime_groups", true);
             bool includeSettings = p.Bool("include_settings", true);
-            bool withWindow = p.Bool("with_window", false);
+            bool withWindow = p.Bool("with_window", true);
 
             // The manual obtains GlobalSettings from the TIA Portal instance, so
             // the instance is started (or attached to) on demand here.
@@ -110,7 +110,7 @@ namespace TiaOpennessV17Min.Controller
                         + "'username_for_f_change_history'.");
             }
 
-            bool withWindow = p.Bool("with_window", false);
+            bool withWindow = p.Bool("with_window", true);
             _host.EnsurePortalStarted(withWindow, progress);
 
             string reason;

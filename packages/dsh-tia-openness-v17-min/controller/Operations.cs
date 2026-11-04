@@ -35,8 +35,9 @@ namespace TiaOpennessV17Min.Controller
     ///
     /// The class is partial. This file holds the original block read/write
     /// surface; the project-data operations live in <c>OperationsProject.cs</c>,
-    /// the PLC-data operations in <c>OperationsPlc.cs</c> and the F-related
-    /// operations in <c>OperationsSafety.cs</c>.
+    /// the PLC-data operations in <c>OperationsPlc.cs</c>, the F-related
+    /// operations in <c>OperationsSafety.cs</c> and the block-editor operation in
+    /// <c>OperationsEditor.cs</c>.
     /// </summary>
     internal sealed partial class OpennessOperations : IOperationRunner
     {
@@ -150,6 +151,11 @@ namespace TiaOpennessV17Min.Controller
                 case OperationCatalog.SoftwareUnits:
                     return SoftwareUnits(parameters, log, changes, progress);
 
+                // Presenting blocks in the TIA Portal block editor (a UI action,
+                // not a project change; needs a visible TIA Portal).
+                case OperationCatalog.ShowBlocksInEditor:
+                    return ShowBlocksInEditor(parameters, log, changes, progress);
+
                 // Hardware configuration: CAx/AML export (read-only, needs a project)
                 // and the two file-only readers that parse the export (need none).
                 case OperationCatalog.ExportHardwareConfig:
@@ -195,7 +201,7 @@ namespace TiaOpennessV17Min.Controller
         private JsonObject OpenProject(JsonArgs p, DiagnosticLog log, ChangeLog changes, IProgressSink progress)
         {
             string projectPath = p.RequiredString("project_path");
-            bool withWindow = p.Bool("with_window", false);
+            bool withWindow = p.Bool("with_window", true);
             bool allowUpgrade = p.Bool("allow_upgrade", false);
             bool dryRun = p.Bool("dry_run", false);
 

@@ -140,7 +140,9 @@ test('openProject sends the same operation and parameters the tool does', async 
   const plain = await service.openProject('C:\\p\\Line1.ap17')
   assert.equal(plain.ok, true)
   assert.equal(calls[0].operation, 'OpenProject')
-  assert.deepEqual(calls[0].params, { project_path: 'C:\\p\\Line1.ap17' })
+  // The visible instance is the default and is spelled out on the wire, so a
+  // service caller that passes nothing still gets a window.
+  assert.deepEqual(calls[0].params, { project_path: 'C:\\p\\Line1.ap17', with_window: true })
   // allow_upgrade stays absent unless asked for: it is the one irreversible write.
   assert.equal('allow_upgrade' in calls[0].params, false)
 
@@ -553,7 +555,7 @@ test('retrieveProject sends the retrieve action and surfaces where TIA unpacked 
     target_dir: 'C:\\w\\tia\\Proj',
     upgrade: false,
     project_open_mode: 'primary',
-    with_window: false,
+    with_window: true,
   })
   assert.equal(result.ok, true)
   assert.equal(result.data.archivePath, 'C:\\archives\\Line1.zap17')

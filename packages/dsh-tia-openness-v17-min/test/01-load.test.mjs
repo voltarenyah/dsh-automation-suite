@@ -62,7 +62,7 @@ test('the /tools row registers every tool exactly once on ctx.tools', async (t) 
   }
 })
 
-test('the /tools row registers exactly the 26 names, in the order the host row used to', async (t) => {
+test('the /tools row registers exactly the expected names, in the order the host row used to', async (t) => {
   const { harness } = await withTools(t)
 
   // Order is part of the model-facing contract: the tool list is rendered in

@@ -6,7 +6,7 @@
 
 ## 1. 工具与统一输出信封
 
-26 个工具，由**工具行**注册（子路径导出 `@voltarenyah/dsh-tia-openness-v17-min/tools`，
+38 个工具，由**工具行**注册（子路径导出 `@voltarenyah/dsh-tia-openness-v17-min/tools`，
 `inject: ['tools', 'tiaOpennessRuntime']`）—— 宿主行只持有控制器与 `engineeringAccess` 服务，
 所以**该看到 TIA 的 agent preset 才声明工具行**（见 README §4.0）。**完整的参数与返回契约在
 [`EXTENDED-SURFACE.md`](EXTENDED-SURFACE.md)**，这里只列工具清单与信封。
@@ -35,6 +35,7 @@
 | `generate_source` | 由块/UDT 生成 `.scl`/`.awl`/`.db`/`.udt` | 只写文件 | 否 |
 | `watch_and_force_tables` | 监视表建删导出导入、力表导出导入 | **是** | **是** |
 | `software_units` | 软件单元列表/建删/关系增删 | **是** | **是** |
+| `show_blocks_in_editor` | 在 TIA 块编辑器里打开块（批量；需带界面的 TIA） | 否（只开编辑器，不改工程） | —（无 `dry_run`） |
 | `safety_status` | 只读：F 相关全局设置、SafetySettings、运行时组 | 否 | — |
 | `set_safety_settings` | 写 `SafetyModificationsPossible` / `UsernameForFChangeHistory` | **是** | **是** |
 | `safety_signatures` | 只读：逐块 F 签名 | 否 | — |

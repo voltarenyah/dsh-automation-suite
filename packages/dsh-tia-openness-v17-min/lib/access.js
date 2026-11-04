@@ -247,9 +247,7 @@ export class EngineeringAccess extends Service {
         if (typeof projectPath !== 'string' || projectPath.trim().length === 0) {
             throw new TypeError('openProject needs a non-empty project path');
         }
-        const params = { project_path: projectPath };
-        if (options.withWindow !== undefined)
-            params['with_window'] = options.withWindow;
+        const params = { project_path: projectPath, with_window: options.withWindow ?? true };
         if (options.allowUpgrade !== undefined)
             params['allow_upgrade'] = options.allowUpgrade;
         if (options.dryRun !== undefined)
@@ -530,7 +528,7 @@ export class EngineeringAccess extends Service {
             target_dir: targetDir,
             upgrade: options.upgrade ?? false,
             project_open_mode: options.openMode ?? 'primary',
-            with_window: options.withWindow ?? false,
+            with_window: options.withWindow ?? true,
         };
         const outcome = await runOperation(this.dependencies, 'ArchiveProject', params, options.signal);
         const result = toCallResult(outcome);

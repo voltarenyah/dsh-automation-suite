@@ -59,6 +59,13 @@ export const OPERATIONS = [
   'Download',
   'PlcChecksum',
   'SyncScan',
+  /**
+   * Opens blocks in the TIA Portal block editor (`IShowable.ShowInEditor()`).
+   * The only operation whose effect is a UI action rather than a project or file
+   * change, and the only one that requires a TIA Portal started with a user
+   * interface.
+   */
+  'ShowBlocksInEditor',
 ] as const
 
 export type Operation = (typeof OPERATIONS)[number]

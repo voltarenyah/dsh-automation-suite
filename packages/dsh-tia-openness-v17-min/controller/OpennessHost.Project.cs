@@ -29,7 +29,10 @@ namespace TiaOpennessV17Min.Controller
         /// </summary>
         public void EnsurePortalStarted(bool withWindow, IProgressSink progress)
         {
-            EnsurePortal(withWindow, progress);
+            // Settings and safety reads work in any visible instance, including one
+            // an operator already has a project open in; they must not start a
+            // second window just to read a global setting.
+            EnsurePortal(withWindow, progress, null, VisiblePortalNeed.Any);
         }
 
         public void EnsureNoProject(string operation)
@@ -77,7 +80,7 @@ namespace TiaOpennessV17Min.Controller
             string fullDirectory = Path.GetFullPath(directory.Trim().Trim('"'));
             Directory.CreateDirectory(fullDirectory);
 
-            EnsurePortal(withWindow, progress);
+            EnsurePortal(withWindow, progress, null, VisiblePortalNeed.FreeInstance);
 
             string targetPath = Path.Combine(fullDirectory, projectName);
             if (Directory.Exists(targetPath) && Directory.GetFileSystemEntries(targetPath).Length > 0)
@@ -137,7 +140,7 @@ namespace TiaOpennessV17Min.Controller
             data.Add("created", true);
             data.AddIfPresent("author", author);
             data.AddIfPresent("comment", comment);
-            data.Add("withUserInterface", withWindow);
+            data.Add("withUserInterface", HasUserInterface);
             data.Add("isModified", SafeIsModified());
             data.Add("plcSoftware", DescribePlcSoftware());
             data.Add("blockSummary", DescribeBlockSummary());
@@ -204,7 +207,7 @@ namespace TiaOpennessV17Min.Controller
             string fullDirectory = Path.GetFullPath(targetDir.Trim().Trim('"'));
             Directory.CreateDirectory(fullDirectory);
 
-            EnsurePortal(withWindow, progress);
+            EnsurePortal(withWindow, progress, null, VisiblePortalNeed.FreeInstance);
             progress.Report("retrieve", (upgrade ? "Retrieving and upgrading " : "Retrieving ") + fullArchive);
 
             ProjectOpenMode openMode = string.Equals(openModeName, "secondary", StringComparison.OrdinalIgnoreCase)
@@ -235,7 +238,7 @@ namespace TiaOpennessV17Min.Controller
             data.Add("projectOpenMode", openModeName);
             data.Add("projectName", SafeProjectName());
             data.Add("projectPath", SafeProjectPath());
-            data.Add("withUserInterface", withWindow);
+            data.Add("withUserInterface", HasUserInterface);
             data.Add("isModified", SafeIsModified());
             data.Add("plcSoftware", DescribePlcSoftware());
             data.Add("blockSummary", DescribeBlockSummary());

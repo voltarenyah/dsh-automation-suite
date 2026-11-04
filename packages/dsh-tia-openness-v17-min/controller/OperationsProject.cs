@@ -39,7 +39,7 @@ namespace TiaOpennessV17Min.Controller
             string projectName = p.RequiredString("project_name");
             string author = p.String("author", null);
             string comment = p.String("comment", null);
-            bool withWindow = p.Bool("with_window", false);
+            bool withWindow = p.Bool("with_window", true);
 
             if (_host.HasProject)
             {
@@ -157,7 +157,7 @@ namespace TiaOpennessV17Min.Controller
             string targetDir = p.RequiredString("target_dir");
             bool upgrade = p.Bool("upgrade", false);
             string openMode = p.Enum("project_open_mode", ProjectOpenModeNames, "primary");
-            bool withWindow = p.Bool("with_window", false);
+            bool withWindow = p.Bool("with_window", true);
 
             string fullArchive = Path.GetFullPath(archivePath.Trim().Trim('"'));
             string fullDirectory = Path.GetFullPath(targetDir.Trim().Trim('"'));
@@ -378,7 +378,7 @@ namespace TiaOpennessV17Min.Controller
         private JsonObject PortalSettings(JsonArgs p, DiagnosticLog log, ChangeLog changes, IProgressSink progress)
         {
             string action = p.Enum("action", PortalSettingActionNames, "list");
-            bool withWindow = p.Bool("with_window", false);
+            bool withWindow = p.Bool("with_window", true);
 
             _host.EnsurePortalStarted(withWindow, progress);
 

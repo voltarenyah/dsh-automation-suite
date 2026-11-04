@@ -74,7 +74,7 @@ report a precise reason — on a machine without TIA Portal.
 ```
 
 - `type` is optional and must be `"operation"` when present.
-- `operation` must be one of the 34 whitelisted names (`OperationCatalog` / `src/protocol.ts`); anything else is
+- `operation` must be one of the 39 whitelisted names (`OperationCatalog` / `src/protocol.ts`); anything else is
   `unsupported_operation` and is never dispatched. All but `PlcChecksum` and `SyncScan` back a model-facing tool;
   those two are **service-only** (they back `engineeringAccess` methods and deliberately have no tool).
 - `params` is an operation-specific object. Unknown keys are ignored; a key of the
@@ -134,16 +134,48 @@ The five operations below are the original block read/write surface. v0.2 added 
 service-only operations (`PlcChecksum`, `SyncScan`), and the online surface added six
 (`AdoptOpenProject`, `OnlineTargets`, `OnlineConnect`, `OnlineStatus`,
 `OnlineDisconnect`, `Download`). v0.3 added the hardware export
-(`ExportHardwareConfig`). Their parameter and payload contract is frozen in
+(`ExportHardwareConfig`), and the block-editor surface added one more
+(`ShowBlocksInEditor`). Their parameter and payload contract is frozen in
 [`EXTENDED-SURFACE.md`](EXTENDED-SURFACE.md) and is not repeated here beyond the
 sections above.
+
+### `ShowBlocksInEditor`
+
+The only operation whose effect is a **UI action** instead of a project or file
+change: it opens blocks in the TIA Portal block editor. One editor per block, so
+"open these blocks" is one call per block internally and one request for the
+caller.
+
+| param | type | default | meaning |
+|---|---|---|---|
+| `block_names` | string[] (required) | — | blocks to open, in order; plain (`Main`) or group-qualified (`Group/Main`) |
+| `device_name` / `software_name` | string | auto | PLC selection when the project has several |
+
+`data`: `device`, `software`, `withUserInterface`, `requestedCount`, `count`,
+`opened[]{name,group,kind,programmingLanguage,…}`, `failedCount`,
+`failed[]{name,group,kind,code,message}`, `maxEditorBlocks` (100).
+
+Preconditions and semantics that the wire contract carries:
+
+- the project must be open in a TIA Portal instance **with a user interface**
+  (`OpenProject with_window=true`, the default, or `AdoptOpenProject`); a headless
+  instance answers `editor_unavailable` and the caller has to `CloseProject` and
+  reopen visibly — a block of a headless-held project has no editor to go to;
+- every name is resolved before the first editor opens: an unknown name fails the
+  whole request with `block_not_found`, a bare name that exists in several user
+  groups fails with `block_ambiguous` (qualify it as `Group/Name`);
+- a block TIA refuses to open is reported in `failed` while the rest still opens;
+  the request fails with `editor_show_failed` only when **no** block could be
+  opened;
+- the operation is read-only for the project: nothing is written and nothing is
+  saved, so it has no `dry_run`.
 
 ### `OpenProject`
 
 | param | type | default | meaning |
 |---|---|---|---|
 | `project_path` | string | — | absolute path of the `.ap17` file |
-| `with_window` | bool | `false` | attach to a running TIA Portal, or start a visible one |
+| `with_window` | bool | `true` | visible by default: attach to a running TIA Portal with a window and no project open, or start a new visible one; `false` is the headless opt-out for unattended runs |
 | `allow_upgrade` | bool | `false` | allow TIA to upgrade and rewrite an older project |
 | `dry_run` | bool | `false` | validate only; do not open |
 
@@ -646,7 +678,7 @@ it, so compile first.
 
 | code | raised when | typical fix |
 |---|---|---|
-| `unsupported_operation` | the request named anything outside the whitelist | use one of the 31 operations (`details.allowed` lists them) |
+| `unsupported_operation` | the request named anything outside the whitelist | use one of the 39 operations (`details.allowed` lists them) |
 | `unsupported_frame` | `type` was not `operation` | send a request frame |
 | `invalid_params` | a parameter is missing or has the wrong type | read `error.message`, it names the parameter and the allowed values |
 | `invalid_file` | an import file is not well-formed Simatic ML / a supported source | check the file and `mode` |
@@ -659,6 +691,10 @@ it, so compile first.
 | `project_save_failed`, `project_close_failed` | save/close failed | see `error.details` |
 | `plc_software_not_found`, `plc_software_ambiguous` | PLC selection failed | pass `device_name` / `software_name` (the message lists the candidates) |
 | `block_not_found` | a requested block does not exist | `error.details.available` lists every block |
+| `block_ambiguous` | a bare block name exists in several user groups (`ShowBlocksInEditor`) | qualify it as `Group/Name`; `error.details.ambiguous` lists the candidates |
+| `too_many_blocks` | `ShowBlocksInEditor` was asked for more than 100 blocks | split the list; TIA keeps one editor tab per block |
+| `editor_unavailable` | `ShowBlocksInEditor` needs a TIA Portal with a user interface, but the session is headless | `CloseProject`, then `OpenProject` with `with_window=true` (or `AdoptOpenProject`) |
+| `editor_show_failed` | `ShowBlocksInEditor` could not open a single editor | inspect `data.failed`; a protected block raises its own password prompt |
 | `export_failed`, `import_failed`, `compile_failed` | the Openness call failed | see `error.details.hint` (access denied, licence, …) |
 | `verification_failed` | the write happened but the read-back did not confirm it | inspect `data.verification` / `data.files` |
 | `checksum_unavailable` | `PlcChecksum` / `SyncScan` found no compiled checksum | compile the PLC (`CompilePlc`); an edit clears it again |

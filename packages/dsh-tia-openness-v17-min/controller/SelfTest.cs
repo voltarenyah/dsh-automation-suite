@@ -156,6 +156,7 @@ namespace TiaOpennessV17Min.Controller
                 "SafetyStatus", "SetSafetySettings", "SafetySignatures",
                 "AdoptOpenProject", "OnlineTargets", "OnlineConnect", "OnlineStatus", "OnlineDisconnect", "Download",
                 "PlcChecksum", "SyncScan",
+                "ShowBlocksInEditor",
             };
             RequireEqual(expected.Length.ToString(), all.Count.ToString(), "the whitelist size");
             for (int i = 0; i < expected.Length; i++)

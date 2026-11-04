@@ -2,7 +2,7 @@
  * The `tiaOpennessRuntime` seam: the host row's private handle on its own
  * `/tools` row.
  *
- * DSH resolves tool visibility per **declaration scope**, so the 26 model-facing
+ * DSH resolves tool visibility per **declaration scope**, so the 38 model-facing
  * tools live in a second Loader entry (`tools-entry.ts`, the package's `./tools`
  * subpath export) that an agent preset declares only when that agent should see
  * TIA. That row owns no process and no configuration: a second

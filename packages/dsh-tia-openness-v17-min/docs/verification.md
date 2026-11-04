@@ -44,9 +44,9 @@ controller\bin\TiaOpennessV17Min.Controller.exe --self-test
 | 已覆盖 | 证据 |
 |---|---|
 | 模块级导出齐全：`name` / `inject` / `Config` / `apply` | 宿主行 `src/index.ts`（`export const name = 'tia-openness-v17-min'`、`export const inject: readonly string[] = []`、`export function apply`）；工具行 `src/tools-entry.ts`（`name = 'tia-openness-v17-min-tools'`、`inject = ['tools', TIA_RUNTIME_SERVICE]`）。测试 `test/01-load.test.mjs` 对两行分别断言 |
-| 工具行真的会注册工具 | `src/tools.ts` 的 `registerTools`（`ctx.tools.register`）；测试 `test/01-load.test.mjs` 断言 26 个工具名与注册顺序，且断言宿主行**不注册任何工具** |
+| 工具行真的会注册工具 | `src/tools.ts` 的 `registerTools`（`ctx.tools.register`）；测试 `test/01-load.test.mjs` 断言 38 个工具名与注册顺序，且断言宿主行**不注册任何工具** |
 | 生产构建产物（`lib/`）可被 Node 直接 `import` | `test/helpers/harness.mjs` 动态导入 `../../lib/index.js` 与 `../../lib/tools-entry.js`（带 cache-bust），全部 84 项测试都建立在此之上 |
-| 注册的 schema 能被**真实** registry 接受 | `test/01-load.test.mjs`（`assertSupportedJsonSchema`、`validateJsonSchemaValue` 拒绝缺参/错类型/越界枚举、返回的 canonical value 通过 output schema 校验）、`test/04-tools.test.mjs`（26 个工具全量校验） |
+| 注册的 schema 能被**真实** registry 接受 | `test/01-load.test.mjs`（`assertSupportedJsonSchema`、`validateJsonSchemaValue` 拒绝缺参/错类型/越界枚举、返回的 canonical value 通过 output schema 校验）、`test/04-tools.test.mjs`（38 个工具全量校验） |
 | 控制器缺失/未构建时插件仍能加载并给出原因 | `test/01-load.test.mjs`（宿主行给警告、工具行照常注册）、`test/02-lifecycle.test.mjs` |
 
 **该环现已覆盖**（本轮实测）：在**隔离 `DSH_HOME`** 里创建测试 profile、`link:` 安装本仓库、用 `--patch` 叠加层启动真实宿主，观察到控制器子进程出现 → 证明真实 loader 组合了插件并调用了 `apply`。原始输出见 [REAL-RUN.md](REAL-RUN.md) §D.5。
@@ -169,8 +169,8 @@ information keep a dry run" 双向断言：14 个工具的 params 里**没有** 
 
 ### A9. 工具 `description` 清晰描述功能 —— ✅ 已验证
 
-- 26 个工具的描述都在 `src/tools.ts`（`open_project`、`export_blocks`、`import_blocks`、`compile_plc`、
-  `close_project`、`controller_status`，以及 v0.2 的 20 个）。
+- 38 个工具的描述都在 `src/tools.ts`（`open_project`、`export_blocks`、`import_blocks`、`compile_plc`、
+  close_project、controller_status，以及 v0.2 的 20 个、v0.3 的硬件 5 个与块编辑器 1 个）。
 - 每个描述都写明：做什么、**是否写入**、dry-run 策略（保留该参数的工具写明默认值与如何关闭；
   没有该参数的工具直接写"WRITES to the project"）、关键参数语义、以及会返回哪些错误码。
 - 测试：`test/01-load.test.mjs` 断言 `import_blocks` 描述里出现 `dry_run`、`transaction`、

@@ -192,7 +192,7 @@ create_project({ "project_dir": "D:\\Verify\\NewProj", "project_name": "V02Smoke
 ```
 
 **期望**：`D:\Verify\NewProj\V02Smoke\V02Smoke.ap17` 被创建，`projectPath` 指向它，
-TIA（headless）里能看到空工程；`author`/`comment` 在"项目属性"里可见（走的是
+TIA 窗口里能看到空工程（`create_project` 的 `with_window` 默认 true）；`author`/`comment` 在"项目属性"里可见（走的是
 `IEngineeringComposition.Create(Type, parameters)` 重载，**这是需要确认的路径**）。
 再加一条：`create_project` 到一个**已存在且非空**的目标目录 → `project_create_failed`。
 
@@ -439,6 +439,40 @@ delete_plc_objects({ "block_names": ["NoSuchBlock"], "strict_missing": false })
 ☐ 3.35 各类对象删除生效 ☐ 3.36 表内变量/常量删除生效（`tag_table` 形式与 `Table.Name` 形式各测一次）
 ☐ 3.37 `strict_missing` 两种行为正确 ☐ 3.38 非空组报 `group_not_empty`
 
+### 3.10 `show_blocks_in_editor`（界面动作，必须**带界面**跑）
+
+```jsonc
+open_project({ "project_path": "…\\PEI_SinoARP_SWT2.ap17", "with_window": true })
+show_blocks_in_editor({ "block_names": ["Main", "FB_Motor", "Motors/FB_Motor"] })   // 批量，注意组限定形式
+show_blocks_in_editor({ "block_names": ["NoSuchBlock"] })                          // block_not_found（整单不打开）
+show_blocks_in_editor({ "block_names": ["…1155 个块…"] })                          // too_many_blocks（>100）
+close_project({ "save": false, "dry_run": false })
+open_project({ "project_path": "…\\PEI_SinoARP_SWT2.ap17", "with_window": false }) // 无界面
+show_blocks_in_editor({ "block_names": ["Main"] })                                 // editor_unavailable
+```
+
+**期望**：每条名字在 TIA 里各开出**一个编辑器页签**（不是替换同一个页签），`data.opened[]` 的
+顺序与入参一致、`kind` 是 OB/FB/FC/DB 之一；不存在的名字**一个编辑器都不开**就整单 `block_not_found`；
+同一个裸名字在两个用户组各有一份时报 `block_ambiguous` 并给出候选；无界面会话报
+`editor_unavailable` 且消息里写明 `close_project` + 可见重开这条补救路径；know-how 保护块
+（`protect_blocks` 加过保护的）尝试打开时应进 `data.failed`（若 TIA 弹密码框则先取消，确认调用挂住
+而不是控制器崩）。
+
+☐ 3.39 批量打开逐个生效 ☐ 3.40 `block_not_found` / `block_ambiguous` 都不留半个页签
+☐ 3.41 无界面会话报 `editor_unavailable` ☐ 3.42 保护块进 `data.failed`
+
+**实测记录（2026-11-04，`PEI_HF_M4L_ZRW_Test_V5.1`，782 块，带界面会话）**：
+
+| 调用的名字 | 结果 |
+|---|---|
+| `["Main_Cav_A"]` | ✅ `ok` 3.1 s，`opened[0]` = OB / `01_Cavité_A/` / LAD / 123 |
+| `["Time error interrupt", "999_Bibliotheque/Fonctions méthode/1001_SCP_IN/SCP_IN", "Default_SupervisionDB"]` | ✅ `ok` 5.2 s，3 块全开（OB/LAD、FB/SCL、InstanceDB/DB） |
+| `["NoSuchBlockXYZ"]` | ✅ `block_not_found`，`data` 为空（**没有**开出任何编辑器），`details.availableCount=782` |
+
+所以 3.39 / 3.40 的两条主要断言已兑现；3.41（无界面）与 3.42（保护块弹框）**仍未实测** ——
+前者被 `HasUserInterface` 前置检查挡住、从未真正调用到 Openness，后者要刻意给块加保护再试。
+页签是"每块一个"还是"替换同一个"，需要人眼在 TIA 里确认一次（本仓库没有可查询该状态的 API）。
+
 ---
 
 ## 4. F-related Openness（`OperationsSafety.cs`）
@@ -524,6 +558,8 @@ PLC 类型 → `isFBlock:false` + `reason`。
 | 14 | `Project.Name` / `Project.Path` 在 V17 只读、且没有 `SaveAs(folder, newName)` 重载 | 反射实证（`canWrite=False`，Project 只暴露 `Save()`/`SaveAs(DirectoryInfo)`） | 2.6 里"预期不该发生"那条 |
 | 15 | 事务内禁止 `ProjectText Import/Export`（手册 Restrictions） | 手册明示会抛可恢复异常；实现里已按此**去掉**事务，未实测反向 | 2.5 的可选实验 |
 | 16 | `project_languages` 的 `EditingLanguage` 直接赋值是否需要事务 | 手册示例直接赋值；实现未包事务 | 2.2 真跑 + 保存后重开确认持久化 |
+| 17 | `IShowable.ShowInEditor()` 在有界面的实例上**真的会开出一个新编辑器页签**（而不是聚焦/替换） | ✅ 真机实测 2026-11-04：单块 3.1 s、三块 5.2 s 都返回成功并逐块回报；"新页签 vs 替换"没有可查询的状态，待人眼确认 | 3.10 的批量调用：TIA 里数页签 |
+| 18 | `ShowInEditor` 在**无界面**实例上的行为（抛异常 / 静默无效） | 实现里先用 `HasUserInterface` 拦住，报 `editor_unavailable`，所以没有实测这条路径 | 3.10 最后两条（无界面会话） |
 
 ---
 
@@ -534,7 +570,7 @@ PLC 类型 → `isFBlock:false` + `reason`。
 | 跳过项 | 原因 |
 |---|---|
 | 下载 / 上传 / 在线 / 比较 / 运行停止（PLC 章节约 15 条） | 前置条件 **P**：需要真实 PLC/PLCSIM 或项目服务器，离线工程上无法验证（本轮口径：跳过） |
-| `Starting the block editor`、`Starting the "PLC Tags" editor`、`Open the "Devices & networks" editor`、`Supporting callbacks` | 前置条件 **D**：依赖桌面交互，headless 下语义不同 |
+| `Starting the "PLC Tags" editor`、`Open the "Devices & networks" editor`、`Supporting callbacks` | 前置条件 **D**：依赖桌面交互，headless 下语义不同（`Starting the block editor` 已由 `show_blocks_in_editor` 补上，见 D29；真机待验） |
 | `Deleting project graphics` | 需要 `Siemens.Engineering.Hmi.Globalization`（HMI 命名空间），会把 HMI 侧 API 拉进来；且不可逆。**卡住 → 跳过** |
 | `Accessing read-only TIA Portal project` | 需要 UMAC 只读凭据/保护工程，本机没有受保护工程可测 |
 | OPC UA、安全密码/保护级别、证书、Web 服务器、软件校验和 | 属"PLC service / Security"面，与本次三个章节的目标能力无关；`PlcChecksumProvider` 已确认可用但未暴露 |

@@ -10,12 +10,13 @@
 |---|---|
 | TIA Portal Openness API → Functions for projects and project data | `CreateProject` `SaveProject` `ArchiveProject` `ProjectInfo` `ProjectLanguages` `ProjectTexts` `UpdateProject` `PortalSettings` |
 | TIA Portal Openness API → Functions for accessing the data of a PLC device | `ListPlcObjects` `CreatePlcObjects` `DeletePlcObjects` `WriteTags` `SetBlockAttributes` `ProtectBlocks` `GenerateSource` `WatchAndForceTables` `SoftwareUnits` |
+| 同上 → Blocks → "Starting the block editor" | `ShowBlocksInEditor` |
 | TIA Portal Openness API → F-related Openness | `SafetyStatus` `SetSafetySettings` `SafetySignatures` |
 | 版本管理取证（服务专用，无模型工具） | `PlcChecksum` `SyncScan` |
 
 原本的五个操作（`OpenProject` `ExportBlocks` `ImportBlocks` `CompilePlc` `CloseProject`）
-不变。加上 `controller_status`（插件侧回答，不经过控制器），工具总数为 26；
-操作总数为 27，其中 `PlcChecksum` 与 `SyncScan` 只通过 `engineeringAccess` 服务暴露。
+不变。加上 `controller_status`（插件侧回答，不经过控制器），模型面工具总数为 **38**；
+操作总数为 **39**，其中 `PlcChecksum` 与 `SyncScan` 只通过 `engineeringAccess` 服务暴露。
 
 通用约定（与既有五个操作一致）：
 
@@ -38,7 +39,7 @@
 | `project_name` | string（必填） | — | 项目名，同时是文件夹名 |
 | `author` | string | — | 可选创建参数 |
 | `comment` | string | — | 可选创建参数 |
-| `with_window` | boolean | false | true 则用带界面的 TIA Portal |
+| `with_window` | boolean | true | 用带界面的 TIA Portal（默认）；false 为无人值守的 headless |
 
 `data`：`{ projectName, projectPath, projectDir, targetPath, created, author?, comment?, withUserInterface, plcSoftware, blockSummary, dryRun }`
 错误码：`project_already_open` `project_create_failed` `invalid_params`。
@@ -87,7 +88,7 @@ archive 参数：`target_dir`（必填）、`target_name`（必填）、
 错误码：`project_not_open` `project_not_saved`（项目有未保存改动）`archive_failed`。
 
 retrieve 参数：`archive_path`（必填）、`target_dir`（必填）、`upgrade`（boolean，默认 false）、
-`project_open_mode` = `primary` | `secondary`（默认 `primary`）、`with_window`（默认 false）。
+`project_open_mode` = `primary` | `secondary`（默认 `primary`）、`with_window`（默认 true；headless 需显式 false）。
 `data`：`{ action:'retrieve', archivePath, targetDir, upgraded, projectOpenMode, projectName, projectPath, plcSoftware, blockSummary, dryRun }`
 错误码：`project_already_open` `archive_not_found` `retrieve_failed`。
 
@@ -160,7 +161,7 @@ retrieve 参数：`archive_path`（必填）、`target_dir`（必填）、`upgra
 | `setting` | string | —（set 必填） |
 | `value` | string \| number \| boolean | —（set 必填） |
 | `value_type` | `auto` \| `string` \| `boolean` \| `integer` \| `culture` | `auto` |
-| `with_window` | boolean | false |
+| `with_window` | boolean | true |
 
 `data`（list）：`{ folderCount, folders:[{name, settings:[{name, valueType, value, writeable}]}] }`
 `data`（set）：`{ folder, setting, valueType, before, after, changed, dryRun }`
@@ -343,7 +344,7 @@ import → `{action, imported:[{file, name}], committed, dryRun}`
 |---|---|---|
 | `include_runtime_groups` | boolean | true |
 | `include_settings` | boolean | true |
-| `with_window` | boolean | false |
+| `with_window` | boolean | true |
 
 `data`：
 ```
@@ -586,3 +587,66 @@ Openness 只发布运行期 `GetAttributeInfos()` 的名字与 `AccessMode`。
 
 覆盖到 P1a：设备项 + 通道 + GSD 身份。P1b（`GetPrmData` 参数块）、P1c（端口/连线/MRP/MAC）
 见 [`HARDWARE-PARAMETERS-PLAN.md`](HARDWARE-PARAMETERS-PLAN.md)。
+
+---
+
+## 27. ShowBlocksInEditor / `show_blocks_in_editor`
+
+把程序块打开在 **TIA Portal 的块编辑器**里（等价于在项目树里双击这些块），**一次请求批量打开**。
+这是本插件唯一一个"效果是界面动作"的操作：它不写工程、不存盘，只让编辑器出现。
+
+API：`Siemens.Engineering.IShowable.ShowInEditor()`（V17 反射实证：该接口只有这一个成员，
+无参数、返回 `void`；`PlcBlock` 与 `OB`/`FB`/`FC`/`DataBlock` 等 13 个类型实现它——
+另外还有 `PlcTagTable`、`PlcWatchTable`、`PlcForceTable`，本操作只打开块）。
+手册对应条目：Functions for accessing the data of a PLC device → Blocks →
+"Starting the block editor"。
+
+| 参数 | 类型 | 默认 | 说明 |
+|---|---|---|---|
+| `block_names` | string[]（必填） | — | 要打开的块，按顺序；可写 `Main` 或 `Motors/FB_Motor`；重名只打开一次 |
+| `device_name` / `software_name` | string | 自动 | 工程里有多个 PLC 时选择 |
+
+`data`：`device` `software` `withUserInterface` `requestedCount` `count`
+`opened[]{name,group,kind,programmingLanguage,number,…}` `failedCount`
+`failed[]{name,group,kind,code,message}` `maxEditorBlocks`(=100)。
+`kind` 是具体块类型（`OB`/`FB`/`FC`/`GlobalDB`/`InstanceDB`/`ArrayDB`/`DataBlock`），
+其余字段与 `list_plc_objects` 的块条目同形（都来自 `OpennessHost.DescribeBlock`）。
+
+语义与前置条件（全部有错误码兜底）：
+
+1. **必须有带界面的 TIA Portal**。工程是 `open_project(with_window=false)` 打开的、
+   或者会话里那个实例本来就是无界面的，就报 `editor_unavailable`，并在 `error.details.hint`
+   里给出唯一正确的补救：`close_project` 之后用 `with_window=true` 重开（或 `adopt_open_project`
+   接管操作者已经开好的窗口）。理由：`ShowInEditor` 是界面命令，无界面实例没有编辑器可开；
+   工程句柄属于那个无界面实例，换实例只能重开。
+   "有没有界面"由 `TiaPortalProcess.Mode` / 创建时的模式记录在 `OpennessHost.HasUserInterface`，
+   所以 `open_project` / `create_project` / `archive_project(retrieve)` 的 `data.withUserInterface`
+   现在报的是**实际**模式，不是调用方请求的值。
+2. **先解析，后打开**。名单里每个名字都在打开第一块之前解析完：未命中 → 整单 `block_not_found`
+   （`details.missing` + 块不多时给 `details.available`）；裸名字在多个用户组里存在 →
+   `block_ambiguous`（`details.ambiguous` 给出候选，用 `Group/Name` 消歧）。这样打错一个字
+   不会让半批编辑器留在界面上。
+3. **逐块独立**。单个块被 TIA 拒绝（最典型是 know-how 保护块弹密码框）只记进 `failed`，
+   其余照常打开；只有**一块都没打开**才 `editor_show_failed`（此时 `data` 里仍有完整失败清单）。
+4. **单次上限 100 块**（`MaxEditorBlocks`），超出报 `too_many_blocks` —— TIA 一个块一个编辑器页签，
+   把 1155 个块一次全开等于把界面埋掉。
+5. **没有 `dry_run`**（决策 D22）：预览只能复述入参，没有信息量；风险也不落在工程上。
+6. 界面弹框（密码、只读提示）会把这一次调用挂住，直到有人在 TIA 里处理完 ——
+   工具描述里写明了这一点，超时按 `requestTimeoutMs` 处理，不是控制器失败。
+
+`changes` 逐块记 `{kind: "block", target: "<group>/<name>", action: "shown_in_editor"}`：
+它记录的是"操作者在界面上看到了什么"，不是工程改动。
+
+**真机实测（2026-11-04，V17，`PEI_HF_M4L_ZRW_Test_V5.1`，782 块，带界面会话）**：
+
+| 调用 | 结果 |
+|---|---|
+| `["Main_Cav_A"]` | `ok` 3.1 s；`opened[0]` = `{kind:"OB", group:"01_Cavité_A/", programmingLanguage:"LAD", number:123}` |
+| 三个名字一次给（OB + `999_Bibliotheque/Fonctions méthode/1001_SCP_IN/SCP_IN` + InstanceDB） | `ok` 5.2 s；3 块全开，`kind` 分别 `OB` / `FB` / `InstanceDB` |
+| `["NoSuchBlockXYZ"]` | `block_not_found`；`data` 为空（一个编辑器都没开），`details.availableCount:782` |
+
+即：逐块约 1.7 s；带空格与非 ASCII 字符的组路径（`méthode`、`Cavité`）能被 `Group/Name` 解析。
+
+错误码：`project_not_open` `plc_software_not_found` `plc_software_ambiguous` `editor_unavailable`
+`block_not_found` `block_ambiguous` `too_many_blocks` `editor_show_failed` `editor_not_supported`
+`invalid_params`。

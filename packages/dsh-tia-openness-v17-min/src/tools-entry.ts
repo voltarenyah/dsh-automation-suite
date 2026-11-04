@@ -1,12 +1,12 @@
 /**
- * The `/tools` row: the 26 model-facing tools as a Loader entry of their own.
+ * The `/tools` row: the 38 model-facing tools as a Loader entry of their own.
  *
  * DSH resolves tool visibility per **declaration scope**. Registering the tools
  * in the same row that owns the controller would put them in the host (global)
  * plane, so every agent — delegated subagents included — would inherit them. The
  * tools therefore live behind this second entry, reachable as the package's
  * `./tools` subpath export, and each agent preset decides whether to declare it:
- * the leader preset does and keeps all 26 tools, the expert subagent preset does
+ * the leader preset does and keeps all 38 tools, the expert subagent preset does
  * not and sees no TIA tool at all.
  *
  * This row owns nothing durable. It reads the host row's internal
@@ -44,7 +44,7 @@ export const name = 'tia-openness-v17-min-tools'
 export const inject = ['tools', TIA_RUNTIME_SERVICE]
 
 /**
- * Registers the 26 TIA Portal V17 tools against the host row's runtime seam.
+ * Registers the 38 TIA Portal V17 tools against the host row's runtime seam.
  *
  * The tool names, their order, parameters and descriptions are exactly the ones
  * the host row used to register: `tools.ts` is unchanged and remains the single

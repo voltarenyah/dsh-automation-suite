@@ -19,13 +19,13 @@
  *
  *   the tools row (`tools-entry.ts`, package `"./tools"`) — declared per preset
  *   ────────────────────────────────────────────────────────────────────────────
- *   26 model-facing tools over 25 whitelisted operations (project data, PLC
+ *   38 model-facing tools over 39 whitelisted operations (project data, PLC
  *   data, F-related, block read/write, controller_status), registered by
  *   `tools.ts` against the host row's runtime seam
  *
  * Why the split: one row would register the tools in the host (global) plane, so
  * every agent — delegated subagents included — would inherit them. The leader
- * preset declares the `/tools` row and keeps all 26; the expert subagent preset
+ * preset declares the `/tools` row and keeps all 38; the expert subagent preset
  * does not, and sees no TIA tool. Both presets still share the one controller
  * subprocess and the `engineeringAccess` service the host row owns.
  *
