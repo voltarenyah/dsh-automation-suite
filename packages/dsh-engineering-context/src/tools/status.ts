@@ -411,15 +411,29 @@ export function statusTool(dependencies: ToolDependencies): ToolDefinition {
               : `TIA: no project / no PLC (${String(tia['code'] ?? 'unknown')}).`
             : `PLC: ${device.device} / ${device.software} → ${device.directory}`,
           evidence === null
-            ? `Evidence: ${evidenceFile === null ? 'no device' : `${evidenceFile} is missing`}.`
+            ? device === null
+              ? 'Evidence: not checked (no open project).'
+              : `Evidence: ${evidenceFile === null ? 'no device' : `${evidenceFile} is missing`}.`
             : `Evidence: ${evidence.objects.size} object(s), state ${evidence.stateId ?? 'unknown'}.`,
-          `Manifest: ${manifestPresent ? 'present' : 'missing'}.`,
-          knowledgeLine(knowledge),
+          device === null
+            ? 'Manifest: not checked (no open project).'
+            : `Manifest: ${manifestPresent ? 'present' : 'missing'}.`,
+          device === null
+            ? 'Knowledge graph: not checked (no open project; workspace_describe reads the on-disk databases without TIA).'
+            : knowledgeLine(knowledge),
           `Checksum: ${checksumState}${checksumValue === null ? '' : ` (${checksumValue})`}${drift === null ? '' : drift ? ' — DIFFERS from the ledger' : ' — matches the ledger'}.`,
           `Sync: ${syncReasonText(syncReason)}.`,
-          `Git: ${repository ? `${dirty.length} change(s) in the device directory` : 'not a repository'}.`,
+          device === null
+            ? 'Git: not checked (no open project).'
+            : `Git: ${repository ? `${dirty.length} change(s) in the device directory` : 'not a repository'}.`,
           lock === null ? 'Lock: free.' : `Lock: held by ${lock.operation} (pid ${lock.pid}).`,
         ]
+        if (device === null) {
+          details.push(
+            'Tip: workspace_describe(workspace_path=<workspace>) reports the on-disk project, source tree, manifests, knowledge ' +
+              'databases and git state without opening TIA.',
+          )
+        }
 
         return okOutcome(
           PROJECT_STATUS_TOOL,
@@ -435,7 +449,7 @@ export function statusTool(dependencies: ToolDependencies): ToolDefinition {
               : { path: evidenceFile, present: true, invalid: false, ...evidenceSummary(evidence) },
             manifest: { path: manifestFile, present: manifestPresent },
             knowledge,
-            git: { repository, dirty },
+            git: { checked: device !== null, repository: device === null ? null : repository, dirty },
             lock: lock === null ? null : { held: true, operation: lock.operation, pid: lock.pid, startedAt: lock.startedAt },
             nextAction,
             wouldSync,

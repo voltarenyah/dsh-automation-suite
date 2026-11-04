@@ -98,6 +98,16 @@ V17 的行为也不能从 V21 文本直接推。判不准时以本机 V17 实测
 
 设备/模块的**修改**（`PlugNew`、`ChangeType`、建子网）本插件没有，那时才去读上游那两个 skill。
 
+## 跨工程取用（另一个 workspace / 另一个项目）
+
+- 读另一个**受管 workspace** 的源树、清单或知识库不需要打开它的工程：绝对路径可用
+  （发行版 `docs/reference-project.md` §15 有实测复盘）。
+- 导入前先跑 **`import_preflight`**（engineering-context）：它报告语言文化不匹配、依赖缺失/顺序、
+  同名对象。它**不查块号**——TIA 在导入时自动分配块号，文件名前缀只是排序，**名字才是身份**。
+- 导入时传 `import_blocks(reference="<workspace>@<sha>")` 记出处；提交时
+  `project_commit(reference=...)` 会追加 `Reference:` trailer。
+- 跨项目导入的失败几乎都来自语言集与依赖顺序，而不是"路径不允许"。
+
 ## 怎么读
 
 1. base directory 已由本 skill 的 `<skill_resources>` 给出；上表路径都相对它解析

@@ -838,3 +838,49 @@ status→计划共用一次 checksum 读、真实同步刷新缓存、缓存 TTL
 有工程开着时拒绝取回、索引记 `archive` 且重跑能识别、旧归档缺 `allow_upgrade` 时零写入、
 `archive_not_found` / `retrieve_failed` 的码、以及接口插件缺方法时的 `retrieve_unsupported`。
 本包 **128 → 135 项全通过、无跳过**。
+
+---
+
+## D28. 跨 workspace 取用：只读描述 + 导入预检 + 出处 trailer；**不建 refs 项目根**
+
+**背景**（2026-11-04，`session-3f8b696e-7798-4f8d-b1fb-c8c42f810a4f`）：一个真实任务在 SWT1 工作区里
+从另一个受管 workspace SWT2 取用 VOC 门控程序 —— 154 次工具调用、`knowledge_query` 34 次（全部显式
+`db_path`）、`import_blocks` 12 次（含直接以 SWT2 的绝对路径为源），最后导入 17 个对象、编译通过并
+提交 `4af0a95`。**全程 0 行新代码**。摩擦不在"能不能读"，而在：模型用 10 次 `pwsh` 手工摸清 SWT2 的
+目录；`project_status` 在没开 TIA 时把"没检查"说成"没有"；导入失败三次（`th-TH` 语言项、类型顺序、
+一个其实不存在的块号冲突）。完整复盘见发行版 [`docs/reference-project.md`](../../docs/reference-project.md) §15。
+
+**决定**：
+
+1. **不引入"参照工程"的重方案**（`refs/<slug>` 项目根、角色参数、控制器写闸门、复制缝）。参照项目
+   本身已经是一个受管 workspace，再复制一份源树 + 725 MB 图谱库、把 1155 块再导出一遍，成本大于收益；
+   而且重方案同样受"一个 TIA 实例一个工程"约束，切换比直接读更糟。
+2. **新增 `workspace_describe`（只读，无 TIA）**：读任意 workspace 的索引、每设备清单/账本、知识库
+   （大小 + sidecar 新鲜度）、硬件 AML、git HEAD/脏文件。它把"另一个工作区长什么样"从约 10 次
+   `pwsh` 变成一次调用；索引坏了、清单缺了都只是 warning。
+3. **新增 `import_preflight`（只读）**：用 `fast-xml-parser` 读 Simatic ML，报告四类会阻断导入的问题
+   —— 语言 culture 不在目标激活集、批次内重名、目标已存在同名对象、依赖在批次/目标里都找不到
+   （外加"类型被排在它引用的类型之前"）。目标事实经接口插件的两个**可选缝**读取：
+   `readProjectLanguages()`（新增，包 `ProjectLanguages action=list`）与 `listObjects()`（既有）。
+   TIA 没开工程时退化为只查 XML，并明确说跳过了哪些检查。
+4. **明确不查的两件事**：**块号**（TIA 导入时自动分配；文件名前缀只是排序，名字才是身份 —— 使用者在
+   同一会话里纠正过这一点）与**网络里的块调用**（那是图谱的事，静态扫字符串只会猜）。
+5. **出处用显式参数，不自动写**：`import_blocks(reference=...)` 把标签回显进结果与 `data.reference`；
+   `project_commit(reference=...)` 校验单行后追加 `Reference:` trailer。不新增台账：自动把"一次导入"
+   绑到"一次提交"需要一个跨插件的本地账本，而当前没有读者，先不造。
+6. **修 `project_status` 的误导输出**：`device === null`（没开工程）时不再打印
+   `Evidence: no device` / `Manifest: missing` / `Git: not a repository`，改为
+   `not checked (no open project)`，`data.git.repository` 为 `null` 并新增 `git.checked`。原来的输出
+   把"没有 TIA 会话"说成了"磁盘上没有"，正是跨 workspace 查看时最容易误判的地方。
+
+**为什么放在本插件而不是接口插件**：XML 解析与"目标工程有哪些对象"的编排属于工程上下文的职责；
+接口插件只提供只读事实（语言、对象清单），不判断"这批文件能不能导"。这与 D12（本插件从不自己连 TIA）
+和"写入只有一个通道"一致 —— 预检不写，导入仍由接口插件的 `import_blocks` 执行。
+
+**代价（必须承认）**：① `import_preflight` 的依赖判断是静态的，系统库/DriveLib 类型会被列为
+`dependency_unresolved`（**warning**，不是阻断）；② 网络里的调用、硬件/F 程序的缺口查不出来；
+③ 出处要靠调用方把同一个 `reference` 传给 `project_commit`，没有自动绑定。
+
+**验证**：本包 **135 → 151 项全通过**（新增 `16-workspace-describe` 7 项、`17-import-preflight` 7 项、
+commit 的 `Reference` 2 项、入口/工具数 7 项）；接口插件 112 项（111 通过 / 1 跳过，控制器不在时跳过）；
+`matrix:check` / `skills:check` 通过。

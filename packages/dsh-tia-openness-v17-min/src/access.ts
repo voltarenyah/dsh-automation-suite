@@ -1015,6 +1015,28 @@ export class EngineeringAccess extends Service {
   }
 
   /**
+   * Read the open project's language settings through the `ProjectLanguages`
+   * operation (`action: "list"`).
+   *
+   * Why it exists: a Simatic ML import refuses the whole transaction when a
+   * multilingual text item names a culture the target project has not activated —
+   * `Cannot import multilingual text with culture 'th-TH'` (measured on a live
+   * import, 2026-11-04). A preflight has to know the active set before opening
+   * that transaction, and this is the only surface that reads it.
+   *
+   * It is a read: it never changes a language, and it needs an open project (the
+   * controller reports `project_not_open` as data, exactly like the other reads).
+   *
+   * @param options - cancellation.
+   * @returns the call result; `data.activeLanguages` / `supportedLanguages`
+   *   carry `{ culture }` entries as the controller reports them.
+   */
+  async readProjectLanguages(options: { signal?: AbortSignal } = {}): Promise<AccessCallResult> {
+    const outcome = await runOperation(this.dependencies, 'ProjectLanguages', { action: 'list' }, options.signal)
+    return toCallResult(outcome)
+  }
+
+  /**
    * Materialize the **complete** source tree of every PLC software into one root.
    *
    * This is the operation that owns the `source/` layout, which is why the layout

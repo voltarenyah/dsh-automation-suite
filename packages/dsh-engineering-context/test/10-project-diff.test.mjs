@@ -639,6 +639,8 @@ test('the diff entry registers exactly one tool; the main entry never registers 
     'project_status',
     'project_sync',
     'project_commit',
+    'workspace_describe',
+    'import_preflight',
   ])
   assert.equal(main.some((definition) => definition.name === DIFF), false)
 
@@ -646,7 +648,7 @@ test('the diff entry registers exactly one tool; the main entry never registers 
   // only, none of the version workflow (D30).
   const { ctx: statusCtx, definitions: statusDefinitions } = createTestContext()
   statusEntry.apply(statusCtx, {})
-  assert.deepEqual(statusDefinitions.map((definition) => definition.name), [STATUS])
+  assert.deepEqual(statusDefinitions.map((definition) => definition.name), [STATUS, 'workspace_describe', 'import_preflight'])
 
   const pkg = JSON.parse(await readFile(join(packageRoot, 'package.json'), 'utf8'))
   assert.deepEqual(pkg.exports['./diff'], { default: './lib/diff-entry.js' })

@@ -298,6 +298,17 @@ test('status tells an empty workspace to create, not to open an archive first', 
   await mkdir(join(root, 'source', DEVICE), { recursive: true })
   const withTree = assertEnvelope(await executeTool(tools(service).status, {}, fakeExec(root)))
   assert.equal(withTree.data.nextAction, 'open_project')
+
+  // Without a TIA project the on-disk facts were NOT checked: saying "not a
+  // repository" / "manifest: missing" here would be a factual lie (2026-11-04,
+  // a real session read exactly that while every file was on disk).
+  const details = withTree.details.join('\n')
+  assert.match(details, /Git: not checked \(no open project\)/u)
+  assert.match(details, /Evidence: not checked \(no open project\)/u)
+  assert.match(details, /Manifest: not checked \(no open project\)/u)
+  assert.equal(withTree.data.git.repository, null)
+  assert.equal(withTree.data.git.checked, false)
+  assert.match(details, /workspace_describe/u, 'the report points at the TIA-free way to see the disk')
 })
 
 test('status reports an open project, the missing ledger/manifest and the next action', async (t) => {

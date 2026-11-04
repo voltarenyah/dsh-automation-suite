@@ -298,6 +298,20 @@ export interface EngineeringAccessLike {
    */
   readPlcChecksum?(options?: { deviceName?: string; softwareName?: string; signal?: AbortSignal }): Promise<unknown>
   syncScan?(query: SyncScanQuery): Promise<unknown>
+  /**
+   * Optional: the read-only facts `import_preflight` needs. Both are implemented
+   * by the interface plugin's service; a caller must degrade (not fail) when an
+   * older build does not have them.
+   */
+  listObjects?(query?: {
+    categories?: readonly string[]
+    includeFingerprints?: boolean
+    maxItems?: number
+    deviceName?: string
+    softwareName?: string
+    signal?: AbortSignal
+  }): Promise<unknown>
+  readProjectLanguages?(options?: { signal?: AbortSignal }): Promise<unknown>
 }
 
 function record(value: unknown): Record<string, unknown> | null {
@@ -681,5 +695,113 @@ export function normalizeSyncScan(raw: unknown): SyncScanReport {
     adopted: numberOf(data['adopted']),
     error: errorOf(source['error']),
     summary: text(source['summary']) ?? '',
+  }
+}
+
+// ------------------------------------------------------- read-only project facts
+
+/**
+ * The languages a project has activated.
+ *
+ * `import_preflight` compares the cultures found in XML files against this set:
+ * a multilingual text item in a culture the project does not have makes TIA
+ * refuse the whole import transaction (measured on a live import, 2026-11-04).
+ */
+export interface ProjectLanguageSet {
+  active: string[]
+  supported: string[]
+  editing: string | null
+  reference: string | null
+}
+
+/** One object a listing returned, flattened to what a preflight needs. */
+export interface ListedProjectObject {
+  category: string
+  name: string
+  group: string | null
+}
+
+/** A listing, with the truncation flag the caller must report honestly. */
+export interface ProjectObjectListing {
+  ok: boolean
+  objects: ListedProjectObject[]
+  families: Record<string, { count: number; returned: number; truncated: boolean }>
+  truncated: boolean
+  error: AccessError | null
+}
+
+function languageCultures(value: unknown): string[] {
+  const cultures: string[] = []
+  for (const entry of list(value)) {
+    const item = record(entry)
+    const culture = text(item?.['culture'])
+    if (culture !== undefined) cultures.push(culture)
+  }
+  return cultures
+}
+
+/**
+ * Normalize the interface plugin's language report.
+ *
+ * @param raw - the service's return value (an `AccessCallResult`).
+ * @returns the language set, or null when the call did not succeed.
+ */
+export function normalizeProjectLanguages(raw: unknown): ProjectLanguageSet | null {
+  const source = record(raw)
+  if (source === null || source['ok'] !== true) return null
+  const data = record(source['data'])
+  if (data === null) return null
+  const active = languageCultures(data['activeLanguages'])
+  const supported = languageCultures(data['supportedLanguages'])
+  if (active.length === 0 && supported.length === 0) return null
+  return {
+    active,
+    supported,
+    editing: text(data['editingLanguage']) ?? null,
+    reference: text(data['referenceLanguage']) ?? null,
+  }
+}
+
+/**
+ * Normalize the interface plugin's object listing.
+ *
+ * A failed listing is **data**: the preflight continues with the checks it can
+ * still make and says the name check was skipped.
+ *
+ * @param raw - the service's return value.
+ */
+export function normalizeObjectListing(raw: unknown): ProjectObjectListing {
+  const source = record(raw) ?? {}
+  const objects: ListedProjectObject[] = []
+  for (const entry of list(source['objects'])) {
+    const item = record(entry)
+    if (item === null) continue
+    const name = text(item['name'])
+    if (name === undefined) continue
+    objects.push({
+      category: text(item['category']) ?? 'unknown',
+      name,
+      group: text(item['group']) ?? null,
+    })
+  }
+  const families: ProjectObjectListing['families'] = {}
+  const rawFamilies = record(source['families'])
+  if (rawFamilies !== null) {
+    for (const [key, value] of Object.entries(rawFamilies)) {
+      const family = record(value)
+      if (family === null) continue
+      families[key] = {
+        count: numberOf(family['count']),
+        returned: numberOf(family['returned']),
+        truncated: family['truncated'] === true,
+      }
+    }
+  }
+  return {
+    ok: source['ok'] === true,
+    objects,
+    families,
+    truncated: source['truncated'] === true || Object.values(families).some((family) => family.truncated),
+    error: errorOf(source['error']),
   }
 }

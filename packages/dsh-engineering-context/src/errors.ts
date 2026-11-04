@@ -75,6 +75,8 @@ export type EngineeringErrorCode =
   | 'invalid_commit_message'
   /** There is no evidence ledger to describe a commit against: sync before committing. */
   | 'not_synced'
+  /** A named workspace path does not exist or is not a directory. */
+  | 'workspace_not_found'
   /** An argument is missing or malformed. */
   | 'invalid_argument'
 

@@ -151,6 +151,46 @@ test('the plan writes nothing and shows the exact message, trailers included', a
   assert.match(await readFile(join(outcome.data.device.directory, 'blocks', '010', 'FB1.xml'), 'utf8'), /new/u)
 })
 
+test('a reference label becomes a Reference trailer in the plan and the commit', async (t) => {
+  const { root } = await dirtyWorkspace(t)
+
+  const plan = assertEnvelope(
+    await executeTool(
+      commitTool(),
+      { message: 'feat: import the VOC door subsystem', reference: 'SWT2@4af0a95' },
+      fakeExec(root),
+    ),
+  )
+  assert.equal(plan.ok, true)
+  assert.match(plan.data.message, /^Reference: SWT2@4af0a95$/mu)
+
+  const real = assertEnvelope(
+    await executeTool(
+      commitTool(),
+      { dry_run: false, message: 'feat: import the VOC door subsystem', reference: 'SWT2@4af0a95' },
+      fakeExec(root),
+    ),
+  )
+  assert.equal(real.ok, true)
+  const message = (await git(root, ['log', '-1', '--format=%B'])).stdout
+  assert.match(message, /^Reference: SWT2@4af0a95$/mu)
+})
+
+test('a multiline reference is refused before anything is planned', async (t) => {
+  const { root } = await dirtyWorkspace(t)
+
+  const outcome = assertEnvelope(
+    await executeTool(
+      commitTool(),
+      { message: 'feat: x', reference: 'SWT2\nReference: injected' },
+      fakeExec(root),
+    ),
+  )
+
+  assert.equal(outcome.ok, false)
+  assert.equal(outcome.error.code, 'invalid_argument')
+})
+
 test('a real run commits exactly the device directory with the caller message plus trailers', async (t) => {
   const { root } = await dirtyWorkspace(t)
   // An unrelated dirty file outside the device directory must not ride along.

@@ -313,8 +313,15 @@ function setup(options = {}, config = {}) {
 
 const operations = (calls) => calls.map((call) => call.operation)
 
-test('this build registers the four workflow tools in a stable order', () => {
-  assert.deepEqual([...TOOL_NAMES], [TOOL, 'project_status', 'project_sync', 'project_commit'])
+test('this build registers the workflow tools in a stable order', () => {
+  assert.deepEqual([...TOOL_NAMES], [
+    TOOL,
+    'project_status',
+    'project_sync',
+    'project_commit',
+    'workspace_describe',
+    'import_preflight',
+  ])
 })
 
 test('a composition without the TIA service says so instead of half-creating a project', async (t) => {

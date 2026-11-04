@@ -1,7 +1,8 @@
 # 核心架构：工程上下文插件
 
 > **状态：设计定稿；P0/P1 已按 D22 删除，现行实现是 `create_engineering_project` / `project_status` /
-> `project_sync` / `project_commit` 四个工具（S2 见 D26；sync 与 commit 拆成两步见发行版 D30）。**
+> `project_sync` / `project_commit` 四个工作流工具，外加只读的 `workspace_describe` 与
+> `import_preflight`（2026-11-04，见 D28；S2 见 D26；sync 与 commit 拆成两步见发行版 D30）。**
 >
 > ⚠️ **2026-10 起本文有相当一部分是"目标态"而不是现状**：原先注册的
 > `eng_status` / `eng_project` / `eng_scope` / `eng_version`，以及它们下面的工程注册表与内部 git

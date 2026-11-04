@@ -19,7 +19,7 @@
 import type { ToolDefinition } from '@deepseek-ai/dsh-tools'
 
 import { engineeringAccess, type EngineeringAccessLike } from '../access.js'
-import { planCommit, runCommit } from '../commit.js'
+import { normalizeCommitReference, planCommit, runCommit } from '../commit.js'
 import type { DeviceInfo } from '../device.js'
 import { resolveDevice } from '../device.js'
 import { EngineeringContextError } from '../errors.js'
@@ -54,6 +54,12 @@ const PARAMETERS = {
       'Optional device name. Required only when the workspace holds more than one device directory under source/; the tool never ' +
       'guesses which PLC to commit.',
   },
+  reference: {
+    type: 'string',
+    description:
+      'Optional provenance label for the change, one line, for example "SWT2@4af0a95" when blocks were imported from another ' +
+      "workspace. It is appended as a `Reference:` trailer. Use the same value that import_preflight/import_blocks echoed.",
+  },
 } as const
 
 /**
@@ -86,9 +92,10 @@ export function commitTool(dependencies: ToolDependencies): ToolDefinition {
         }
         device = await resolveDevice(scope, service, exec)
         const message = typeof args.message === 'string' ? args.message : ''
+        const reference = normalizeCommitReference(args.reference)
 
         if (args.dry_run !== false) {
-          const plan = await planCommit(scope, device, message)
+          const plan = await planCommit(scope, device, message, reference)
           const nothing = plan.paths.length === 0
           return okOutcome(
             PROJECT_COMMIT_TOOL,
@@ -120,7 +127,7 @@ export function commitTool(dependencies: ToolDependencies): ToolDefinition {
           )
         }
 
-        const result = await runCommit(scope, device, message, exec)
+        const result = await runCommit(scope, device, message, exec, reference)
         let versionNote: string | null = null
         const versionWarnings: string[] = []
         if (result.commit.committed && result.commit.hash !== null) {

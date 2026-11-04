@@ -16,7 +16,7 @@
 | 名称 | 对应层 | 一句话职责 | 现状 |
 |---|---|---|---|
 | **工控软件接口插件族**<br>（以 TIA 为例即 `tia-openness`；**按软件版本**分成员：V17/V18…；能力不拆包、由 preset 装配，见 D31） | ① 接入层 | 与工控软件对接，**读写工程对象**；为后续分析提供**素材**与**验证工具**；并**附带文档**说清何时调用、怎么调用、数据怎么用 | 🟡 已有第一个成员：`@voltarenyah/dsh-tia-openness-v17-min`（V17，定位是**验证基础功能**） |
-| **工程上下文插件** | 横向（作用域） | 面对用户的**多个 TIA 项目 × 多个分支 × 多个历史版本**，管理工程上下文，在会话中就某个工程问题**暴露出恰当的工程上下文**；对**工程对象做优化适配**并用「待办清单」式载体承接工程变更上下文 | 🟡 部分实现：`@voltarenyah/dsh-engineering-context`（4 个工具：`create_engineering_project` / `project_status` / `project_sync` / `project_commit`，分三个 Loader 入口，见 D30；DRAFT/REMOTE 与变更台账未做） |
+| **工程上下文插件** | 横向（作用域） | 面对用户的**多个 TIA 项目 × 多个分支 × 多个历史版本**，管理工程上下文，在会话中就某个工程问题**暴露出恰当的工程上下文**；对**工程对象做优化适配**并用「待办清单」式载体承接工程变更上下文 | 🟡 部分实现：`@voltarenyah/dsh-engineering-context`（6 个工具：`create_engineering_project` / `project_status` / `project_sync` / `project_commit`，以及只读的 `workspace_describe`（跨 workspace 描述，不打开 TIA）与 `import_preflight`（导入前预检），分三个 Loader 入口，见 D30；DRAFT/REMOTE 与变更台账未做） |
 | **工程知识图谱插件** | ② 语义层 | **准确翻译 XML 中的 PLC 语法**（兼容性强），把工程源文件解析成 LLM 便于处理的信息：**解析 XML → 建立图数据库 → 暴露接口**提供所需工程细节 | 🟡 部分实现：`@voltarenyah/dsh-engineering-graph`（引擎 + 8 个工具 + `knowledgeGraph` 服务；库发现与下钻见 D24；新鲜度/增量未做） |
 | **Web GUI 视图插件**<br>（`dsh-ui-plc-source` / `dsh-ui-tia-console` / `dsh-ui-versions`） | 跨层（不占三层编号） | 把上面两层已经落盘的事实**显示在人眼前**：右侧栏 **PLC Blocks**（读 `source/<device>/_manifest.json`）、输入框上方 **TIA 控制台**（折叠会话的 `command/*`、`tool/*` 事件）、右侧栏 **Versions**（读 `<workspace>/.dsh/versions-view.json`）。**不新增子进程、不新增 HTTP 路由、不注册模型工具** | ✅ 三个都已实现并登记进蓝图 |
 
@@ -165,6 +165,33 @@
 - 源项目与工作副本分离：agent 动的是 workspace 里的**副本**；
 - workspace 里"放什么、怎么放"是一套**路径规则**，属于本插件的交付物。
 
+#### 参考项目：一个 workspace 里的第二个「项目根」（提案，A18–A20 待定）
+
+使用者的真实场景是"改这个工程时照着另一个工程做"，对应 TIA 的 Reference project。它打破的不是
+"一个会话一个工程"，而是"一个根就是全部"：参照工程也要有自己的 `source/` 与 `knowledge/`，
+否则既查不了它的块，也建不了它的图谱。
+
+> **两条路线**：如果参照项目本身就是本发行版管理的另一个 workspace，优先走**轻量路线**
+> （[`reference-project.md`](reference-project.md) §12.1）：直接读它的 `source/`、用绝对
+> `db_path` 查图谱、用 `import_blocks` 导入 —— 读、查、取用**今天就能做**，缺口只剩发现、出处、
+> 只读约定。下面描述的是"A 必须自己维护参照副本"的**重路线**。
+>
+> 2026-11-04 的真实会话复盘（同文 §15）已经验证了这一点：**不建 `refs/` 项目根**，改做
+> `workspace_describe` + `import_preflight` + 出处约定三项小改动。
+
+- **形态**：主工程仍是 `<workspace>/source` + `knowledge/`；每个参照工程是一个**项目根**
+  `refs/<slug>/{tia,source,knowledge}/`，带自己的索引（`role: "reference"`）。列举靠目录 + 索引，
+  **不引入注册表**（D22 延续）；主工程的路径、UI 与 git 规则一行不改。
+- **只读**：Openness 没有"以只读方式打开工程"的能力（V17 `ProjectComposition` 无此重载，
+  `OpenMode` 只管库）。重路线下只读靠**唯一的写通道**：控制器按 `open_project(role)` 记住角色，
+  对一切改工程的操作 fail-closed（`project_read_only`）；工程上下文再校验一层。轻量路线**从不打开
+  参照工程**，控制器闸门对它无效，只读只能是约定或文件系统级（会话策略 / ACL）。文件系统只读
+  属性不做 —— TIA 打开工程本身会写临时文件，属性只读会让它打不开。
+- **复制**：参照树取 XML → 暂存 → 在主工程里导入 → 编译验证；**不**写主工程 `source/`
+  （那是 TIA 的派生视图，改了工程也没变）。
+- 完整的工具面、切换协议、失败模式、分阶段验收与依据见
+  [`reference-project.md`](reference-project.md)。
+
 #### 期望一：对工程对象做优化适配
 
 | 要适配的问题 | 结论 |
@@ -285,6 +312,9 @@
 | **变更上下文** | 工程上下文插件 → LLM | 「待办清单」式的工程变更上下文，在合适的时候暴露，用于判断用户意图 | 待定 |
 | **能力文档** | 接口插件族 → LLM | 每个能力/工具的"何时调用 / 怎么调用 / 结果怎么用"三问 | 已定（D4） |
 | 版本操作 | 工程上下文插件 → git | 分支/历史/差异/工作副本物化 | 见 [`open-questions.md`](open-questions.md) **A8** |
+| **参考项目源树**（提案） | 工程上下文插件 → 工程知识图谱插件 | 与主工程同构：`refs/<slug>/source/<device>` 直接作为 `ingestDevice(device_dir)` 的输入 | 📝 提案，见 [`reference-project.md`](reference-project.md) |
+| **跨工程复制**（提案） | 工程上下文插件 → 接口插件族 | 参照树 XML → `.dsh/local/transfer/` → `engineeringAccess.importObjects` → 编译验证 | 📝 提案 |
+| **工程角色**（提案） | 接口插件族 → 工程上下文插件 | `open_project(role)` 与 `readTiaSession.projectRole`；参照工程上的写操作被拒 | 📝 提案 |
 
 ---
 

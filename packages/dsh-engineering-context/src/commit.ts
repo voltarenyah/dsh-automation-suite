@@ -90,15 +90,54 @@ export function normalizeCommitMessage(message: string): string {
  * The trailer block for one ledger state.
  *
  * @param evidence - the ledger the tree was built from, or null when it is missing.
+ * @param reference - an optional provenance label (for example `SWT2@4af0a95`)
+ *   echoing where imported objects came from; null to omit the line.
  * @returns the trailer lines, one per line.
  */
-export function commitTrailers(evidence: EvidenceDocument | null): string[] {
-  return [
+export function commitTrailers(evidence: EvidenceDocument | null, reference: string | null = null): string[] {
+  const lines = [
     TRAILER_OP,
     `Tia-Checksum: ${evidence?.plcChecksum ?? 'unknown'}`,
     `Tia-State: ${evidence?.stateId ?? 'unknown'}`,
     'Tia-Manifest: updated',
   ]
+  if (reference !== null && reference.length > 0) lines.push(`Reference: ${reference}`)
+  return lines
+}
+
+/** The longest provenance label this plugin accepts. */
+export const MAX_REFERENCE_CHARS = 200
+
+/**
+ * Validate the optional provenance label.
+ *
+ * A trailer is one line by definition: a newline would let the caller inject
+ * arbitrary trailer lines (or a second paragraph) into a machine-readable block.
+ *
+ * @param value - the raw tool argument.
+ * @returns the trimmed label, or null when none was supplied.
+ * @throws {EngineeringContextError} when it is multiline or too long.
+ */
+export function normalizeCommitReference(value: unknown): string | null {
+  if (value === undefined || value === null) return null
+  if (typeof value !== 'string') return null
+  const trimmed = value.trim()
+  if (trimmed.length === 0) return null
+  if (/[\r\n]/u.test(trimmed)) {
+    throw new EngineeringContextError(
+      'invalid_argument',
+      'The reference must be one line: it becomes a single `Reference:` trailer in the commit message.',
+      { parameter: 'reference' },
+    )
+  }
+  if (trimmed.length > MAX_REFERENCE_CHARS) {
+    throw new EngineeringContextError(
+      'invalid_argument',
+      `The reference is ${trimmed.length} characters; the limit is ${MAX_REFERENCE_CHARS}.`,
+      { parameter: 'reference', length: trimmed.length, limit: MAX_REFERENCE_CHARS },
+    )
+  }
+  return trimmed
 }
 
 /**
@@ -122,7 +161,12 @@ export function composeCommitMessage(message: string, trailers: readonly string[
  * @returns the plan; `paths` empty means there is nothing to commit.
  * @throws {EngineeringContextError} when the message is invalid or the ledger is missing.
  */
-export async function planCommit(scope: ResolvedScope, device: DeviceInfo, message: string): Promise<CommitPlan> {
+export async function planCommit(
+  scope: ResolvedScope,
+  device: DeviceInfo,
+  message: string,
+  reference: string | null = null,
+): Promise<CommitPlan> {
   const root = scope.workspace.path
   const normalized = normalizeCommitMessage(message)
   const evidenceFile = evidencePathForDevice(device.directory)
@@ -158,7 +202,7 @@ export async function planCommit(scope: ResolvedScope, device: DeviceInfo, messa
       plcChecksum: evidence.plcChecksum,
       objects: evidence.objects.size,
     },
-    message: composeCommitMessage(normalized, commitTrailers(evidence)),
+    message: composeCommitMessage(normalized, commitTrailers(evidence, reference)),
   }
 }
 
@@ -177,12 +221,13 @@ export async function runCommit(
   device: DeviceInfo,
   message: string,
   exec: ToolRunContext,
+  reference: string | null = null,
 ): Promise<CommitResult> {
   return await withLock(
     scope.workspace.path,
     'commit',
     async () => {
-      const plan = await planCommit(scope, device, message)
+      const plan = await planCommit(scope, device, message, reference)
       if (exec.signal.aborted) {
         throw new EngineeringContextError('invalid_argument', 'The commit was cancelled before it ran.', {
           reason: 'cancelled',

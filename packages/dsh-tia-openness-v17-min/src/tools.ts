@@ -1185,6 +1185,10 @@ export function registerTools(ctx: Context, dependencies: ToolDependencies): str
         'composition back from the project and reports a verification block; when an expected block is missing the ' +
         'operation fails with verification_failed even though the write happened. ' +
         "Use import_options 'override' to replace blocks that already exist (TIA refuses duplicates with 'none'). " +
+        'The files may come from another project or another managed workspace — the controller only reads the paths. When ' +
+        'borrowing across projects run `import_preflight` first (engineering-context): it reports language/culture mismatches, ' +
+        'dependencies and name collisions before this transaction starts. TIA ASSIGNS BLOCK NUMBERS on import; a number used in ' +
+        'the source project is not a conflict, and the file-name prefix is cosmetic — the NAME is the identity. ' +
         'Fails with invalid_params, invalid_file, block_not_found, import_failed, verification_failed or project_not_open.',
       parameters: {
         import_paths: {
@@ -1239,6 +1243,13 @@ export function registerTools(ctx: Context, dependencies: ToolDependencies): str
         recursive: { type: 'boolean', description: 'True (default) to scan directories recursively.' },
         verify: { type: 'boolean', description: 'True (default) to read the block composition back after committing.' },
         keep_source: { type: 'boolean', description: 'True to keep an imported external source in the project (TIA keeps it by default); false (default) deletes it after generating the blocks.' },
+        reference: {
+          type: 'string',
+          description:
+            'Optional provenance label, one line, e.g. "SWT2@4af0a95" when the files came from another workspace. It is echoed in the ' +
+            'result and put into the controller payload as data.reference; pass the same value to project_commit(reference=...) so the ' +
+            'origin is recorded in history.',
+        },
         dry_run: { type: 'boolean', description: 'Defaults to true: validate and report only. Set false to write to the project.' },
       },
       output: {
@@ -1262,7 +1273,16 @@ export function registerTools(ctx: Context, dependencies: ToolDependencies): str
         if (args.sw_import_options !== undefined) params['sw_import_options'] = args.sw_import_options
         if (args.device_name !== undefined) params['device_name'] = args.device_name
         if (args.software_name !== undefined) params['software_name'] = args.software_name
-        return asJsonOutcome(await runOperation(dependencies, 'ImportBlocks', params, exec.signal))
+        const outcome = await runOperation(dependencies, 'ImportBlocks', params, exec.signal)
+        const reference = typeof args.reference === 'string' ? args.reference.trim() : ''
+        if (reference.length === 0) return asJsonOutcome(outcome)
+        // `reference` is deliberately not sent to the controller: it is provenance
+        // for the caller and its commit message, not an import parameter.
+        return asJsonOutcome({
+          ...outcome,
+          summary: `${outcome.summary} (reference: ${reference})`,
+          data: { ...(outcome.data ?? {}), reference },
+        })
       },
     }),
   )

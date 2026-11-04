@@ -4,8 +4,9 @@
  * Four workflow-shaped tools, not one tool per TIA operation: this plugin exists
  * to answer "which engineering project is this conversation about, where does it
  * live on disk, what shape is it in, and how does it get back in sync with TIA".
- * The count is deliberately small because every tool's name, description and
- * parameter schema is paid for in every session (docs/ARCHITECTURE.md §6).
+ * `workspace_describe` answers the same question for a workspace that is not the
+ * session's (a reference project), and `import_preflight` reports what a TIA
+ * import will refuse before it starts (docs/reference-project.md §15).
  *
  * The version workflow is split in two on purpose: `project_sync` writes the
  * source tree, `project_commit` records it with a message that says why
@@ -20,11 +21,20 @@ import type { ToolDefinition } from '@deepseek-ai/dsh-tools'
 import { commitTool } from './commit.js'
 import { createProjectTool } from './create-project.js'
 import type { ToolDependencies } from './deps.js'
+import { workspaceDescribeTool } from './describe.js'
+import { importPreflightTool } from './preflight.js'
 import { statusTool } from './status.js'
 import { syncTool } from './sync.js'
 
 /** The tools this build registers, in registration order. */
-export const TOOL_NAMES = ['create_engineering_project', 'project_status', 'project_sync', 'project_commit'] as const
+export const TOOL_NAMES = [
+  'create_engineering_project',
+  'project_status',
+  'project_sync',
+  'project_commit',
+  'workspace_describe',
+  'import_preflight',
+] as const
 
 /** One of the registered tool names. */
 export type ToolName = (typeof TOOL_NAMES)[number]
@@ -39,7 +49,14 @@ export type ToolName = (typeof TOOL_NAMES)[number]
  * @returns the definitions, in registration order.
  */
 export function toolDefinitions(dependencies: ToolDependencies): ToolDefinition[] {
-  return [createProjectTool(dependencies), statusTool(dependencies), syncTool(dependencies), commitTool(dependencies)]
+  return [
+    createProjectTool(dependencies),
+    statusTool(dependencies),
+    syncTool(dependencies),
+    commitTool(dependencies),
+    workspaceDescribeTool(dependencies),
+    importPreflightTool(dependencies),
+  ]
 }
 
 /**
