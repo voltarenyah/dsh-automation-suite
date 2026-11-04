@@ -453,6 +453,10 @@ TIA Portal / Openness 的功能测试统一拿下面这个源项目当"源"，**
 - **源项目（只读）**：`C:\Users\Ansel\Documents\Automation\V17\PEI_SinoARP_SWT2\PEI_SinoARP_SWT2.ap17`
 - 规格：TIA Portal **V17**（`ProjectCompatibilityVersion 17.0.0.0`，不需要 `allow_upgrade`）、
   1 个 PLC（设备与软件都叫 `Sino_PEI`，1155 块）、437 MB / 175 文件。
+- 源也可以是 **`.zap17` 归档**：`create_engineering_project` 按扩展名识别，直接把归档路径传给它，
+  TIA 会在这一次调用里取回到 `tia/<工作区名>/`（保留归档里的工程名，归档本身不改）。
+  **不要**先 `archive_project(retrieve)` 或 `open_project`——那会让 create 以
+  `project_already_open` 拒绝。
 
 **造测试项目 = 一次工具调用，只给它源路径**（`create_engineering_project` 属于
 `@voltarenyah/dsh-engineering-context`，它再经 `engineeringAccess` 走 TIA 插件）：
