@@ -49,7 +49,6 @@ export const zh = {
   'row.addTag': '+ 标签',
   'row.filterBy': '按 {tag} 筛选',
   'row.removeTag': '移除标签',
-  'row.open': '打开工作区',
   'row.newSession': '新会话',
 
   'time.justNow': '刚刚',
@@ -128,7 +127,6 @@ export const en = {
   'row.addTag': '+ Tag',
   'row.filterBy': 'Filter by {tag}',
   'row.removeTag': 'Remove tag',
-  'row.open': 'Open workspace',
   'row.newSession': 'New session',
 
   'time.justNow': 'just now',

@@ -86,10 +86,10 @@ function LedgerCell(props) {
 /**
  * One workspace row.
  *
- * @param {{ row: object, index: number, t: Function, busy: boolean, onFilter: Function, onRemove: Function, onAdd: Function, onOpen: Function, onNew: Function, now: number }} props - row and callbacks.
+ * @param {{ row: object, index: number, t: Function, busy: boolean, onFilter: Function, onRemove: Function, onAdd: Function, onNew: Function, now: number }} props - row and callbacks.
  */
 function Row(props) {
-  const { row, index, t, busy, onFilter, onRemove, onAdd, onOpen, onNew, now } = props
+  const { row, index, t, busy, onFilter, onRemove, onAdd, onNew, now } = props
   const facts = []
   facts.push(createElement('span', { key: 'sessions' }, t('row.sessions', { n: row.sessions })))
   if (row.archived > 0) facts.push(createElement('span', { key: 'archived', className: 'pd-sep' }, '·'), createElement('span', { key: 'archived-n' }, t('row.archived', { n: row.archived })))
@@ -160,20 +160,14 @@ function Row(props) {
       createElement(
         'span',
         { className: 'pd-actions' },
-        createElement('button', { type: 'button', className: 'pd-icon-btn', title: t('row.open'), 'aria-label': t('row.open'), onClick: onOpen }, browseIcon()),
-        createElement('button', { type: 'button', className: 'pd-icon-btn', title: t('row.newSession'), 'aria-label': t('row.newSession'), onClick: onNew }, plusIcon()),
+        createElement(
+          'button',
+          { type: 'button', className: 'pd-new', title: t('row.newSession'), 'aria-label': t('row.newSession'), onClick: onNew },
+          plusIcon(),
+          createElement('span', null, t('row.newSession')),
+        ),
       ),
     ),
-  )
-}
-
-/** @returns the "open" glyph. */
-function browseIcon() {
-  return createElement(
-    'svg',
-    { viewBox: '0 0 24 24', width: 14, height: 14, fill: 'none', stroke: 'currentColor', strokeWidth: 1.7, strokeLinecap: 'round', strokeLinejoin: 'round', 'aria-hidden': 'true' },
-    createElement('path', { d: 'M13.5 4.6H6.2a1.7 1.7 0 0 0-1.7 1.7v11.5a1.7 1.7 0 0 0 1.7 1.7h11.5a1.7 1.7 0 0 0 1.7-1.7v-7.2' }),
-    createElement('path', { d: 'M10.4 13.6 19.4 4.6M15.2 4.6h4.2v4.2' }),
   )
 }
 
@@ -181,7 +175,7 @@ function browseIcon() {
 function plusIcon() {
   return createElement(
     'svg',
-    { viewBox: '0 0 24 24', width: 14, height: 14, fill: 'none', stroke: 'currentColor', strokeWidth: 1.7, strokeLinecap: 'round', 'aria-hidden': 'true' },
+    { viewBox: '0 0 24 24', width: 11, height: 11, fill: 'none', stroke: 'currentColor', strokeWidth: 1.9, strokeLinecap: 'round', 'aria-hidden': 'true' },
     createElement('path', { d: 'M12 5.2v13.6M5.2 12h13.6' }),
   )
 }
@@ -534,7 +528,6 @@ export function Dashboard(props) {
         onFilter: toggleFilter,
         onRemove: (tag) => removeTag(row.id, tag),
         onAdd: (event) => openEditor(row.id, event.currentTarget),
-        onOpen: () => runAction(() => props.openWorkspace?.(row.id)),
         onNew: () => runAction(() => props.newSession?.(row.id)),
       }),
     )

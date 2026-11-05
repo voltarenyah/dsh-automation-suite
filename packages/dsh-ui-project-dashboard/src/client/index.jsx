@@ -102,12 +102,6 @@ export function apply(ctx) {
     }
   }
 
-  const openWorkspace = (workspaceId) => {
-    const service = uiWorkspace()
-    if (service === undefined || typeof service.openWorkspace !== 'function') throw new Error('uiWorkspace is unavailable')
-    return service.openWorkspace(workspaceId)
-  }
-
   const newSession = (workspaceId) => {
     const service = uiWorkspace()
     if (service === undefined || typeof service.startSession !== 'function') throw new Error('uiWorkspace is unavailable')
@@ -119,7 +113,7 @@ export function apply(ctx) {
       let disposeMain
       try {
         disposeMain = ctx.slots.register(
-          { name: 'main', key: PANEL, locale: NS, inject: () => ({ openWorkspace, newSession }) },
+          { name: 'main', key: PANEL, locale: NS, inject: () => ({ newSession }) },
           Dashboard,
         )
       } catch (error) {

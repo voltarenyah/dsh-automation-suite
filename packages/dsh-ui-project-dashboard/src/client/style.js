@@ -405,18 +405,23 @@ export const CSS = `
 .pd-tag-add:disabled { cursor: default; opacity: .5; }
 
 .pd-actions { margin-left: auto; padding-left: 10px; display: flex; align-items: center; gap: 2px; }
-.pd-icon-btn {
-  width: 24px; height: 24px;
-  display: inline-flex; align-items: center; justify-content: center;
-  border: 0; border-radius: 6px;
+.pd-new {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 24px;
+  padding: 0 9px;
+  border: 1px solid var(--pd-line);
+  border-radius: 999px;
   background: transparent;
   color: var(--pd-ink-3);
+  font-size: 11.5px;
+  white-space: nowrap;
   cursor: pointer;
-  opacity: .65;
-  transition: opacity .14s ease, background .14s ease, color .14s ease;
+  transition: color .14s ease, border-color .14s ease, background .14s ease;
 }
-.pd-ws:hover .pd-icon-btn, .pd-icon-btn:focus-visible { opacity: 1; }
-.pd-icon-btn:hover { background: color-mix(in srgb, var(--pd-ink) 7%, transparent); color: var(--pd-ink); }
+.pd-new:hover { color: var(--pd-accent); border-color: color-mix(in srgb, var(--pd-accent) 45%, transparent); background: var(--pd-accent-soft); }
+.pd-new svg { flex: none; }
 
 /* -------------------------------------------------------------------- empty */
 .pd-empty {
