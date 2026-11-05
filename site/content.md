@@ -30,6 +30,16 @@ Note: Three layers, each one unlocking the next.
 3. **Governance** — Partial
    Export to text, diff, commit and trace versions — with Git as the base.
 
+### Capability wall
+Note: Vocabulary of the hero demo panel. Rule: every term names something a TIA Portal engineer can point at inside the software — a block type, a table, a dialog, a device state. Internal design vocabulary (transactions, whitelists, ledgers, fingerprints) is deliberately excluded, as is anything the suite does not actually do. A trailing `*` marks a roadmap item, rendered with a star and the legend "on the roadmap, not shipped yet". Anchors (rendered largest): TIA Portal V17 · TIA Openness · Export blocks · Compile PLC · Version control · PLCSIM Advanced.
+
+- TIA Portal — Export blocks · Import blocks · Generate source · External source · OB · FB · FC · DB · UDT · Tag tables · Watch tables · Force tables · Project archive · Project library · Master copy · Type version · Software units · Know-how protection · Safety signature · Project languages · Open in block editor · Save as
+- Reading a project — Call structure · Cross references · Variable usage · Block search
+- Versioning — Version control · Version history · Git diff · Project translation
+- Simulation — PLCSIM Advanced · Power on / off · RUN / STOP / reset · Tag read / write · Snapshot / restore · Retained data · Softbus / TCP-IP
+- Panels — PLC blocks panel · TIA console · Drawing search
+- Roadmap (*) — TIA Portal V18* · Hardware config* · Online & download* · Compare blocks* · Project diff* · Cable & terminals*
+
 ## Architecture
 
 ### Page head
