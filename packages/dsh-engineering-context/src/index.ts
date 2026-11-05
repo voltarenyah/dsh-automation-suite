@@ -34,6 +34,7 @@ import type { Context } from '@deepseek-ai/cordis'
 
 import { Config, resolveConfig, type PluginConfig } from './config.js'
 import { registerTools, type ToolDependencies } from './tools/index.js'
+import { registerSkillProvider } from './skills.js'
 
 /** Plugin identity; the loader uses it as the entry id in the profile tree. */
 export const name = 'engineering-context'
@@ -61,6 +62,7 @@ export function apply(ctx: Context, config?: Partial<PluginConfig>): void {
   const dependencies: ToolDependencies = { ctx, config: settings, log }
 
   const registered = registerTools(ctx, dependencies)
+  registerSkillProvider(ctx, log)
   log.info(
     `Registered ${registered.length} engineering-context tool${registered.length === 1 ? '' : 's'} (${registered.join(', ')}); ` +
       `projects are saved into <workspace>/${settings.tiaDirName}/, their source trees into <workspace>/${settings.sourceDirName}/, ` +

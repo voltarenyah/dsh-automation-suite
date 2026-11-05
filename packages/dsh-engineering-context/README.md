@@ -34,7 +34,7 @@ DeepSeek Harness 插件（**工程上下文插件**）：把一个 **TIA Portal 
 **不再有注册表**：workspace 里"有哪些工程"由目录布局本身回答（`tia/` 与 `source/` 下有什么），
 没有 `_dsh-eng/projects.json`，也没有"当前工程"指针（D22 的刻意取舍）。
 
-## 2. 工具（6 个，另有一个只挂 `project_diff` 的独立入口，外加版本库的 8 个工具）
+## 2. 工具（7 个，另有一个只挂 `project_diff` 的独立入口，外加版本库的 8 个工具）
 
 | 工具 | 干什么 | 写？ |
 |---|---|---|
@@ -44,6 +44,7 @@ DeepSeek Harness 插件（**工程上下文插件**）：把一个 **TIA Portal 
 | `project_commit` | 提交 `source/<device>`。`message` 必填（空消息 → `invalid_commit_message`，超 8000 字符同样拒绝），默认只给计划——列出会提交的路径、账本事实与**最终信息全文**；`dry_run: false` 才写历史。插件在信息末尾追加 `Tia-Op` / `Tia-Checksum` / `Tia-State` trailer（信息里已有 trailer 块时不重复）；可选的 `reference`（单行）追加一条 `Reference:` trailer，用来记"这批对象引自哪个 workspace 的哪个提交"。没有可读账本时以 `not_synced` 拒绝；工作树干净时返回"无需提交"而不是报错。提交路径限定在该 device 目录，别处的脏文件不会被带走 | 是（一次 git commit） |
 | `workspace_describe` | 只读描述**任意** workspace（默认当前会话工作区，也可传 `workspace_path`）：索引里的工程身份与角色、每台设备的 XML 数、清单/账本、知识库大小与新鲜度、硬件 AML、git HEAD 与未提交改动。**不打开 TIA、不启动控制器、不写任何东西** —— 所以能描述一个正在被别的会话使用、或根本没开 TIA 的参照工程（发行版 [`reference-project.md`](../../docs/reference-project.md) §15） | 否 |
 | `import_preflight` | 导入前预检一批 Simatic ML XML：语言 culture 是否在目标工程激活、批次内重名、目标里已存在的同名对象、依赖是否在批次/目标里（含类型先后顺序），并给出建议导入顺序。读 XML + 读目标工程的**语言设置与对象清单**（经接口插件的 `readProjectLanguages` / `listObjects` 缝）；TIA 没开工程时退化为只查 XML 并说明跳过了哪些检查。**不查块号**（TIA 导入时自动分配）、**不查网络里的调用**、不导入 | 否 |
+| `project_translate` | 项目文本翻译工作流：`plan` 按 source/target 导出官方 project-texts XLSX、筛选/去重并写 `jobs.jsonl`/`selected.jsonl`；模型翻译后 `apply` 只写 target 列、归档、导入、再导出验证，并比较块指纹（只允许 `Comments` 变）。F 块按 `programmingLanguage=F_*` 排除。导入不可回滚，`archive` 默认开；本工具**不激活语言**，target 未激活时返回 `target_language_inactive`，需用户许可后由 `project_languages` 激活。依赖 `@e965/xlsx`（SheetJS fork，读取 TIA 的非标准 OOXML） | 是（导入 + 归档；`apply` 默认不保存） |
 
 **版本库（`/version` 挂全部 8 个；`/version-read` 只挂只读的 5 个）**：
 

@@ -641,6 +641,7 @@ test('the diff entry registers exactly one tool; the main entry never registers 
     'project_commit',
     'workspace_describe',
     'import_preflight',
+    'project_translate',
   ])
   assert.equal(main.some((definition) => definition.name === DIFF), false)
 

@@ -79,6 +79,18 @@ export type EngineeringErrorCode =
   | 'workspace_not_found'
   /** An argument is missing or malformed. */
   | 'invalid_argument'
+  /** The interface plugin has no projectTextAccess service. */
+  | 'project_text_access_unavailable'
+  /** A project-text export failed. */
+  | 'project_text_export_failed'
+  /** The target language is not active; activation requires user permission. */
+  | 'target_language_inactive'
+  /** The plan file changed after it was generated. */
+  | 'plan_changed'
+  /** Archiving before a non-transactional import failed. */
+  | 'archive_failed'
+  /** Project-text import failed or returned state=Error. */
+  | 'project_text_import_failed'
 
 /**
  * A failure with a stable code and machine-readable details.

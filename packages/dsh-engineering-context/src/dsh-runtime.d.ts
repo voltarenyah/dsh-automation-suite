@@ -58,12 +58,68 @@ declare module '@deepseek-ai/cordis' {
      * and must be treated as absent when this returns `undefined`.
      */
     get(name: string): unknown
+    /** The optional skill registry; absent when the profile has no dsh-skill. */
+    readonly skills?: DshSkillRegistry
+    /** Run `callback` once the named optional services exist. */
+    inject(services: readonly 'skills'[], callback: (ctx: Context) => void): { dispose(): void } | void
   }
 
   /** The root context constructor. */
   export const Context: {
     new (): Context
   }
+}
+
+/** Invocation policy of one skill. */
+interface DshSkillInvocation {
+  readonly modelInvocable: boolean
+  readonly userInvocable: boolean
+}
+
+/** Resource base rendered to the model on load. */
+type DshSkillResourceBase =
+  | { readonly kind: 'directory'; readonly path: string }
+  | { readonly kind: 'url'; readonly url: string }
+  | { readonly kind: 'opaque'; readonly description: string }
+
+/** One discoverable skill summary. */
+interface DshSkillCandidate {
+  readonly name: string
+  readonly description: string
+  readonly invocation: DshSkillInvocation
+  readonly provider: string
+  readonly source: string
+  readonly rank: number
+  readonly resourceBase?: DshSkillResourceBase
+  readonly path?: string
+  readonly locator: unknown
+}
+
+/** One loaded skill. */
+interface DshSkillDefinition {
+  readonly name: string
+  readonly description: string
+  readonly invocation: DshSkillInvocation
+  readonly provider: string
+  readonly source: string
+  readonly resourceBase?: DshSkillResourceBase
+  readonly path?: string
+  readonly content: string
+}
+
+interface DshSkillProviderControl {
+  readonly signal: AbortSignal
+  invalidate(): void
+}
+
+interface DshSkillProvider {
+  readonly name: string
+  list(options?: unknown): Promise<readonly DshSkillCandidate[]>
+  get(candidate: DshSkillCandidate, options?: { readonly signal?: AbortSignal }): Promise<DshSkillDefinition | undefined>
+}
+
+interface DshSkillRegistry {
+  registerProvider(create: (control: DshSkillProviderControl) => DshSkillProvider): unknown
 }
 
 declare module '@deepseek-ai/dsh-tools' {

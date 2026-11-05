@@ -345,6 +345,65 @@ function errorOf(value: unknown): AccessError | null {
 }
 
 /**
+ * The write seam the translation workflow uses for project texts.
+ *
+ * Deliberately separate from `engineeringAccess`: that seam is read-mostly, while
+ * project-text import, language activation, archive and save are project writes.
+ * The TIA interface plugin owns both services.
+ */
+export const PROJECT_TEXT_ACCESS_SERVICE = 'projectTextAccess'
+
+/** The subset of `projectTextAccess` this plugin needs. */
+export interface ProjectTextAccessLike {
+  exportTexts(
+    file: string,
+    sourceLanguage: string,
+    targetLanguage: string,
+    options?: { signal?: AbortSignal },
+  ): Promise<unknown>
+  importTexts(
+    file: string,
+    updateSourceLanguage?: boolean,
+    options?: { signal?: AbortSignal },
+  ): Promise<unknown>
+  readLanguages(options?: { signal?: AbortSignal }): Promise<unknown>
+  setLanguages(request: {
+    activeLanguages?: readonly string[]
+    activeMode?: 'add' | 'remove'
+    editingLanguage?: string
+    referenceLanguage?: string
+    signal?: AbortSignal
+  }): Promise<unknown>
+  archiveProject(request: {
+    targetDir: string
+    targetName: string
+    mode?: 'none' | 'compressed' | 'discard_restorable_data' | 'discard_restorable_data_and_compressed'
+    signal?: AbortSignal
+  }): Promise<unknown>
+  saveProject(request?: { saveAsDir?: string; signal?: AbortSignal }): Promise<unknown>
+  listBlocks(options?: { maxItems?: number; signal?: AbortSignal }): Promise<unknown>
+}
+
+/** The host's `projectTextAccess` service, or `undefined` when absent. */
+export function projectTextAccess(ctx: Context): ProjectTextAccessLike | undefined {
+  const service = ctx.get(PROJECT_TEXT_ACCESS_SERVICE)
+  if (service === null || typeof service !== 'object') return undefined
+  const candidate = service as Record<string, unknown>
+  for (const member of [
+    'exportTexts',
+    'importTexts',
+    'readLanguages',
+    'setLanguages',
+    'archiveProject',
+    'saveProject',
+    'listBlocks',
+  ]) {
+    if (typeof candidate[member] !== 'function') return undefined
+  }
+  return service as ProjectTextAccessLike
+}
+
+/**
  * The host's `engineeringAccess` service, or `undefined` when this composition
  * has none.
  *

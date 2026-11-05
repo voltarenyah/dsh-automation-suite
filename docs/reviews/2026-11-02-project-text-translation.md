@@ -420,8 +420,8 @@ enumerating multilingual texts"）：
    整工程回滚手段）。
 1. **plan（只写文件，不改工程）** —— 按 `source_languages` 参数：
    **只给 1 个 = 单源，只导一份、不需要合并**；给多个才做多源合并（按 `Internal ID`
-   取非空源）。不是默认多源。前提：API 接受非 reference 的 `source`；若只接受 reference，
-   则临时切 reference、导出后恢复（**Q1 待验证**）。解析表头/语言列/`Internal ID`/`Category`/
+   取非空源）。不是默认多源。**2026-11-04 实测 `source=en-US` 可直接导出**；
+   `fr-FR`/`de-DE` 待测。解析表头/语言列/`Internal ID`/`Category`/
    `ViewPath`/`ref=` 列；按范围、类别、路径前缀过滤；按 `text_id` 去重；输出 `jobs.jsonl`、
    `unique.jsonl` 与统计摘要（≤4KB）。
 2. **translate（离线）** —— 50–100 条/批，带术语表与上下文（块名/网络名/类别）；
@@ -443,8 +443,8 @@ enumerating multilingual texts"）：
 - **源列为空的行默认跳过**并计入 `skipped_no_source`；不静默拿别的语言列顶替，
   除非显式给 `source_languages` 多个 / `fallback_sources`；
 - **`target_policy` 默认 `only_empty`**（只补空）；可改为 `overwrite` 或 `fill_empty_keep_existing`。
-  无论哪种策略，合并时**必须把不翻的行的原值原样写回单元格**（不能留空；否则若 Q2 证明
-  "空白=清空"，会清掉已有译文）；
+  合并文件**只保留被翻译的行**（表头 + selected）；不翻译的行不写进文件，导入不会碰它们。
+  （实测 T5：空白 target = 清空；所以不能把未选行以空白 target 放进文件。）
 - **不排序、不插行、不改系统列**；只写目标语言列。
 
 ### 4.2 工具面：一个工作流工具，而不是五个原子工具
@@ -583,9 +583,8 @@ DSH 插件运行时目前没有向插件暴露"调用模型"的服务——至�
 - **源列语言混杂 / 多源导出**：本次实测 `en-GB*` 列里大量是法语（作者用英/法混写），
   而且有的块标题/注释只在 `en-US`/`fr-FR`/`de-DE` 里有文本（§2.3 的 `LCCF_CipClient` 例子）。
   翻译前先做语言识别；**按多种源语言各导一份，按 `Internal ID` 合并，取非空源**。
-  前提是 API 接受非 reference 的 `source`；若只接受 reference，则临时切 reference、
-  导出后恢复（Q1 待验证）。**不要假设列名是 `en-GB` 就等于英文，也不要只导一份就断言
-  "这些块没有注释"。**
+  `source=en-US` 已实测可用；`fr-FR`/`de-DE` 仍待测。**不要假设列名是 `en-GB` 就等于英文，
+  也不要只导一份就断言"这些块没有注释"。**
 - 术语表：CSV/JSON（源词 → 目标词），作为提示词约束 + 后置校验（术语未命中则标 `low`）。
 
 **v2 可选：外部 MT provider 适配器。** 在插件配置里给 `base_url` / `model` / `api_key_env`，
@@ -609,18 +608,18 @@ DSH 插件运行时目前没有向插件暴露"调用模型"的服务——至�
 
 ### 4.7 与现有插件的关系
 
-- **TIA 插件（接口层）**：不新增 `exceljs`；保留 `project_texts` / `project_languages` 原子工具，
+- **TIA 插件（接口层）**：不新增 XLSX 库；保留 `project_texts` / `project_languages` 原子工具，
   并新增窄服务 **`projectTextAccess`**：
   `exportTexts` / `importTexts` / `readLanguages` / `setLanguages` / `archiveProject` / `saveProject`。
   不把 `importTexts`/`setLanguages` 塞进只读定位的 `engineeringAccess`。
-- **工程上下文插件（工作流层）**：`project_translate` + 翻译 skill + `exceljs` 都在这里；
+- **工程上下文插件（工作流层）**：`project_translate` + 翻译 skill + `@e965/xlsx` 都在这里；
   XLSX 解析/写回、preflight、报告、git 提交建议也在这里（已有 `commit.ts`/`git.ts`）。
-- **数据流**：context → `projectTextAccess.exportTexts` → XLSX → context 用 `exceljs` 解析/合并
+- **数据流**：context → `projectTextAccess.exportTexts` → XLSX → context 用 `@e965/xlsx` 解析/合并
   → `projectTextAccess.importTexts`；TIA 插件不接触单元格。
 - **不改 C# 控制器 / 不新增 Openness 操作**：`project_texts` 与 `project_languages` 已经够用；
   若 XLSX 保真度不够，换的是 context 侧的库（OpenXML 也在 context/controller 二选一），不是 Openness 操作。
 - **工件目录**：`<workspace>/translations/<project>/<timestamp>/`，需要加 `.gitignore`。
-- **依赖方向**：只允许 context → TIA 服务；禁止 TIA 插件 import context 的 `exceljs` 或共享包。
+- **依赖方向**：只允许 context → TIA 服务；禁止 TIA 插件 import context 的 `@e965/xlsx` 或共享包。
 
 ---
 
@@ -654,28 +653,28 @@ project_texts({ "action": "import", "file": "D:\\Verify\\texts-v17-one-cell.xlsx
 - **结果**：`User Texts` **33,045 行 × 22 列**；列 = `Category, ViewPath, Internal ID,
   Substitutions, en-GB*, zh-CN, ref="0"…ref="15"`；`Internal ID` **全部唯一**；
   源列混有法语；目标列已有 6,485 行中文。详见 §2.3 / §4.4。
+- **2026-11-04 补充**：`source=en-US`（非 reference）也导出成功，表头 `en-US*`，
+  33,045 行 / 6,535 行源非空，`Internal ID` 与 `en-GB` 导出一致。
 - **仍需补做**：
-  - 零改动 round-trip：用计划采用的库（如 `exceljs`）打开后**原样另存**，再导入；
-    若这一步失败，是库的保真度问题，不是翻译逻辑；
-  - `source_language=fr-FR` 是否也能导出（本次实测只用了 `en-GB`）；
+  - `source_language=fr-FR` / `de-DE` 是否也能导出；
   - V15/V16 等其他 TIA 版本的列布局是否相同。
-- **不过怎么办**：以目标版本实际表头为准重写列映射。
 
-### Q2. 空目标单元格导入时是"跳过"还是"清空"？
+### Q2. 空目标单元格导入时是"跳过"还是"清空"？—— ✅ 实测：清空
 
-- **做法**：本项目 `zh-CN` 已有 6,485 行译文（§2.3），足够做观察。导出
-  `source=en-GB, target=zh-CN`；找一行**已有中文**的记录，把它的 `zh-CN` 单元格清空
-  （其余不动），导入；再导出，看这条记录的中文是否被清空。
-- **通过标准**：清空一个已有译文单元格后导入，原译文**保持不变**（说明空白=跳过），
-  或明确变成空白（说明空白=清空，合并时必须为每一行填值）。
-- **不过怎么办**：若空白会清空，合并时必须为每一行写入"已有译文或新译文"，不能留空。
+- **结果（2026-11-04）**：把一条已有中文的 `zh-CN` 单元格清空后导入，再导出该条为**空**。
+  即 **空白 = 清空**。
+- **后果**：合并文件**不能包含"不想动"的行并把它们的 target 留空**；正确做法是
+  **只保留被翻译的行**（表头 + selected），让未选中的行不出现在导入文件里。
+  代码的 `mergeTextWorkbook` 已按这个结论实现（prune 未翻译行）。
+- 若将来 TIA 版本行为相反，才考虑“每个未选行写回原值”的兼容分支。
 
-### Q3. 导入能否给"原本没有目标语言项"的文本新建 item？
+### Q3. 导入能否给"原本没有目标语言项"的文本新建 item？—— ✅ 实测：可以
 
-- **做法**：选 3 条当前中文为空白的块/网络注释，填中文，导入，切 editing language 到中文，
-  在 TIA 里打开块确认。
-- **通过标准**：能看到中文，且源语言/其他语言不变。
-- **不过怎么办**：A 路线不成立；只能走 B（已有项）+ C（块 XML）组合，工期和风险都会显著上升。
+- **结果（2026-11-04）**：给一条原本空白的目标行填 `DSH_T6_验证中文`，导入后再导出可见；
+  原本没有中文 item 的块注释可以新建。
+- **附加**：只保留表头 + 1 行要改写的子集文件也能导入成功（`state=Warning`，仅
+  “version property is missing” 与完成提示）；全量文件则产生 13,637 条只读对象 Warning。
+  所以工作流应**只提交被翻译的行**，不要提交整份 33k 行文件。
 
 ### Q4. 行身份在"重新打开/保存"后是否稳定？
 
@@ -715,10 +714,10 @@ project_texts({ "action": "import", "file": "D:\\Verify\\texts-v17-one-cell.xlsx
 ### Q8. F 块/受保护块？—— 已决定排除
 
 - **决定**：v1 **不翻译 F 块（安全程序）**，也不测试注释对安全签名的影响；F 块整块不动。
-- **仍需验证**：只从 `list_plc_objects` 的 `programmingLanguage`（`F_LAD`/`F_FBD`/`F_DB`…）
-  拿 F 块清单；**不依赖组名**（组名是随机的，没有分类语义）。在 filter 中排除；
+- **2026-11-04 实测**：1,155 块全部返回 `ProgrammingLanguage`；F 块 54 个
+  （`F_DB` 35 / `F_LAD` 17 / `F_FBD` 2）。只按这个字段排除，**不用组名**。
+- **仍需验证**：`jobs.jsonl` / `selected.jsonl` 中 F 块 **0 条**；普通块不受影响；
   受保护块按导入报错/跳过处理。
-- **通过标准**：`jobs.jsonl` / `selected.jsonl` 中 F 块 **0 条**；普通块不受影响。
 
 **P0 产出**：一份 `docs/reviews/…-spike.md`，逐项记录命令、原始输出、结论；
 以及一个"go / no-go / 改路线"的决定。
@@ -744,7 +743,7 @@ project_texts({ "action": "import", "file": "D:\\Verify\\texts-v17-one-cell.xlsx
 | R13 | 数据外发 | 注释含客户工艺信息 | 合规/保密风险 | 明确同意；本地模型/私有端点；脱敏选项 | 决策 |
 | R14 | 大工程超时/挂起 | 导出/导入慢；headless 打开大工程会挂 | 会话中断 | 分片、进度、可续跑；大工程先用可见窗口；调大 `requestTimeoutMs` | Q6 |
 | R15 | 并发会话 | 另一个会话在写同一项目 | 冲突/排队 | 控制器串行；翻译离线；写前确认无其他写操作 | 运行约定 |
-| R16 | 导出完成模态框阻塞调用 | `with_window:true`，`ExportProjectTexts` 完成后弹 "Export Completed" | API 不返回（实测 15 min 超时），工作流卡死 | 优先 headless；UI 模式自动点掉对话框；调用侧以"文件已生成"为旁路继续 | **已实测** |
+| R16 | 导出/导入完成模态框阻塞调用 | `with_window:true`，完成后弹 "Export Completed"/"Import Completed" | API 不返回（实测 15 min 超时） | **headless（`with_window:false`）实测没有模态框**；UI 模式仍需自动点掉 | **已实测** |
 
 ---
 
@@ -760,7 +759,7 @@ project_texts({ "action": "import", "file": "D:\\Verify\\texts-v17-one-cell.xlsx
 | **合计** | | **16–25 人天（约 3–5 周）** | |
 
 - **最小演示闭环**（P0 + P1 的解析 + 100 行手工翻译 + P2 的导入/验证）约 **7–9 天**。
-- 如果 `exceljs` 保真度不够、要改用 C# `DocumentFormat.OpenXml`：**+3–5 天**。
+- 如果 `@e965/xlsx` 保真度不够、要改用 C# `DocumentFormat.OpenXml`：**+3–5 天**。
 - 如果 v2 要加外部 MT provider：**+5–7 天**（含配置、凭据、重试、成本控制）。
 - 不含人工翻译审校、术语表建设、HMI 全量覆盖。
 
@@ -811,16 +810,17 @@ project_texts({ "action": "import", "file": "D:\\Verify\\texts-v17-one-cell.xlsx
 3. **数据合规**：接受注释进入当前模型；v1 只走模型翻译，不强制外部 MT/私有端点
    （将来可作为可选适配器，不进入默认路径）。
 4. **交付形态**：`project_translate` + 翻译 skill 放 `dsh-engineering-context`；TIA 插件保留
-   原子工具并新增 `projectTextAccess` 服务；`exceljs` 依赖在 context。已确认。
+   原子工具并新增 `projectTextAccess` 服务；`@e965/xlsx` 依赖在 context。已确认。
 5. **默认值**：`source_languages=[reference]`、`scope=plc-comments`、`target_policy=only_empty`；
    都只是默认，运行时参数可改。
 
 **仍需实测（不影响已确认的架构）**
 
-- T1：`source` 是否必须是 reference；
-- T5：目标单元格空白 = 跳过还是清空；
-- T6：导入能否给原本没有目标语言 item 的文本新建；
-- T18：`programmingLanguage=F_*` 是否覆盖全部 F 块（只用语言，不用组名）。
+- T1：`source=en-US` 已通过；`fr-FR`/`de-DE` 是否同样可用；
+- T4：target 未激活时的许可流程（本次 target 已 active）；
+- T7/T8：`Warning` 逐行语义、部分失败/回滚；
+- T16：已完成（2026-11-05 真机 apply：只有 `Comments` 变，`Code/Interface/Properties` 为空）；
+- T18：已实测 54 个 F 块（F_DB 35 / F_LAD 17 / F_FBD 2）。
 
 ---
 
@@ -885,12 +885,11 @@ project_texts({ "action": "import", "file": "D:\\Verify\\texts-v17-one-cell.xlsx
 
 ### 10.5 尚未验证（不要当成结论）
 
-- 空目标单元格的导入语义（跳过/清空）；
-- 导入能否为缺失语言项新建文本（本方案成立的前提）；
-- `source_language=fr-FR` 等其他活动语言能否作为导出源；
-- `ProjectTextResult.Path` 指向的文件内容、导入 `state=Warning` 的逐行含义；
-- headless（`with_window:false`）能否避开 "Export Completed" 模态框；
-- `exceljs` 对 TIA 生成 XLSX 的保真度（零改动 round-trip）；
-- 导入耗时、部分失败与回滚路径。
+- `source_language=fr-FR` / `de-DE` 等其他活动语言能否作为导出源（`en-US` 已实测可用）；
+- `ProjectTextResult.Path` 指向的日志逐行语义；`Warning` 中“只读对象”与“版本属性缺失”的区分；
+- ExcelJS 读不了 TIA 导出（实测）；生产 `@e965/xlsx` 生成的子集已真机导入成功；
+- 重开/SaveAs 后的行身份；
+- 目标语言激活许可流程（本次 target 已 active）；
+- 部分失败/回滚（本次全量与子集均 `Error=0`）。
 
 以上全部列入 §5，P0 之前不应视为已解决。

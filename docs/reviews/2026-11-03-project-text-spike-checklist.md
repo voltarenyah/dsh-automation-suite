@@ -5,11 +5,11 @@
 
 ## A. 源/目标语言
 
-- [ ] **T1 source 是否必须是 reference language？**
+- [x] **T1 source 是否必须是 reference language？** —— 实测 2026-11-04：**不是，en-US 可直接导出**（表头 `en-US*`，33,045 行）
   - 做法：`source=en-US`（active，但 reference=en-GB）→ `target=zh-CN` 导出；再看 `source=fr-FR`。
   - 通过：能导出且表头为 `en-US*`/`fr-FR*`；若报错，记录错误码。
   - 影响：若只接受 reference，换源语言必须临时切 reference（项目写），或走 XML。
-- [ ] **T2 非 reference 源语言导出后，行/ID 是否与 en-GB 导出一致？**
+- [x] **T2 非 reference 源语言导出后，行/ID 是否与 en-GB 导出一致？** —— 实测 2026-11-04：`en-US` 与 `en-GB` 均为 33,045 行、`Internal ID` 集合一致
   - 通过：`Internal ID` 集合一致（可合并）；否则要 union。
 - [ ] **T3 多目标语言**：`target=zh-TW`（先 add active）→ 导出/导入；确认一次一个 target。
 - [ ] **T4 target 未激活时的许可流程**：`plan` 应报 `needs_permission`（并给出 before/after）；
@@ -18,15 +18,15 @@
 
 ## B. 导入语义（最关键）
 
-- [ ] **T5 空白目标单元格 = 跳过还是清空？**
+- [x] **T5 空白目标单元格 = 跳过还是清空？** —— 实测 2026-11-04：**清空**（清空一条已有中文，导入后再导出为空）
   - 做法：导出现有 zh-CN 文件；清空某条已有中文的 `zh-CN` 单元格；导入；再导出。
   - 通过：原译文保留=跳过；变空=清空（合并时必须逐行填值）。
-- [ ] **T6 导入能否给"原本没有 zh-CN item"的文本新建 item？**
+- [x] **T6 导入能否给"原本没有 zh-CN item"的文本新建 item？** —— 实测 2026-11-04：**可以**（填 `DSH_T6_验证中文` 后导入可见）
   - 做法：选 3 条中文空白的块/网络注释，填中文，导入，切 editing language 到中文查看。
 - [ ] **T7 导入 `state` / `resultPath` 语义**：制造一条失败（导出后删/改一个块），看 Warning/Error 与日志。
 - [ ] **T8 部分失败**：失败行之外是否已写入；用再导出差异核对。
-- [ ] **T9 导入是否弹模态框**：与导出一致？记录标题；测 headless 是否没有。
-- [ ] **T10 导入耗时**：33k 行文件的导入时间、日志大小。
+- [x] **T9 导入是否弹模态框** —— 实测 2026-11-04：headless 下没有模态框；导入/导出/关闭均正常
+- [x] **T10 导入耗时** —— 实测 2026-11-04：33k 行全量文件导入约 92.6 s，日志约 5.5 MB；子集导入更快
 
 ## C. 行/过滤
 
@@ -49,14 +49,14 @@
 > **不需要三层验证**。只保留一层最低成本的指纹校验，用来防"我们自己的合并/筛选写错"
 > 和 TIA 异常；`PlcChecksum`/XML diff/SyncScan 只在指纹异常时作为排查手段。
 
-- [ ] **T16（主）导入前后 `list_plc_objects(include_fingerprints=true)`**：逐块记录 facets。
+- [x] **T16（主）导入前后 `list_plc_objects(include_fingerprints=true)`** —— 实测 2026-11-05：完整工具 E2E 后 `Comments: ["202_VocDoorGeneral"]`，`Code/Interface/Properties` 为空，`codeChanged=false`。
   - 断言：`Comments` 变；`Code`、`Interface` 不变。
   - `Properties` 若变，先确认是不是 `ModifiedDate`/编译状态这类元数据；元数据变化不算代码变化。
   - 若 `Code`/`Interface` 任一变化：停止全量导入，回滚副本，再上 T17/T19 排查。
 - [ ] **T17（标签表，无 fingerprint）**：导入前后 `export_blocks(categories=["tag_tables"])`
   或直接比较 `list_plc_objects` 的 tag `name/address/data_type` 不变、只有 `comment` 变；
   也可导出 tag table XML，去掉 `Comment`/`MultiLanguageText` 后比较。
-- [ ] **T18（F 块：默认排除，不翻译）**：验证识别与过滤。
+- [x] **T18（F 块：默认排除，不翻译）** —— 实测 2026-11-04：1,155 块全部有 `ProgrammingLanguage`；F 块 54 个（F_DB 35 / F_LAD 17 / F_FBD 2）。
   - **只按 `list_plc_objects` 的 `programmingLanguage` 以 `F_` 开头识别**（F_LAD/F_FBD/F_DB…）；
     **不用组名**（组名是用户任意命名，没有分类语义）。
   - 断言 F 块的 `ViewPath` 不进入 `selected.jsonl`，`jobs.jsonl` 中 F 块 0 条；
@@ -68,8 +68,8 @@
 
 ## E. 格式/库
 
-- [ ] **T22 零改动 round-trip**：导出 → 用 `exceljs`/选定库打开原样另存 → 导入；确认不破坏文件。
-- [ ] **T23 `=` 开头文本**：21 个字符串写回后仍是 text，不是 formula。
+- [x] **T22 零改动 round-trip** —— 实测 2026-11-04：ExcelJS 读不了 TIA 导出；生产 `@e965/xlsx` 读取并生成 1 行子集后真实导入成功，目标文本可见，仅 “version property missing” Warning
+- [x] **T23 `=` 开头文本** —— 单测覆盖（写入后仍为字符串）；真实 TIA 未单独验证
 - [ ] **T24 `ref=`/`Substitutions`/换行**：逐格保持；只改目标语言列。
 - [ ] **T25 目标列已有中文**：默认只填空，不覆盖；如需覆盖，用显式 `overwrite`。
 

@@ -23,6 +23,7 @@ import { createProjectTool } from './create-project.js'
 import type { ToolDependencies } from './deps.js'
 import { workspaceDescribeTool } from './describe.js'
 import { importPreflightTool } from './preflight.js'
+import { projectTranslateTool } from './project-translate.js'
 import { statusTool } from './status.js'
 import { syncTool } from './sync.js'
 
@@ -34,6 +35,7 @@ export const TOOL_NAMES = [
   'project_commit',
   'workspace_describe',
   'import_preflight',
+  'project_translate',
 ] as const
 
 /** One of the registered tool names. */
@@ -56,6 +58,7 @@ export function toolDefinitions(dependencies: ToolDependencies): ToolDefinition[
     commitTool(dependencies),
     workspaceDescribeTool(dependencies),
     importPreflightTool(dependencies),
+    projectTranslateTool(dependencies),
   ]
 }
 

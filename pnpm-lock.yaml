@@ -33,6 +33,9 @@ importers:
 
   packages/dsh-engineering-context:
     dependencies:
+      '@e965/xlsx':
+        specifier: ^0.20.3
+        version: 0.20.3
       fast-xml-parser:
         specifier: ^5.11.2
         version: 5.11.2
@@ -104,6 +107,15 @@ importers:
         specifier: ^5.6.0
         version: 5.9.3
 
+  packages/dsh-ui-project-dashboard:
+    devDependencies:
+      '@types/node':
+        specifier: ^22.10.0
+        version: 22.20.5
+      typescript:
+        specifier: ^5.6.0
+        version: 5.9.3
+
   packages/dsh-ui-prompt-guide:
     devDependencies:
       '@types/node':
@@ -160,6 +172,9 @@ importers:
       dsh-ui-plc-source:
         specifier: workspace:^
         version: link:../../packages/dsh-ui-plc-source
+      dsh-ui-project-dashboard:
+        specifier: workspace:^
+        version: link:../../packages/dsh-ui-project-dashboard
       dsh-ui-prompt-guide:
         specifier: workspace:^
         version: link:../../packages/dsh-ui-prompt-guide
@@ -195,6 +210,11 @@ packages:
 
   '@deepseek-ai/schemastery@3.18.3':
     resolution: {integrity: sha512-plZIZADuGLT/3PoYmUaEDZd0vG1rVahU89MevnxXsyQhFEi2D6DUuTJel7FUb3cUM9aCzqGMN99sHJe1RIushA==}
+
+  '@e965/xlsx@0.20.3':
+    resolution: {integrity: sha512-703RN/3OdsRD5mtse2HBX7Um7xwaP9tlswEG6svOtjqokXoX7rJdQj7DyabD2I+xk22RgaIIU+R6BHgkpZGB/w==}
+    engines: {node: '>=0.8'}
+    hasBin: true
 
   '@esbuild/aix-ppc64@0.28.2':
     resolution: {integrity: sha512-XExcO+dvLKvVtNTibSTBej1NCAbaGhWn9Ww1ZPx80qsahhPFe/8jgWP0IchNe0F3HwkU7n8ejhH8bjonqht8mQ==}
@@ -1286,6 +1306,8 @@ snapshots:
     dependencies:
       '@deepseek-ai/cosmokit': 1.8.6
       '@standard-schema/spec': 1.1.0
+
+  '@e965/xlsx@0.20.3': {}
 
   '@esbuild/aix-ppc64@0.28.2':
     optional: true

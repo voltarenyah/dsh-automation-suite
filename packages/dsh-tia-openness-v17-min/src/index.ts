@@ -44,6 +44,7 @@ import { existsSync } from 'node:fs'
 import { Config, resolveConfig, type PluginConfig } from './config.js'
 import { ControllerProcess, resolveControllerPath, type LogSink } from './controller.js'
 import { EngineeringAccess, ENGINEERING_ACCESS_SERVICE } from './access.js'
+import { ProjectTextAccess, PROJECT_TEXT_ACCESS_SERVICE } from './project-text-access.js'
 import { TiaOpennessRuntime, TIA_RUNTIME_SERVICE } from './runtime-service.js'
 import { registerSkillProvider } from './skills.js'
 import type { ToolDependencies } from './tools.js'
@@ -113,6 +114,11 @@ export function apply(ctx: Context, config?: Partial<PluginConfig>): void {
   // removes the service again. See `access.ts` and docs/decisions.md D12.
   const access = new EngineeringAccess(ctx, dependencies)
 
+  // The write seam for the translation workflow in the engineering-context
+  // plugin: project-text export/import, language changes, archive and save.
+  // Deliberately separate from the read-mostly `engineeringAccess` seam.
+  const projectTexts = new ProjectTextAccess(ctx, dependencies)
+
   // The knowledge base is optional by design: `ctx.inject` only starts this
   // child plugin once the skill registry exists, so a profile without
   // `@deepseek-ai/dsh-skill` never blocks on a service that is not there. The
@@ -122,7 +128,8 @@ export function apply(ctx: Context, config?: Partial<PluginConfig>): void {
 
   let startup: Promise<boolean> | null = null
   const exposed =
-    `exposing the ${access.name} service (${ENGINEERING_ACCESS_SERVICE}) and the ${TIA_RUNTIME_SERVICE} seam ` +
+    `exposing the ${access.name} service (${ENGINEERING_ACCESS_SERVICE}), ` +
+    `the ${projectTexts.name} service (${PROJECT_TEXT_ACCESS_SERVICE}) and the ${TIA_RUNTIME_SERVICE} seam ` +
     `for the /tools row`
   if (exePath.length === 0 || !existsSync(exePath)) {
     log.warn(

@@ -36,7 +36,7 @@ test('apply registers the workflow tools in a stable order and reports them once
   )
   const info = logs.filter((entry) => entry.level === 'info')
   assert.equal(info.length, 1)
-  assert.match(info[0].message, /Registered 6 engineering-context tools/u)
+  assert.match(info[0].message, /Registered 7 engineering-context tools/u)
   assert.match(info[0].message, /<workspace>\/tia\//u)
 })
 
@@ -136,6 +136,7 @@ test('the real harness runtime holds this schema and validates the result', () =
     const minimal = {
       project_commit: { message: 'chore: no-op' },
       import_preflight: { import_paths: ['C:\\Projects\\Other\\source\\PLC1\\blocks\\FB1.xml'] },
+      project_translate: { action: 'status' },
     }[definition.name] ?? {}
     assert.deepEqual(
       dshTools.validateJsonSchemaValue(parameters, minimal),
@@ -149,6 +150,7 @@ test('the real harness runtime holds this schema and validates the result', () =
       project_commit: { dry_run: false, message: 'fix(cav-a): stop loading while the cooling belt is full' },
       workspace_describe: { workspace_path: 'C:\\Projects\\Other' },
       import_preflight: { import_paths: ['C:\\Projects\\Other\\source\\PLC1\\blocks\\FB1.xml'], reference: 'SWT2@abc' },
+      project_translate: { action: 'plan', target_language: 'zh-CN', source_languages: ['en-GB'], scope: 'plc-comments' },
     }[definition.name]
     assert.deepEqual(
       dshTools.validateJsonSchemaValue(parameters, realRun),
@@ -162,6 +164,7 @@ test('the real harness runtime holds this schema and validates the result', () =
       project_commit: { dry_run: 'yes', message: 'x' },
       workspace_describe: { workspace_path: 7 },
       import_preflight: { import_paths: 'not-an-array' },
+      project_translate: { action: 'plan', target_language: 7 },
     }[definition.name]
     assert.ok(
       dshTools.validateJsonSchemaValue(parameters, mistyped).length > 0,

@@ -476,7 +476,7 @@ const FAMILIES: ReadonlyArray<readonly [string, AccessObject['category']]> = [
  * @param outcome - the result of `runOperation`.
  * @returns the call result, with the error flattened and `details` kept.
  */
-function toCallResult(outcome: {
+export function toCallResult(outcome: {
   ok: boolean
   operation: string
   dryRun: boolean

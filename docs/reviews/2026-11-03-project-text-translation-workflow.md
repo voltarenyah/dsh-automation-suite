@@ -95,9 +95,11 @@ intent
 
 `project_translate` 合并出一个新的 `translated.xlsx`：
 
-- 行数/`Internal ID`/系统列不变；
+- **只保留表头 + 被翻译的行**；不翻译的行不写进文件，导入不会碰它们；
+  （实测 2026-11-04：全量文件会让 TIA 尝试更新所有只读对象，产生 13,637 条 Warning；
+  只保留 1 行时仅剩 “version property missing” 的 Warning，文本正常写入。）
+- 行数/`Internal ID`/系统列不变（对保留下来的行）；
 - 只改 target 列；源列/其他列逐格哈希一致；
-- 被排除的行**写回原 target 值**，不能留空；
 - 无公式；`=` 开头仍是字符串；长度 ≤ 32,767；
 - 缺行/多行/重复 ID/占位符不匹配 → 拒绝导入，回 P3。
 
@@ -108,8 +110,10 @@ intent
 - 需要 `apply:true` + `planHash` 一致 + 用户明确同意；
 - `project_texts(import, update_source_language=false)`；
 - 记录 `state`（Info/Warning/Error）与 `resultPath`（导入日志）；
-- 处理 "Export/Import Completed" 模态框（headless 或自动点掉）；
-- `state=Error` 或大量 Warning → 停止，不保存，按归档回滚。
+- `state=Warning` 不一定是失败：本次实测全量文件是 13,637 条只读对象 Warning，
+  子集文件只有 “version property is missing”；只要 `Error=0` 且再导出覆盖率达标，可继续；
+- **headless（`with_window=false`）实测没有 “Export/Import Completed” 模态框**；
+- `state=Error` 或大量非只读 Warning → 停止，不保存，按归档回滚。
 
 ### P6 · verify
 
@@ -192,27 +196,29 @@ XLSX 是 OOXML（zip + XML），不能当文本处理；Openness 只负责导出
 
 | 方案 | 依赖 | 评价 |
 |---|---|---|
-| **Node `exceljs`（推荐）** | npm 运行时依赖（MIT） | 与工具同侧；读写 33k 行/4MB 足够；过滤/合并/写回都在 Node；需做保真度测试 |
-| C# `DocumentFormat.OpenXml` | NuGet + controller/bin DLL | 保真度最好、可只改目标单元格；但把 XLSX 逻辑塞进 Openness 控制器，改动面更大 |
-| Python `openpyxl` | 外部 Python | 只适合一次性 spike，不作为发行版运行时依赖 |
-| 手写 OOXML patch | 无 | 需处理 sharedStrings/richText/styles，风险高，不推荐 v1 |
+| **Node `@e965/xlsx`（推荐，已用）** | npm 运行时依赖（Apache-2.0，SheetJS 维护 fork） | 能读 TIA 的非标准 OOXML；33k 行/4MB 可用；读 buffer、写 buffer，避免 ESM 版 `fs` 缺失 |
+| Node `exceljs` | MIT | **实测读不了 TIA 导出**（`model.sheets` undefined）；不适合 |
+| C# `DocumentFormat.OpenXml` | NuGet + DLL | 备选；保真度好，但把 XLSX 逻辑塞进控制器 |
+| Python `openpyxl` | 外部 Python | 只适合 spike，不作为发行版依赖 |
+| 手写 OOXML patch | 无 | 需处理 sharedStrings/richText/styles，风险高 |
 
-**推荐 v1 用 `exceljs`，放在 `dsh-engineering-context` 的 Node 侧**（不是 TIA 插件）：
+**已用 `@e965/xlsx`，放在 `dsh-engineering-context` 的 Node 侧**（不是 TIA 插件）：
 
 - `project_translate` 与翻译 skill 也在 `dsh-engineering-context`；
-  TIA 插件不新增 `exceljs`，只新增窄服务 `projectTextAccess`：
+  TIA 插件不新增该依赖，只新增窄服务 `projectTextAccess`：
   `exportTexts` / `importTexts` / `readLanguages` / `setLanguages` / `archiveProject` / `saveProject`。
 - `plan`：读工作簿（表头/语言列/`Category`/`ViewPath`/`Internal ID`），筛选后输出
   `jobs.jsonl`/`unique.jsonl`；**不把 4MB 的二进制直接塞给模型**，模型只看分批的 JSONL/CSV。
-- `apply`：复制工作簿，只写 target 列；排除行写回原值；保存为新文件；重新加载做逐格校验；
+- `apply`：**只保留被翻译的行**（表头 + selected），写 target 列；保存为新文件；重新加载做逐格校验；
   再交给 `projectTextAccess.importTexts`。
-- 依赖加在 `dsh-engineering-context` 的 `dependencies`（不是 devDependencies）；tsdown 正常打包；
-  `THIRD_PARTY_NOTICES.md` 补 MIT 许可；用 `pnpm pack` + 临时 profile 验收。
-- 已知坑：`=` 开头必须保持字符串（T23）；richText/换行/`ref=` 列/系统列不能丢；
-  行顺序不能变；写回后必须重新读取校验，不能只信内存对象。
+- 依赖加在 `dsh-engineering-context` 的 `dependencies`；`THIRD_PARTY_NOTICES.md` 记 Apache-2.0；
+  用 `pnpm pack` + 临时 profile 验收。
+- 已知坑：`=` 开头必须保持字符串（T23）；换行/`ref=` 列/系统列不能丢；
+  写回后必须重新读取校验，不能只信内存对象。
 
-**Only if `exceljs` round-trip fails**（T22）：改用 C# `DocumentFormat.OpenXml`，
-或对 XLSX 做“只替换目标列 XML”的定点补丁；这会增加 3–5 天和 controller 依赖。
+**实测（2026-11-04）**：用生产代码 `mergeTextWorkbook` 从真实 33,045 行导出生成 1 行子集，
+真实 TIA 导入 `state=Warning`（仅 “version property is missing” + 完成提示），
+再导出可见 `DSH_E965_验证` → 生产 SheetJS 路径可用，且不需要 C# 回退。
 
 ---
 

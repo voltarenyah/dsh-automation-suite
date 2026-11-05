@@ -89,7 +89,7 @@ const FAMILIES = [
  * @param outcome - the result of `runOperation`.
  * @returns the call result, with the error flattened and `details` kept.
  */
-function toCallResult(outcome) {
+export function toCallResult(outcome) {
     const error = outcome.error;
     return {
         ok: outcome.ok,

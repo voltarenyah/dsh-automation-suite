@@ -321,6 +321,7 @@ test('this build registers the workflow tools in a stable order', () => {
     'project_commit',
     'workspace_describe',
     'import_preflight',
+    'project_translate',
   ])
 })
 
@@ -1640,4 +1641,3 @@ test('git init itself failing is git_failed, with the paths that were already wr
     createdBy: 'engineering-context',
   })
 })
-
