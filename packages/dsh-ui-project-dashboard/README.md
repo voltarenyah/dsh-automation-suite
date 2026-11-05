@@ -61,6 +61,35 @@ POST /project-dashboard/api/tags
 
 页面只在**打开时 GET 一次、每次编辑 POST 一次**；没有轮询、没有逐项目宿主任务。
 
+## 默认工作区：这个发行版不要它
+
+DSH 外壳在**空安装首次启动**时会自动建一个 first-use Workspace（`Documents/deepseek-harness/default-workspace`）。
+本发行版不需要这个概念。宿主侧没有"不要创建"的开关，官方 `ui-workspace` 也没有过滤钩子，
+所以这里采取**两步**（2026-11-05 用户决定）：
+
+1. **页面隐藏**：宿主从 `storages/workspace.json` 读 `global.defaultWorkspaceId`（registry 服务没有这个 getter），
+   GET 告诉页面这个 id；页面把它从行里排除 —— 即使它还注册着也看不到。
+2. **一键注销**：只要它还注册着，页面顶部出现一条提示 +「移除默认工作区」按钮；
+   POST 走 `workspaceRegistry.delete(id)`。**非破坏性**：文件夹与所有会话日志都留着，
+   它的会话归到"未分组"（左侧栏中空白会话本来就不显示）。注销后 durable 的
+   `defaultWorkspaceId` 标记仍在，外壳的 `initializeDefault` 不会再造一个 —— 一次即永久。
+
+左侧栏本身无法用插件过滤（`sidebar.workspaces` 是 single 座位，替换等于重写整个会话浏览器），
+所以"左侧栏不出现"就是靠注销；注销后 New Session 的回退目标是当前/最近的**真实**工作区，
+没有真实工作区时是一个未绑定工作区的空白页，不会绑到默认工作区。
+
+> **全新安装**：外壳仍会在首次启动时创建它一次（客户端调用 `initializeDefault`，宿主无法阻止）。
+> 打开本页点一次「移除默认工作区」即可永久消除；如果希望"零点击"，宿主半侧可以在启动时做一次
+> 同 id 的清理（尚未实现，见 §9 待决）。
+
+```
+GET  /project-dashboard/api/default-workspace
+→ { ok, id: "<workspaceId>" | null, registered: boolean }
+
+POST /project-dashboard/api/default-workspace        ← 只注销，不删文件/会话
+→ { ok, deleted: true } | { ok, deleted: false, reason: "not-initialized"|"no-registry"|"not-registered"|"delete-failed" }
+```
+
 ### 安全与边界（写进代码注释与文档，别忽略）
 
 - `ctx.webServer` 的自开路由**没有鉴权**（只有 `/api` 有）。这条路由抄了最小 trust fence：
@@ -82,15 +111,16 @@ POST /project-dashboard/api/tags
 src/index.ts              宿主半侧：标签文件 + 路由注册 + workspaceRegistry 路径反查
 src/tags/model.ts         文档形状、标签校验/规范化、纯 mutation、冲突/输入错误
 src/tags/store.ts         原子写、.bak、损坏文件保留、进程内串行、expectedRevision 检查
-src/route.ts              GET/POST、trust fence、body 上限、JSON 响应
+src/default-workspace.ts  默认工作区标记读取、状态、注销（非破坏性）
+src/route.ts              tags + default-workspace 路由、trust fence、body 上限
 src/client/index.jsx      两个座位的注册、uiWorkspace 回调、探针 dataset.dshProjectDashboard = 'p1'
-src/client/dashboard.jsx  页面：行、标签、搜索、筛选树、编辑器、账条
+src/client/dashboard.jsx  页面：行、标签、搜索、筛选树、编辑器、账条、默认工作区提示
 src/client/model.js       纯函数：行构建、筛选、标签树、汇总
-src/client/tags-api.js    GET/POST fetch 封装（错误带 host code）
+src/client/tags-api.js    tags / default-workspace 的 fetch 封装（错误带 host code）
 src/client/style.js       P1 样式（注入一次 <style data-plugin>，只用 --dsw-* token）
 src/client/locales.js     zh / en 字典（**扁平点号键**，client-locale 按 dict[key] 查）
 scripts/{build,tsc,run-tests}.mjs
-test/                     01 结构 + 10 客户端模型 + 11 存储 + 12 路由
+test/                     01 结构 + 10 客户端模型 + 11 存储 + 12 路由 + 13 默认工作区
 ```
 
 ## 构建与验收
@@ -99,7 +129,7 @@ test/                     01 结构 + 10 客户端模型 + 11 存储 + 12 路由
 # 构建 / 类型检查 / 测试（pnpm install 已把 typescript 与 @types/node 装进本包）
 node scripts/build.mjs
 node scripts/tsc.mjs -p tsconfig.json --noEmit
-node scripts/run-tests.mjs      # 27 项
+node scripts/run-tests.mjs      # 33 项
 ```
 
 装进发行版验收环境（3095）：
@@ -108,8 +138,8 @@ node scripts/run-tests.mjs      # 27 项
 pwsh -NoProfile -File ..\..\scripts\start-env.ps1 -Restart
 ```
 
-页面里应看到：左侧栏第一行是 Project Dashboard；三行真实工作区；「+ 标签」加一个
-`客户/PEI` 后刷新仍在（文件里带 canonical path）；搜索"客户"命中 1/3；标签树按层级筛选；
+页面里应看到：左侧栏第一行是 Project Dashboard；只列出真实工作区（默认工作区被隐藏，若仍注册则顶部有提示条）；
+「+ 标签」加一个 `客户/PEI` 后刷新仍在（文件里带 canonical path）；搜索"客户"命中；标签树按层级筛选；
 `document.documentElement.dataset.dshProjectDashboard === 'p1'`。
 
 （宿主半侧改动必须重启实例；只改浏览器半侧时刷新页面即可，`lib/client.js` 的 rev 由 mtime 派生。）

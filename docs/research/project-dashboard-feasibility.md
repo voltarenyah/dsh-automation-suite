@@ -155,6 +155,14 @@ root 作用域的每个插槽组件都会拿到一组**标准 Hook**，由宿主
   浏览器通过一条 loopback 路由 `GET|POST /project-dashboard/api/tags` 读/改；请求里没有路径，只有 id 与标签。
   **代价**：路由没有宿主鉴权（只有 trust fence）；按 id 存的条目在"删掉再添加同一目录"后会变孤儿
   （`dsh-workspace` 明确会给新 id）；跨机器分享标签要连 `storages/workspace.json` 一起拷。
+- **默认工作区（2026-11-05 用户决定：这个发行版不存在它）**：外壳在空安装首次启动时会自动创建一个
+  first-use Workspace；宿主**没有"不要创建"的开关**，官方 `ui-workspace` 也**没有过滤钩子**。
+  因此采用两步：① 宿主从 `storages/workspace.json` 的 `global.defaultWorkspaceId` 拿到 id（registry 服务无此 getter），
+  页面按 id 隐藏；② 只要它还注册着，页面顶部给一条提示 +「移除默认工作区」按钮，
+  POST 走 `workspaceRegistry.delete(id)`（**非破坏性**：文件夹与会话日志保留，会话归"未分组"）。
+  注销后 durable 标记仍在，`initializeDefault` 不会再造 → 一次即永久。左侧栏的"不出现"靠的就是注销；
+  没有官方过滤座位，替换 `sidebar.workspaces`（single）等于重写整个会话浏览器。
+  New Session 的回退目标是当前/最近的真实工作区，没有真实工作区时是未绑定工作区的空白页。
 - 目录是否存在：客户端 view 里没有该字段（⚠️ 未在客户端模型里找到），不要承诺"目录丢失"检测。
 
 ---
@@ -233,6 +241,7 @@ root 作用域的每个插槽组件都会拿到一组**标准 Hook**，由宿主
 | 点标签 chip | 加入/移除标签筛选（父标签自动覆盖整棵子树） |
 | 「+ 标签」 | 行内浮层：输入 `A/B/C` 或选已有标签；Enter 添加、Esc 关闭；POST 到宿主 |
 | 标签 chip 的 `×` | 从该工作区移除标签（POST `op: remove`） |
+| 默认工作区提示条 | 仍注册时出现；「移除默认工作区」= POST 注销（文件夹/会话保留） |
 | 刷新 | 浏览器半侧重新渲染；工程视图在 P2 才需要重读 |
 | 定位失败 | 所有注册包 try/catch，失败只写 `ctx.logger.warn` + 页面内一条提示 |
 
@@ -345,6 +354,9 @@ dsh --profile dsh-automation-suite --dump-config | Select-String 'dsh-ui-project
 4. **标签持久化 = `<DSH_HOME>/storages/project-dashboard/tags.json`，按 workspace id 存**（2026-11-05 决定并已实现）：
    条目里带 canonical path（只为排错/将来重挂接）；浏览器经一条 loopback 路由读写，只收 id 与标签。
    放弃 `localStorage`（换端口即换 origin）与"写工程目录"（会被 git 看到、要逐项目写）。
+5. **这个发行版不存在默认工作区**（2026-11-05）：页面按 `global.defaultWorkspaceId` 隐藏它；
+   仍注册时给一键注销（非破坏性，保留文件夹与会话）；注销后 durable 标记阻止重建。
+   全新安装仍会被外壳创建一次，**点击一次即永久消除**；是否再做"宿主启动自动清理"列为待决。
 
 **待你拍板**
 
@@ -375,3 +387,4 @@ dsh --profile dsh-automation-suite --dump-config | Select-String 'dsh-ui-project
 | 真实数据样例 | `C:\Users\Ansel\Documents\dsh-automation-suite\{SWT1_HF48e_Pilot,SWT2_PEI_1026_Night}` 的 `source/_dsh-engineering-context.json`、`.dsh/{hardware-view,versions-view,drawing-manifest}.json` |
 | 真实 workspace 注册表 | `%USERPROFILE%\dsh-automation-suite-home\storages\workspace.json`（3 个工作区；P1 实测 15 个会话） |
 | 标签文件 | `%USERPROFILE%\dsh-automation-suite-home\storages\project-dashboard\tags.json`（P1 实测：`revision` 2、条目带 canonical path、`.bak` 存在） |
+| 默认工作区注销实测（2026-11-05） | 注销后 `workspace.json` 的 `global.defaultWorkspaceId` **仍在**、`workspaceIds` 与 `tables.workspaces` 里已无该 id；页面行数 3→2，左侧栏该行消失，控制台无错 |

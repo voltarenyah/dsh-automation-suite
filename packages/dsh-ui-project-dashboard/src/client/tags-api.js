@@ -11,6 +11,9 @@
 /** Where the host serves the tag document. */
 export const TAGS_URL = '/project-dashboard/api/tags'
 
+/** Where the host reports and removes the shell's first-use workspace. */
+export const DEFAULT_WORKSPACE_URL = '/project-dashboard/api/default-workspace'
+
 /** A failure with the host's code (and HTTP status). */
 export class TagApiError extends Error {
   /**
@@ -87,4 +90,42 @@ async function readJson(response) {
   } catch {
     return null
   }
+}
+
+/**
+ * Read whether the shell's first-use workspace still exists.
+ *
+ * @param {AbortSignal | undefined} signal - aborts when the page unmounts.
+ * @returns {Promise<{ id: string | null, registered: boolean }>}
+ */
+export async function loadDefaultWorkspace(signal) {
+  let response
+  try {
+    response = await fetch(DEFAULT_WORKSPACE_URL, { signal, headers: { accept: 'application/json' }, cache: 'no-store' })
+  } catch (error) {
+    if (signal?.aborted) throw error
+    throw new TagApiError('network', 0, undefined)
+  }
+  const body = await readJson(response)
+  if (!response.ok || body?.ok !== true) throw new TagApiError(typeof body?.code === 'string' ? body.code : 'http', response.status, undefined)
+  return { id: typeof body.id === 'string' ? body.id : null, registered: body.registered === true }
+}
+
+/**
+ * Unregister the first-use workspace (files and sessions stay).
+ *
+ * @param {AbortSignal | undefined} signal - aborts when the page unmounts.
+ * @returns {Promise<{ deleted: boolean, reason?: string }>}
+ */
+export async function pruneDefaultWorkspace(signal) {
+  let response
+  try {
+    response = await fetch(DEFAULT_WORKSPACE_URL, { method: 'POST', signal, headers: { accept: 'application/json' } })
+  } catch (error) {
+    if (signal?.aborted) throw error
+    throw new TagApiError('network', 0, undefined)
+  }
+  const body = await readJson(response)
+  if (!response.ok || body?.ok !== true) throw new TagApiError(typeof body?.code === 'string' ? body.code : 'http', response.status, undefined)
+  return { deleted: body.deleted === true, reason: typeof body.reason === 'string' ? body.reason : undefined }
 }

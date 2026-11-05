@@ -19,6 +19,11 @@
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 
+import {
+  defaultWorkspaceStatus,
+  pruneDefaultWorkspace,
+  type WorkspaceRegistryLike as DefaultRegistryShape,
+} from './default-workspace.js'
 import { createHandler, ROUTE_PREFIX, type RequestLike, type ResponseLike, type TagsService } from './route.js'
 import { TagStore } from './tags/store.js'
 
@@ -48,6 +53,27 @@ export interface HostContext {
 /** The workspace registry service, as far as tags need it. */
 export interface WorkspaceRegistryLike {
   list(): Array<{ id: string; path: string }>
+  delete(id: string): Promise<boolean>
+}
+
+/**
+ * The workspace registry, or `undefined` when this composition has none.
+ *
+ * @param ctx - host plugin context.
+ * @returns the registry, when present and usable.
+ */
+export function workspaceRegistry(ctx: HostContext): WorkspaceRegistryLike | undefined {
+  let service: unknown
+  try {
+    service = ctx.get('workspaceRegistry')
+  } catch {
+    return undefined
+  }
+  if (service === null || typeof service !== 'object') return undefined
+  const list = (service as { list?: unknown }).list
+  const remove = (service as { delete?: unknown }).delete
+  if (typeof list !== 'function' || typeof remove !== 'function') return undefined
+  return service as WorkspaceRegistryLike
 }
 
 /**
@@ -66,24 +92,14 @@ export function resolveHome(): string {
  * absent or does not know the id. Never throws: a composition without
  * `@deepseek-ai/dsh-workspace` still gets working tags, just without paths.
  *
- * @param ctx - host plugin context.
+ * @param registry - the workspace registry, when present.
  * @param workspaceId - the id from the browser.
  * @returns the canonical path, or `''`.
  */
-export function lookupWorkspacePath(ctx: HostContext, workspaceId: string): string {
-  let registry: unknown
+export function lookupWorkspacePath(registry: WorkspaceRegistryLike | undefined, workspaceId: string): string {
+  if (registry === undefined) return ''
   try {
-    registry = ctx.get('workspaceRegistry')
-  } catch {
-    return ''
-  }
-  if (registry === null || typeof registry !== 'object') return ''
-  const list = (registry as { list?: unknown }).list
-  if (typeof list !== 'function') return ''
-  try {
-    const found = (list.call(registry) as Array<{ id?: unknown; path?: unknown }>).find(
-      (entity) => entity.id === workspaceId,
-    )
+    const found = registry.list().find((entity) => entity.id === workspaceId)
     return found !== undefined && typeof found.path === 'string' ? found.path : ''
   } catch {
     return ''
@@ -91,17 +107,22 @@ export function lookupWorkspacePath(ctx: HostContext, workspaceId: string): stri
 }
 
 /**
- * Register the tag file route.
+ * Register the tag file route and the default-workspace endpoint.
  *
  * @param ctx - host plugin context.
  */
 export function apply(ctx: HostContext): void {
-  const file = join(resolveHome(), 'storages', 'project-dashboard', 'tags.json')
+  const home = resolveHome()
+  const file = join(home, 'storages', 'project-dashboard', 'tags.json')
   const store = new TagStore(file)
   const service: TagsService = {
     snapshot: () => store.snapshot(),
     mutate: (operation, path, expectedRevision) => store.mutate(operation, path, expectedRevision),
-    resolvePath: (workspaceId) => lookupWorkspacePath(ctx, workspaceId),
+    resolvePath: (workspaceId) => lookupWorkspacePath(workspaceRegistry(ctx), workspaceId),
+    defaultWorkspace: () =>
+      defaultWorkspaceStatus(home, workspaceRegistry(ctx) as DefaultRegistryShape | undefined),
+    pruneDefaultWorkspace: () =>
+      pruneDefaultWorkspace(home, workspaceRegistry(ctx) as DefaultRegistryShape | undefined),
   }
   const handler = createHandler(service, ctx.logger)
 
@@ -115,5 +136,7 @@ export function apply(ctx: HostContext): void {
   if (typeof ctx.effect === 'function') ctx.effect(register, `${name}: tags route`)
   else register()
 
-  ctx.logger?.info?.(`${name}: workspace tags at ${file} (route ${ROUTE_PREFIX}/api/tags)`)
+  ctx.logger?.info?.(
+    `${name}: workspace tags at ${file}; routes ${ROUTE_PREFIX}/api/tags and ${ROUTE_PREFIX}/api/default-workspace`,
+  )
 }

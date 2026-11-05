@@ -19,7 +19,7 @@ import {
   summarize,
   tagTree,
 } from './model.js'
-import { loadTags, mutateTags } from './tags-api.js'
+import { loadDefaultWorkspace, loadTags, mutateTags, pruneDefaultWorkspace } from './tags-api.js'
 
 /** Stable colours for tag roots, so the same tree reads the same everywhere. */
 const TAG_HUES = ['#4176e6', '#22c55e', '#f59e0b', '#8b5cf6', '#14b8a6', '#f25a5a', '#64748b']
@@ -203,6 +203,7 @@ export function Dashboard(props) {
   const statuses = useSessionStatus((state) => state)
 
   const [tagDoc, setTagDoc] = useState({ phase: 'loading', revision: 0, corrupt: false, workspaces: {}, error: null })
+  const [defaultWs, setDefaultWs] = useState({ phase: 'loading', id: null, registered: false })
   const [query, setQuery] = useState('')
   const [filters, setFilters] = useState([])
   const [panelOpen, setPanelOpen] = useState(false)
@@ -239,11 +240,22 @@ export function Dashboard(props) {
     [acceptDocument],
   )
 
+  const loadDefault = useCallback(async (signal) => {
+    try {
+      const status = await loadDefaultWorkspace(signal)
+      setDefaultWs({ phase: 'ready', id: status.id, registered: status.registered })
+    } catch (error) {
+      if (signal?.aborted) return
+      setDefaultWs((current) => ({ ...current, phase: 'error' }))
+    }
+  }, [])
+
   useEffect(() => {
     const controller = new AbortController()
     load(controller.signal)
+    loadDefault(controller.signal)
     return () => controller.abort()
-  }, [load])
+  }, [load, loadDefault])
 
   // Close the tag popovers on an outside pointer or Escape.
   useEffect(() => {
@@ -270,7 +282,13 @@ export function Dashboard(props) {
 
   useEffect(() => () => clearTimeout(noticeTimer.current), [])
 
-  const rows = useMemo(() => buildRows(items, sessions, statuses, archivedIds), [items, sessions, statuses, archivedIds])
+  // This distribution has no "default workspace": hide it even if the shell
+  // created one, and offer the one-click unregister below.
+  const visibleItems = useMemo(
+    () => (defaultWs.id === null ? items : items.filter((workspace) => workspace.workspaceId !== defaultWs.id)),
+    [items, defaultWs.id],
+  )
+  const rows = useMemo(() => buildRows(visibleItems, sessions, statuses, archivedIds), [visibleItems, sessions, statuses, archivedIds])
   const decorated = useMemo(() => decorateRows(rows, tagDoc.workspaces), [rows, tagDoc.workspaces])
   const visible = useMemo(() => filterRows(decorated, query, filters), [decorated, query, filters])
   const tree = useMemo(() => tagTree(decorated), [decorated])
@@ -349,6 +367,16 @@ export function Dashboard(props) {
     [runMutation, t],
   )
 
+  const removeDefault = useCallback(async () => {
+    try {
+      const result = await pruneDefaultWorkspace()
+      setDefaultWs((current) => ({ ...current, registered: false }))
+      notify(result.deleted ? t('default.removed') : t('default.absent'))
+    } catch (error) {
+      notify(t('default.failed', { code: error?.code ?? 'network' }), 'warn')
+    }
+  }, [notify, t])
+
   const openEditor = useCallback((workspaceId, element) => {
     const rect = element.getBoundingClientRect()
     const width = 280
@@ -377,7 +405,7 @@ export function Dashboard(props) {
   const now = Date.now()
   const tagsReady = tagDoc.phase === 'ready'
   const shownCount = visible.length
-  const totalCount = items.length
+  const totalCount = visibleItems.length
 
   const toolbar = createElement(
     'div',
@@ -475,7 +503,7 @@ export function Dashboard(props) {
   )
 
   let board
-  if (items.length === 0) {
+  if (visibleItems.length === 0) {
     board = createElement(
       'div',
       { className: 'pd-empty' },
@@ -528,6 +556,19 @@ export function Dashboard(props) {
         ? createElement('div', { className: 'pd-banner is-warn', role: 'status' }, t('tags.corrupt'))
         : null
 
+  const defaultBanner = defaultWs.registered
+    ? createElement(
+        'div',
+        { className: 'pd-banner', role: 'status' },
+        createElement('span', null, t('default.banner')),
+        createElement(
+          'button',
+          { type: 'button', className: 'pd-btn pd-btn-sm', onClick: removeDefault },
+          t('default.remove'),
+        ),
+      )
+    : null
+
   const editorElement =
     editor === null
       ? null
@@ -579,6 +620,7 @@ export function Dashboard(props) {
       ),
       toolbar,
       tagBanner,
+      defaultBanner,
       ledger,
       createElement('section', { className: 'pd-board', 'aria-label': t('board.title') }, board),
       createElement('footer', { className: 'pd-foot' }, t('footnote')),

@@ -12,19 +12,26 @@ import { join } from 'node:path'
 import { Readable } from 'node:stream'
 import { test } from 'node:test'
 
-import { createHandler, fenceFailure, handleRequest, ROUTE_PATH } from '../lib/route.js'
+import { createHandler, DEFAULT_WORKSPACE_PATH, fenceFailure, handleRequest, ROUTE_PATH } from '../lib/route.js'
 import { TagStore } from '../lib/tags/store.js'
 
 /** @returns a service over a temp file plus the store for assertions. */
 async function serviceFixture() {
   const root = await mkdtemp(join(tmpdir(), 'dsh-tags-route-'))
   const store = new TagStore(join(root, 'storages', 'project-dashboard', 'tags.json'), () => '2026-11-05T06:00:00.000Z')
+  const calls = { pruned: 0 }
   return {
     store,
+    calls,
     service: {
       snapshot: () => store.snapshot(),
       mutate: (operation, path, expectedRevision) => store.mutate(operation, path, expectedRevision),
       resolvePath: (workspaceId) => (workspaceId === 'ws-a' ? 'C:\\p\\A' : ''),
+      defaultWorkspace: async () => ({ id: 'default-id', registered: true }),
+      pruneDefaultWorkspace: async () => {
+        calls.pruned += 1
+        return { deleted: true }
+      },
     },
   }
 }
@@ -127,6 +134,22 @@ test('a stale expectedRevision answers 409 with the current revision', async () 
   const body = JSON.parse(conflict.body)
   assert.equal(body.code, 'tags/conflict')
   assert.equal(body.revision, 1)
+})
+
+test('the default-workspace endpoint reports status and prunes on POST', async () => {
+  const { service, calls } = await serviceFixture()
+  const status = await handleRequest(service, { method: 'GET', url: DEFAULT_WORKSPACE_PATH, headers: localHeaders() })
+  assert.equal(status.status, 200)
+  assert.deepEqual(JSON.parse(status.body), { ok: true, id: 'default-id', registered: true })
+
+  const pruned = await handleRequest(service, { method: 'POST', url: DEFAULT_WORKSPACE_PATH, headers: localHeaders() })
+  assert.equal(pruned.status, 200)
+  assert.deepEqual(JSON.parse(pruned.body), { ok: true, deleted: true })
+  assert.equal(calls.pruned, 1)
+
+  const foreign = await handleRequest(service, { method: 'POST', url: DEFAULT_WORKSPACE_PATH, headers: { host: 'evil.example:80' } })
+  assert.equal(foreign.status, 403)
+  assert.equal(calls.pruned, 1)
 })
 
 test('the handler reads a POST body and caps it', async () => {

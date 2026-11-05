@@ -20,12 +20,16 @@
 
 import { TagConflictError, TagInputError, type TagDocument, type TagEntry, type TagOperation } from './tags/model.js'
 import type { TagSnapshot } from './tags/store.js'
+import type { DefaultWorkspaceStatus, PruneResult } from './default-workspace.js'
 
 /** Everything under this prefix belongs to the plugin. */
 export const ROUTE_PREFIX = '/project-dashboard'
 
-/** The one endpoint. */
+/** The tags endpoint. */
 export const ROUTE_PATH = '/project-dashboard/api/tags'
+
+/** The default-workspace status/removal endpoint. */
+export const DEFAULT_WORKSPACE_PATH = '/project-dashboard/api/default-workspace'
 
 /** Largest request body accepted, in bytes. */
 export const MAX_BODY_BYTES = 16 * 1024
@@ -49,6 +53,10 @@ export interface TagsService {
   mutate(operation: TagOperation, path: string, expectedRevision?: number): Promise<{ doc: TagDocument; entry: TagEntry }>
   /** Canonical directory for one workspace id, or `''` when the registry lacks it. */
   resolvePath(workspaceId: string): string
+  /** First-use Workspace status (this distribution removes it on demand). */
+  defaultWorkspace(): Promise<DefaultWorkspaceStatus>
+  /** Unregister the first-use Workspace; files and sessions stay. */
+  pruneDefaultWorkspace(): Promise<PruneResult>
 }
 
 /** One response, independent of Node's `http` types so tests can call it. */
@@ -110,7 +118,16 @@ export async function handleRequest(
   }
   const refused = fenceFailure(request.headers, trustedHosts)
   if (refused !== null) return json(403, { ok: false, code: 'request/refused', message: refused })
-  if (pathnameOf(request) !== ROUTE_PATH) return json(404, { ok: false, code: 'route/not-found', message: 'not found' })
+
+  const path = pathnameOf(request)
+  if (path === DEFAULT_WORKSPACE_PATH) {
+    if (method === 'GET') {
+      const status = await service.defaultWorkspace()
+      return json(200, { ok: true, ...status })
+    }
+    return json(200, { ok: true, ...(await service.pruneDefaultWorkspace()) })
+  }
+  if (path !== ROUTE_PATH) return json(404, { ok: false, code: 'route/not-found', message: 'not found' })
 
   if (method === 'GET') {
     const snapshot = await service.snapshot()

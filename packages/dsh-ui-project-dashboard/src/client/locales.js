@@ -81,6 +81,12 @@ export const zh = {
 
   'act.unavailable': '工作区导航暂不可用（uiWorkspace 未提供）',
 
+  'default.banner': '这个发行版不使用默认工作区；它仍在左侧栏注册着。',
+  'default.remove': '移除默认工作区',
+  'default.removed': '已移除默认工作区（文件夹与会话保留，会话归入未分组）',
+  'default.absent': '默认工作区已经不在了',
+  'default.failed': '移除默认工作区失败：{code}',
+
   footnote: '标签保存在本机 DSH 数据目录（storages/project-dashboard/tags.json）；页面不在后台跑宿主命令，只在打开时读一次、编辑时写一次。'
 }
 
@@ -153,6 +159,12 @@ export const en = {
   'empty.clear': 'Clear search and filters',
 
   'act.unavailable': 'Workspace navigation is unavailable (uiWorkspace not provided)',
+
+  'default.banner': 'This distribution does not use a default workspace, but one is still registered in the sidebar.',
+  'default.remove': 'Remove default workspace',
+  'default.removed': 'Default workspace removed (folder and sessions kept; sessions move to Ungrouped)',
+  'default.absent': 'The default workspace is already gone',
+  'default.failed': 'Could not remove the default workspace: {code}',
 
   footnote: 'Tags are stored in this machine\'s DSH data directory (storages/project-dashboard/tags.json). The page runs no background host work: one read on open, one write per edit.'
 }
