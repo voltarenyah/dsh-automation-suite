@@ -16,7 +16,7 @@
     "sourceMap": false,
     "removeComments": false,
     "skipLibCheck": true,
-    "types": []
+    "types": ["node"]
   },
   "include": ["src/**/*.ts", "src/**/*.d.ts"]
 }

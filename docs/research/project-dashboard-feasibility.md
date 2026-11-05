@@ -3,12 +3,15 @@
 > **状态**：调研结论 · 2026-11-04（同日两轮调整：会话列表移出、git 放弃、加多级标签）· 宿主 **DSH 0.2.1-rc.2**（本机安装产物，逐条读自 `app.asar`）
 > **P0 已落地（2026-11-04）**：`packages/dsh-ui-project-dashboard` 在 3095 实测通过 —— 左侧栏第一行
 > `Project Dashboard`（位于 Plugins 之上，`order: -10` 生效）、点击打开整页占位、`dataset.dshProjectDashboard === 'p0'`、控制台无报错。
-> 数据、标签与搜索留在 P1/P2。
+> **P1 已落地（2026-11-05）**：真实工作区行（3 个）、多级标签增删、顶部搜索、标签树筛选、账条按筛选重算；
+> 标签持久化按用户决定放在 `<DSH_HOME>/storages/project-dashboard/tags.json`（按 workspace id，条目带 canonical path），
+> 由一条**只做标签读写**的 loopback 路由供浏览器使用；页面只"打开读一次、编辑写一次"，不在后台扫描。
+> 工程/硬件/版本/图纸四格留给 P2。
 > **一句话**：可行。落点是**主栏左侧栏顶部新增一行（`sidebar.panellist`，order 取负值）**+
 > **`main` 全局面板**；数据来自**浏览器侧已有的标准 Hook**（workspace / session 快照）与
-> **既有 `workspaceFiles` 文件读取通道**；标签是纯客户端状态（`localStorage`），
+> **既有 `workspaceFiles` 文件读取通道**；标签是对本地 DSH 数据目录的一次读写（不是工程目录），
 > **不在后台对每个工作区跑宿主命令**（用户 2026-11-04 明确：不做全盘刷新式的宿主侧采集）。
-> 主要不确定性：内部 API 跨版本稳定性、"借一个会话读文件"这条内部约定、order 负值的运行期表现。
+> 主要不确定性：内部 API 跨版本稳定性、"借一个会话读文件"这条内部约定（P2 才用到）。
 
 ---
 
@@ -131,7 +134,7 @@ root 作用域的每个插槽组件都会拿到一组**标准 Hook**，由宿主
 | 版本 | 2 版 / 22 事件 / 基线 900 | 3 版 / 2 事件 / 基线 1377（problems 1） |
 | 图纸 | 294 页（Revision B） | 353 页 / 3 柜 |
 
-### 3.3 第三层 · 数据库 / Git / 目录状态（**v1 不做**）
+### 3.3 数据库 / Git / 目录状态 + 标签的宿主存储
 
 - `.dsh/versions.db`、`knowledge/<device>/*_db` 是 SQLite（本机 3.9 MB / 6 MB，知识库可到 450 MB），
   浏览器读不了，`readBytes` 也有 32 MiB 上限 ⇒ 想要库级信息只能**宿主侧聚合**（自开路由或写一份派生 JSON）。
@@ -139,6 +142,19 @@ root 作用域的每个插槽组件都会拿到一组**标准 Hook**，由宿主
   而用户不希望页面每次打开/刷新都去各项目里跑宿主代码（项目会越来越多，会卡）。
   ⇒ 这一项**不做**；若将来确实需要，只允许做成"用户点某一行的按钮、只对那一个项目按需取一次"的动作，
   不做全盘刷新，也不进首屏。
+- **标签的宿主存储（2026-11-05 已实现）**：用户决定"不写工程目录、要本地持久、按 workspace id 存"。
+  落点是 `<DSH_HOME>/storages/project-dashboard/tags.json`：
+
+  ```jsonc
+  { "version": 1, "revision": 12, "owner": "dsh-ui-project-dashboard",
+    "workspaces": { "<workspaceId>": { "path": "C:\\…\\SWT1", "tags": ["客户/PEI"], "updatedAt": "…" } } }
+  ```
+
+  宿主半侧负责原子写（temp→rename、`.bak`、损坏文件另存）、`revision` 冲突检测，并在写入时从
+  `workspaceRegistry.list()` 反查 canonical `path` 一起存下（**只为排错与将来重新挂接，不参与匹配**）。
+  浏览器通过一条 loopback 路由 `GET|POST /project-dashboard/api/tags` 读/改；请求里没有路径，只有 id 与标签。
+  **代价**：路由没有宿主鉴权（只有 trust fence）；按 id 存的条目在"删掉再添加同一目录"后会变孤儿
+  （`dsh-workspace` 明确会给新 id）；跨机器分享标签要连 `storages/workspace.json` 一起拷。
 - 目录是否存在：客户端 view 里没有该字段（⚠️ 未在客户端模型里找到），不要承诺"目录丢失"检测。
 
 ---
@@ -150,8 +166,8 @@ root 作用域的每个插槽组件都会拿到一组**标准 Hook**，由宿主
 | **A. 标准 Hook**（推荐，第一层） | workspace / session / status / panelInfo | 走已鉴权的 Gateway 流 | 零；但**不含文件内容** |
 | **B. `remote.workspaceFiles`**（推荐，第二层） | 任意**绝对路径**文件（`readBytes` 32 MiB 内） | ✅ 走 `/api`，带会话身份与主机校验 | 每个 workspace / 每个文件一次调用 |
 | **C. `useResource('file', address)`** | 只给 `{absolutePath, version, bytes}` **stat**，带 `fs.watch` 失效推送 | 同上 | 便宜、可做"文件变了就重读"，不传内容 |
-| **D. `localStorage`**（标签，推荐） | 多级标签映射（`{workspaceId: string[]}`） | 浏览器同源，无网络 | 零宿主代码；跨机器/跨浏览器不共享（见 §6） |
-| E. 自开 `ctx.webServer.register` 路由 | 什么都能算（含 SQLite、git、目录） | ❌ **无鉴权**，只能自抄 trust fence（只防 DNS rebinding） | 多一条有数据泄露面的路由；远程部署时不可用；**本项目明确不用** |
+| **D. 宿主 JSON 文件 + loopback 路由**（标签，P1 已用） | 多级标签映射（按 workspace id，条目带 path） | ⚠️ 路由无鉴权，只有 trust fence；数据请求不含路径 | 宿主半侧 ~300 行 + 一条路由；换浏览器/换端口都不丢 |
+| E. 自开 `ctx.webServer.register` 路由（任意数据） | 什么都能算（含 SQLite、git、目录） | ❌ **无鉴权**，只能自抄 trust fence（只防 DNS rebinding） | 多一条有数据泄露面的路由；远程部署时不可用；**除标签外明确不用** |
 | F. iframe 静态页 + postMessage 桥 | 同 A/B，但要自己搭双向桥 | 页面本身无鉴权（prompt-guide 经验） | 比 React 面板多一层胶水 |
 
 **B 的关键证据**（`@deepseek-ai/dsh-api-workspace-files` README，本机 asar）：
@@ -181,57 +197,56 @@ root 作用域的每个插槽组件都会拿到一组**标准 Hook**，由宿主
 ### 5.1 页面结构
 
 ```
-┌ Project Dashboard ─────────────────────────────────────────────── ［演示状态］［刷新］┐
-│ ［🔍 搜索项目/工程/标签…        ］［▽ 标签 ①］ ［产线/焊装 ×］      2 / 3 个工作区 │
+┌ Project Dashboard ────────────────────────────────────────────────────────────┐
+│ ［🔍 搜索项目/路径/标签…        ］［▽ 标签 ①］ ［产线/焊装 ×］   1 / 3 个工作区 │
 ├────────────────────────────────────────────────────────────────────────────────┤
-│ 2 工作区 · 12 会话 · 1,927 块 · 1,002 点 · 5 版 · 647 页（账条随筛选重算）        │
+│ 3 工作区 · 15 会话 · 1,927 块* · 1,002 点* · 5 版* · 647 页*（* = P2 接入）      │
 ├────────────────────────────────────────────────────────────────────────────────┤
-│ 01  SWT1_HF48e_Pilot        │ 工程    │ 硬件    │ 版本    │ 图纸    │
-│     PEI_HF_M4L_ZRW_Test_V5.1│ 772 块  │ 10 设备 │ 2 版    │ 294 页  │
-│     ⏱ 43 分钟前 · 6 会话 · 3 归档                                    │
-│     ── 标签条 ───────────────────────────────────────────────────────           │
-│     ［● 客户/PEI］［● 产线/焊装/HF48e］［● 阶段/试产］［+ 标签］   ［打开］［新会话］│
+│ 01  SWT1_HF48e_Pilot                                                          │
+│     ⏱ 15 小时前 · 7 会话 · 3 归档 · 1 空白                                     │
+│     ［● 客户/PEI］［● 产线/焊装/HF48e］［+ 标签］          ［打开工作区］［新会话］│
 ├────────────────────────────────────────────────────────────────────────────────┤
-│ 02  SWT2_PEI_1026_Night     …（同上；缺文件的格子显示"未生成"，不是空白）           │
+│ 02  SWT2_PEI_1026_Night   …（同上）                                            │
 ├────────────────────────────────────────────────────────────────────────────────┤
-│ 03  default-workspace       （无工程数据 → 四格里一行说明；标签仍可编辑）            │
+│ 03  default-workspace     （无标签、无工程数据 → 行照常显示，标签可编辑）          │
 └────────────────────────────────────────────────────────────────────────────────┘
 ```
 
-- 一行一个工作区；**没有展开区、没有会话列表、没有 git 历史**；
+- **P1 现状**：一行一个工作区；没有展开区、没有会话列表、没有 git 历史；
+  四个工程指标格先占位显示 `— / P2`（P2 接入后才有数字）。**这是有意的阶段性形态**；
 - **源项目路径不显示**（截断后很乱，2026-11-04 决定）：路径只作为标题的 `title` 提示与搜索字段；
-- **标签条**是行内独立一条：多级标签（`A/B/C`，最多 4 级）+「+ 标签」+ 右侧两个动作按钮；
-- 顶部**搜索框**同时匹配工作区名、工程名、设备名与标签；「标签」按钮打开**标签树**多选筛选，
+- **标签条**是行内独立一条：多级标签（`A/B/C`，最多 4 级、每级 40 字、单个工作区 ≤64 个）
+  +「+ 标签」+ 右侧两个动作按钮；
+- 顶部**搜索框**同时匹配工作区名、路径与标签；「标签」按钮打开**标签树**多选筛选，
   选中项在工具条上显示为可移除的筛选 chip；**结果数**与**账条**都按筛选结果重算；
 - 缺失/损坏的产物**逐格降级**为 `未生成` / `无法解析` / `过大`，绝不整页空白；
-- 语言：中英字典（`ctx.locale.register`），图标 18px 线性图标，颜色只用 `--dsw-*` token。
+- 语言：中英字典（`ctx.locale.register`；**键必须是扁平点号字符串**，嵌套对象会退化成打印 key——
+  P1 实测踩过这一条），图标 18px 线性图标，颜色只用 `--dsw-*` token。
 
 ### 5.2 交互
 
 | 动作 | 实现 |
 |---|---|
-| 点某工作区的「打开」 | `ctx.uiWorkspace.startSession(workspaceId)` → 在该工作区开一个新会话 |
-| 搜索 | 客户端即时过滤（真实实现要 **debounce ~120ms**，见 §5.3） |
+| 点「打开工作区」 | `ctx.uiWorkspace.openWorkspace(workspaceId)`（P1 实测可用） |
+| 点「新会话」 | `ctx.uiWorkspace.startSession(workspaceId)` |
+| 搜索 | 客户端即时过滤（P1 未加 debounce；行数上百时应在 P3 补） |
 | 点标签 chip | 加入/移除标签筛选（父标签自动覆盖整棵子树） |
-| 「+ 标签」 | 行内浮层：输入 `A/B/C` 或选已有标签；Enter 添加、Esc 关闭 |
-| 标签 chip 的 `×` | 从该工作区移除标签 |
-| 刷新 | 只重读已缓存的工程视图，**不触发任何宿主任务** |
-| 定位失败 | 所有注册包 try/catch，失败只写 `ctx.logger.warn` + 页面内一条诊断行 |
+| 「+ 标签」 | 行内浮层：输入 `A/B/C` 或选已有标签；Enter 添加、Esc 关闭；POST 到宿主 |
+| 标签 chip 的 `×` | 从该工作区移除标签（POST `op: remove`） |
+| 刷新 | 浏览器半侧重新渲染；工程视图在 P2 才需要重读 |
+| 定位失败 | 所有注册包 try/catch，失败只写 `ctx.logger.warn` + 页面内一条提示 |
 
 ### 5.3 读取策略与规模（性能与正确性）
 
-- **首屏**：只渲染第一层；工程卡片按可见性**懒读**（展开才读详情），缓存 key = `workspaceId + file version`。
-- **文件监听**：可选 P3 用 `useResource('file', address)` 拿 `version`，版本变了才重读；
-  这比轮询便宜（宿主侧 `fs.watch`），也避免"工具刚写完却看不到"。
-- **并发**：每工作区的 4 个文件（工程索引 + 硬件 + 版本 + 图纸）并行读；整体上限 4×N 次调用
-  （N=10 → 40 次，本地毫秒级；**只在"读这张卡"时发生**，不是每次打开页面全盘扫）。
-- **规模（用户明确会变多）**：搜索/筛选的过滤与账条聚合是 `O(N)` 纯内存运算；
-  N 到几十时每次按键全量重渲染仍可接受，但真实实现应 **debounce 输入**、**只重渲染变化的行**
-  （或 N>50 时上虚拟滚动），并且**任何行级工作都不得触发宿主采集**。
-- **标签存储**：`localStorage` 一份 `{workspaceId: string[]}`；读写都是同步小对象。
-  更换浏览器/机器、清理站点数据会丢标签 —— 这是 v1 的已知边界（见 §6）。
-- **陈旧**：卡片显示各自的 `generatedAt`，超过 24h 标灰并写"可能过期"——**绝不暗示这是 TIA 的实时状态**
-  （`hardware_view` / `versions-view` 都是"上次导出/提交时的事实"）。
+- **标签**：页面打开时 `GET /project-dashboard/api/tags` **一次**，编辑时 `POST` **一次**；
+  多窗口同时写由 `revision` 检测（409 → 重读后重试一次）。没有轮询。
+- **首屏（P2）**：只渲染第一层；工程卡片按可见性**懒读**，缓存 key = `workspaceId + file version`。
+- **文件监听（P3）**：可选 `useResource('file', address)` 拿 `version`，版本变了才重读。
+- **并发（P2）**：每工作区的 4 个文件并行读；上限 4×N 次调用，**只在"读这张卡"时发生**。
+- **规模（用户明确会变多）**：搜索/筛选与账条聚合是 `O(N)` 纯内存运算；P1 每次按键全量重渲染行，
+  N 到几十仍可接受；P3 应 **debounce 输入**、**只重渲染变化的行**（或 N>50 时上虚拟滚动），
+  并且**任何行级工作都不得触发宿主采集**。
+- **陈旧（P2）**：卡片显示各自的 `generatedAt`，超过 24h 标灰并写"可能过期"——**绝不暗示这是 TIA 的实时状态**。
 
 ---
 
@@ -240,14 +255,16 @@ root 作用域的每个插槽组件都会拿到一组**标准 Hook**，由宿主
 | # | 风险 | 等级 | 缓解 |
 |---|---|---|---|
 | 1 | 客户端 API（`slots`/Hook 名/`main` 座位/`workspaceFiles`）**不是公开契约**，0.2.0→0.2.1 已经变过一次（基座表多了 zod 等） | 中 | 全部跨包调用收敛在 1–2 个文件；注册失败降级为诊断，不抛到渲染层 |
-| 2 | **order 负值**只在代码里验证过（排序是数值减法、无钳制），运行期 DOM 顺序未实测 | 低 | P0 第一件事就是起 3095 看行顺序；不行则退到 order 0 并列 |
+| 2 | ~~order 负值未实测~~ | 已关闭 | 2026-11-04 起 3095 实测：左侧栏第一行就是本面板，Plugins 排第二 |
 | 3 | "借会话读文件"依赖"读不施加包含检查"这条内部约定 | 中 | 优先用同工作区会话；跨读处写明理由与退路（§4 末） |
 | 4 | 空工作区/空安装没有会话 → 读不到工程文件 | 低 | 两层数据模型天然降级；文档写清"没有会话就没有工程卡片" |
-| 5 | 标签只存在浏览器 `localStorage`：换机器/换浏览器/清站点数据即丢 | 中 | v1 接受；README 写清边界。要跨机器就把标签映射改成宿主侧存储（**需要新的宿主代码与一条带鉴权的读写通道**，不在本期） |
-| 6 | 大 JSON（138 KB/工作区）解析开销 | 低 | 懒读 + 缓存 + 只取字段；N 很大时再虚拟滚动 |
-| 7 | 误把派生视图当实时状态 | 中 | 展示 `generatedAt`、"上次导出"等措辞；README 与 UI 都写死这条 |
-| 8 | 与其它第三方面板抢 order（如 `dsh-guizang-design` 也占 panellist） | 低 | 只认自己的 order；不删不改别人的注册 |
-| 9 | 标签命名随意，长路径把行撑高 | 低 | 最多 4 级、chip `max-width` + 省略号 + 完整路径进 `title`；重复标签去重 |
+| 5 | 标签路由**没有鉴权**（只有 trust fence） | 中 | 只收 id + 标签、不收路径；loopback Host + Origin/Host 一致 + 拒绝 cross-site；body 16 KiB。本机进程本来就能读该文件，故低敏数据可接受 |
+| 6 | 按 workspace id 存的标签在"删掉再添加同一目录"后变孤儿 | 中 | 条目里存 canonical `path`（只为排错/将来重挂接）；孤儿不自动删；跨机器要连 `storages/workspace.json` 一起拷 |
+| 7 | 大 JSON（138 KB/工作区）解析开销（P2 才发生） | 低 | 懒读 + 缓存 + 只取字段；N 很大时再虚拟滚动 |
+| 8 | 误把派生视图当实时状态 | 中 | 展示 `generatedAt`、"上次导出"等措辞；README 与 UI 都写死这条 |
+| 9 | 与其它第三方面板抢 order（如 `dsh-guizang-design` 也占 panellist） | 低 | 只认自己的 order；不删不改别人的注册 |
+| 10 | 标签命名随意，长路径把行撑高 | 低 | 最多 4 级、含 chip `max-width` + 省略号 + 完整路径进 `title`；去重 |
+| 11 | 两个 DSH 实例共用同一 `DSH_HOME` 时互相覆盖 | 低 | 每次写前重读 + `revision` 冲突检测（409）；不做跨进程锁 |
 
 **红线**：不改官方包（`app.asar` 只读，升级即覆盖）；不注册 `sidebar.workspaces`（single，已被 ui-workspace 占用）；
 不动 `rightbar.session`（single，会替换整列）；不把 UI 塞进宿主插件包（会污染其构建/测试面，见 `docs/ui-plugins.md` §4.2）。
@@ -257,18 +274,18 @@ root 作用域的每个插槽组件都会拿到一组**标准 Hook**，由宿主
 ## 7. 工作量与分期
 
 新包 `packages/dsh-ui-project-dashboard`，构建链直接复用 `dsh-ui-hardware`（`scripts/build.mjs` 用 esbuild，
-平台表 external；`tsc` 出宿主半侧；CSS/字典/`cordis.patch.yml` 同构）。**纯客户端**，宿主半侧只有空 `apply()`。
+平台表 external；`tsc` 出宿主半侧；CSS/字典/`cordis.patch.yml` 同构）。
+**P0 是纯客户端；P1 因标签持久化多了一个宿主半侧**（标签文件 + 路由），这是用户 2026-11-05 的决定。
 
-| 阶段 | 内容 | 验收 | 估时 |
-|---|---|---|---|
-| **P0 链路** | 建包（空宿主半侧）+ `cordis.patch.yml` + 蓝图 bundles；注册 `main` 占位页与 panellist 行（order -10） | 3095 里左侧栏**第一行**是 Project Dashboard，点击出整页占位；`pnpm -r build`/`typecheck`/`test` 全绿 | 0.5 天 |
-| **P1 行与标签** | 工作区行（标题/工程名/时间/会话计数，**不显示路径**）+ 标签条（多级、增删、chip 筛选）+ 顶部搜索 + 标签树筛选 + 账条按筛选重算 + `localStorage` 持久化 | 3 个真实工作区全部正确；标签增删刷新后仍在；搜"产线"或点父标签能把两个工程工作区筛出来（2/3）；清空恢复 3/3 | 1.5 天 |
-| **P2 第二层** | 4 个工程产物的读取、解析、字段提取、逐格降级、`generatedAt` 与陈旧标记 | 两个真实工作区的数字与 §3.2 表格逐项一致；删掉/改坏一个文件只影响那一格 | 1.5–2 天 |
-| **P3 打磨** | 输入 debounce、只重渲染变化行、`useResource` 监听自动刷新、空态文案、键盘可达（标签删除/筛选可聚焦）、a11y、README/roadmap 同步 | 切换页面不串状态；中英切换即时生效；docs 三处（README §2 / roadmap / 包 README）同步 | 1 天 |
+| 阶段 | 内容 | 状态 |
+|---|---|---|
+| **P0 链路** | 建包 + `cordis.patch.yml` + 蓝图 bundles；注册 `main` 占位页与 panellist 行（order -10） | ✅ 2026-11-04；3095 实测第一行、整页可开、探针 `p0` |
+| **P1 行与标签** | 工作区行（标题/最后活动/会话计数，**不显示路径**）+ 标签条（多级、增删、chip 筛选）+ 顶部搜索 + 标签树筛选 + 账条按筛选重算 + **宿主 `tags.json` 持久化** | ✅ 2026-11-05；3 个真实工作区、标签增删/刷新持久化/搜索/父标签筛选 1/3、`×` 移除、27 项测试 |
+| **P2 第二层** | 4 个工程产物的读取、解析、字段提取、逐格降级、`generatedAt` 与陈旧标记 | 待做（1.5–2 天） |
+| **P3 打磨** | 输入 debounce、只重渲染变化行、`useResource` 监听自动刷新、空态文案、键盘可达、a11y、README/roadmap 同步 | 待做（1 天） |
 
-**纯代码量估计**：`src/model.ts`（纯函数：筛选/聚合/标签规范化/防御解析，可单测）约 350 行 +
-浏览器半侧约 800–1000 行 JSX。测试沿用 `node:test` 驱动 `model.ts`
-（模型输入用**真实 JSON 片段**做 fixture，与 ui-versions/hardware 的做法一致）。
+**代码量（实际）**：宿主半侧约 450 行 TS（model/store/route/index）+ 浏览器半侧约 900 行 JSX/JS
++ 27 项 `node:test`。
 
 ### 登记三处（缺一处就静默不出现）
 
@@ -279,13 +296,14 @@ root 作用域的每个插槽组件都会拿到一组**标准 Hook**，由宿主
 ⚠️ **已存在的 3095 环境不会自动跟随蓝图**（`docs/ui-plugins.md` §9.2）：要么手工把包名补进
 `%USERPROFILE%\dsh-automation-suite-home\profiles\dsh-automation-suite\package.json` 的 bundles，
 要么 `-Reset`（先备份物化目录里的 `cordis.patch.yml`，那是应用回写的活状态）。
+本仓的 `start-env.ps1` 会按蓝图把缺失的 bundles 合进物化 profile（P0/P1 都是这么装上的）。
 
 ---
 
 ## 8. 验收怎么做（P0 就能跑）
 
 ```powershell
-# 1) 起环境（3095；-Restart 幂等）
+# 1) 起环境（3095；-Restart 幂等；宿主半侧改动必须重启）
 pwsh -NoProfile -File scripts\start-env.ps1 -Restart
 
 # 2) 硬证据一：组合里有这一行（用该环境的 DSH_HOME）
@@ -295,21 +313,24 @@ dsh --profile dsh-automation-suite --dump-config | Select-String 'dsh-ui-project
 # 3) 硬证据二：启动图里有客户端行（需带 token 的 URL）
 #    {"id":"dsh-ui-project-dashboard","url":"plugins/??dsh-ui-project-dashboard/client.js&rev=…"}
 
-# 4) 硬证据三（最直观）：页面左侧栏第一行是 Project Dashboard，位于 Plugins 之上；
-#    控制台里 apply(ctx) 写的探针（如 dataset.dshProjectDashboard）存在。
+# 4) 硬证据三（最直观）：左侧栏第一行是 Project Dashboard（位于 Plugins 之上）；
+#    点开后 data-dsh-panel="project-dashboard"，探针 dataset.dshProjectDashboard === 'p1'。
+
+# 5) 标签文件（P1）：加一个标签后应出现
+#    %USERPROFILE%\dsh-automation-suite-home\storages\project-dashboard\tags.json
 ```
 
-功能验收清单：
+功能验收清单（P0/P1 已过，P2 项留空）：
 
-- [ ] 三个工作区都在，标题/工程名/会话数与 `workspace.json` 一致；**行里不出现路径**；
-- [ ] 运行中/待审批/未读完成三种状态与左侧栏原有显示一致；
-- [ ] 点「打开」进入该工作区；从面板切回会话无异常；
-- [ ] SWT1/SWT2 的块数、设备数、点数、版本数、图纸页数与 §3.2 一致；
-- [ ] 搜索"产线"命中两个工程工作区；点父标签「产线/焊装」= 2/3；账条同步变成 2 个工作区 / 12 会话；
-- [ ] 加一个 `A/B/C` 标签 → 立刻出现在行内与标签树；刷新页面仍在（localStorage）；`×` 能移除；
-- [ ] 删掉某工作区的 `hardware-view.json` → 只有那一格变"未生成"；
-- [ ] 全新空 home（无会话/无工作区）→ 显示空态说明，不报错、不白屏；
-- [ ] 折叠左侧栏只剩图标且有 tooltip；中英切换后 label 与页内文案即时更新。
+- [x] 三个工作区都在，标题/会话数与 `workspace.json` 一致；**行里不出现路径**；
+- [x] 运行中/待处理状态点与左侧栏一致（真实快照为 0，演示页可模拟）；
+- [x] 点「打开工作区 / 新会话」进入该工作区（`uiWorkspace` 回调）；
+- [x] 搜索"客户"命中 1/3；点父标签筛选；账条同步变成 1 个工作区；
+- [x] 加 `客户/PEI` → 行内与标签树立刻出现；刷新页面仍在（宿主文件，条目带 canonical path）；`×` 能移除；
+- [ ] SWT1/SWT2 的块数、设备数、点数、版本数、图纸页数与 §3.2 一致（P2）；
+- [ ] 删掉某工作区的 `hardware-view.json` → 只有那一格变"未生成"（P2）；
+- [x] 全新空 home（无会话/无工作区）→ 显示空态说明，不报错、不白屏；
+- [ ] 折叠左侧栏只剩图标且有 tooltip；中英切换后页内文案即时更新（P1 已支持字典，待逐项验收）。
 
 ---
 
@@ -321,14 +342,16 @@ dsh --profile dsh-automation-suite --dump-config | Select-String 'dsh-ui-project
 2. **不显示源项目路径**：截断后很乱；路径只作标题提示与搜索字段。
 3. **git 提交历史不做**：不允许为它每次打开/刷新都去各项目跑宿主命令（项目会变多、会卡）；
    将来若要做，只能是"用户点某一行 → 只对这一个项目按需取一次"，不做全盘刷新。
-4. **标签持久化 = `localStorage`**（v1）：零宿主代码；代价是跨机器/清站点数据会丢，见 §6。
+4. **标签持久化 = `<DSH_HOME>/storages/project-dashboard/tags.json`，按 workspace id 存**（2026-11-05 决定并已实现）：
+   条目里带 canonical path（只为排错/将来重挂接）；浏览器经一条 loopback 路由读写，只收 id 与标签。
+   放弃 `localStorage`（换端口即换 origin）与"写工程目录"（会被 git 看到、要逐项目写）。
 
 **待你拍板**
 
-1. **信息范围**：建议工程（块/硬件/版本/图纸）全做，缺失即降级。
-2. **排版**：单列行 + 行内标签条（演示版形态）是否 OK？还是改成卡片网格？
-3. **是否接受"借会话读文件"**（§4）—— 避开这条内部约定的代价是放弃工程数据，或引入无鉴权路由。
-4. **标签要不要跨机器共享**：要 → 必须新增宿主侧存储与带鉴权的读写通道（本期不做）。
+1. **排版**：单列行 + 行内标签条（P1 形态）是否 OK？还是改成卡片网格？
+2. **P2 信息范围**：工程（块/硬件/版本/图纸）四格全做、缺失即降级？
+3. **是否接受"借会话读文件"**（§4，P2 才用到）—— 避开这条内部约定的代价是放弃工程数据。
+4. **标签要不要跨机器共享**：现在跨浏览器/跨端口都稳（宿主文件）；跨机器需连 `storages/workspace.json` 一起拷。
 5. **落地环境**：只要 3095（发行版验收环境）还是也要装进日常 3082 的 `desktop` profile？
 6. **标签文案**：左侧栏显示 `Project Dashboard`，还是中文界面显示「项目总览」？
    —— 建议 label 走字典：中文「项目总览」/ 英文 `Project Dashboard`，页面标题固定 `Project Dashboard`。
@@ -345,8 +368,10 @@ dsh --profile dsh-automation-suite --dump-config | Select-String 'dsh-ui-project
 | `main` 是 keyed/root；`selectPanel` 选中即渲染 | `dsh-client-ui-layout/lib/client.js`（631 / 119） |
 | root 标准 Hook 的来源 | `dsh-client-ui-session/lib/client.js`（1104–1113）；`dsh-client-ui-workspace/lib/client.js`（5039–5042）；`dsh-client-ui-layout/lib/client.js`（621） |
 | workspace/session 行字段 | `dsh-client-ui-workspace/lib/client.js`（3518–3548 / 1059–1073） |
+| 字典键必须扁平（`dict[key]` 查找，嵌套对象退化为打印 key） | `dsh-client-locale/lib/client.js`（`translate()` 的 `template.replace(/\{(\w+)\}/g, …)` 与 `dict[key]` 查找）；P1 实测踩过 |
 | 文件读取不施加 workspace 包含、绝对路径可用、冷会话可解析 | `@deepseek-ai/dsh-api-workspace-files/README.md`（28 / 40 / 95 行） |
 | `file` 资源只给 stat、地址保留盘符冒号 | `dsh-api-workspace-files/lib/client.js`（352–410）；`dsh-client-ui-sidebar-files/lib/client.js`（361–417） |
-| 自开路由无鉴权（本项目因此不用） | `docs/ui-plugins.md` §7.5；`packages/dsh-ui-prompt-guide/src/page.ts` 头注释 |
+| 自开路由无鉴权（标签路由因此自带 trust fence，且不吐任意数据） | `docs/ui-plugins.md` §7.5；`packages/dsh-ui-prompt-guide/src/page.ts` 头注释 |
 | 真实数据样例 | `C:\Users\Ansel\Documents\dsh-automation-suite\{SWT1_HF48e_Pilot,SWT2_PEI_1026_Night}` 的 `source/_dsh-engineering-context.json`、`.dsh/{hardware-view,versions-view,drawing-manifest}.json` |
-| 真实 workspace 注册表 | `%USERPROFILE%\dsh-automation-suite-home\storages\workspace.json`（3 个工作区、14 个会话） |
+| 真实 workspace 注册表 | `%USERPROFILE%\dsh-automation-suite-home\storages\workspace.json`（3 个工作区；P1 实测 15 个会话） |
+| 标签文件 | `%USERPROFILE%\dsh-automation-suite-home\storages\project-dashboard\tags.json`（P1 实测：`revision` 2、条目带 canonical path、`.bak` 存在） |
