@@ -36,6 +36,19 @@ namespace TiaOpennessV17Min.Controller
         public string Number;
         public string ProgrammingLanguage;
 
+        /// <summary>True when the file is a library type version wrapper rather than a plain object export.</summary>
+        public bool IsLibraryTypeVersion;
+
+        /// <summary>Library metadata of a type version export (only set for wrappers).</summary>
+        public string LibraryTypeName;
+        public string LibraryTypeGuid;
+        public string LibraryVersion;
+        public string LibraryAuthor;
+        public string LibraryModifiedDate;
+
+        /// <summary>The object element inside a library wrapper (for example <c>SW.Types.PlcStruct</c>).</summary>
+        public string ContentElement;
+
         public List<string> Warnings = new List<string>();
     }
 
@@ -167,16 +180,52 @@ namespace TiaOpennessV17Min.Controller
             }
 
             header.ElementName = element.Name.LocalName;
+
+            // A library type version export is a wrapper:
+            //   <SW.Types.PlcTypeLibraryTypeVersion>
+            //     <AttributeList> Author/Guid/LibraryTypeGuid/LibraryTypeName/VersionNumber </AttributeList>
+            //     <ObjectList><SW.Types.PlcStruct CompositionName="ContentObject">…</SW.Types.PlcStruct></ObjectList>
+            // The importable object is the ContentObject, and the wrapper's attributes are
+            // the library metadata the manual documents ("Library Version Info").
+            if (header.ElementName.EndsWith("LibraryTypeVersion", StringComparison.OrdinalIgnoreCase))
+            {
+                header.IsLibraryTypeVersion = true;
+                header.Kind = "library_type_version";
+                header.Category = "library_type_versions";
+                XElement wrapperAttributes = FindChild(element, "AttributeList");
+                if (wrapperAttributes != null)
+                {
+                    header.LibraryAuthor = ValueOf(wrapperAttributes, "Author");
+                    header.LibraryTypeGuid = ValueOf(wrapperAttributes, "LibraryTypeGuid");
+                    header.LibraryTypeName = ValueOf(wrapperAttributes, "LibraryTypeName");
+                    header.LibraryVersion = ValueOf(wrapperAttributes, "VersionNumber");
+                    header.LibraryModifiedDate = ValueOf(wrapperAttributes, "ModifiedDate");
+                }
+                XElement content = FindContentObject(element);
+                if (content != null)
+                {
+                    header.ContentElement = content.Name.LocalName;
+                    header.ElementName = content.Name.LocalName;
+                    element = content;
+                    header.Warnings.Add("This is a library type version export; the importable object is <"
+                        + header.ContentElement + "> inside <" + header.DocumentRoot + ">.");
+                }
+                else
+                {
+                    header.Warnings.Add("The library type version wrapper contains no ContentObject.");
+                }
+            }
+
             string[] described;
             if (ElementTypes.TryGetValue(header.ElementName, out described))
             {
-                header.Kind = described[0];
+                header.Kind = header.IsLibraryTypeVersion ? "library_type_version" : described[0];
                 header.SimaticType = described[1];
-                header.Category = described[2];
+                header.Category = header.IsLibraryTypeVersion ? "library_type_versions" : described[2];
             }
             else
             {
-                header.Kind = "unknown";
+                if (!header.IsLibraryTypeVersion) header.Kind = "unknown";
                 header.SimaticType = header.ElementName;
                 header.Warnings.Add("Unrecognized Simatic ML element <" + header.ElementName + ">; it is not a PLC block or PLC type.");
             }
@@ -196,12 +245,193 @@ namespace TiaOpennessV17Min.Controller
                 if (nameAttribute != null) header.Name = nameAttribute.Value;
             }
 
-            if (string.IsNullOrEmpty(header.Name) && header.Kind != "type")
+            if (string.IsNullOrEmpty(header.Name) && header.Kind != "type" && header.Kind != "library_type_version")
             {
                 header.Warnings.Add("The file declares no block name, so an import cannot target it explicitly.");
             }
 
             return header;
+        }
+
+        /// <summary>
+        /// Writes a copy of a Simatic ML file with the exported object renamed.
+        ///
+        /// Publishing edited library content needs this: the XML must be imported
+        /// into the project under a unique staging name so it cannot overwrite the
+        /// live block/type that happens to carry the edited object's original name.
+        /// The object element's <c>AttributeList/Name</c> is the authoritative name
+        /// in a TIA export; the element attribute is updated too when present.
+        /// </summary>
+        public static void RewriteObjectName(string source, string target, string newName)
+        {
+            XDocument document;
+            try
+            {
+                document = XDocument.Load(source, LoadOptions.None);
+            }
+            catch (Exception ex)
+            {
+                throw new ControllerException("invalid_file",
+                    "Simatic ML file " + Text.Quote(source) + " is not well-formed XML: " + ex.Message);
+            }
+
+            XElement element = document.Root;
+            if (element != null && string.Equals(element.Name.LocalName, "Document", StringComparison.OrdinalIgnoreCase))
+            {
+                element = SelectObjectElement(element);
+            }
+            if (element == null)
+            {
+                throw new ControllerException("invalid_file",
+                    "Simatic ML file " + Text.Quote(source) + " has no object element to rename.");
+            }
+
+            // A library type version export must be unwrapped before it can be
+            // imported as a project object: the wrapper carries the library
+            // metadata, the ContentObject carries the block/type content.
+            if (element.Name.LocalName.EndsWith("LibraryTypeVersion", StringComparison.OrdinalIgnoreCase))
+            {
+                XElement content = FindContentObject(element);
+                if (content == null)
+                {
+                    throw new ControllerException("invalid_file",
+                        "The library type version file " + Text.Quote(source) + " contains no ContentObject.");
+                }
+                RenameElement(content, newName);
+                XElement engineering = FindChild(document.Root, "Engineering");
+                XElement documentInfo = FindChild(document.Root, "DocumentInfo");
+                XDocument staged = new XDocument(new XDeclaration("1.0", "utf-8", null));
+                XElement stagedRoot = new XElement("Document");
+                if (engineering != null) stagedRoot.Add(new XElement(engineering));
+                if (documentInfo != null) stagedRoot.Add(new XElement(documentInfo));
+                XElement contentClone = new XElement(content);
+                StripLibraryMetadata(contentClone);
+                stagedRoot.Add(contentClone);
+                staged.Add(stagedRoot);
+                try
+                {
+                    staged.Save(target);
+                }
+                catch (Exception ex)
+                {
+                    throw new ControllerException("file_write_failed",
+                        "The staged Simatic ML file " + Text.Quote(target) + " could not be written: " + ex.Message);
+                }
+                return;
+            }
+
+            XElement attributeList = FindChild(element, "AttributeList");
+            XElement nameElement = attributeList == null ? null : FindChild(attributeList, "Name");
+            if (nameElement != null)
+            {
+                nameElement.Value = newName;
+            }
+            else
+            {
+                XAttribute nameAttribute = element.Attribute("Name");
+                if (nameAttribute != null) nameAttribute.Value = newName;
+            }
+            RenameElement(element, newName);
+
+            // A library export carries a <Library Version Info> block that a plain
+            // project import does not expect. It is metadata about the library
+            // version, not part of the block/type content, so it is dropped from
+            // the staging copy.
+            List<XElement> libraryInfo = new List<XElement>();
+            foreach (XElement child in element.Elements())
+            {
+                string local = child.Name.LocalName.Replace(" ", string.Empty);
+                if (local.IndexOf("LibraryVersionInfo", StringComparison.OrdinalIgnoreCase) >= 0) libraryInfo.Add(child);
+            }
+            foreach (XElement child in libraryInfo) child.Remove();
+
+            try
+            {
+                document.Save(target);
+            }
+            catch (Exception ex)
+            {
+                throw new ControllerException("file_write_failed",
+                    "The staged Simatic ML file " + Text.Quote(target) + " could not be written: " + ex.Message);
+            }
+        }
+
+        /// <summary>
+        /// Removes the attributes a library version wrapper adds to its content
+        /// object, so the clone is a plain project export that TIA will import.
+        /// </summary>
+        private static void StripLibraryMetadata(XElement content)
+        {
+            XAttribute composition = content.Attribute("CompositionName");
+            if (composition != null) composition.Remove();
+            XElement attributeList = FindChild(content, "AttributeList");
+            if (attributeList == null) return;
+            List<XElement> remove = new List<XElement>();
+            foreach (XElement child in attributeList.Elements())
+            {
+                string local = child.Name.LocalName;
+                if (string.Equals(local, "LibraryConformanceStatus", StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(local, "LibraryTypeGuid", StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(local, "LibraryTypeName", StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(local, "VersionNumber", StringComparison.OrdinalIgnoreCase))
+                {
+                    remove.Add(child);
+                }
+            }
+            foreach (XElement child in remove) child.Remove();
+        }
+
+        private static void RenameElement(XElement element, string newName)
+        {
+            XElement attributeList = FindChild(element, "AttributeList");
+            XElement nameElement = attributeList == null ? null : FindChild(attributeList, "Name");
+            if (nameElement != null) nameElement.Value = newName;
+            XAttribute nameAttribute = element.Attribute("Name");
+            if (nameAttribute != null) nameAttribute.Value = newName;
+        }
+
+        /// <summary>
+        /// The object element inside a library type version wrapper: the child that
+        /// is marked <c>CompositionName="ContentObject"</c> (or the first
+        /// <c>SW.*</c> child when the marker is absent).
+        /// </summary>
+        private static XElement FindContentObject(XElement wrapper)
+        {
+            if (wrapper == null) return null;
+
+            // The content object lives in the wrapper's <ObjectList>, next to the
+            // version comment (<MultilingualText CompositionName="Comment">).
+            XElement objectList = FindChild(wrapper, "ObjectList");
+            if (objectList != null)
+            {
+                foreach (XElement child in objectList.Elements())
+                {
+                    if (!child.Name.LocalName.StartsWith("SW.", StringComparison.OrdinalIgnoreCase)) continue;
+                    XAttribute composition = child.Attribute("CompositionName");
+                    if (composition != null && string.Equals(composition.Value, "ContentObject", StringComparison.OrdinalIgnoreCase))
+                    {
+                        return child;
+                    }
+                }
+            }
+
+            // Fallback for a wrapper whose ObjectList is shaped differently: the
+            // first SW.* descendant marked as the content object, then the first
+            // SW.* descendant at all.
+            foreach (XElement child in wrapper.Descendants())
+            {
+                if (!child.Name.LocalName.StartsWith("SW.", StringComparison.OrdinalIgnoreCase)) continue;
+                XAttribute composition = child.Attribute("CompositionName");
+                if (composition != null && string.Equals(composition.Value, "ContentObject", StringComparison.OrdinalIgnoreCase))
+                {
+                    return child;
+                }
+            }
+            foreach (XElement child in wrapper.Descendants())
+            {
+                if (child.Name.LocalName.StartsWith("SW.", StringComparison.OrdinalIgnoreCase)) return child;
+            }
+            return null;
         }
 
         /// <summary>Validates that a Simatic ML file can be parsed; returns the header on success.</summary>

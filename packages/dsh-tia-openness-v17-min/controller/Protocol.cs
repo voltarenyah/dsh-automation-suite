@@ -100,6 +100,10 @@ namespace TiaOpennessV17Min.Controller
         // interface and it never writes to the project.
         public const string ShowBlocksInEditor = "ShowBlocksInEditor";
 
+        // Project library ("Functions on libraries"): types/versions and master
+        // copies, including the export/import round trip and the instance side.
+        public const string ProjectLibrary = "ProjectLibrary";
+
         private static readonly string[] Names =
         {
             OpenProject, ExportBlocks, ImportBlocks, CompilePlc, CloseProject,
@@ -112,6 +116,7 @@ namespace TiaOpennessV17Min.Controller
             AdoptOpenProject, OnlineTargets, OnlineConnect, OnlineStatus, OnlineDisconnect, Download,
             PlcChecksum, SyncScan,
             ShowBlocksInEditor,
+            ProjectLibrary,
         };
 
         /// <summary>The whitelist in declaration order; used by diagnostics and the self test.</summary>

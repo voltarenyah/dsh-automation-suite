@@ -253,7 +253,7 @@ export const SECTIONS = [
     pre: [],
     reject: ['R2'],
     default: 'none',
-    note: '标准库对象；插件不访问任何库。',
+    note: '标准库对象；插件只访问**项目库**（Project.ProjectLibrary），不访问标准库或全局库。',
   },
   {
     path: ['Basics', 'Notes on performance of TIA Portal Openness'],
@@ -522,9 +522,90 @@ export const SECTIONS = [
     api: ['Siemens.Engineering.Library', 'Siemens.Engineering.Library.Types', 'Siemens.Engineering.Library.MasterCopies'],
     compile: 'yes',
     pre: [],
-    reject: ['R2', 'R8'],
-    default: 'none',
-    note: '全局库/项目库、类型版本、主副本。控制器完全没有引用这三个命名空间（0/47 类型）。',
+    reject: ['R8'],
+    default: 'partial',
+    note:
+      '项目库（Project.ProjectLibrary）的 Types / Master copies 两棵树已接线：枚举、导出、发布主副本、' +
+      '实例化、更新工程实例、文件夹/改名/删除/设默认版本。**全局库（TiaPortal.GlobalLibraries）未接线**；' +
+      'V17 的 LibraryTypeVersion 只有 Export，没有 Import/CreateVersion/Release，类型版本的“发布”仍须走 TIA UI。' +
+      '实现见 controller/OpennessHost.Library.cs 与 controller/OperationsLibrary.cs，契约见 docs/PROJECT-LIBRARY.md。',
+    leaves: {
+      'Functions for objects and instances': {
+        status: 'partial',
+        note: '总览条目。本插件只覆盖项目库（Types/Master copies）与其实例，不覆盖全局库对象。',
+      },
+      'Accessing global libraries': { status: 'none', note: '未适配：只做 Project.ProjectLibrary，不打开/枚举 GlobalLibraries。' },
+      'Accessing global library languages': { status: 'none', note: '未适配：全局库未接线。' },
+      'Opening libraries': { status: 'none', note: '未适配：GlobalLibraries.Open/OpenWithUpgrade 未接线。' },
+      'Enumerating open libraries': { status: 'none', note: '未适配：全局库未接线。' },
+      'Saving and closing libraries': { status: 'none', note: '未适配：全局库未接线。' },
+      'Archiving and retrieving a library': { status: 'none', note: '未适配：.zal/.zap 归档/取回未接线。' },
+      'Creating global libraries': { status: 'none', note: '未适配：只做项目库。' },
+      'Accessing folders in a library': {
+        status: 'done',
+        note: '已实现：project_library action=browse 递归列 Types/Master copies 文件夹；organize 可建夹/改名/删除（项目库两棵树）。',
+      },
+      'Accessing types': {
+        status: 'done',
+        note: '已实现：browse 列类型与属性（Name/Guid/Author/Comment/Status），支持按 name/guid/folder 定位；rename 可改类型名。',
+      },
+      'Accessing type versions': {
+        status: 'partial',
+        note:
+          '部分：可枚举版本、读 State/Author/ModifiedDate/VersionNumber/IsDefault、Export、SetAsDefault、Delete、' +
+          'FindInstances、Dependencies/Dependents。**V17 无 Import/CreateVersion/Release**，State 只读，' +
+          '发布新版本只能走 TIA UI（工具返回 library_type_version_publish_unsupported + uiSteps）。',
+      },
+      'Accessing blocks located in library': {
+        status: 'done',
+        reject: ['R8'],
+        note:
+          '已实现：LibraryTypeVersion.Export 导出类型版本 XML；InWork 版本被 Openness 拒绝（library_version_in_work）。' +
+          '导出物是 LibraryTypeVersion 包装层 + ContentObject，插件在发布时自动剥壳。',
+      },
+      'Accessing instances': {
+        status: 'done',
+        note: '已实现：use operation=instances 调 FindInstances(PlcSoftware)，返回实例 name/type/path。',
+      },
+      'Accessing master copies': {
+        status: 'done',
+        note:
+          '已实现：browse 列主副本与 ContentDescriptions；read 在事务里实例化→导出→回滚；' +
+          'PLC 块/类型/标签表可导出，HMI/硬件对象返回 *_unsupported。',
+      },
+      'Create master copy from a project in library': {
+        status: 'done',
+        note: '已实现：publish source=project_object 从块/PLC 类型/标签表 MasterCopyComposition.Create，支持 new/replace/new_version。',
+      },
+      'Create an object from a master copy': {
+        status: 'partial',
+        note:
+          '部分：use operation=instantiate 路由 PLC 块、PLC 类型、PLC 标签表（CreateFrom + 可选改名）；' +
+          'HMI/硬件主副本未路由，返回 library_master_copy_instantiate_unsupported。',
+      },
+      'Copying master copies': {
+        status: 'done',
+        note: '已实现：organize operation=copy_master_copy 用 MasterCopyComposition.CreateFrom 复制并可选改名。',
+      },
+      'Determining out-of-date type instances': {
+        status: 'done',
+        note: '已实现：use operation=update_check 调 ILibrary.UpdateCheck(project, mode)，返回层级化 messages。',
+      },
+      'Updating the project': {
+        status: 'done',
+        note: '已实现：use operation=update_project 调 ILibrary.UpdateProject(selections, scopes)，scopes 为 PlcSoftware。',
+      },
+      'Updating a library': {
+        status: 'none',
+        note: '未适配：ILibrary.UpdateLibrary 跨库同步（项目库↔全局库）未接线，因为全局库未接线。',
+      },
+      'Deleting library content': {
+        status: 'done',
+        note:
+          '已实现：organize operation=delete 删除类型/类型版本/主副本/用户文件夹；版本删除遵循 TIA 的 Committed 与依赖规则，' +
+          '失败按 Openness 异常返回。',
+      },
+    },
   },
 
   // ------------------------------------------------------------ hardware & networks

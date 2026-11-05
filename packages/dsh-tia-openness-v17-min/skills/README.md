@@ -5,6 +5,7 @@
 | 文件 | 归属 | 说明 |
 |---|---|---|
 | `tia-openness/SKILL.md` | **本仓库** | 唯一由我们维护的 skill：把「症状 / 任务」路由到上游文件，并声明版本口径（上游 V21 ↔ 本插件 V17）。由 `src/skills.ts` 注册为 bundled skill provider |
+| `tia-openness/PROJECT-LIBRARY.md` | **本仓库** | 项目库专题：V17 能力边界、库管控块导入护栏、模型标准动作与 fork 前提。由 router 按需引用，不单独进 catalog |
 | `UPSTREAM.json` | 生成物 | 上游仓库、commit、每个文件的 sha256 与字节数、许可证、被排除项。**不要手改**，由 `node scripts/knowledge/build-skills.mjs` 重写 |
 | `LICENSE.siemens.txt` | 上游 | `siemens/tia-portal-ai-extensions` 的 MIT 许可证全文（Copyright (c) 2026 Siemens AG）。MIT 要求随副本保留，因此它与知识库一起出货 |
 | `<name>/SKILL.md` | **上游** | 31 个 Openness skill 的逐字副本，见 `UPSTREAM.json` 的 `skills` |
@@ -24,7 +25,7 @@
   然后 `npm run skills:build`（联网重取、重写 `UPSTREAM.json`），最后 `npm run skills:check`。
 - 平时的 `npm run check` 会跑 `skills:check`（**离线**）：逐个比对 sha256/字节数、校验 frontmatter、
   确保没有计划外的目录，并检查 `tia-openness/SKILL.md` 里引用的每个上游文件都真实存在。
-- 只有 `tia-openness/SKILL.md` 可以直接编辑；它有两条硬约束，`skills:check` 会拦：
+- 只有 `tia-openness/SKILL.md` 与 `tia-openness/PROJECT-LIBRARY.md` 可以直接编辑；`SKILL.md` 有两条硬约束，`skills:check` 会拦：
   - 正文 < **8192** 字符 —— 标准 preset 的 tool-result 修剪阈值（`thresholdChars`），超过就会被压缩掉；
   - frontmatter 的 `description` ≤ **500** 字符 —— 会话目录的 `catalogDescriptionMaxLength`，
     这条是**每个会话**都要付的常驻成本；
@@ -36,8 +37,8 @@
 ## 版本口径（重要）
 
 上游面向 **TIA Portal V21**：modular assemblies、SIMATIC SD（`.s7dcl`/`.s7res`）、LTS 链重启等都是
-V21 语义。本插件的模型面是 **26 个工具**（v0.1 的块级读写 6 个 + v0.2 的工程数据/PLC 数据/F 相关
-20 个），上游文件只回答「Openness 能不能做」。因此：
+V21 语义。本插件的模型面是 **39 个工具**（块级读写、工程数据、PLC 数据、F 相关、在线/下载、
+硬件组态、块编辑器与项目库），上游文件只回答「Openness 能不能做」。因此：
 
 - 上游文件回答「Openness 能不能做 / 怎么做」，**不**回答「这个插件能不能做」；
 - 涉及版本专有 API 的段落要按 V17 重新判断，必要时以本机实测为准；

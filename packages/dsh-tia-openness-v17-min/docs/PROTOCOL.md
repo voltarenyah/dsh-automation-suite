@@ -74,7 +74,7 @@ report a precise reason — on a machine without TIA Portal.
 ```
 
 - `type` is optional and must be `"operation"` when present.
-- `operation` must be one of the 39 whitelisted names (`OperationCatalog` / `src/protocol.ts`); anything else is
+- `operation` must be one of the 40 whitelisted names (`OperationCatalog` / `src/protocol.ts`); anything else is
   `unsupported_operation` and is never dispatched. All but `PlcChecksum` and `SyncScan` back a model-facing tool;
   those two are **service-only** (they back `engineeringAccess` methods and deliberately have no tool).
 - `params` is an operation-specific object. Unknown keys are ignored; a key of the
@@ -134,8 +134,9 @@ The five operations below are the original block read/write surface. v0.2 added 
 service-only operations (`PlcChecksum`, `SyncScan`), and the online surface added six
 (`AdoptOpenProject`, `OnlineTargets`, `OnlineConnect`, `OnlineStatus`,
 `OnlineDisconnect`, `Download`). v0.3 added the hardware export
-(`ExportHardwareConfig`), and the block-editor surface added one more
-(`ShowBlocksInEditor`). Their parameter and payload contract is frozen in
+(`ExportHardwareConfig`), the block-editor surface added one more
+(`ShowBlocksInEditor`), and the project-library surface added one
+(`ProjectLibrary`). Their parameter and payload contract is frozen in
 [`EXTENDED-SURFACE.md`](EXTENDED-SURFACE.md) and is not repeated here beyond the
 sections above.
 
@@ -414,13 +415,16 @@ fixed cost (about 30 s); only the changed blocks add export time.
 | `create_group` | bool | `false` | create a missing `target_group` instead of failing |
 | `mirror_groups` | bool | `true` | for a directory input, derive each file's group from its subdirectory (the layout an export writes); a missing group falls back to the root group with a warning |
 | `categories` | string[] | all | import only these families; a Simatic ML file is classified by its XML element (`SW.Blocks.*`, `SW.Types.*`, `SW.Tags.PlcTagTable`) |
+| `allow_library_managed_import` | bool | **`false`** | refuse to overwrite a block/type that is an instance of a project-library type version; direct XML import bypasses TIA's check-in/release workflow and leaves the instance inconsistent. Set `true` only to override deliberately |
 | `dry_run` | bool | **`true`** | validate and report only |
 
 `data`: `device`, `software`, `mode`, `importOptions`, `swImportOptions`,
 `generateOption`, `keepSource`, `createGroup`, `mirrorGroups`, `targetGroup`,
-`dryRun`, `fileCount`, `plan[]{file,format,category,blockName,blockKind,existsInProject,action,exactTarget,targetGroup,existingGroup?,groupMismatch?}`,
-`conflicts[]`, and after a real run `committed`, `applied[]{file,blockName,targetGroup,status}`,
-`failureCount`, `failures[]`, `verification{}`.
+`dryRun`, `fileCount`, `plan[]{file,format,category,blockName,blockKind,existsInProject,libraryManaged,action,exactTarget,targetGroup,existingGroup?,groupMismatch?}`,
+`conflicts[]`, `allowLibraryManagedImport`, optional `libraryManaged[]{category,name,group,file}`,
+and after a real run `committed`, `applied[]{file,blockName,targetGroup,status}`,
+`failureCount`, `failures[]`, `verification{}`. A real import over a library-managed object without the override
+fails with `library_managed_block` before the transaction starts; a dry run reports `blocked: true` and `ready: false`.
 
 `verification.blocks[]` also carries `expectedGroup` and a `group:` entry in
 `differences` when the block ended up somewhere else.
@@ -678,7 +682,7 @@ it, so compile first.
 
 | code | raised when | typical fix |
 |---|---|---|
-| `unsupported_operation` | the request named anything outside the whitelist | use one of the 39 operations (`details.allowed` lists them) |
+| `unsupported_operation` | the request named anything outside the whitelist | use one of the 40 operations (`details.allowed` lists them) |
 | `unsupported_frame` | `type` was not `operation` | send a request frame |
 | `invalid_params` | a parameter is missing or has the wrong type | read `error.message`, it names the parameter and the allowed values |
 | `invalid_file` | an import file is not well-formed Simatic ML / a supported source | check the file and `mode` |

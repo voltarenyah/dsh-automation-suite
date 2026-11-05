@@ -157,6 +157,7 @@ namespace TiaOpennessV17Min.Controller
                 "AdoptOpenProject", "OnlineTargets", "OnlineConnect", "OnlineStatus", "OnlineDisconnect", "Download",
                 "PlcChecksum", "SyncScan",
                 "ShowBlocksInEditor",
+                "ProjectLibrary",
             };
             RequireEqual(expected.Length.ToString(), all.Count.ToString(), "the whitelist size");
             for (int i = 0; i < expected.Length; i++)

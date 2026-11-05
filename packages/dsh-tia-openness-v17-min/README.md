@@ -3,13 +3,14 @@
 > DeepSeek Harness 插件：通过 TIA Portal V17 Openness 对 PLC 程序块做**最小化**读写
 > （导出 / 导入 Simatic ML、外部源生成块、编译验证）。
 >
-> A DeepSeek Harness plugin that exposes TIA Portal V17 Openness as 38 model-facing
-> tools backed by a whitelisted C# controller subprocess. Every write runs in an
+> A DeepSeek Harness plugin that exposes TIA Portal V17 Openness as 39 model-facing
+> tools backed by a whitelisted C# controller subprocess, including the project
+> library (types/versions and master copies). Every write runs in an
 > exclusive-access transaction and is read back for verification; the operations
 > whose preview carries information are dry-run by default.
 >
 > 插件由**两个 Loader 行**组成：宿主行（`.`,`src/index.ts`）持有控制器子进程、`engineeringAccess`
-> 服务与知识库；工具行（`./tools`,`src/tools-entry.ts`）才是 38 个模型可见的工具，
+> 服务与知识库；工具行（`./tools`,`src/tools-entry.ts`）才是 39 个模型可见的工具，
 > **由 agent preset 决定要不要声明** —— 主 agent（leader）声明它、子 agent（expert）不声明，
 > 于是子 agent 看不到任何 TIA 工具。见 [§4.0](#40-两个-loader-行宿主行与-tools-行)。
 
@@ -35,7 +36,7 @@
 │   • 注册 tiaOpennessRuntime（本包工具行的内部缝）│
 │   • 注册知识库 skill provider                   │
 │  工具行 ('./tools'，按 preset 声明)：            │
-│   • 注册 38 个模型可见工具                       │
+│   • 注册 39 个模型可见工具                       │
 │   • 请求串行化 / 超时 / 硬超时终止与重启         │
 │   • 结构化错误 → 结构化工具结果                  │
 └───────────────┬────────────────────────────────┘
@@ -45,7 +46,7 @@
 │  .NET Framework 4.8)                           │
 │   • 先注册程序集解析器，再加载                  │
 │     Siemens.Engineering.dll（V17）              │
-│   • 只执行 27 个白名单操作                      │
+│   • 只执行 40 个白名单操作                      │
 │   • 写入 = ExclusiveAccess + Transaction        │
 │   • 写后读回验证                                │
 │   • 返回结构化 JSON                             │
@@ -63,13 +64,14 @@
 |---|---|
 | TypeScript 构建 / typecheck | ✅ 0 错误 |
 | C# 控制器编译（对着本机真实 V17 `Siemens.Engineering.dll`） | ✅ 0 Warning / 0 Error |
-| 自动化测试 `npm test` | ✅ **97 项：96 通过 / 0 失败 / 1 跳过**（跳过项为"控制器未构建"的降级路径；含 9 项知识库、3 项对**真实** skill 注册表的集成测试、6 项两行拆分契约与 13 项斜线指令测试——其中 2 项在**真实** cordis 服务图上把两行当兄弟插件挂载） |
-| C# 控制器自检（无 TIA） | ✅ **14/14**（含"启动时不加载 Openness 程序集"与"Siemens 解析器包可用"） |
+| 自动化测试 `npm test` | ✅ **119 项：118 通过 / 0 失败 / 1 跳过**（跳过项为"控制器未构建"的降级路径；含 9 项知识库、3 项对**真实** skill 注册表的集成测试、6 项两行拆分契约与 13 项斜线指令测试——其中 2 项在**真实** cordis 服务图上把两行当兄弟插件挂载） |
+| C# 控制器自检（无 TIA） | ✅ **20/20**（含"启动时不加载 Openness 程序集"与"Siemens 解析器包可用"） |
 | Openness 环境探测（DLL 版本 / 位数 / 用户组） | ✅ `17.0.0.0` / x64 / 已在 `Siemens TIA Openness` 组 |
 | 安装进真实 DSH 宿主的加载 / 卸载验证 | ✅ **已验证（真实宿主）**：独立 `DSH_HOME` + 测试 profile 启动真实宿主 → 控制器子进程出现（`apply` 执行、`ctx.effect` 持有）；宿主结束 → 子进程自行退出，无残留。`~/.dsh` 未被修改 |
 | 真实 V17 项目上的导出→改→导入→编译 | ✅ **已验证（真实项目）**：237 块项目导出 234 个（3 个被 TIA 拒绝，逐块报告）、改 `HeaderVersion` 导入 override 进原组、写后验证 `passed/changed=True`、重新导出内容为新值、编译 `errors=0`。详见 §0.1 |
 | 第二个真实项目（`PEI_SinoARP_Master_V4.1.3`，1152 块，**正式项目**，设备在用户组里） | ✅ 导出 **1151/1152**（1 个 Safety F 块被拒绝并逐块报告），1152 文件 / 70.6 MB，22 个用户组目录层级与非 ASCII 组名（`Fonctions méthode`、`55_Cavité_STD`）均正确；`.ap17` 修改时间未变、无锁文件、无残留进程。该轮又修掉一个缺陷（设备分组 → 见 [REAL-RUN.md](docs/REAL-RUN.md) §D.6、[decisions.md](docs/decisions.md) D16） |
 | v0.2 新增的 20 个操作（工程数据 / PLC 数据 / F 相关） | ⏳ **已实现、编译通过、单测通过；尚未在真实 TIA Portal 项目上验证**。逐条测试项与执行方法见 [docs/VERIFICATION-PLAN.md](docs/VERIFICATION-PLAN.md)；接口契约见 [docs/EXTENDED-SURFACE.md](docs/EXTENDED-SURFACE.md) |
+| 项目库 `project_library`（Types / Master copies） | ✅ **已在真实 SWT1/SWT2 副本验证**：browse、类型版本导出（含库包装层识别）、整库 `export`（SWT1 229 文件 / SWT2 406 文件，失败项逐条记录）、编辑后作为主副本发布、文件夹/主副本清理；主副本导出对不一致内容与 HMI 标签表分别返回结构化限制。详见 [docs/PROJECT-LIBRARY.md](docs/PROJECT-LIBRARY.md) §8 |
 
 > **关于验证范围**
 >
@@ -81,8 +83,11 @@
 >
 > - **HMR disposer 路径**：在运行中的实例里"禁用/启用插件"，看 `ctx.effect` 的 disposer 停掉并重启子进程
 >   （脚本只能验证"宿主结束 → 子进程退出"这条 EOF 路径）；
-> - **其他 TIA 版本/其他机器上的 Openness 应用白名单**：本机 V17 上打开真实项目**没有**触发白名单拦截，
->   但 V18+ 或受管环境可能要求白名单条目（官方解析器自带 `WhitelistApp()`，本插件尚未接线）。
+> - **Openness 应用白名单**：本机 V17 首次用**新构建的**控制器 exe 时会弹
+>   `Openness access` 对话框（exe 哈希变了）。选 **Yes to all** 才会把条目写进
+>   `HKLM\SOFTWARE\Siemens\Automation\Openness\17.0\Whitelist\TiaOpennessV17Min.Controller.exe`，
+>   而写 HKLM 需要**管理员**权限；非管理员会话里选 Yes 只对当次会话有效，重新构建/换路径会再问。
+>   受管环境或 V18+ 可能还要求额外的白名单条目（官方解析器自带 `WhitelistApp()`，本插件尚未接线）。
 
 ### 0.1 真实环境实测结果（本轮）
 
@@ -190,16 +195,16 @@ plugin_manager(action: "install_bundle", target: "C:\\Users\\Ansel\\dsh-automati
 
 DSH 按**声明作用域**决定工具对谁可见：一行里注册的工具属于该行的作用域。插件原来把全部工具
 和控制器放在同一行，于是它们落在**宿主（全局）平面**上 —— 任何 agent（包括被派生的子 agent）
-都继承。发行版要区分 `leader`（主 agent，保留 38 个工具）与 `expert`（子 agent，不应看到任何
+都继承。发行版要区分 `leader`（主 agent，保留 39 个工具）与 `expert`（子 agent，不应看到任何
 TIA 工具），所以注册被拆成两行；**人**用的斜线指令是第三个面，再拆一行：
 
 | 行 | 子路径导出 | `name` | `inject` | 内容 |
 |---|---|---|---|---|
 | 宿主行 | `.`（`lib/index.js`） | `tia-openness-v17-min` | `[]` | `ControllerProcess` + `ctx.effect` 的所有权、`engineeringAccess` 服务（公开缝）、`tiaOpennessRuntime`（本包另两行的内部缝）、bundled skill provider |
-| 工具行 | `./tools`（`lib/tools-entry.js`） | `tia-openness-v17-min-tools` | `['tools', 'tiaOpennessRuntime']` | 38 个模型可见工具（`src/tools.ts`） |
+| 工具行 | `./tools`（`lib/tools-entry.js`） | `tia-openness-v17-min-tools` | `['tools', 'tiaOpennessRuntime']` | 39 个模型可见工具（`src/tools.ts`） |
 | 命令行 | `./commands`（`lib/commands-entry.js`） | `tia-openness-v17-min-commands` | `['commands', 'tiaOpennessRuntime']` | 7 个 `/tia-…` 斜线指令（`src/commands.ts`，复用工具的操作与渲染） |
 
-- **只有该看到 TIA 的 preset 才声明工具行**：`leader` 声明它 → 保留 38 个工具；
+- **只有该看到 TIA 的 preset 才声明工具行**：`leader` 声明它 → 保留 39 个工具；
   `expert` 不声明 → 一个 TIA 工具都没有。宿主行对所有 agent 都加载，因为控制器与会话是
   composition 级资源。
 - **命令行独立于工具行**：它不注册任何工具，也不要求 `/tools` 行存在；一个只想给人用 `/tia-open`
@@ -217,7 +222,7 @@ TIA 工具），所以注册被拆成两行；**人**用的斜线指令是第三
 
 ## 4. 工具
 
-工具行注册的 38 个工具，统一返回同一个信封（`ok` / `summary` / `data` / `changes` / `diagnostics` / `error`）。
+工具行注册的 39 个工具，统一返回同一个信封（`ok` / `summary` / `data` / `changes` / `diagnostics` / `error`）。
 每个工具对应控制器的一个白名单操作，参数与返回结构见
 [`docs/EXTENDED-SURFACE.md`](docs/EXTENDED-SURFACE.md)。
 
@@ -242,6 +247,7 @@ TIA 工具），所以注册被拆成两行；**人**用的斜线指令是第三
 | `project_info` | 只读汇总：工程属性、注释、语言、历史、已用产品、设备树、PLC 软件、TIA 设置 | 否 | —（无 `dry_run`） |
 | `project_languages` | 列出/设置支持语言、活动语言、编辑语言、参考语言 | **是**（`action=set`） | —（无 `dry_run`） |
 | `project_texts` | 导出/导入整工程文本（xlsx，`ExportProjectTexts`/`ImportProjectTexts`） | 导出只写文件；导入改工程（**无事务，不可回滚**） | —（无 `dry_run`） |
+| `project_library` | 读/改**项目库**：`action=browse` 列类型/版本/主副本；`read` 导出单个 XML；`export` 整库导出到 `<workspace>/library/` + `_manifest.json`；`write`/`publish` 把编辑后的 XML 或工程对象发布为主副本；`organize` 建夹/改名/删除/复制/设默认版本；`use` 实例化/更新工程实例/查实例与依赖 | **是**（write/publish/organize/use） | **是**（write/publish/organize 及 instantiate/update_project） |
 | `update_project` | 写"块编译时仿真支持"与工程注释（多语言文本） | **是** | —（无 `dry_run`） |
 | `portal_settings` | 列出/修改 TIA Portal 设置（`SettingsFolders`，如 General/SearchInProject） | 是（`action=set`） | —（无 `dry_run`） |
 
@@ -341,15 +347,16 @@ HMI 因为在 CAx 里没有类模型，只能出现在这里。`deviceCount - no
 
 `dry_run` **只留给"预览本身带信息量"的工具**（决策 [D22](docs/decisions.md)）：预览要能把模型
 自己算不出来的东西查出来 —— 把名字/路径解析成真实对象、把冲突与现有状态 diff 出来 —— 而且
-真正的风险落在**写入那一步**。满足这两条的只有 7 个：
+真正的风险落在**写入那一步**。满足这两条的有：
 
 - **默认 `dry_run: true`**（必须先预演，再显式传 `dry_run: false`）：`import_blocks`（逐文件解析 +
   目标块名解析 + 冲突与组不匹配）、`delete_plc_objects`（解析出真实删除集合与存在性）、
   `write_tags`、`set_block_attributes`、`protect_blocks`（逐对象 before/after 与当前保护状态）、
-  `close_project`（会丢弃哪些未保存改动）。
+  `close_project`（会丢弃哪些未保存改动）、`project_library` 的写子面（`write`/`publish`/`organize`
+  以及 `use` 的 `instantiate`/`update_project`：预演解析目标名、是否已存在、版本与内容类型）。
 - **`open_project`** 的 `dry_run` 默认 `false` 且是**零 TIA 接触**：它连 TIA Portal 都不启动，
   只校验路径；唯一可能的写入（升级重写项目）由独立的 `allow_upgrade`（默认 `false`）把关。
-- **其余 15 个工具没有 `dry_run`**：`export_blocks`、`compile_plc`、`create_project`、`save_project`、
+- **其余工具没有 `dry_run`**（或只在 `project_library` 的写子面有）：`export_blocks`、`compile_plc`、`create_project`、`save_project`、
   `archive_project`、`project_languages`、`project_texts`、`update_project`、`portal_settings`、
   `create_plc_objects`、`generate_source`、`watch_and_force_tables`、`software_units`、
   `set_safety_settings`、`show_blocks_in_editor`。理由分两类：(a) 它们写的是一两个具名对象，**真的调用会在写入前干净失败**
@@ -433,7 +440,7 @@ commit `b5c7041`）**逐字**打进包里，并注册成模型可见的**一个*
 - **失败语义与 §8 一致**：操作级失败（TIA 拒绝、块不存在）返回 `ok:false` + 结构化 `error`；
   传输级失败（找不到 exe、超时、协议不匹配）**抛出**。
 - **不新增模型工具**：新增的 `readPlcChecksum` / `syncScan` 落在两个**服务专用**操作上
-  （`PlcChecksum` / `SyncScan`），模型面工具数不因此增加（当前 38 个）；操作数为 39（v0.1 5 个 + v0.2 20 个 + F/版本取证 2 个 + 在线/下载/接管 6 个 + 硬件 5 个 + 块编辑器 1 个）。
+  （`PlcChecksum` / `SyncScan`），模型面工具数不因此增加（当前 39 个）；操作数为 40（v0.1 5 个 + v0.2 20 个 + F/版本取证 2 个 + 在线/下载/接管 6 个 + 硬件 5 个 + 块编辑器 1 个 + 项目库 1 个）。
   这两个操作刻意不注册成工具：逐块比对指纹是版本管理工作流的一步，不应由模型手工编排。
 - **它是可选的**：消费方按名取（`ctx.get('engineeringAccess')`），取不到就降级 ——
   读上一次的指纹工件并**明确报过期**，而不是装作数据是新的。
@@ -472,13 +479,38 @@ DSH 的斜线指令是**绕过模型**的直接执行面：命令行与结果都
   让它先调 `project_info` / `controller_status`，或直接在对话里说明。
 - **取消是协作式的**：命令卡上的取消只停止等待，TIA 侧的 Openness 操作不保证被打断。
 
+### 4.7 项目库工作流（`project_library`）
+
+项目库有**两棵独立的树**，语义不同，工作流也不同：
+
+| 树 | 有无版本 | 本插件能做什么 |
+|---|---|---|
+| `Types`（类型） | 有（`InWork` / `Committed`，可设默认版本） | 枚举、导出某个版本的 XML、查依赖/被依赖/实例、设默认版本、删除；**V17 Openness 没有 Import/CreateVersion/Release API**，所以"发布新版本"只能在 TIA Portal 界面做 |
+| `Master copies`（主副本） | 无（名字就是身份） | 枚举、从工程对象创建、从编辑后的 XML 创建、复制、改名、删除、实例化回工程、导出内容 |
+
+首次把已有工程的项目库纳入受控，用 `action=export` 一次性写 `<workspace>/library/`（每个类型版本
+一个 XML + 每个主副本一个 XML + `_manifest.json`）；之后再用 `read`/`publish` 做增量修改。
+`source/` 里已有的 blocks/types/tag tables 是 PLC 软件树，与项目库是两套对象，**不需要**因为
+项目库能力而重导。
+
+因此"编辑并发布新版本"的可执行闭环是：
+
+1. `project_library action=read kind=type_version` 把某个已发布版本导出成 XML（默认落 `<workspace>/library/types/<name>@<version>.xml`）；
+2. 编辑 XML（块/UDT 的 Simatic ML；库版本包装层会在导入时自动剥掉）；
+3. `project_library action=publish kind=type_version source=file allow_master_copy_fallback=true`：把编辑后的内容发布成**主副本**，用 `name`/`version_label` 记录版本号（例如 `UDT_MotionPara_v2`）；
+4. 需要回工程时 `action=use operation=instantiate`，或从工程对象直接发布主副本（`source=project_object`）。
+
+真正的**类型版本发布**（新建版本 + Release）在 V17 只能走 TIA Portal UI；工具会返回
+`library_type_version_publish_unsupported`，`details.uiSteps` 给出界面步骤，`details.fallback` 给出上面的主副本闭环。
+完整参数、错误码与实测限制见 [`docs/PROJECT-LIBRARY.md`](docs/PROJECT-LIBRARY.md)。
+
 ---
 
 ## 5. 安全设计
 
 | 措施 | 实现 |
 |---|---|
-| 操作白名单 | 控制器只接受 `controller/Protocol.cs` 的 `OperationCatalog` 里的 39 个操作名（v0.1 的 5 个 + v0.2 的 20 个 + F/版本取证 2 个 + 在线/下载/接管 6 个 + 硬件 5 个 + 块编辑器 1 个）；其它名字返回 `unsupported_operation`。插件侧 `src/protocol.ts` 的 `OPERATIONS` 是同一份列表（双重校验，互不信任），`npm run matrix:check` 逐条比对两者 |
+| 操作白名单 | 控制器只接受 `controller/Protocol.cs` 的 `OperationCatalog` 里的 40 个操作名（v0.1 的 5 个 + v0.2 的 20 个 + F/版本取证 2 个 + 在线/下载/接管 6 个 + 硬件 5 个 + 块编辑器 1 个 + 项目库 1 个）；其它名字返回 `unsupported_operation`。插件侧 `src/protocol.ts` 的 `OPERATIONS` 是同一份列表（双重校验，互不信任），`npm run matrix:check` 逐条比对两者 |
 | 禁止任意代码 | 控制器不接受任何 C#/脚本片段，所有参数都是数据（路径、块名、枚举）；没有 `eval` / `Invoke` / `Create` 反射入口 |
 | 事务与回滚 | 写入使用 `TiaPortal.ExclusiveAccess()` + `ExclusiveAccess.Transaction(project, "...")`；**只有全部文件成功后**才调用 `CommitOnDispose()`，否则 dispose 即回滚，项目保持不变 |
 | 写后验证 | 见 4.3 |
@@ -542,7 +574,7 @@ DSH 的斜线指令是**绕过模型**的直接执行面：命令行与结果都
 
 1. **惰性初始化**：官方解析器在**第一个操作**前才初始化（`Initialize(tiaMajorVersion: 17)`），
    而不是进程启动时。这样没有可用 Openness 的机器仍能启动控制器、打印 ready 帧并给出结构化原因；
-   `--self-test` 也能断言"启动时未加载 `Siemens.Engineering`"（14 项里的
+   `--self-test` 也能断言"启动时未加载 `Siemens.Engineering`"（20 项里的
    `openness_not_loaded_by_startup`）。
 2. **诊断**：ready 帧里的 `openness` 对象（`resolvedFrom` = `registry`/`TiaPortalLocation`/`configured`、
    `assemblyPath`、`fileVersion`/`assemblyVersion`、`resolver`/`resolverVersion`）由控制器自己读
@@ -569,17 +601,17 @@ npm run test:controller  # 只跑 C# 控制器自检
 
 | 文件 | 覆盖 |
 |---|---|
-| `01-load.test.mjs` | **加载与拆分契约**：两行的模块级 `name`/`inject`/`apply`（宿主行 `inject: []`，工具行 `['tools', 'tiaOpennessRuntime']`）；工具行按注册顺序注册相同的 38 个工具、宿主行一个工具都不注册、缺少宿主行时工具行报错；参数与输出 schema 用**真实** `@deepseek-ai/dsh-tools` 编译器编译；校验器拒绝缺参/错类型/越界枚举；工具描述包含 dry-run 策略与错误码；工具返回值通过 output schema 校验；控制器缺失时宿主行仍能加载并给出结构化原因 |
+| `01-load.test.mjs` | **加载与拆分契约**：两行的模块级 `name`/`inject`/`apply`（宿主行 `inject: []`，工具行 `['tools', 'tiaOpennessRuntime']`）；工具行按注册顺序注册相同的 39 个工具、宿主行一个工具都不注册、缺少宿主行时工具行报错；参数与输出 schema 用**真实** `@deepseek-ai/dsh-tools` 编译器编译；校验器拒绝缺参/错类型/越界枚举；工具描述包含 dry-run 策略与错误码；工具返回值通过 output schema 校验；控制器缺失时宿主行仍能加载并给出结构化原因 |
 | `02-lifecycle.test.mjs` | **生命周期测试**：用真实 exe 启动控制器，断言操作系统可见该进程；`ctx.effect` 的 disposer 卸载后断言**进程已消失**；卸载幂等；配置了不存在的路径时调用失败为 `controller_not_found`。注意：触发卸载的是测试里忠实模拟 `ctx.effect` 语义的 disposer，不是真实 DSH loader 的 HMR 路径（该环待人工验证） |
 | `03-controller-protocol.test.mjs` | **协议测试**：握手、白名单拒绝、参数校验、`project_not_open`、ASCII 转义、进度帧、请求串行化、队列上限；用 stub 控制器覆盖**卡死超时→终止→重启**、请求中途退出、协议版本不匹配、stdout 噪声（这一组还捕获并回归了一个真实的 bug：被替换的旧子进程的迟到 `exit` 事件会清掉新子进程引用，导致进程泄漏） |
-| `04-tools.test.mjs` | **工具语义**：每个工具发送的参数与默认值、dry-run 只留给预览带信息量的 7 个工具（决策 D22）、只发送白名单操作、`controller_status` 不触碰控制器、渲染文本包含错误码/提示/诊断 |
-| `05-controller-cli.test.mjs` | **C# 控制器**：`--self-test` 14 项检查全绿；Openness 探测与用户组；`--version`/`--help`；命令行输出重定向为结构化帧；`--param` 重复值成数组 |
+| `04-tools.test.mjs` | **工具语义**：每个工具发送的参数与默认值、dry-run 只留给预览带信息量的工具（含 `project_library` 的写子面，决策 D22）、只发送白名单操作、`controller_status` 不触碰控制器、渲染文本包含错误码/提示/诊断 |
+| `05-controller-cli.test.mjs` | **C# 控制器**：`--self-test` 20 项检查全绿；Openness 探测与用户组；`--version`/`--help`；命令行输出重定向为结构化帧；`--param` 重复值成数组 |
 | `06-skills.test.mjs` | **知识库（替身注册表）**：宿主行 `ctx.inject(['skills'], …)` 注册；没有 skills 服务的 profile 仍加载控制器与全部工具；目录只多一条且 description ≤ 500；`get()` 正文无 frontmatter、引用的每个上游文件都存在、正文 < 8192；vendored 树与 `UPSTREAM.json` 一致；每个工具描述都指向该 skill |
 | `07-skills-registry.test.mjs` | **知识库（真实注册表）**：把 `@deepseek-ai/dsh-skill` 的真实 `SkillRegistry` 挂到裸 cordis context 上（**不需要**工具注册表，因为宿主行已不含工具），验证 candidate 被真实校验接受、重名注册被拒、`get()` 能加载、`renderSkillContent` 带上 base directory、卸载宿主行后目录项消失 |
 | `08-access-service.test.mjs` | **服务缝**：`engineeringAccess` 每个方法发送与对应工具相同的操作与参数、族信封摊平、截断如实上报、`closeProject` 必须显式给 `dryRun`、操作级失败回数据而传输级失败抛出；宿主行发布内部 `tiaOpennessRuntime` 缝（恰好三个成员）且卸载后消失 |
-| `09-two-rows.test.mjs` | **两行接线的真实服务图**：把两行当**兄弟插件**挂在裸 cordis `Context` 上（只有记录用的 `tools` 服务），断言工具行的 `inject` 由宿主行满足、跨行读到 `tiaOpennessRuntime` 并注册同名同序的 38 个工具；宿主行自己一个工具都不注册，卸载后缝消失 |
+| `09-two-rows.test.mjs` | **两行接线的真实服务图**：把两行当**兄弟插件**挂在裸 cordis `Context` 上（只有记录用的 `tools` 服务），断言工具行的 `inject` 由宿主行满足、跨行读到 `tiaOpennessRuntime` 并注册同名同序的 39 个工具；宿主行自己一个工具都不注册，卸载后缝消失 |
 
-C# 控制器自检（无需 TIA Portal，14 项）：
+C# 控制器自检（无需 TIA Portal，20 项）：
 
 ```powershell
 controller\bin\TiaOpennessV17Min.Controller.exe --self-test
@@ -647,6 +679,14 @@ pnpm run link:runtime -- --force   # 无视缓存，按当前宿主版本重抽
 | `verification_failed` | 写入后读回验证未通过（`data` 仍包含已发生的写入与验证报告） |
 | `transaction_failed` | 无法获得独占访问事务（可能有另一个 Openness 客户端在改项目） |
 | `unsupported_operation` / `unsupported_frame` | 越出白名单的请求被拒绝；`details.allowed` 列出全部允许的操作名 |
+| `library_type_not_found` / `library_type_ambiguous` / `library_version_not_found` | 项目库类型/版本定位失败；`details.available` / `details.candidates` 给出候选（同名类型请用 `guid` 或更窄的 `folder`） |
+| `library_version_in_work` | 该版本是 `InWork`，Openness 拒绝导出；改用 `version=committed` 或已发布版本号 |
+| `library_master_copy_not_found` / `library_master_copy_ambiguous` / `library_master_copy_exists` | 主副本定位失败/同名/目标名已存在；`mode=replace` 或换 `name`/`version_label` |
+| `library_master_copy_inconsistent` | 主副本内容在 TIA 里不一致（例如引用的 UDT 缺失），Openness 拒绝导出/实例化；先在 TIA 里修好 |
+| `library_master_copy_export_unsupported` / `library_master_copy_instantiate_unsupported` | 该主副本是 HMI/硬件等本插件不路由的对象；不会猜目标去创建 |
+| `library_type_version_publish_unsupported` | V17 没有类型版本的 Import/CreateVersion/Release API；`details.uiSteps` 给界面步骤，`details.fallback` 给主副本闭环 |
+| `confirmation_required` | `action=organize operation=delete` 需要 `confirm=true` 且 `dry_run=false` |
+| `library_managed_block` | `import_blocks` 拒绝覆盖项目库类型版本的实例：直接 XML 导入会绕过 TIA 的 check-in/release，实例会脱离库并变成 inconsistent。走库感知流程，或显式 `allow_library_managed_import=true` |
 | `delete_failed` / `object_not_found` / `object_already_exists` | v0.2：删除对象失败 / 目标不存在（`details.missing`、`details.available`）/ 已存在 |
 | `project_create_failed` / `project_save_failed` | v0.2：新建工程失败（目录非空、名称含非法字符等）/ 保存或另存失败 |
 | `project_not_saved` | v0.2：`archive_project` 前工程有未保存改动（手册要求先 Save） |
@@ -688,14 +728,14 @@ pnpm run link:runtime -- --force   # 无视缓存，按当前宿主版本重抽
 ```
 src/
   index.ts             宿主行入口：name / inject[] / Config / apply，ctx.effect 拥有子进程
-  tools-entry.ts       工具行入口（exports["./tools"]）：读 tiaOpennessRuntime，注册 38 个工具
+  tools-entry.ts       工具行入口（exports["./tools"]）：读 tiaOpennessRuntime，注册 39 个工具
   commands-entry.ts    命令行入口（exports["./commands"]）：读 tiaOpennessRuntime，注册 7 个 /tia-… 斜线指令
   runtime-service.ts   宿主行与另两行之间的内部缝 tiaOpennessRuntime（恰好 request/status/verbose）
   config.ts            Schemastery 配置 schema + 归一化（所有字段有默认值）
   controller.ts        C# 控制器的生命周期、NDJSON 帧、串行化、超时与终止
   protocol.ts          线路类型 + 容错帧解析 + 统一结果信封
   skills.ts            知识库：把 skills/ 注册成一个 bundled skill（ctx.inject(['skills'], …)）
-  tools.ts             38 个 defineTool 定义（模型可见描述）与渲染；工具行/命令行共用的唯一实现
+  tools.ts             39 个 defineTool 定义（模型可见描述）与渲染；工具行/命令行共用的唯一实现
   commands.ts          7 个斜线指令：单行语法解析、首行摘要、工作区工程定位
   errors.ts            ToolFailure（传输层错误）
   dsh-runtime.d.ts     本插件用到的 DSH 运行时类型（离线可构建）
@@ -715,17 +755,20 @@ controller/
   OperationsSafety.cs  v0.2 F 相关（GlobalSettings、SafetyAdministration、F 签名）
   OperationsEditor.cs  块编辑器：ShowBlocksInEditor（IShowable.ShowInEditor，批量打开，需带界面的 TIA）
   OperationsOnline.cs  在线目标发现（PC 接口/网段/设备 IP）与控制器持有的在线会话
+  OperationsLibrary.cs 项目库：ProjectLibrary 的 browse/read/write/publish/organize/use
   OpennessHost.cs      会话：TIA Portal 实例、工程、独占访问事务、块遍历
-  OpennessHost.Project.cs / .Plc.cs / .Safety.cs / .Online.cs  上述各块的宿主侧实现
-  SimaticMl.cs         Simatic ML XML 头解析与 SCL/STL 外部源扫描
-  SelfTest.cs          14 项无 TIA 自检
+  OpennessHost.Project.cs / .Plc.cs / .Safety.cs / .Online.cs / .Library.cs  上述各块的宿主侧实现
+  SimaticMl.cs         Simatic ML XML 头解析、库版本包装层剥壳与 SCL/STL 外部源扫描
+  SelfTest.cs          20 项无 TIA 自检
 test/                  node:test 测试套件
 test-profile/          试跑材料：三层验证指南 + 两个脚本 + --patch 叠加层（不改默认 profile）
 docs/PROTOCOL.md       线路协议与错误码（权威描述）
 docs/EXTENDED-SURFACE.md  v0.2 新增 20 个操作的参数与返回契约（冻结）
+docs/PROJECT-LIBRARY.md   项目库的能力边界、工作流与真实项目实测
 docs/VERIFICATION-PLAN.md v0.2 新增能力的真实项目验证清单（待执行）
 docs/KNOWLEDGE-BASE.md 知识库在哪、为什么不放 docs/、怎么更新（见 §4.4）
 docs/FUNCTIONAL-TEST.md 真实项目功能测试步骤
+docs/REAL-PLC-DOWNLOAD-ASSESSMENT.md 真实 PLC 下载能力评估（现状、缺口、建议）
 docs/verification.md    section 8 验证清单逐条核对 + 待人工验证步骤
 docs/decisions.md       技术取舍记录（被否方案与理由）
 docs/coverage-matrix.html  折叠式能力覆盖矩阵（生成物，随代码更新；可按能力主题筛选；见 scripts/coverage/）
@@ -758,7 +801,7 @@ scripts/knowledge/build-skills.mjs  知识库同步（联网重取上游）与�
   （`safety_status`/`set_safety_settings`/`safety_signatures`），v0.3 再加上硬件组态的**读**方向
   （`export_hardware_config`：工程级 CAx/AML 导出，见下一条）。仍未实现：硬件组态的网络与设备对象模型读取
   （子网/节点/IO 系统/端口互联/地址/通道）、硬件组态的导入与设备级 AML 导出、AML 解析、
-  在线会话与下载已接线（`adopt_open_project` / `online_targets` / `online_connect` / `online_status` / `online_disconnect` / `download`；V20+PLCSIM 已验证 adopt 后下载，V17 未实测）；上传/在线比较、库与主副本、多用户、HMI、OPC UA、工程图形删除、只读/UMAC 打开、
+  在线会话与下载已接线（`adopt_open_project` / `online_targets` / `online_connect` / `online_status` / `online_disconnect` / `download`；V20+PLCSIM 已验证 adopt 后下载，V17 未实测）；上传/在线比较、**全局库（GlobalLibrary）与全局库归档**、多用户、HMI、OPC UA、工程图形删除、只读/UMAC 打开、
   力表的创建与删除（V17 无相应 API，见限制 R15）。完整的逐条覆盖情况见
   [`docs/coverage-matrix.html`](docs/coverage-matrix.html)（随代码自动重新生成）。
   页面顶部「能力主题」可按扩展主线一键筛选现有子集（如「在线与下载」，13 条能力；R/H 冗余站与
@@ -777,6 +820,16 @@ scripts/knowledge/build-skills.mjs  知识库同步（联网重取上游）与�
   [`docs/VERIFICATION-PLAN.md`](docs/VERIFICATION-PLAN.md)。在跑完之前不要把这些操作当成
   "已在 V17 上实测"向他人转述。
 - **导入的目标组固定为根块组**：TIA 的导入不保留导出时的用户组层级，导出仍会按组写目录。
+- **项目库：类型版本只能读，不能经 Openness 发布**：V17 的 `LibraryTypeVersion` 只有 `Export`，
+  没有 Import/CreateVersion/Release，`State`（`InWork`/`Committed`）是只读的。因此 `project_library`
+  对类型版本提供导出、依赖/实例查询、设默认版本与删除；"编辑后发布新版本"的可执行闭环是
+  **导出类型版本 XML → 编辑 → 作为主副本（Master copy）发布**，用 `name`/`version_label` 记录版本号。
+  真正的类型版本发布仍须在 TIA Portal UI 里完成，工具以 `library_type_version_publish_unsupported`
+  返回 `details.uiSteps`。主副本是**无版本**的，这一点不要向调用方含糊。实测（SWT2，280 类型 / 424 版本 /
+  8 主副本）见 [`docs/PROJECT-LIBRARY.md`](docs/PROJECT-LIBRARY.md)。
+- **项目库的 HMI / 硬件主副本不支持**：`project_library` 的主副本导出/实例化只路由 PLC 块、PLC 类型、
+  PLC 标签表；HMI 标签表、画面、面板与硬件设备主副本会返回 `library_master_copy_export_unsupported`
+  或 `library_master_copy_instantiate_unsupported`，不会猜一个目标去创建。
 - **一次一个宿主进程一个 TIA Portal 会话**：不同 DSH 会话共用同一个控制器并排队。
 - **超时即丢失会话**：Openness 不可取消，超时的唯一可靠处理是终止控制器。
 

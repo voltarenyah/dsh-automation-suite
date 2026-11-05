@@ -16,7 +16,7 @@
 npm install                 # 仅 typescript + @types/node
 npm run link:runtime        # 一次性链接 harness 运行时包（见 docs/decisions.md D2）
 dotnet build controller\TiaOpennessV17Min.Controller.csproj -c Release -o controller\bin
-npm run check               # tsc 构建 + 45 项测试
+npm run check               # tsc 构建 + 119 项测试
 controller\bin\TiaOpennessV17Min.Controller.exe --self-test
 ```
 
@@ -28,7 +28,7 @@ controller\bin\TiaOpennessV17Min.Controller.exe --self-test
 | `npx tsc -p tsconfig.json`（构建 `lib/`） | 0 错误，产出 6 个 `.js` |
 | `dotnet build -c Release -o controller\bin`（含 NuGet 还原） | Build succeeded，**0 Warning / 0 Error**；解析到 `...\Portal V17\PublicAPI\V17` |
 | `node --test "test/*.test.mjs"` | **tests 45, pass 44, fail 0, skipped 1**（跳过项：控制器未构建时的降级路径；本机已构建） |
-| `...Controller.exe --self-test` | `ok: true`，**14/14** 检查通过 |
+| `...Controller.exe --self-test` | `ok: true`，**20/20** 检查通过 |
 | `...Controller.exe --self-test` → `openness` | `available: true`，`assemblyVersion 17.0.0.0`，`fileVersion 1700.7.501.6`，`processorArchitecture MSIL`，`resolvedFrom: registry`，`resolver 1.1.0.0` |
 | `...Controller.exe --self-test` → `opennessUserGroup` | `group: Siemens TIA Openness`，`isMember: true` |
 | 真实 V17 项目 A（237 块，副本） | ✅ 打开 1 PLC / 237 块；导出 234 成功 + 3 逐块拒绝；改 → 导入 override 进原组 → 写后验证 passed/changed → 重新导出内容为新值 → 编译 errors=0。原始输出见 [REAL-RUN.md](REAL-RUN.md) |
@@ -44,9 +44,9 @@ controller\bin\TiaOpennessV17Min.Controller.exe --self-test
 | 已覆盖 | 证据 |
 |---|---|
 | 模块级导出齐全：`name` / `inject` / `Config` / `apply` | 宿主行 `src/index.ts`（`export const name = 'tia-openness-v17-min'`、`export const inject: readonly string[] = []`、`export function apply`）；工具行 `src/tools-entry.ts`（`name = 'tia-openness-v17-min-tools'`、`inject = ['tools', TIA_RUNTIME_SERVICE]`）。测试 `test/01-load.test.mjs` 对两行分别断言 |
-| 工具行真的会注册工具 | `src/tools.ts` 的 `registerTools`（`ctx.tools.register`）；测试 `test/01-load.test.mjs` 断言 38 个工具名与注册顺序，且断言宿主行**不注册任何工具** |
+| 工具行真的会注册工具 | `src/tools.ts` 的 `registerTools`（`ctx.tools.register`）；测试 `test/01-load.test.mjs` 断言 39 个工具名与注册顺序，且断言宿主行**不注册任何工具** |
 | 生产构建产物（`lib/`）可被 Node 直接 `import` | `test/helpers/harness.mjs` 动态导入 `../../lib/index.js` 与 `../../lib/tools-entry.js`（带 cache-bust），全部 84 项测试都建立在此之上 |
-| 注册的 schema 能被**真实** registry 接受 | `test/01-load.test.mjs`（`assertSupportedJsonSchema`、`validateJsonSchemaValue` 拒绝缺参/错类型/越界枚举、返回的 canonical value 通过 output schema 校验）、`test/04-tools.test.mjs`（38 个工具全量校验） |
+| 注册的 schema 能被**真实** registry 接受 | `test/01-load.test.mjs`（`assertSupportedJsonSchema`、`validateJsonSchemaValue` 拒绝缺参/错类型/越界枚举、返回的 canonical value 通过 output schema 校验）、`test/04-tools.test.mjs`（39 个工具全量校验） |
 | 控制器缺失/未构建时插件仍能加载并给出原因 | `test/01-load.test.mjs`（宿主行给警告、工具行照常注册）、`test/02-lifecycle.test.mjs` |
 
 **该环现已覆盖**（本轮实测）：在**隔离 `DSH_HOME`** 里创建测试 profile、`link:` 安装本仓库、用 `--patch` 叠加层启动真实宿主，观察到控制器子进程出现 → 证明真实 loader 组合了插件并调用了 `apply`。原始输出见 [REAL-RUN.md](REAL-RUN.md) §D.5。
@@ -169,8 +169,8 @@ information keep a dry run" 双向断言：14 个工具的 params 里**没有** 
 
 ### A9. 工具 `description` 清晰描述功能 —— ✅ 已验证
 
-- 38 个工具的描述都在 `src/tools.ts`（`open_project`、`export_blocks`、`import_blocks`、`compile_plc`、
-  close_project、controller_status，以及 v0.2 的 20 个、v0.3 的硬件 5 个与块编辑器 1 个）。
+- 39 个工具的描述都在 `src/tools.ts`（`open_project`、`export_blocks`、`import_blocks`、`compile_plc`、
+  close_project、controller_status，以及 v0.2 的 20 个、v0.3 的硬件 5 个、块编辑器 1 个与项目库 1 个）。
 - 每个描述都写明：做什么、**是否写入**、dry-run 策略（保留该参数的工具写明默认值与如何关闭；
   没有该参数的工具直接写"WRITES to the project"）、关键参数语义、以及会返回哪些错误码。
 - 测试：`test/01-load.test.mjs` 断言 `import_blocks` 描述里出现 `dry_run`、`transaction`、
@@ -268,7 +268,7 @@ information keep a dry run" 双向断言：14 个工具的 params 里**没有** 
 - 换用 Siemens 官方 NuGet（见 [decisions.md D13](decisions.md)）后，B.4 也已在真实项目上验证：
   官方解析器成功加载 `Siemens.Engineering`（`resolvedFrom=registry`），V17 上打开真实项目**未被白名单拦截**。
   该替换在无 TIA 环境可验证的范围内**未造成回归**：控制器构建 0 Warning/0 Error、
-  `--self-test` 14/14、`npm test` 45 项 44 通过 0 失败 1 跳过，与替换前完全一致。
+  `--self-test` 20/20、`npm test` 119 项 118 通过 0 失败 1 跳过，与替换前完全一致。
 - 缺陷修复：**4 处**。测试发现的 1 处（孤儿子进程，D8）+ 真实项目实测发现的 3 处
   （XML 对象元素解析错误导致写后验证静默失效、单块导出失败中止整批、导入固定落根组导致 override 无法覆盖；
   见 [REAL-RUN.md](REAL-RUN.md) §D.4 与 [decisions.md](decisions.md) D14/D15）。

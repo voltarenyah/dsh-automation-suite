@@ -15,8 +15,9 @@
 | 版本管理取证（服务专用，无模型工具） | `PlcChecksum` `SyncScan` |
 
 原本的五个操作（`OpenProject` `ExportBlocks` `ImportBlocks` `CompilePlc` `CloseProject`）
-不变。加上 `controller_status`（插件侧回答，不经过控制器），模型面工具总数为 **38**；
-操作总数为 **39**，其中 `PlcChecksum` 与 `SyncScan` 只通过 `engineeringAccess` 服务暴露。
+不变。加上 `controller_status`（插件侧回答，不经过控制器）与项目库 `project_library`，
+模型面工具总数为 **39**；操作总数为 **40**，其中 `PlcChecksum` 与 `SyncScan` 只通过
+`engineeringAccess` 服务暴露。
 
 通用约定（与既有五个操作一致）：
 
@@ -650,3 +651,60 @@ API：`Siemens.Engineering.IShowable.ShowInEditor()`（V17 反射实证：该接
 错误码：`project_not_open` `plc_software_not_found` `plc_software_ambiguous` `editor_unavailable`
 `block_not_found` `block_ambiguous` `too_many_blocks` `editor_show_failed` `editor_not_supported`
 `invalid_params`。
+
+---
+
+## 28. ProjectLibrary / `project_library`
+
+项目库（`Project.ProjectLibrary`）的读、导出、发布、组织与实例化。对应手册
+"Functions on libraries" 章；只做**项目库**，全局库（`TiaPortal.GlobalLibraries`）未接线。
+
+一个操作、一个工具，用 `action` 分六个子面：
+
+| action | 子面 | 写工程/库 | `dry_run` |
+|---|---|---|---|
+| `browse` | 类型树（含版本）、主副本树、文件夹、内容描述、依赖 | 否 | — |
+| `read` | 导出一个类型版本或主副本到 XML | 只写文件；主副本导出在事务里回滚 | — |
+| `export` | 整库导出：所选类型版本 + 主副本 + `_manifest.json` | 只写文件；主副本导出逐对象回滚 | — |
+| `write` | 把编辑后的 XML 发布成主副本（`new`/`replace`/`new_version`） | 是 | 默认 true |
+| `publish` | 从工程对象或 XML 创建主副本 | 是 | 默认 true |
+| `organize` | `create_folder`/`rename`/`delete`/`copy_master_copy`/`set_default_version` | 是 | 默认 true |
+| `use` | `instantiate`/`update_project`/`instances`/`dependencies`/`update_check` | 前两个是 | 默认 true（仅前两个） |
+
+关键参数：`kind`、`folder`、`name`、`guid`、`version`（`default`/`latest`/`committed`/`1.0.0`/GUID）、
+`output_file`、`output_dir`、`include`、`versions`、`max_files`、`file`、`mode`、`source`（`project_object`/`file`）、`category`
+（`blocks`/`types`/`tag_tables`）、`object_name`、`object_group`、`version_label`、
+`keep_previous`、`target_folder`、`target_group`、`device_name`/`software_name`、
+`confirm`、`dry_run`、`allow_master_copy_fallback`、`check_mode`。
+
+`data` 按 action 变化，共同点：
+
+- `browse`：`library:"project"` `types{count,items,folders,truncated}` `masterCopies{…}`
+  `counts{types,typeVersions,masterCopies}` `capabilities{…}`；类型条目含
+  `versions[]{version,guid,state,isDefault,author,modifiedDate,comment}`，主副本条目含
+  `content[]{name,type,fullType}` 与 `primaryType`。
+- `read`：`file` `bytes` `sha256` `header{element,kind,simaticType,name,…,libraryTypeVersion{…}}`。
+- `write`/`publish`：`targetFolder` `targetName` `mode` `committed` `masterCopy{…}`；
+  `fallback` 表示类型版本按主副本发布；`contentNameWarning` 表示目标名被工程对象占用、
+  内容用了暂存名（实例化时用 `new_name` 改名）。
+- `organize`：`operation` `kind` `name` `newName` `dryRun`。
+- `use`：`operation` `kind` `name` `version` `count`/`items` 或 `messageCount`/`messages`。
+
+V17 的硬边界（工具以结构化错误返回，不假装能做）：
+
+- `LibraryTypeVersion` 只有 `Export`，**没有** Import/CreateVersion/Release；`State`
+  （`InWork`/`Committed`）只读。`action=publish/write kind=type_version` 返回
+  `library_type_version_publish_unsupported`，`details.uiSteps` 给 TIA UI 步骤，
+  `details.fallback` 给"发布成主副本"的闭环；`allow_master_copy_fallback=true` 时自动走闭环。
+- 主副本导出/实例化只路由 PLC 块、PLC 类型、PLC 标签表；HMI/硬件对象返回
+  `library_master_copy_export_unsupported` / `_instantiate_unsupported`。
+- 标签表不能从 XML 发布（标签名全局唯一），返回 `library_master_copy_xml_unsupported`；
+  用 `source=project_object`。
+- 主副本内容在 TIA 里不一致时，`Export` 被拒绝，返回 `library_master_copy_inconsistent`。
+
+写入语义：`write`/`publish` 在事务里"改暂存名 → 导入 → `Create` 主副本 → 处理旧名 →
+删除暂存对象 → Commit"；`read kind=master_copy` 在事务里实例化并导出后**不 Commit**，
+工程不落临时对象。发布时目标名在工程里空闲就用目标名导入，主副本内容名因此正确。
+
+真实项目实测（SWT2 副本，280 类型 / 424 版本 / 8 主副本）与完整工作流见
+[`PROJECT-LIBRARY.md`](PROJECT-LIBRARY.md)。

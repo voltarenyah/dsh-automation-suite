@@ -242,6 +242,7 @@ test('import_blocks is a dry run unless it is explicitly switched off', async (t
     recursive: true,
     verify: true,
     keep_source: false,
+    allow_library_managed_import: false,
     dry_run: true,
   })
 
@@ -274,6 +275,43 @@ test('close_project is a dry run unless it is explicitly switched off', async (t
   assert.deepEqual(calls[1].params, { save: true, close_portal: true, dry_run: false })
 })
 
+test('project_library defaults the export path, the export options and the dry-run policy', async (t) => {
+  const { calls, byName } = await harness(t)
+  const exec = { agent: { session: { header: { cwd: 'C:\\ws' } } } }
+
+  await byName['project_library'].execute({ action: 'read', kind: 'type_version', name: 'UDT_X', version: '1.0.0' }, exec)
+  assert.equal(calls[0].operation, 'ProjectLibrary')
+  assert.deepEqual(calls[0].params, {
+    action: 'read',
+    kind: 'type_version',
+    name: 'UDT_X',
+    version: '1.0.0',
+    output_file: join('C:\\ws', 'library', 'types', 'UDT_X@1.0.0.xml'),
+    overwrite: false,
+    export_options: 'with_read_only',
+  })
+
+  await byName['project_library'].execute(
+    { action: 'publish', kind: 'master_copy', object_name: 'FB1', version_label: '2' },
+    exec,
+  )
+  assert.equal(calls[1].params.source, 'project_object')
+  assert.equal(calls[1].params.category, 'blocks')
+  assert.equal(calls[1].params.version_label, '2')
+  assert.equal(calls[1].params.dry_run, true, 'publishing is a dry run unless explicitly switched off')
+
+  await byName['project_library'].execute({ action: 'export' }, exec)
+  assert.equal(calls[2].params.output_dir, join('C:\\ws', 'library'))
+  assert.equal(calls[2].params.include, 'all')
+  assert.equal(calls[2].params.versions, 'all')
+  assert.equal(calls[2].params.overwrite, false)
+
+  // A read with no workspace and no explicit path must not reach the controller.
+  const missing = await byName['project_library'].execute({ action: 'read', kind: 'type_version', name: 'UDT_X' }, {})
+  assert.equal(missing.ok, false)
+  assert.equal(calls.length, 3)
+})
+
 test('controller_status never talks to the controller and hides the captured output by default', async (t) => {
   const { calls, byName, context } = await harness(t)
 
@@ -287,7 +325,7 @@ test('controller_status never talks to the controller and hides the captured out
   const verboseValue = await byName['controller_status'].execute({ include_controller_output: true }, {})
   assert.deepEqual(verboseValue.data.stderrTail, ['a stderr line'])
 
-  assert.equal(context.definitions.length, 38)
+  assert.equal(context.definitions.length, 39)
 })
 
 test('show_blocks_in_editor sends the batch and renders every opened block', async (t) => {

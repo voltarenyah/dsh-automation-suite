@@ -415,7 +415,6 @@ namespace TiaOpennessV17Min.Controller
             byte[] bytes = value as byte[];
             if (bytes != null) return Convert.ToBase64String(bytes);
 
-            DateTime date = default(DateTime);
             if (value is DateTime) return ((DateTime)value).ToString("o");
             if (value is System.Enum) return value.ToString();
             if (value is IFormattable) return Convert.ToString(value, System.Globalization.CultureInfo.InvariantCulture);

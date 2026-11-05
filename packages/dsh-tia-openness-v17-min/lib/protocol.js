@@ -64,6 +64,12 @@ export const OPERATIONS = [
      * interface.
      */
     'ShowBlocksInEditor',
+    /**
+     * Project library ("Functions on libraries"): type folders/types/versions and
+     * master-copy folders/master copies, export/import of edited XML, publishing
+     * master copies, instance creation and update, and library housekeeping.
+     */
+    'ProjectLibrary',
 ];
 export const OPERATION_SET = new Set(OPERATIONS);
 export function isOperation(value) {

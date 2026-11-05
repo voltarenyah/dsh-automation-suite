@@ -53,10 +53,11 @@
 
 - **不要手改** `skills/<name>/SKILL.md`（上游）、`skills/UPSTREAM.json` 与 `skills/LICENSE.siemens.txt`（生成物）；
   它们由 `node scripts/knowledge/build-skills.mjs` 按 pinned commit 重写，手改会被 `skills:check` 的 sha256 拦下。
-- 只有 `skills/tia-openness/SKILL.md` 属于本仓库，可直接编辑，但有两条硬约束（`skills:check` 会拦）：
-  正文 < **8192** 字符（标准 preset 的 tool-result 修剪阈值 `thresholdChars`），description ≤ **500** 字符
-  （会话目录的 `catalogDescriptionMaxLength`，是每个会话都要付的常驻成本），且它引用的每个
-  `<name>/SKILL.md` 必须真实存在。
+- 只有 `skills/tia-openness/SKILL.md` 与 `skills/tia-openness/PROJECT-LIBRARY.md` 属于本仓库，可直接编辑；
+  `SKILL.md` 有两条硬约束（`skills:check` 会拦）：正文 < **8192** 字符（标准 preset 的 tool-result
+  修剪阈值 `thresholdChars`），description ≤ **500** 字符（会话目录的 `catalogDescriptionMaxLength`，
+  是每个会话都要付的常驻成本），且它引用的每个 `<name>/SKILL.md` 必须真实存在。
+  `PROJECT-LIBRARY.md` 是 router 按需引用的专题文档，不单独进 catalog。
 - 命令：
 
   ```powershell

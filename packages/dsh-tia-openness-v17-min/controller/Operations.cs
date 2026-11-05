@@ -1,4 +1,5 @@
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
@@ -155,6 +156,10 @@ namespace TiaOpennessV17Min.Controller
                 // not a project change; needs a visible TIA Portal).
                 case OperationCatalog.ShowBlocksInEditor:
                     return ShowBlocksInEditor(parameters, log, changes, progress);
+
+                // Project library ("Functions on libraries").
+                case OperationCatalog.ProjectLibrary:
+                    return ProjectLibrary(parameters, log, changes, progress);
 
                 // Hardware configuration: CAx/AML export (read-only, needs a project)
                 // and the two file-only readers that parse the export (need none).
@@ -772,6 +777,7 @@ namespace TiaOpennessV17Min.Controller
             bool dryRun = p.Bool("dry_run", true);
             bool verify = p.Bool("verify", true);
             bool keepSource = p.Bool("keep_source", false);
+            bool allowLibraryManaged = p.Bool("allow_library_managed_import", false);
             string generateOptionName = p.Enum("generate_option", GenerateOptionNames, "none");
 List<string> categoryFilter = p.EnumList("categories", CategoryNames);
             string targetGroupPath = p.String("target_group", null);
@@ -814,6 +820,7 @@ List<string> categoryFilter = p.EnumList("categories", CategoryNames);
             // ---- plan ---------------------------------------------------------
             List<JsonObject> planned = new List<JsonObject>();
             List<string> conflicts = new List<string>();
+            List<JsonObject> libraryManaged = new List<JsonObject>();
             foreach (ImportCandidate candidate in candidates)
             {
                 JsonObject item = new JsonObject();
@@ -830,6 +837,34 @@ List<string> categoryFilter = p.EnumList("categories", CategoryNames);
 
                 bool exists = !string.IsNullOrEmpty(candidate.BlockName) && before.Contains(candidate.Category, candidate.BlockName);
                 item.Add("existsInProject", exists);
+                bool isLibraryManaged = exists && before.IsLibraryManaged(candidate.Category, candidate.BlockName);
+                if (candidate.IsExternalSource)
+                {
+                    // External sources can generate several blocks; their declarations
+                    // are the only names known before TIA runs the generator.
+                    foreach (string declaredName in ExternalSourceBlockNames(candidate.File))
+                    {
+                        if (!before.IsLibraryManaged(CategoryBlocks, declaredName)) continue;
+                        isLibraryManaged = true;
+                        libraryManaged.Add(JsonObject.Of(
+                            "category", CategoryBlocks,
+                            "name", declaredName,
+                            "group", before.GroupOf(CategoryBlocks, declaredName),
+                            "file", candidate.File,
+                            "source", "external_source",
+                            "library", before.LibraryInstanceOf(CategoryBlocks, declaredName)));
+                    }
+                }
+                item.Add("libraryManaged", isLibraryManaged);
+                if (isLibraryManaged && !candidate.IsExternalSource)
+                {
+                    libraryManaged.Add(JsonObject.Of(
+                        "category", candidate.Category,
+                        "name", candidate.BlockName,
+                        "group", before.GroupOf(candidate.Category, candidate.BlockName),
+                        "file", candidate.File,
+                        "library", before.LibraryInstanceOf(candidate.Category, candidate.BlockName)));
+                }
                 if (exists && !string.IsNullOrEmpty(candidate.TargetGroupPath))
                 {
                     string existingGroup = before.GroupOf(candidate.Category, candidate.BlockName);
@@ -882,6 +917,46 @@ List<string> categoryFilter = p.EnumList("categories", CategoryNames);
             data.AddIfPresent("categories", categoryFilter.Count > 0 ? categoryFilter : null);
             data.Add("plan", planned);
             data.Add("conflicts", conflicts);
+            data.Add("allowLibraryManagedImport", allowLibraryManaged);
+            if (libraryManaged.Count > 0) data.Add("libraryManaged", libraryManaged);
+
+            if (libraryManaged.Count > 0 && !allowLibraryManaged)
+            {
+                if (dryRun)
+                {
+                    data.Add("ready", false);
+                    data.Add("blocked", true);
+                    log.Warning("Dry run: " + libraryManaged.Count + " target object(s) are managed by the project library; "
+                        + "a real import would be refused unless allow_library_managed_import=true.");
+                    return data;
+                }
+                throw new ControllerException("library_managed_block",
+                    "Refusing to import over " + libraryManaged.Count + " project-library-managed object(s): "
+                        + "this bypasses TIA's check-in/release workflow and leaves the instance inconsistent. "
+                        + "Use the library-aware workflow (export the library version, edit, publish a new version/master copy, "
+                        + "then update the instances) or set allow_library_managed_import=true to override deliberately.",
+                    JsonObject.Of("blocks", libraryManaged, "hint",
+                        "The existing block/type is an instance of a project-library type version. Direct XML import detaches "
+                            + "the instance from the library and TIA then reports it as inconsistent; Openness cannot export "
+                            + "or repair such a block.",
+                        "recommendedActions", new List<string>
+                        {
+                            "Ask the user to check out, edit and release the library version in TIA Portal; then verify it "
+                                + "with project_library browse/read and update the project instances with "
+                                + "project_library use operation=update_project.",
+                            "Or, with explicit user approval, fork: export the block, remove LibraryType / "
+                                + "LibraryTypeVersionGuid / LibraryConformanceStatus from the XML, import it as a NEW ordinary "
+                                + "block under a new name, and update the callers in TIA. This is a one-way divergence, not a "
+                                + "library update.",
+                            "Only pass allow_library_managed_import=true when the user explicitly accepts that the instance "
+                                + "will detach and become inconsistent.",
+                        }));
+            }
+            if (libraryManaged.Count > 0)
+            {
+                log.Warning("Importing over " + libraryManaged.Count + " library-managed object(s) because "
+                    + "allow_library_managed_import=true; the library link may be lost and the instance may become inconsistent.");
+            }
 
             if (dryRun)
             {
@@ -1138,6 +1213,34 @@ List<string> categoryFilter = p.EnumList("categories", CategoryNames);
         // ------------------------------------------------- category-aware helpers
 
         /// <summary>
+        /// The block names an SCL/STL external source declares. Best effort: an
+        /// unreadable source yields an empty list and the import itself reports
+        /// the real parse error.
+        /// </summary>
+        private static List<string> ExternalSourceBlockNames(string file)
+        {
+            List<string> names = new List<string>();
+            try
+            {
+                JsonObject described = SimaticMl.DescribeExternalSource(file);
+                IEnumerable items = described["objects"] as IEnumerable;
+                if (items == null) return names;
+                foreach (object item in items)
+                {
+                    JsonObject entry = item as JsonObject;
+                    if (entry == null) continue;
+                    string name = JsonObject.ReadString(entry, "name", null);
+                    if (!string.IsNullOrWhiteSpace(name) && !names.Contains(name)) names.Add(name);
+                }
+            }
+            catch (Exception)
+            {
+                // The import path reports the parse error itself.
+            }
+            return names;
+        }
+
+        /// <summary>
         /// Read-back view of one PLC software over the categories an import touched.
         /// Collections are only read for the categories in play, so a block-only
         /// import does not pay for type and tag table traversal.
@@ -1173,6 +1276,38 @@ List<string> categoryFilter = p.EnumList("categories", CategoryNames);
                     PlcTagTableRef table; return _tables.TryGetValue(name, out table) ? table.GroupPath : null;
                 }
                 BlockRef block; return _blocks.TryGetValue(name, out block) ? block.GroupPath : null;
+            }
+
+            /// <summary>The library type/version of an existing instance, or null.</summary>
+            public JsonObject LibraryInstanceOf(string category, string name)
+            {
+                if (string.IsNullOrEmpty(name)) return null;
+                if (string.Equals(category, CategoryTypes, StringComparison.Ordinal))
+                {
+                    PlcTypeRef type;
+                    return _types.TryGetValue(name, out type) ? OpennessHost.DescribeLibraryInstance(type.Type) : null;
+                }
+                if (string.Equals(category, CategoryTagTables, StringComparison.Ordinal)) return null;
+                BlockRef block;
+                return _blocks.TryGetValue(name, out block) ? OpennessHost.DescribeLibraryInstance(block.Block) : null;
+            }
+
+            /// <summary>True when the existing object is an instance of a library type version.</summary>
+            public bool IsLibraryManaged(string category, string name)
+            {
+                if (string.IsNullOrEmpty(name)) return false;
+                if (string.Equals(category, CategoryTypes, StringComparison.Ordinal))
+                {
+                    PlcTypeRef type;
+                    return _types.TryGetValue(name, out type) && OpennessHost.IsLibraryManaged(type.Type);
+                }
+                if (string.Equals(category, CategoryTagTables, StringComparison.Ordinal))
+                {
+                    // PlcTagTable has no LibraryTypeInstanceInfo service in V17.
+                    return false;
+                }
+                BlockRef block;
+                return _blocks.TryGetValue(name, out block) && OpennessHost.IsLibraryManaged(block.Block);
             }
 
             public JsonObject Describe(string category, string name)

@@ -766,6 +766,99 @@ function renderData(operation, data, verbose) {
             }
             break;
         }
+        case 'ProjectLibrary': {
+            const action = text(data['action']) ?? '?';
+            lines.push(`Library action: ${action}${data['kind'] === undefined ? '' : ` (${text(data['kind'])})`}`);
+            if (action === 'browse') {
+                const counts = record(data['counts']);
+                if (counts !== null) {
+                    lines.push(`Types: ${numberOf(counts['types']) ?? 0} (${numberOf(counts['typeVersions']) ?? 0} versions), ` +
+                        `master copies: ${numberOf(counts['masterCopies']) ?? 0}`);
+                }
+                for (const item of list(field(data, 'types', 'items')).slice(0, MAX_LISTED)) {
+                    const entry = record(item);
+                    if (entry === null)
+                        continue;
+                    const versions = list(entry['versions']);
+                    lines.push(`  type ${text(entry['folder']) ?? ''}/${text(entry['name']) ?? '?'}` +
+                        (entry['defaultVersion'] === undefined ? '' : ` (default ${text(entry['defaultVersion'])})`) +
+                        ` — ${versions.length} version(s), ${text(entry['status']) ?? '?'}`);
+                }
+                for (const item of list(field(data, 'masterCopies', 'items')).slice(0, MAX_LISTED)) {
+                    const entry = record(item);
+                    if (entry === null)
+                        continue;
+                    lines.push(`  master copy ${text(entry['folder']) ?? ''}/${text(entry['name']) ?? '?'} ` +
+                        `[${text(entry['primaryType']) ?? '?'}]`);
+                }
+            }
+            else if (action === 'read') {
+                lines.push(`File: ${text(data['file']) ?? '?'} (${numberOf(data['bytes']) ?? 0} bytes)`);
+                const header = record(data['header']);
+                if (header !== null) {
+                    lines.push(`Object: ${text(header['element']) ?? '?'} / ${text(header['kind']) ?? '?'} / ${text(header['name']) ?? '?'}`);
+                    const library = record(header['libraryTypeVersion']);
+                    if (library !== null) {
+                        lines.push(`Library version: ${text(library['typeName']) ?? '?'} ${text(library['version']) ?? '?'} ` +
+                            `(${text(library['typeGuid']) ?? '?'})`);
+                    }
+                }
+            }
+            else if (action === 'export') {
+                const counts = record(data['counts']);
+                if (counts !== null) {
+                    lines.push(`Exported ${numberOf(counts['files']) ?? 0} file(s): ` +
+                        `${numberOf(counts['types']) ?? 0} type(s) / ${numberOf(counts['typeVersions']) ?? 0} version(s), ` +
+                        `${numberOf(counts['masterCopies']) ?? 0} master copy/copies; ` +
+                        `skipped ${numberOf(counts['skipped']) ?? 0}, failed ${numberOf(counts['failed']) ?? 0}`);
+                }
+                lines.push(`Directory: ${text(data['outputDir']) ?? '?'}`);
+                lines.push(`Manifest: ${text(data['manifest']) ?? '?'}`);
+                for (const item of list(data['failures']).slice(0, MAX_LISTED)) {
+                    const entry = record(item);
+                    if (entry === null)
+                        continue;
+                    lines.push(`  failed ${text(entry['kind']) ?? '?'} ${text(entry['name']) ?? '?'}` +
+                        (entry['version'] === undefined ? '' : `@${text(entry['version'])}`) +
+                        `: ${text(entry['code']) ?? '?'} ${text(entry['message']) ?? ''}`.trimEnd());
+                }
+            }
+            else if (action === 'publish' || action === 'write') {
+                lines.push(`Target: ${text(data['targetFolder']) ?? '(root)'}/${text(data['targetName']) ?? '?'} ` +
+                    `(${text(data['mode']) ?? '?'}, ${data['dryRun'] === true ? 'dry run' : 'written'})`);
+                if (data['fallback'] === true)
+                    lines.push('Published as an unversioned master copy (V17 cannot publish type versions).');
+                if (data['contentNameWarning'] !== undefined)
+                    lines.push(text(data['contentNameWarning']) ?? '');
+                const previous = record(data['previous']);
+                if (previous !== null)
+                    lines.push(`Previous master copy: ${text(previous['action']) ?? '?'} ${text(previous['previousName']) ?? ''}`);
+                const created = record(data['masterCopy']);
+                if (created !== null) {
+                    for (const item of list(created['content']).slice(0, MAX_LISTED)) {
+                        const entry = record(item);
+                        if (entry !== null)
+                            lines.push(`  content: ${text(entry['name']) ?? '?'} [${text(entry['type']) ?? '?'}]`);
+                    }
+                }
+            }
+            else if (action === 'organize') {
+                lines.push(`${text(data['operation']) ?? '?'} ${text(data['kind']) ?? '?'}: ` +
+                    `${text(data['folder']) ?? ''}/${text(data['name']) ?? '?'}` +
+                    (data['newName'] === undefined ? '' : ` -> ${text(data['newName'])}`) +
+                    ` (${data['dryRun'] === true ? 'dry run' : 'written'})`);
+            }
+            else if (action === 'use') {
+                lines.push(`${text(data['operation']) ?? '?'} ${text(data['kind']) ?? ''}: ` +
+                    `${text(data['name']) ?? text(data['objectName']) ?? '?'}` +
+                    (data['version'] === undefined ? '' : `@${text(data['version'])}`));
+                if (data['count'] !== undefined)
+                    lines.push(`Instances: ${numberOf(data['count']) ?? 0}`);
+                if (data['messageCount'] !== undefined)
+                    lines.push(`Update-check messages: ${numberOf(data['messageCount']) ?? 0}`);
+            }
+            break;
+        }
         case 'ControllerStatus': {
             // The status tool already renders every line into the summary.
             break;
@@ -872,6 +965,43 @@ function hardwareDirectory(explicit, exec) {
         return workspace === undefined ? null : join(workspace, value);
     }
     return workspace === undefined ? null : join(workspace, HARDWARE_DIR_NAME);
+}
+// --------------------------------------------------- project-library artifacts
+/** Folder below the workspace root that holds project-library XML exports. */
+const LIBRARY_DIR_NAME = 'library';
+/**
+ * Sanitizes one path segment of a library export name.
+ *
+ * Non-ASCII names are common in TIA projects (`Fonctions méthode`,
+ * `55_Cavité_STD`), so this only replaces the characters Windows forbids in a
+ * file name and never transliterates.
+ */
+function safeLibrarySegment(value) {
+    const cleaned = value.replace(/[\\/:*?"<>|]+/g, '_').trim();
+    return cleaned.length === 0 ? 'unnamed' : cleaned;
+}
+/**
+ * The file an `action=read` export writes into.
+ *
+ * A library export is a workspace artifact, so the default is
+ * `<workspace>/library/...`; an explicit `output_file` wins, and a relative one
+ * resolves against the workspace rather than the controller's process directory.
+ */
+function libraryOutputPath(args, exec) {
+    const workspace = sessionCwd(exec);
+    const explicit = typeof args.output_file === 'string' ? args.output_file.trim() : '';
+    if (explicit.length > 0) {
+        if (isAbsolute(explicit))
+            return explicit;
+        return workspace === undefined ? null : join(workspace, explicit);
+    }
+    if (workspace === undefined)
+        return null;
+    const name = safeLibrarySegment(args.name ?? args.guid ?? 'library-object');
+    if (args.kind === 'master_copy') {
+        return join(workspace, LIBRARY_DIR_NAME, 'master-copies', `${name}.xml`);
+    }
+    return join(workspace, LIBRARY_DIR_NAME, 'types', `${name}@${safeLibrarySegment(args.version ?? 'default')}.xml`);
 }
 // ----------------------------------------------------------------- the tools
 /** The canonical output envelope every tool declares. */
@@ -1147,9 +1277,13 @@ export function registerTools(ctx, dependencies) {
             "Use import_options 'override' to replace blocks that already exist (TIA refuses duplicates with 'none'). " +
             'The files may come from another project or another managed workspace — the controller only reads the paths. When ' +
             'borrowing across projects run `import_preflight` first (engineering-context): it reports language/culture mismatches, ' +
-            'dependencies and name collisions before this transaction starts. TIA ASSIGNS BLOCK NUMBERS on import; a number used in ' +
+            'dependencies and name collisions before this transaction starts. **Library-managed blocks are refused by default**: ' +
+            'a block/type that is an instance of a project-library type version cannot be overwritten by XML import without ' +
+            'bypassing TIA\'s check-in/release workflow (the instance detaches and becomes inconsistent). Use the library-aware ' +
+            'workflow, or set allow_library_managed_import=true only to override deliberately. TIA ASSIGNS BLOCK NUMBERS on import; a number used in ' +
             'the source project is not a conflict, and the file-name prefix is cosmetic — the NAME is the identity. ' +
-            'Fails with invalid_params, invalid_file, block_not_found, import_failed, verification_failed or project_not_open.',
+            'Fails with invalid_params, invalid_file, block_not_found, import_failed, verification_failed, ' +
+            'library_managed_block or project_not_open.',
         parameters: {
             import_paths: {
                 type: 'array',
@@ -1200,6 +1334,12 @@ export function registerTools(ctx, dependencies) {
             recursive: { type: 'boolean', description: 'True (default) to scan directories recursively.' },
             verify: { type: 'boolean', description: 'True (default) to read the block composition back after committing.' },
             keep_source: { type: 'boolean', description: 'True to keep an imported external source in the project (TIA keeps it by default); false (default) deletes it after generating the blocks.' },
+            allow_library_managed_import: {
+                type: 'boolean',
+                description: 'False (default): refuse to import over a block/type that is an instance of a project-library type version. ' +
+                    'Direct XML import bypasses TIA\'s check-in/release workflow, detaches the instance and leaves it inconsistent; ' +
+                    'use the library-aware workflow instead. Set true only to override deliberately.',
+            },
             reference: {
                 type: 'string',
                 description: 'Optional provenance label, one line, e.g. "SWT2@4af0a95" when the files came from another workspace. It is echoed in the ' +
@@ -1223,6 +1363,7 @@ export function registerTools(ctx, dependencies) {
                 recursive: args.recursive ?? true,
                 verify: args.verify ?? true,
                 keep_source: args.keep_source ?? false,
+                allow_library_managed_import: args.allow_library_managed_import ?? false,
                 dry_run: args.dry_run ?? true,
             };
             if (args.target_group !== undefined)
@@ -2811,6 +2952,295 @@ export function registerTools(ctx, dependencies) {
                     outputPath,
                 }));
             }
+        },
+    }));
+    register(defineTool({
+        name: 'project_library',
+        description: 'Read and change the PROJECT library of the open project: the versioned Types tree and the unversioned ' +
+            'Master copies tree. One call does one action: ' +
+            "browse (folders, types, versions, master copies, content descriptions), " +
+            "read (export one type version or master copy to Simatic ML XML), " +
+            "export (write the whole library as a controlled tree + _manifest.json, one file per version/master copy), " +
+            "write (publish edited XML back as a master copy: mode new/replace/new_version), " +
+            "publish (new master copy from a project object or from edited XML), " +
+            "organize (create_folder/rename/delete/copy_master_copy/set_default_version) and " +
+            "use (instantiate/update_project/instances/dependencies/update_check). " +
+            'V17 Openness has NO Import/CreateVersion/Release API for library type versions: a type version can be ' +
+            'exported and read, but publishing it is a TIA Portal UI action. The supported round trip is: export the ' +
+            'type version, edit the XML, then publish it as a master copy (allow_master_copy_fallback=true); a master ' +
+            'copy is unversioned, so put the version in name/version_label. Master copies of PLC blocks, PLC types and ' +
+            'PLC tag tables can be exported and instantiated; HMI and hardware master copies are reported as ' +
+            'unsupported. Every write runs in an exclusive-access transaction; dry_run defaults to true for write, ' +
+            'publish, organize and the two use writes. Fails with project_not_open, library_type_not_found, ' +
+            'library_type_ambiguous, library_version_not_found, library_version_in_work, library_master_copy_not_found, ' +
+            'library_master_copy_exists, library_master_copy_inconsistent, library_type_version_publish_unsupported, ' +
+            'confirmation_required or invalid_params. Requires an open project.',
+        parameters: {
+            action: {
+                type: 'string',
+                required: true,
+                enum: ['browse', 'read', 'write', 'publish', 'organize', 'use', 'export'],
+                description: "The library action: 'browse' reads the tree, 'read' exports one object as XML, 'export' writes the whole " +
+                    "library (all selected type versions + master copies) with a manifest, 'write' publishes edited XML as a " +
+                    "master copy, 'publish' creates a master copy from a project object or XML, 'organize' handles " +
+                    "folders/rename/delete/copy/default version, 'use' instantiates or updates project instances.",
+            },
+            kind: {
+                type: 'string',
+                enum: ['all', 'types', 'master_copies', 'type_version', 'master_copy', 'type', 'type_folder', 'master_copy_folder'],
+                description: "Object family. browse: all|types|master_copies (default all). read/write/publish/use: type_version|master_copy. " +
+                    'organize: type|type_version|master_copy|type_folder|master_copy_folder. update_project: all|type|type_version.',
+            },
+            operation: {
+                type: 'string',
+                enum: [
+                    'create_folder',
+                    'rename',
+                    'delete',
+                    'copy_master_copy',
+                    'set_default_version',
+                    'instantiate',
+                    'update_project',
+                    'instances',
+                    'dependencies',
+                    'update_check',
+                ],
+                description: 'The sub-operation for action=organize (first five) or action=use (last five). Required for those actions.',
+            },
+            folder: {
+                type: 'string',
+                description: "Library folder path, relative to the Types or Master copies root, e.g. '999_Bibliotheque/UDT'. " +
+                    'Empty/omitted means the root.',
+            },
+            name: { type: 'string', description: 'Type name or master-copy name. For organize folder operations this is the folder path.' },
+            guid: { type: 'string', description: 'Library type or type-version GUID; preferred over name when names are ambiguous.' },
+            version: {
+                type: 'string',
+                description: "Type version: 'default' (the default version), 'latest', 'committed', '1.0.0' or a version GUID.",
+            },
+            new_name: { type: 'string', description: 'New name for organize operation=rename or the created project object for action=use.' },
+            output_file: {
+                type: 'string',
+                description: 'action=read: XML file to write. Defaults to `<workspace>/library/types/<name>@<version>.xml` or ' +
+                    '`<workspace>/library/master-copies/<name>.xml`.',
+            },
+            output_dir: {
+                type: 'string',
+                description: 'action=export: directory to write the controlled library tree and `_manifest.json` into. Defaults to ' +
+                    '`<workspace>/library`. A relative path resolves against the workspace.',
+            },
+            include: {
+                type: 'string',
+                enum: ['all', 'types', 'master_copies'],
+                description: "action=export: what to export (default 'all').",
+            },
+            versions: {
+                type: 'string',
+                enum: ['all', 'committed', 'default'],
+                description: "action=export: which type versions to export (default 'all'; 'committed' = released only, " +
+                    "'default' = the default version only).",
+            },
+            file: {
+                type: 'string',
+                description: 'action=write/publish source=file: the edited Simatic ML XML to import. May be a type-version export (the wrapper is unwrapped automatically).',
+            },
+            overwrite: { type: 'boolean', description: 'action=read: replace output_file when it exists (default false).' },
+            export_options: {
+                type: 'string',
+                enum: ['none', 'with_defaults', 'with_read_only'],
+                description: "Export options (default 'with_read_only', which keeps GUIDs and library metadata).",
+            },
+            mode: {
+                type: 'string',
+                enum: ['new', 'replace', 'new_version'],
+                description: "Publishing mode: 'new' creates the name, 'replace' replaces it (keep_previous keeps the old one), " +
+                    "'new_version' appends '_v<version_label>' (or a timestamp when no label is given). Default 'new' for XML, " +
+                    "'new_version' for a project object.",
+            },
+            source: {
+                type: 'string',
+                enum: ['project_object', 'file'],
+                description: "action=publish: 'project_object' (default) copies a block/type/tag table from the project, 'file' imports edited XML.",
+            },
+            category: {
+                type: 'string',
+                enum: ['blocks', 'types', 'tag_tables'],
+                description: "action=publish source=project_object: the project object family (default 'blocks').",
+            },
+            object_name: { type: 'string', description: 'action=publish source=project_object: the project object name.' },
+            object_group: { type: 'string', description: 'action=publish source=project_object: optional PLC group path of the object.' },
+            version_label: {
+                type: 'string',
+                description: "mode=new_version: the label appended as '_v<label>'. A timestamp is used when omitted.",
+            },
+            keep_previous: {
+                type: 'boolean',
+                description: 'mode=replace: true (the default) renames the old master copy to <name>__previous_<timestamp> instead of deleting it.',
+            },
+            target_folder: { type: 'string', description: 'action=organize operation=copy_master_copy: destination master-copy folder.' },
+            target_group: { type: 'string', description: 'action=use operation=instantiate: target PLC group path (created when missing).' },
+            device_name: { type: 'string', description: 'PLC device name. Omit to use the first PLC software of the project.' },
+            software_name: { type: 'string', description: 'PLC software name. Omit to use the first PLC software of the device.' },
+            recursive: { type: 'boolean', description: 'action=browse: include subfolders (default true).' },
+            include_versions: { type: 'boolean', description: 'action=browse: include the version list of every type (default true).' },
+            include_content: { type: 'boolean', description: 'action=browse: include master-copy content descriptions (default true).' },
+            include_dependencies: {
+                type: 'boolean',
+                description: 'action=browse: include dependency/dependent lists of every version (default false; in-work versions may refuse).',
+            },
+            name_filter: { type: 'string', description: 'action=browse: case-insensitive substring filter on the object name.' },
+            max_items: { type: 'integer', description: 'action=browse: maximum types and maximum master copies to list (default 500).' },
+            max_files: {
+                type: 'integer',
+                description: 'action=export: maximum file entries echoed in the result payload (default 200; the full list is always ' +
+                    'in `_manifest.json`).',
+            },
+            confirm: { type: 'boolean', description: 'action=organize operation=delete: must be true, together with dry_run=false, to delete.' },
+            dry_run: {
+                type: 'boolean',
+                description: 'Preview without writing. Defaults to true for write, publish, organize and use instantiate/update_project; ' +
+                    'pass false to execute. Browse/read and the read-only use operations ignore it.',
+            },
+            allow_master_copy_fallback: {
+                type: 'boolean',
+                description: 'action=publish/write kind=type_version: true publishes the edited type-version XML as an unversioned master copy ' +
+                    'instead of failing with library_type_version_publish_unsupported.',
+            },
+            check_mode: {
+                type: 'string',
+                enum: ['out_of_date_only', 'all'],
+                description: "action=use operation=update_check: report only out-of-date instances (default) or all instances.",
+            },
+        },
+        output: {
+            schema: OUTCOME_SCHEMA,
+            render: (_args, value) => [{ type: 'text', text: renderValue(value, verbose) }],
+        },
+        async execute(args, exec) {
+            const action = args.action;
+            const params = { action };
+            const set = (key, value) => {
+                if (value !== undefined)
+                    params[key] = value;
+            };
+            if (action === 'browse') {
+                set('kind', args.kind ?? 'all');
+                set('folder', args.folder);
+                set('recursive', args.recursive ?? true);
+                set('include_versions', args.include_versions ?? true);
+                set('include_content', args.include_content ?? true);
+                set('include_dependencies', args.include_dependencies ?? false);
+                set('name_filter', args.name_filter);
+                set('max_items', args.max_items ?? 500);
+            }
+            else if (action === 'read') {
+                const output = libraryOutputPath(args, exec);
+                if (output === null) {
+                    return asJsonOutcome(localFailure('ProjectLibrary', 'scope_unavailable', 'The library export is written into the workspace, but this session supplied no working directory. ' +
+                        'Pass an absolute `output_file`.'));
+                }
+                set('kind', args.kind);
+                set('name', args.name);
+                set('guid', args.guid);
+                set('folder', args.folder);
+                set('version', args.version ?? 'default');
+                set('output_file', output);
+                set('overwrite', args.overwrite ?? false);
+                set('export_options', args.export_options ?? 'with_read_only');
+                set('device_name', args.device_name);
+                set('software_name', args.software_name);
+            }
+            else if (action === 'export') {
+                const workspace = sessionCwd(exec);
+                const explicit = typeof args.output_dir === 'string' ? args.output_dir.trim() : '';
+                let outputDir;
+                if (explicit.length > 0) {
+                    outputDir = isAbsolute(explicit) ? explicit : workspace === undefined ? null : join(workspace, explicit);
+                }
+                else {
+                    outputDir = workspace === undefined ? null : join(workspace, LIBRARY_DIR_NAME);
+                }
+                if (outputDir === null) {
+                    return asJsonOutcome(localFailure('ProjectLibrary', 'scope_unavailable', 'The library export is written into the workspace, but this session supplied no working directory. ' +
+                        'Pass an absolute `output_dir`.'));
+                }
+                set('output_dir', outputDir);
+                set('include', args.include ?? 'all');
+                set('versions', args.versions ?? 'all');
+                set('overwrite', args.overwrite ?? false);
+                set('max_files', args.max_files ?? 200);
+                set('device_name', args.device_name);
+                set('software_name', args.software_name);
+            }
+            else if (action === 'write') {
+                set('kind', args.kind);
+                set('file', args.file);
+                set('mode', args.mode ?? 'new');
+                set('name', args.name);
+                set('version_label', args.version_label);
+                set('folder', args.folder);
+                set('keep_previous', args.keep_previous ?? true);
+                set('dry_run', args.dry_run ?? true);
+                set('allow_master_copy_fallback', args.allow_master_copy_fallback ?? false);
+                set('device_name', args.device_name);
+                set('software_name', args.software_name);
+            }
+            else if (action === 'publish') {
+                set('kind', args.kind);
+                set('source', args.source ?? 'project_object');
+                set('category', args.category ?? 'blocks');
+                set('object_name', args.object_name);
+                set('object_group', args.object_group);
+                set('file', args.file);
+                set('mode', args.mode);
+                set('name', args.name);
+                set('version_label', args.version_label);
+                set('folder', args.folder);
+                set('keep_previous', args.keep_previous ?? true);
+                set('dry_run', args.dry_run ?? true);
+                set('allow_master_copy_fallback', args.allow_master_copy_fallback ?? false);
+                set('device_name', args.device_name);
+                set('software_name', args.software_name);
+            }
+            else if (action === 'organize') {
+                set('operation', args.operation);
+                const defaultKind = args.operation === 'copy_master_copy'
+                    ? 'master_copy'
+                    : args.operation === 'set_default_version'
+                        ? 'type_version'
+                        : undefined;
+                set('kind', args.kind ?? defaultKind);
+                set('folder', args.folder);
+                set('name', args.name);
+                set('guid', args.guid);
+                set('version', args.version);
+                set('new_name', args.new_name);
+                set('target_folder', args.target_folder);
+                set('confirm', args.confirm ?? false);
+                set('dry_run', args.dry_run ?? true);
+            }
+            else if (action === 'use') {
+                set('operation', args.operation);
+                if (args.operation === 'update_project')
+                    set('kind', args.kind ?? 'all');
+                else if (args.operation === 'update_check')
+                    set('kind', args.kind);
+                else
+                    set('kind', args.kind ?? 'type_version');
+                set('folder', args.folder);
+                set('name', args.name);
+                set('guid', args.guid);
+                set('version', args.version ?? 'default');
+                set('target_group', args.target_group);
+                set('new_name', args.new_name);
+                set('device_name', args.device_name);
+                set('software_name', args.software_name);
+                if (args.operation === 'update_check')
+                    set('mode', args.check_mode ?? 'out_of_date_only');
+                if (args.operation === 'instantiate' || args.operation === 'update_project')
+                    set('dry_run', args.dry_run ?? true);
+            }
+            return asJsonOutcome(await runOperation(dependencies, 'ProjectLibrary', params, exec.signal));
         },
     }));
     register(defineTool({

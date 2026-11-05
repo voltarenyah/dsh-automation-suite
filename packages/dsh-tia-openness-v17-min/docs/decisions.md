@@ -967,3 +967,48 @@ Openness 里这件事只有一条路：`Siemens.Engineering.IShowable.ShowInEdit
 `HANDOFF-PLCSIM-DOWNLOAD.md` 记录一致，不是本次改动的回归。两个**未**在真机覆盖的分支：
 "只有 headless 实例在跑时新起可见实例"（当时没有 headless 实例）与 `project_already_open` 的
 新文案（附加到已占窗口的分支被 `FreeInstance` 策略绕开了）。
+
+## D31. 项目库：补到 Openness 能给的上限，类型版本发布明确交给 TIA UI
+
+**背景**：V17 项目库（`Project.ProjectLibrary`）里有两棵语义不同的树——版本化的 `Types`
+（`LibraryType`/`LibraryTypeVersion`，状态 `InWork`/`Committed`）与无版本的 `Master copies`
+（`MasterCopy`）。此前控制器完全没有引用 `Siemens.Engineering.Library*`（覆盖矩阵里 0/47 类型），
+模型既看不到类型/版本，也拿不到主副本。
+
+**决定**：
+
+1. **一个控制器操作 `ProjectLibrary` + 一个工具 `project_library`**，用 `action` 分六个子面
+   （`browse`/`read`/`write`/`publish`/`organize`/`use`）。理由与 `archive_project` 的
+   `action=archive|retrieve` 相同：这些子面共享同一套类型/版本/主副本定位逻辑，拆成 10+ 个工具
+   只会让模型在工具表里迷路；控制器侧仍是一个白名单操作，矩阵的"操作/工具"对照不变。
+2. **类型版本只做 Openness 存在的动作**：枚举、`Export`、`SetAsDefault`、`Delete`、
+   `FindInstances`、`Dependencies`/`Dependents`。V17 的 `LibraryTypeVersion` 没有
+   Import/CreateVersion/Release，`State` 只读；因此 `publish/write kind=type_version`
+   返回 `library_type_version_publish_unsupported`，`details.uiSteps` 给 TIA UI 步骤，
+   `details.fallback` 给"导出→编辑→作为主副本发布"的可执行闭环。**不伪造一个 `State=Committed`**。
+3. **"编辑并发布新版本"落在主副本上**：主副本无版本号，所以 `mode=new_version` 只是命名约定
+   （`<name>_v<label>`），`mode=replace` + `keep_previous=true` 把旧副本改名保留。发布流程在
+   一个事务里"改暂存名→导入→Create 主副本→处理旧名→删除暂存对象→Commit"；目标名在工程里空闲
+   时直接用目标名导入，保证主副本的**内容名**正确（否则会留下 `dsh_lib_…`，实测抓到）。
+4. **库版本 XML 要剥壳**：`LibraryTypeVersion.Export` 的根是
+   `SW.Types.PlcTypeLibraryTypeVersion`（或 `SW.Blocks.CodeBlockLibraryTypeVersion`），
+   真正的对象在 `<ObjectList>` 的 `ContentObject`。`SimaticMl.ReadHeader`/`RewriteObjectName`
+   识别包装层并剥掉 `LibraryConformanceStatus`/`LibraryTypeGuid`/`VersionNumber` 等库元数据，
+   否则导入工程会失败。
+5. **主副本导出在事务里实例化后回滚**：读主副本没有直接 `Export`，只能先 `CreateFrom` 成工程对象
+   再导出；用事务包住且**不 Commit**，工程不落临时对象。PLC 块/类型/标签表可路由；HMI/硬件对象
+   返回 `*_unsupported`，不猜目标。
+6. **全局库不接线**：`TiaPortal.GlobalLibraries`（`.zal`/`.zap`、跨库 `UpdateLibrary`）是另一套
+   对象，不在本次范围；`browse` 的 `library` 固定 `"project"`。
+
+**为什么不是"让模型直接改 .ap17 里的库文件"**：项目库不是磁盘上的一组文件，它嵌在工程持久化里；
+Openness 是唯一受支持的入口。把 `.ap17` 当文件改既没有格式契约，也会绕过 TIA 的一致性检查。
+
+**验证**：`controller/build.ps1` 重编 + `--self-test`（20/20）；`npm run check`（119 项测试、
+`matrix:check`、`skills:check` 全过）；真实 `PEI_SinoARP_SWT2.ap17` 副本上 browse 280 类型 /
+424 版本 / 8 主副本，导出 `UDT_MotionPara@0.0.2`，编辑后作为主副本 `UDT_MotionPara_vTest` 发布并
+清理；一个不一致 `GlobalDB` 主副本与一个 HMI 标签表分别返回 `library_master_copy_inconsistent` /
+`library_master_copy_export_unsupported`。完整复盘见 `docs/PROJECT-LIBRARY.md` §8。
+
+**副作用**：重建 exe 后哈希变化，V17 会弹 `Openness access`；非管理员选 Yes 只对当次会话有效，
+要持久化得用管理员选 Yes to all（写 HKLM 白名单）。这一点已写进 README §0。

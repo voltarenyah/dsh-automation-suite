@@ -1,6 +1,6 @@
 ---
 name: tia-openness
-description: Troubleshooting index for the tia-openness-v17-min tools: project lifecycle/data, PLC blocks/types/tag tables/tags/watch+force tables/units, F-safety settings and signatures, hardware-configuration (CAx/AML) export, controller_status. Load it when one fails or reports an Openness error, or before answering any TIA Portal Openness question (exclusive access, transactions, Simatic ML round trip, block groups, compile, licensing, threading, crashes). Maps symptoms to vendored Siemens skill files.
+description: Troubleshooting index for tia-openness-v17-min: project data, blocks/types/tag tables/tags/watch+force/units, F-safety, CAx/AML, controller_status, and the project library (Types/versions, Master copies, library-managed blocks, direct-import refusal). Load before any TIA Openness or project-library question (library versions, check-in/release, library-managed import, exclusive access, transactions, Simatic ML, compile, licensing). Maps symptoms to vendored skills and library workflow.
 ---
 
 # TIA Portal Openness 知识库（路由 skill）
@@ -51,6 +51,7 @@ V17 的行为也不能从 V21 文本直接推。判不准时以本机 V17 实测
 | UMAC 角色/用户/设备权限、项目保护、CPU 保护级别 | `security/SKILL.md` |
 | 故障安全 PLC 的 `SafetyAdministration`（`Siemens.Engineering.Safety`） | `plc-safety-administration/SKILL.md` |
 | 全局库 / MasterCopy / `.zap` `.zal` / 报警文本列表 / runtime group | `global-library/SKILL.md`、`libraries-and-alarms/SKILL.md` |
+| **项目库**（Types/Master copies）的读、导出、发布、实例化；库管控块被 `import_blocks` 拒绝后怎么办 | 本包 `project_library`（工具描述即契约）+ `tia-openness/PROJECT-LIBRARY.md`；V17 **没有**类型版本的 Import/CreateVersion/Release API，发布类型版本只能走 TIA UI |
 | 设备与硬件组态、PROFINET、I/O 系统、模块插拔 | `devices-and-hardware/SKILL.md`、`hardware-and-modules/SKILL.md` |
 | **读**硬件组态（有哪些设备/模块/子网/地址）、把组态导出成 AML 去分析 | 本包 `export_hardware_config`（工具描述即契约，先读它）；上游那两个 skill 只回答"要**改**硬件该怎么做" |
 | 在线连接与下载到 CPU | `online-and-download/SKILL.md` |
@@ -59,9 +60,21 @@ V17 的行为也不能从 V21 文本直接推。判不准时以本机 V17 实测
 | 工艺对象（TO，运动控制） | `technology-objects/SKILL.md` |
 
 > 驱动、安全、在线下载、硬件组态这些上游章节回答的是「**Openness 能不能做**」，
-> 不是「**这个插件能不能做**」：本插件的 38 个工具覆盖工程生命周期与工程数据、PLC 块/类型/标签表/
+> 不是「**这个插件能不能做**」：本插件的 39 个工具覆盖工程生命周期与工程数据、PLC 块/类型/标签表/
 > 变量/监视表/软件单元、F 相关服务、块编辑器的批量打开（`show_blocks_in_editor`），以及**硬件组态的只读导出**（`export_hardware_config`，
 > 输出一个 CAEX 2.15 的 AML 文件），边界以 `README.md` §10 与 `docs/EXTENDED-SURFACE.md` 为准。
+
+## 项目库 / 库管控块（先读这个）
+
+- 类型版本：Openness 只能导出、查实例/依赖、设默认版本、删除；**没有 Import/CreateVersion/Release**，
+  编辑并发布类型版本只能在 TIA Portal UI 做。
+- `import_blocks` 默认拒绝覆盖库实例（`library_managed_block`）。**不要**用
+  `allow_library_managed_import=true` 重试；先读 `library{type,version,state}`，再让用户在
+  “TIA UI check-in/edit/release”和“用户确认的 fork（去库元数据、改名、手工改调用方）”之间选。
+- fork 是单向分叉，不是库更新；Openness 不会自动重写 LAD/SCL 调用点。
+- `source/` 只有 PLC 软件树；只在 `library/` 的块不会进 `source/`，也不会被 ingest。
+
+完整流程、实测损坏证据与模型标准动作见 `tia-openness/PROJECT-LIBRARY.md`。
 
 ## 硬件组态怎么"读"（本插件只有这一条路）
 
