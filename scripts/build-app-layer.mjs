@@ -220,6 +220,7 @@ function rewriteFinalProfile(releaseManifest, locals) {
   cpSync(stagingProfile, appProfile, { recursive: true, dereference: false })
   cpSync(join(root, 'scripts', 'doctor.ps1'), join(appDir, 'doctor.ps1'))
   cpSync(join(root, 'scripts', 'test-doctor-json.ps1'), join(appDir, 'test-doctor-json.ps1'))
+  cpSync(join(root, 'scripts', 'merge-profile.mjs'), join(appDir, 'merge-profile.mjs'))
   cpSync(join(releaseDir, 'manifest.json'), join(appDir, 'manifest.json'))
   return finalManifest
 }

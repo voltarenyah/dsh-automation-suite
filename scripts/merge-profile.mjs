@@ -20,9 +20,9 @@
 //
 // Exit codes: 0 merged, 2 usage/input error, 3 merge produced no entries.
 
-import { existsSync, readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, readFileSync, realpathSync, writeFileSync } from 'node:fs'
 import { resolve } from 'node:path'
-import { pathToFileURL } from 'node:url'
+import { fileURLToPath } from 'node:url'
 
 /** Split a patch file into its top-level YAML blocks. */
 export function parsePatch(text) {
@@ -202,9 +202,20 @@ function main() {
   )
 }
 
-if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
+// Use real paths for the CLI guard: when this module is reached through a
+// junction/symlink, import.meta.url resolves to the real file while argv[1] is
+// the link path, which would otherwise make Node exit 0 without running main().
+function samePath(a, b) {
+  const left = process.platform === 'win32' ? a.toLowerCase() : a
+  const right = process.platform === 'win32' ? b.toLowerCase() : b
+  return left === right
+}
+
+if (process.argv[1]) {
   try {
-    main()
+    const entry = realpathSync(resolve(process.argv[1]))
+    const self = realpathSync(fileURLToPath(import.meta.url))
+    if (samePath(entry, self)) main()
   } catch (error) {
     process.stderr.write(`merge-profile: ${error.message}\n`)
     process.exit(2)

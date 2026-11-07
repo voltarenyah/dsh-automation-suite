@@ -568,7 +568,7 @@ create_engineering_project({
 
 ## 9. 桌面打包（2026-11-07）
 
-Phase 1 的 WebView2 壳与 Phase 2a 安装器骨架已实现；Phase 2b（DSH bootstrap / 升级合并 / 安装期 doctor）尚未开始。契约如下，改动时要保持稳定：
+Phase 1 壳、Phase 2a 安装器、Phase 2b 的 profile 安装/三方合并/安装期 doctor 已实现；Phase 2c（DSH 下载安装、WebView2 bootstrapper）尚未开始。契约如下，改动时要保持稳定：
 
 - `scripts/build-app-layer.mjs` — 从当前工作树物化桌面 app layer：
   `node scripts/build-app-layer.mjs --version 0.2.0`。它调用 `build-distribution.mjs` 打包
@@ -588,9 +588,10 @@ Phase 1 的 WebView2 壳与 Phase 2a 安装器骨架已实现；Phase 2b（DSH b
 - `desktop/DshSuite.Shell/` — Phase 1 WebView2 壳（WinForms、Job Object、托盘、单实例、日志）；
   `--smoke-test` 隐藏 WebView2 跑完整启动/导航/清理。构建：
   `pwsh -NoProfile -File desktop/build-shell.ps1 -Version 0.2.0 -SmokeTest`。
-- `desktop/installer/` + `desktop/build-installer.ps1` — Phase 2a Inno 安装器骨架：稳定 shell +
-  `app\<ver>` + `current.txt` + 快捷方式/卸载；**不下载 DSH、不合并 profile、不在安装期跑 doctor**
-  （Phase 2b）。
+- `desktop/installer/` + `desktop/build-installer.ps1` — Inno 安装器：稳定 shell + `app\<ver>` +
+  `current.txt` + 快捷方式/卸载；`install-profile.ps1` 负责复制固定 profile、备份并三方合并旧
+  `cordis.patch.yml`、写 `install.json`、跑 `doctor.ps1 -Json`（fail 则恢复旧 profile）。
+  **仍缺**：DSH 自动下载/安装、WebView2 bootstrapper（Phase 2c）；`dsh.cmd` 缺失时安装器直接阻止。
 - 设计、目录布局、安装器状态机与验收矩阵见 `docs/desktop-packaging.md`；
   打包前置件索引见 `desktop/README.md`。
 

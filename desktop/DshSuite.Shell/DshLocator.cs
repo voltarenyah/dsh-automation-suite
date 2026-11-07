@@ -9,6 +9,7 @@ internal static class DshLocator
         var candidates = new List<string?>
         {
             Environment.GetEnvironmentVariable("DSH_EXE"),
+            AppPaths.ReadInstallState()?.DshExe,
             Path.Combine(
                 Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
                 "Programs", "DeepSeek Harness", "resources", "runtime", "cli", "bin", "dsh.cmd"),

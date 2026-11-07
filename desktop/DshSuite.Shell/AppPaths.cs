@@ -158,19 +158,58 @@ internal static class AppPaths
         File.Exists(Path.Combine(directory, "profile", "package.json")) &&
         File.Exists(Path.Combine(directory, "app-manifest.json"));
 
+    public sealed record InstallState(string? DshHome, string? Profile, string? DshExe);
+
+    /// <summary>Read install.json next to the installed shell (shell\..\install.json).</summary>
+    public static InstallState? ReadInstallState()
+    {
+        var candidates = new[]
+        {
+            Path.Combine(AppContext.BaseDirectory, "install.json"),
+            Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "install.json")),
+        };
+        foreach (var path in candidates)
+        {
+            if (!File.Exists(path)) continue;
+            try
+            {
+                using var document = JsonDocument.Parse(File.ReadAllText(path));
+                var root = document.RootElement;
+                string? Read(string name) =>
+                    root.TryGetProperty(name, out var value) ? value.GetString() : null;
+                return new InstallState(Read("dshHome"), Read("profile"), Read("dshExe"));
+            }
+            catch
+            {
+                // A broken install.json falls back to the environment/defaults.
+            }
+        }
+        return null;
+    }
+
     public static string ResolveDshHome(string? argument)
     {
-        var value = argument
-            ?? Environment.GetEnvironmentVariable("DSH_HOME")
-            ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "dsh-automation-suite-home");
-        return Path.GetFullPath(value);
+        if (!string.IsNullOrWhiteSpace(argument)) return Path.GetFullPath(argument);
+
+        var state = ReadInstallState();
+        if (!string.IsNullOrWhiteSpace(state?.DshHome)) return Path.GetFullPath(state.DshHome);
+
+        var environment = Environment.GetEnvironmentVariable("DSH_HOME");
+        if (!string.IsNullOrWhiteSpace(environment)) return Path.GetFullPath(environment);
+
+        return Path.GetFullPath(Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
+            "dsh-automation-suite-home"));
     }
 
     public static string ResolveProfile(string? argument)
     {
-        return argument
-            ?? Environment.GetEnvironmentVariable("DSH_SUITE_PROFILE")
-            ?? "dsh-automation-suite";
+        if (!string.IsNullOrWhiteSpace(argument)) return argument;
+
+        var state = ReadInstallState();
+        if (!string.IsNullOrWhiteSpace(state?.Profile)) return state.Profile;
+
+        return Environment.GetEnvironmentVariable("DSH_SUITE_PROFILE") ?? "dsh-automation-suite";
     }
 
     /// <summary>

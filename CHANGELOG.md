@@ -16,6 +16,10 @@ GitHub Releases 与 git tag `v<version>` 对齐（发布流程见 [`docs/release
   安装器 runtime bootstrap 探针 `probe-dsh-runtime.ps1`。见 `desktop/README.md`。
 - **Phase 1 WebView2 壳**（`desktop/DshSuite.Shell`）：独立窗口、托盘、单实例、日志、
   `--smoke-test` 隐藏导航；Job Object 持有 DSH 进程树，退出无残留。尚未打包安装器。
+- **Phase 2 安装器**：Inno 安装器稳定 shell + 版本化 app layer；`install-profile.ps1`
+  复制固定 profile、备份并三方合并旧 `cordis.patch.yml`、写 `install.json`、跑
+  `doctor.ps1 -Json`（fail 则恢复旧 profile）。壳读取 `install.json` 的 DSH_HOME/profile。
+  沙箱安装/模拟升级/卸载已验；仍缺 DSH 自动下载与 WebView2 bootstrapper。
 
 ### Planned
 

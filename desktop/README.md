@@ -3,10 +3,9 @@
 This directory is reserved for the WebView2 shell and installer. The packaging
 preparation lives in `scripts/` so it can be tested without the shell UI.
 
-Status (2026-11-07): **Phase 1 shell implemented (WebView2, tray, single instance,
-logs, hidden smoke test); Phase 2 installer skeleton implemented** (Inno, stable
-layout, `current.txt`, install/uninstall). DSH download/bootstrap, fixed-profile
-merge on upgrade, and doctor-on-install remain.
+Status (2026-11-07): **Phase 1 shell implemented; Phase 2 installer implements
+profile setup, fixed-profile merge, doctor-on-install and install.json**. DSH
+download/install and WebView2 bootstrapper remain (Phase 2b).
 
 ## What is already in place
 
@@ -92,15 +91,28 @@ current.txt                   active app-layer version
 unins000.exe
 ```
 
-Install/uninstall was verified in a sandbox (`/VERYSILENT /NOICONS /DIR=C:\temp\...`):
-`current.txt` written, installed shell resolves `app\0.2.0` via `current.txt` and
-passes the hidden smoke test; uninstall removes everything including `current.txt`.
+The installer now runs `installer\install-profile.ps1` after copying files:
 
-Current boundaries: the skeleton does **not** download/install DSH (it warns if
-the default `dsh.cmd` is missing), does not merge an existing fixed profile on
-upgrade, and does not run doctor during install. Those are the next Phase 2
-tasks. No auto-update; the existing profile is reused as-is (pass a fresh
-`--dsh-home` for a clean test).
+- copies `app\<ver>\profile` to `%DSH_HOME%\profiles\dsh-automation-suite`;
+- if a profile exists, backs up `package.json` / `cordis.patch.yml`, copies the
+  new app layer to a temporary profile, and merges the old user overrides with
+  `merge-profile.mjs` (three-way); the previous profile is kept as
+  `dsh-automation-suite.bak-<stamp>`;
+- writes `<install-root>\install.json` (dshHome/profile/dshExe/appVersion);
+- runs `doctor.ps1 -Json`; `summary.fail > 0` restores the previous profile and
+  aborts the launch.
+
+Verified in a sandbox (`/VERYSILENT /NOICONS /DIR=C:\temp\...` with a temporary
+`DSH_HOME`): profile copied, doctor 11 ok / 1 warn / 0 fail, install.json written,
+`current.txt` written, installed shell reads install.json and starts; uninstall
+removes the install directory. A simulated upgrade (old app layer 0.1.9 + a
+`deepseek-v4-pro` user override) preserved the override and created a backup.
+
+Current boundaries: **DSH must already be installed** (the installer blocks with
+a clear message if `dsh.cmd` is missing); there is no DSH download/install yet;
+WebView2 is not bootstrapped by the installer; no auto-update. The shell reads
+`install.json` for custom DSH_HOME/profile and reuses an existing profile
+(profile replacement/merge is done by the installer).
 
 ## Contracts
 

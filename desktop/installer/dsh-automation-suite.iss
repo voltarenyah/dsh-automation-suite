@@ -62,6 +62,8 @@ Source: "{#SourceApp}\app-manifest.json"; DestDir: "{app}\app\{#AppVersion}"; Fl
 Source: "{#SourceApp}\manifest.json"; DestDir: "{app}\app\{#AppVersion}"; Flags: ignoreversion
 Source: "{#SourceApp}\doctor.ps1"; DestDir: "{app}\app\{#AppVersion}"; Flags: ignoreversion
 Source: "{#SourceApp}\test-doctor-json.ps1"; DestDir: "{app}\app\{#AppVersion}"; Flags: ignoreversion
+Source: "{#SourceApp}\merge-profile.mjs"; DestDir: "{app}\app\{#AppVersion}"; Flags: ignoreversion
+Source: "install-profile.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion
 ; The shell is stable; the app layer is versioned.
 Source: "{#SourceShell}\*"; DestDir: "{app}\shell"; Flags: ignoreversion recursesubdirs createallsubdirs
 
@@ -70,27 +72,61 @@ Name: "{group}\{#AppName}"; Filename: "{app}\shell\DshSuite.Shell.exe"
 Name: "{autodesktop}\{#AppName}"; Filename: "{app}\shell\DshSuite.Shell.exe"; Tasks: desktopicon
 
 [Run]
-Filename: "{app}\shell\DshSuite.Shell.exe"; Description: "Launch {#AppName}"; Flags: nowait postinstall skipifsilent
+Filename: "{app}\shell\DshSuite.Shell.exe"; Description: "Launch {#AppName}"; Flags: nowait postinstall skipifsilent; Check: CanLaunchApp
 
 [UninstallDelete]
 Type: files; Name: "{app}\current.txt"
+Type: files; Name: "{app}\install.json"
+Type: filesandordirs; Name: "{app}\logs"
 Type: dirifempty; Name: "{app}\app\{#AppVersion}"
 Type: dirifempty; Name: "{app}\app"
 Type: dirifempty; Name: "{app}"
 
 [Code]
+var
+  ProfileSetupOK: Boolean;
+
+function RunProfileSetup(): Boolean;
+var
+  ResultCode: Integer;
+  Script: String;
+  Params: String;
+begin
+  Script := ExpandConstant('{app}\installer\install-profile.ps1');
+  Params := '-NoProfile -ExecutionPolicy Bypass -File "' + Script + '"' +
+            ' -InstallRoot "' + ExpandConstant('{app}') + '"' +
+            ' -AppVersion "{#AppVersion}"';
+  Result := Exec('powershell.exe', Params, ExpandConstant('{app}'), SW_SHOW, ewWaitUntilTerminated, ResultCode);
+  if (not Result) or (ResultCode <> 0) then
+  begin
+    MsgBox('The desktop profile could not be installed (exit code ' + IntToStr(ResultCode) + ').' + #13#10 +
+           'See ' + ExpandConstant('{app}') + '\logs\install-profile-*.log for details.' + #13#10 +
+           'The app layer is installed, but the app will not launch until the profile is fixed.',
+           mbError, MB_OK);
+    Result := False;
+  end;
+end;
+
+function CanLaunchApp(): Boolean;
+begin
+  Result := ProfileSetupOK;
+end;
+
 function InitializeSetup(): Boolean;
 var
   Dsh: string;
 begin
   Result := True;
-  Dsh := ExpandConstant('{localappdata}\Programs\DeepSeek Harness\resources\runtime\cli\bin\dsh.cmd');
+  Dsh := GetEnv('DSH_EXE');
+  if Dsh = '' then
+    Dsh := ExpandConstant('{localappdata}\Programs\DeepSeek Harness\resources\runtime\cli\bin\dsh.cmd');
   if not FileExists(Dsh) then
   begin
-    MsgBox('DeepSeek Harness was not found in the default location.' + #13#10 +
-           'Install DeepSeek Harness first, then run this installer again.' + #13#10 +
+    MsgBox('DeepSeek Harness (dsh.cmd) was not found.' + #13#10 +
+           'Install DeepSeek Harness first (or set DSH_EXE), then run this installer again.' + #13#10 +
            'The app layer is installed without pnpm and does not need the npm registry.',
-           mbInformation, MB_OK);
+           mbError, MB_OK);
+    Result := False;
   end;
 end;
 
@@ -99,6 +135,8 @@ begin
   if CurStep = ssPostInstall then
   begin
     ForceDirectories(ExpandConstant('{app}'));
-    SaveStringToFile(ExpandConstant('{app}\current.txt'), '{#AppVersion}', False);
+    ProfileSetupOK := RunProfileSetup();
+    if ProfileSetupOK then
+      SaveStringToFile(ExpandConstant('{app}\current.txt'), '{#AppVersion}', False);
   end;
 end;
