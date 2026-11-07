@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Get Started — dsh-automation-suite</title>
-<meta name="description" content="One command to a running DSH instance with the automation suite's plugins.">
+<title>Get Started — install, start, verify — dsh-automation-suite</title>
+<meta name="description" content="Prerequisites, three installation paths, first-run configuration and the notes that keep a dsh-automation-suite install working.">
 <meta name="color-scheme" content="light dark">
 <link rel="canonical" href="https://voltarenyah.github.io/dsh-automation-suite/get-started/">
 <link rel="icon" href="../assets/favicon.svg" type="image/svg+xml">
@@ -56,96 +56,239 @@
   <section class="page-head">
     <div class="wrap">
       <p class="eyebrow reveal" data-block="start.head.eyebrow" data-inline>Get started</p>
-      <h1 class="reveal" style="--d:.06s"><span data-block="start.head.title" data-inline>One command to a running instance</span></h1>
-      <p class="lead reveal" style="--d:.12s" data-block="start.head.lead">The starter materializes the profile, links the plugins, starts dsh and opens a tokenized URL — in its own DSH_HOME.</p>
+      <h1 class="reveal" style="--d:.06s"><span data-block="start.head.title" data-inline>Install it, start it, verify it</span></h1>
+      <p class="lead reveal" style="--d:.12s" data-block="start.head.lead">Two main paths — the GitHub release zip for users, or the repository starter for development — plus a per-bundle install for advanced use. All run the same blueprint in an isolated DSH_HOME.</p>
     </div>
   </section>
 
-  <section class="section wrap">
+  <section class="section wrap" id="requirements">
     <div class="section-head">
       <p class="kicker">01</p>
       <h2 data-block="start.req.title" data-inline>Before you start</h2>
-      <p data-block="start.req.note" data-inline>What has to be on the machine.</p>
+      <p data-block="start.req.note" data-inline>The suite runs on DSH. Only the TIA and PLCSIM tools need Siemens software; the rest is a normal DSH plugin.</p>
     </div>
 
     <dl class="kv">
       <div>
         <dt data-block="start.req.os.label" data-inline>Operating system</dt>
-        <dd data-block="start.req.os.value">Windows 10 or 11 — the TIA tools are Windows-only.</dd>
-      </div>
-      <div>
-        <dt data-block="start.req.node.label" data-inline>Node.js</dt>
-        <dd data-block="start.req.node.value">22.19 or newer.</dd>
+        <dd data-block="start.req.os.value">Windows 10/11 x64 for the release installer and all TIA/PLCSIM work. The non-TIA plugins can load on other platforms, but this guide assumes Windows.</dd>
       </div>
       <div>
         <dt data-block="start.req.dsh.label" data-inline>DeepSeek Harness</dt>
-        <dd data-block="start.req.dsh.value">Installed, and able to load bundles.</dd>
+        <dd data-block="start.req.dsh.value">Installed and able to load bundles — built and tested against 0.2.1-rc.2. The release installer uses its CLI and bundled pnpm; it does not install DSH for you.</dd>
       </div>
       <div>
-        <dt data-block="start.req.tia.label" data-inline>TIA Portal</dt>
-        <dd data-block="start.req.tia.value">V17 with Openness enabled — needed only for the TIA tools.</dd>
+        <dt data-block="start.req.tia.label" data-inline>TIA Portal V17</dt>
+        <dd data-block="start.req.tia.value">Only for the TIA tools: V17 with Openness — V16 and V18 are not compatible; TIA also brings the .NET Framework 4.8 runtime the controllers use. Requires Siemens.Engineering.dll under PublicAPI\V17 and the current user in the local “Siemens TIA Openness” group.</dd>
+      </div>
+      <div>
+        <dt data-block="start.req.plcsim.label" data-inline>PLCSIM Advanced</dt>
+        <dd data-block="start.req.plcsim.value">Optional; only for the simulation tools. Needs PLCSIM Advanced with API 4.0 (4.0–7.0 runtimes work).</dd>
+      </div>
+      <div>
+        <dt data-block="start.req.git.label" data-inline>Git CLI</dt>
+        <dd data-block="start.req.git.value">Only for the git tools. DSH does not bundle git; run <code>git --version</code>, or install Git for Windows.</dd>
       </div>
     </dl>
+
+    <div class="panel callout" style="margin-top: 18px">
+      <p class="prose" data-block="start.req.note2">Excel and PDF support is pure JavaScript/WASM — no Microsoft Office or Acrobat install. The only desktop software this suite calls is TIA Portal, PLCSIM Advanced and Git.</p>
+    </div>
   </section>
 
-  <section class="section wrap">
+  <section class="section wrap" id="install">
     <div class="section-head">
       <p class="kicker">02</p>
-      <h2 data-block="start.run.title" data-inline>Run it</h2>
-      <p data-block="start.run.note" data-inline>Three commands, no build step first.</p>
+      <h2 data-block="start.install.title" data-inline>Install</h2>
+      <p data-block="start.install.note" data-inline>Pick the path that matches you. The release zip is the supported path for users; the source starter is for development.</p>
     </div>
 
+    <div class="cards">
+      <article class="card">
+        <p class="num">A</p>
+        <h3 data-block="start.install.a.title" data-inline>Release zip</h3>
+        <p data-block="start.install.a.desc">Recommended for users. No build, no Node; installs into a private DSH_HOME and creates a versioned profile.</p>
+      </article>
+      <article class="card">
+        <p class="num">B</p>
+        <h3 data-block="start.install.b.title" data-inline>From source</h3>
+        <p data-block="start.install.b.desc">For development. Runs the current worktree; needs Node 22.19+ and the pnpm bundled with DSH; <code>-Mode pack</code> tests the real tarballs.</p>
+      </article>
+      <article class="card">
+        <p class="num">C</p>
+        <h3 data-block="start.install.c.title" data-inline>One plugin only</h3>
+        <p data-block="start.install.c.desc">Advanced. Every package is its own bundle; install its tarball and add the matching <code>/tools</code> row when it has one.</p>
+      </article>
+    </div>
+
+    <h3 style="margin: 30px 0 10px; font-size: 17px; font-weight: 600;" data-block="start.install.a.h" data-inline>A · Release zip</h3>
     <div class="term">
       <div class="term__bar">
-        <span class="mono">PowerShell</span>
-        <button type="button" class="copy" data-copy-target="cmd">
+        <span class="mono">PowerShell · release zip</span>
+        <button type="button" class="copy" data-copy-target="cmd-release">
           <span data-block="shared.copy" data-inline>Copy</span>
         </button>
       </div>
-      <pre class="term__body"><code id="cmd" data-block="start.run.cmd"><span class="c-prompt">$</span> git clone https://github.com/voltarenyah/dsh-automation-suite
+      <pre class="term__body"><code id="cmd-release"><span class="c-prompt">$</span> .\install.cmd
+<span class="c-prompt">$</span> .\start.cmd</code></pre>
+    </div>
+    <p class="prose" style="margin-top: 12px; font-size: 14px; color: var(--muted);" data-block="start.install.a.note">Download <code>dsh-automation-suite-&lt;version&gt;.zip</code> from Releases and extract it first. Double-clicking the two <code>.cmd</code> files works too; <code>install.cmd</code> avoids the PowerShell execution-policy block on downloaded scripts.</p>
+
+    <h3 style="margin: 30px 0 10px; font-size: 17px; font-weight: 600;" data-block="start.install.b.h" data-inline>B · From source</h3>
+    <div class="term">
+      <div class="term__bar">
+        <span class="mono">PowerShell · source</span>
+        <button type="button" class="copy" data-copy-target="cmd-source">
+          <span data-block="shared.copy" data-inline>Copy</span>
+        </button>
+      </div>
+      <pre class="term__body"><code id="cmd-source"><span class="c-prompt">$</span> git clone https://github.com/voltarenyah/dsh-automation-suite
 <span class="c-prompt">$</span> cd dsh-automation-suite
 <span class="c-prompt">$</span> pwsh -NoProfile -File scripts\start-env.ps1</code></pre>
     </div>
+    <p class="prose" style="margin-top: 12px; font-size: 14px; color: var(--muted);" data-block="start.install.b.note">The starter builds the packages, materializes the profile in <code>%USERPROFILE%\dsh-automation-suite-home</code>, links the local packages, starts <code>dsh</code> and opens the tokenized URL. Use <code>-Mode pack</code> to test the release tarballs and <code>-Restart</code> to replace a running instance.</p>
+
+    <h3 style="margin: 30px 0 10px; font-size: 17px; font-weight: 600;" data-block="start.install.c.h" data-inline>C · One plugin only</h3>
+    <div class="term">
+      <div class="term__bar">
+        <span class="mono">PowerShell · single bundle</span>
+        <button type="button" class="copy" data-copy-target="cmd-plugin">
+          <span data-block="shared.copy" data-inline>Copy</span>
+        </button>
+      </div>
+      <pre class="term__body"><code id="cmd-plugin"><span class="c-prompt">$</span> dsh plugin --profile web add &lt;tarball-url&gt;</code></pre>
+    </div>
+    <p class="prose" style="margin-top: 12px; font-size: 14px; color: var(--muted);" data-block="start.install.c.note">TIA, PLCSIM, graph and git expose model tools only after a <code>/tools</code> row is added; engineering-context also needs TIA and git at runtime. This path is for advanced users — the <a href="../architecture/">Architecture</a> page has the surface matrix.</p>
+
+    <div class="panel callout" style="margin-top: 24px">
+      <p class="prose" data-block="start.install.dshnote">The release zip does not include DeepSeek Harness. Install DSH first; the installer exits with an error if it cannot find <code>dsh.cmd</code>.</p>
+    </div>
   </section>
 
-  <section class="section wrap">
+  <section class="section wrap" id="first-start">
     <div class="section-head">
       <p class="kicker">03</p>
-      <h2 data-block="start.after.title" data-inline>After it starts</h2>
-      <p data-block="start.after.note" data-inline>A working session in three moves.</p>
+      <h2 data-block="start.config.title" data-inline>First start</h2>
+      <p data-block="start.config.note" data-inline>From a started instance to a working session.</p>
     </div>
 
     <ol class="steps">
       <li>
         <span class="steps__n" aria-hidden="true">01</span>
         <div>
-          <h3 data-block="start.a1.title" data-inline>Open the printed URL</h3>
-          <p data-block="start.a1.desc">It carries a one-time token; the bare port returns 401.</p>
+          <h3 data-block="start.s1.title" data-inline>Open the printed URL</h3>
+          <p data-block="start.s1.desc">The console prints <code>dsh web: http://127.0.0.1:&lt;port&gt;/?token=…</code>. The token is required and changes on every start; the bare port returns 401. Do not share the URL.</p>
         </div>
       </li>
       <li>
         <span class="steps__n" aria-hidden="true">02</span>
         <div>
-          <h3 data-block="start.a2.title" data-inline>Add a model API key</h3>
-          <p data-block="start.a2.desc">Settings → Models, or the first-run prompt. Credentials stay inside this DSH_HOME.</p>
+          <h3 data-block="start.s2.title" data-inline>Add a model API key</h3>
+          <p data-block="start.s2.desc">Settings → Models, or the first-run prompt. The release profile defaults to <code>dsh-opencode-go</code> / <code>deepseek-v4.1-flash</code>; add that provider's key or pick another model. Credentials stay in this DSH_HOME.</p>
         </div>
       </li>
       <li>
         <span class="steps__n" aria-hidden="true">03</span>
         <div>
-          <h3 data-block="start.a3.title" data-inline>Try the TIA console</h3>
-          <p data-block="start.a3.desc">Open or adopt a project, export a block, then read it back and compile.</p>
+          <h3 data-block="start.s3.title" data-inline>Add a workspace</h3>
+          <p data-block="start.s3.desc">Point at the project folder. The left sidebar is a registry stored in DSH_HOME, not a scan of the disk, so every workspace is added explicitly.</p>
+        </div>
+      </li>
+      <li>
+        <span class="steps__n" aria-hidden="true">04</span>
+        <div>
+          <h3 data-block="start.s4.title" data-inline>Verify the engineering path</h3>
+          <p data-block="start.s4.desc">TIA: open or create a project and make a read-only call. Graph: <code>create_engineering_project</code> should report a built database; “not built” often means .NET 8 is missing — install Microsoft.DotNet.Runtime.8. Git: run <code>git --version</code>.</p>
+        </div>
+      </li>
+      <li>
+        <span class="steps__n" aria-hidden="true">05</span>
+        <div>
+          <h3 data-block="start.s5.title" data-inline>Keep the console open</h3>
+          <p data-block="start.s5.desc">Closing the console window stops the service and the TIA controller. Start it again with <code>start.cmd</code>; sessions, workspaces and credentials persist in DSH_HOME.</p>
         </div>
       </li>
     </ol>
 
-    <div class="panel" style="margin-top: 18px">
-      <p class="prose" data-block="start.note">The environment defaults to %USERPROFILE%\dsh-suite-env. Delete that folder to roll everything back.</p>
+    <div class="panel" style="margin-top: 20px">
+      <h3 style="font-size: 17px; font-weight: 600;" data-block="start.config.timeout.title" data-inline>Large projects and long calls</h3>
+      <p class="prose" style="margin-top: 8px" data-block="start.config.timeout.desc">The default <code>requestTimeoutMs</code> is 300000 (5 minutes). Exporting a few hundred blocks already takes about 87 s, and compiling a large project can take more than 10 minutes. Raise it in the profile patch (or the matching settings row) before the first large TIA or graph call.</p>
+      <div class="codepanel">
+        <pre><code>- id: tia-openness-v17-min
+  config:
+    requestTimeoutMs: 900000
+- id: engineering-graph
+  config:
+    requestTimeoutMs: 900000</code></pre>
+      </div>
+      <p class="prose" style="margin-top: 8px; font-size: 13.5px; color: var(--muted);" data-block="start.config.timeout.note">The same value bounds a single-device graph build; a 1,376-file project took about 30 s, but large projects deserve the headroom.</p>
+    </div>
+  </section>
+
+  <section class="section wrap" id="notes">
+    <div class="section-head">
+      <p class="kicker">04</p>
+      <h2 data-block="start.notes.title" data-inline>Installation notes</h2>
+      <p data-block="start.notes.note" data-inline>The things that most often go wrong, and the safe way to undo.</p>
+    </div>
+
+    <div class="table-wrap">
+      <table class="table">
+        <thead>
+          <tr>
+            <th data-block="start.notes.th.topic" data-inline>Topic</th>
+            <th data-block="start.notes.th.note" data-inline>What to know</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td data-block="start.notes.n1.t" data-inline>DSH first</td>
+            <td data-block="start.notes.n1.d">The release installer only finds an existing <code>dsh.cmd</code> (or <code>DSH_EXE</code>). It does not download DSH. Install DeepSeek Harness first.</td>
+          </tr>
+          <tr>
+            <td data-block="start.notes.n2.t" data-inline>SmartScreen</td>
+            <td data-block="start.notes.n2.d">Downloaded scripts carry the mark-of-the-web. Use <code>install.cmd</code> / <code>start.cmd</code> (they set a process-level bypass and pause on errors); running <code>install.ps1</code> directly may close before you can read the error. The binaries are unsigned, so SmartScreen may warn.</td>
+          </tr>
+          <tr>
+            <td data-block="start.notes.n3.t" data-inline>Private home</td>
+            <td data-block="start.notes.n3.d">The release profile lives under <code>%USERPROFILE%\dsh-automation-suite-home</code>, not <code>~/.dsh</code>. The source starter defaults to the same home (override with <code>-DshHome</code>); use different homes if you want dev and release fully isolated.</td>
+          </tr>
+          <tr>
+            <td data-block="start.notes.n4.t" data-inline>Upgrade / rollback</td>
+            <td data-block="start.notes.n4.d">Each release gets a versioned profile, so a new version sits next to the old one. For in-place upgrades use a fixed <code>-Profile</code> with <code>-Force</code>; the installer backs up <code>package.json</code> and <code>cordis.patch.yml</code> first. To roll back, start the older profile.</td>
+          </tr>
+          <tr>
+            <td data-block="start.notes.n5.t" data-inline>Uninstall</td>
+            <td data-block="start.notes.n5.d">The home is self-contained. Delete it with <code>cmd /c rmdir /s /q "%USERPROFILE%\dsh-automation-suite-home"</code>; do not use a recursive delete that follows junctions — it can destroy linked targets.</td>
+          </tr>
+          <tr>
+            <td data-block="start.notes.n6.t" data-inline>External runtimes</td>
+            <td data-block="start.notes.n6.d">Only TIA and PLCSIM need Siemens software. The graph needs .NET 8; git needs <code>git.exe</code>; Excel/PDF need no Office or Acrobat, but their npm dependencies are downloaded at install time. TIA and PLCSIM licensing is yours.</td>
+          </tr>
+          <tr>
+            <td data-block="start.notes.n7.t" data-inline>Network / proxy</td>
+            <td data-block="start.notes.n7.d">First install needs GitHub and npm. On an isolated network, mirror the registry or pre-stage the tarballs; the planned desktop app layer would remove npm from the install step.</td>
+          </tr>
+          <tr>
+            <td data-block="start.notes.n8.t" data-inline>Ports</td>
+            <td data-block="start.notes.n8.d">DSH Web defaults to 3080; Windows IP Helper often holds it. <code>start.cmd</code> picks 3093+ automatically; pass <code>-Port</code> to pin one. It opens the default browser; <code>-NoOpen</code> suppresses that. Closing the console stops the service.</td>
+          </tr>
+          <tr>
+            <td data-block="start.notes.n9.t" data-inline>Desktop status</td>
+            <td data-block="start.notes.n9.d">This release runs as a local Web UI in your browser. A WebView2 desktop shell and installer are designed but not shipped; today there is no desktop icon, tray or auto-update.</td>
+          </tr>
+          <tr>
+            <td data-block="start.notes.n10.t" data-inline>Security</td>
+            <td data-block="start.notes.n10.d">Treat the tokenized URL as a secret; it grants the session. Keep DSH_HOME out of source control — credentials and sessions live there.</td>
+          </tr>
+        </tbody>
+      </table>
     </div>
 
     <p class="linkrow">
-      <a class="link" href="https://github.com/voltarenyah/dsh-automation-suite/blob/main/README.md" data-block="start.link" data-inline>Repository README</a>
+      <a class="link" href="https://github.com/voltarenyah/dsh-automation-suite/releases" data-block="start.link.releases" data-inline>Releases</a>
       <span aria-hidden="true">→</span>
+      <a class="link" href="https://github.com/voltarenyah/dsh-automation-suite/blob/main/README.md" data-block="start.link" data-inline>Repository README</a>
     </p>
   </section>
 
@@ -158,7 +301,7 @@
       <a class="link" href="https://github.com/voltarenyah/dsh-automation-suite" data-block="shared.footer.source" data-inline>GitHub</a>
       <a class="link" href="https://github.com/voltarenyah/dsh-automation-suite/blob/main/README.md">README</a>
       <a class="link" href="https://github.com/voltarenyah/dsh-automation-suite/blob/main/LICENSE" data-block="shared.footer.license" data-inline>MIT</a>
-      <span class="mono" data-block="shared.footer.updated" data-inline>Last checked 2026-11-03</span>
+      <span class="mono" data-block="shared.footer.updated" data-inline>Last checked 2026-11-06</span>
     </div>
   </div>
 </footer>

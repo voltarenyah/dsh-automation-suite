@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Architecture — dsh-automation-suite</title>
-<meta name="description" content="Design principles and components: whitelisted operations, transactional writes, read-back verification, structured results.">
+<meta name="description" content="How twelve bundles become one DSH distribution: package boundaries, plugin dependencies, and preset-scoped tools.">
 <meta name="color-scheme" content="light dark">
 <link rel="canonical" href="https://voltarenyah.github.io/dsh-automation-suite/architecture/">
 <link rel="icon" href="../assets/favicon.svg" type="image/svg+xml">
@@ -56,57 +56,100 @@
   <section class="page-head">
     <div class="wrap">
       <p class="eyebrow reveal" data-block="arch.head.eyebrow" data-inline>Architecture</p>
-      <h1 class="reveal" style="--d:.06s"><span data-block="arch.head.title" data-inline>A small surface, strictly enforced</span></h1>
-      <p class="lead reveal" style="--d:.12s" data-block="arch.head.lead">The model never gets arbitrary execution. Writes go through a whitelist, a transaction and a read-back check; tools return structured data instead of free-form shell output.</p>
+      <h1 class="reveal" style="--d:.06s"><span data-block="arch.head.title1" data-inline>One distribution,</span> <span class="serif" data-block="arch.head.title2" data-inline>twelve bundles</span></h1>
+      <p class="lead reveal" style="--d:.12s" data-block="arch.head.lead">The suite is a DeepSeek Harness profile over twelve independently installable bundles. The profile decides which packages compose, which services connect them, and which tools each preset can see.</p>
     </div>
   </section>
 
   <section class="section wrap">
     <div class="section-head">
       <p class="kicker">01</p>
-      <h2 data-block="arch.p.title" data-inline>Principles</h2>
-      <p data-block="arch.p.note" data-inline>Four rules that decide what a tool may do.</p>
+      <h2 data-block="arch.w.title" data-inline>Why a distribution</h2>
+      <p data-block="arch.w.note" data-inline>DSH installs bundles; only a profile can compose them and set policy.</p>
     </div>
 
-    <div class="cards cards--2">
+    <div class="cards">
       <article class="card">
-        <p class="num">01</p>
-        <h3 data-block="arch.p1.title" data-inline>Whitelisted operations</h3>
-        <p data-block="arch.p1.desc">The model expresses paths, block names and enums; the controller runs one of its registered operations.</p>
+        <p class="num">01 · BUNDLE</p>
+        <h3 data-block="arch.w1.title" data-inline>Bundle = capability</h3>
+        <p data-block="arch.w1.desc">Each plugin is a normal DSH bundle with its own <code>cordis.patch.yml</code>. It can be installed on its own; the release publishes one tarball per package.</p>
       </article>
       <article class="card">
-        <p class="num">02</p>
-        <h3 data-block="arch.p2.title" data-inline>Transactional writes</h3>
-        <p data-block="arch.p2.desc">All objects commit or none do — a failed import rolls back.</p>
+        <p class="num">02 · PROFILE</p>
+        <h3 data-block="arch.w2.title" data-inline>Profile = composition</h3>
+        <p data-block="arch.w2.desc">A profile is the only layer that can declare bundles, presets and policy. It is not a bundle: <code>dsh plugin add</code> rejects it as <code>not-a-bundle</code>.</p>
       </article>
       <article class="card">
-        <p class="num">03</p>
-        <h3 data-block="arch.p3.title" data-inline>Read-back verification</h3>
-        <p data-block="arch.p3.desc">After an import the project is re-read and each block compared by name, number and language.</p>
-      </article>
-      <article class="card">
-        <p class="num">04</p>
-        <h3 data-block="arch.p4.title" data-inline>Structured results</h3>
-        <p data-block="arch.p4.desc">Every tool returns ok / summary / data / error as data, not as prose to parse.</p>
+        <p class="num">03 · RELEASE</p>
+        <h3 data-block="arch.w3.title" data-inline>Release = a tested combination</h3>
+        <p data-block="arch.w3.desc">The GitHub release ships the blueprint, per-package tarball URLs and an installer. It pins the combination that was verified together — not a mega-package.</p>
       </article>
     </div>
+
+    <div class="assembly" data-block="arch.w.assembly"></div>
+    <p class="prose" style="margin-top:18px" data-block="arch.w.foot">The packages stay independent; the profile is what makes them one product.</p>
   </section>
 
   <section class="section wrap">
     <div class="section-head">
       <p class="kicker">02</p>
-      <h2 data-block="arch.c.title" data-inline>Components</h2>
-      <p data-block="arch.c.note" data-inline>Eight packages plus one profile blueprint; each installs on its own.</p>
+      <h2 data-block="arch.p.title" data-inline>Principles</h2>
+      <p data-block="arch.p.note" data-inline>Four rules that decide how the pieces are assembled.</p>
     </div>
 
-    <div class="table-wrap" data-block="arch.c.table"></div>
-
-    <p class="prose" style="margin-top: 20px" data-block="arch.c.profile">The blueprint assembles them into one profile and splits the tools across three presets: leader (44), auditor (18), expert (16).</p>
+    <div class="cards cards--2">
+      <article class="card">
+        <p class="num">01</p>
+        <h3 data-block="arch.p1.title" data-inline>Compose, don't absorb</h3>
+        <p data-block="arch.p1.desc">One capability per bundle. The distribution is a profile over packages, not a single plugin that swallows them.</p>
+      </article>
+      <article class="card">
+        <p class="num">02</p>
+        <h3 data-block="arch.p2.title" data-inline>Services are the cross-plugin API</h3>
+        <p data-block="arch.p2.desc">Plugins never import each other. They meet through host services: <code>engineeringAccess</code>, <code>knowledgeGraph</code>, <code>gitContext</code>. A missing service is reported, not guessed.</p>
+      </article>
+      <article class="card">
+        <p class="num">03</p>
+        <h3 data-block="arch.p3.title" data-inline>Visibility is a preset decision</h3>
+        <p data-block="arch.p3.desc">Host rows own processes and services. Tool rows are mounted by a preset, so the same package can expose different surfaces to leader, auditor and expert.</p>
+      </article>
+      <article class="card">
+        <p class="num">04</p>
+        <h3 data-block="arch.p4.title" data-inline>Policy is configuration</h3>
+        <p data-block="arch.p4.desc">Personae, the default preset, disabled built-ins and subagent limits live in the profile. Changing them does not rebuild a plugin.</p>
+      </article>
+    </div>
   </section>
 
   <section class="section wrap">
     <div class="section-head">
       <p class="kicker">03</p>
+      <h2 data-block="arch.c.title" data-inline>Components</h2>
+      <p data-block="arch.c.note" data-inline>Twelve bundles. “Work with” names the other bundles each one collaborates with; “Version” is the package version.</p>
+    </div>
+
+    <div class="table-wrap" data-block="arch.c.table"></div>
+    <p class="legend" data-block="arch.c.legend"></p>
+    <p class="prose" style="margin-top:18px" data-block="arch.c.foot">The profile blueprint is not a component: it is the assembly layer above these packages. Package versions are independent of the suite release.</p>
+  </section>
+
+  <section class="section wrap">
+    <div class="section-head">
+      <p class="kicker">04</p>
+      <h2 data-block="arch.s.title" data-inline>Preset surfaces</h2>
+      <p data-block="arch.s.note" data-inline>The package is not the unit of visibility; the row is.</p>
+    </div>
+
+    <div class="table-wrap" data-block="arch.s.table"></div>
+    <div class="codepanel" data-block="arch.s.example"></div>
+    <div class="panel callout" style="margin-top:18px">
+      <p class="prose" data-block="arch.s.foot"><code>leader</code> gets the working surface; <code>auditor</code> owns the version workflow; <code>expert</code> gets read-only drill-down. A subagent cannot inherit a tool its preset did not mount.</p>
+    </div>
+  </section>
+
+  <section class="section wrap">
+    <div class="section-head">
+      <p class="kicker">05</p>
       <h2 data-block="arch.r.title" data-inline>How it runs</h2>
       <p data-block="arch.r.note" data-inline>One process boundary, because Openness demands it.</p>
     </div>
@@ -138,11 +181,12 @@
       <a class="link" href="https://github.com/voltarenyah/dsh-automation-suite" data-block="shared.footer.source" data-inline>GitHub</a>
       <a class="link" href="https://github.com/voltarenyah/dsh-automation-suite/blob/main/README.md">README</a>
       <a class="link" href="https://github.com/voltarenyah/dsh-automation-suite/blob/main/LICENSE" data-block="shared.footer.license" data-inline>MIT</a>
-      <span class="mono" data-block="shared.footer.updated" data-inline>Last checked 2026-11-03</span>
+      <span class="mono" data-block="shared.footer.updated" data-inline>Last checked 2026-11-06</span>
     </div>
   </div>
 </footer>
 
+<script src="../assets/arch.js"></script>
 <script src="../assets/main.js"></script>
 <script src="../assets/ui.js"></script>
 </body>

@@ -29,18 +29,21 @@
 ```
 assets/app.css       设计系统（明/暗两套变量）
 assets/main.js       中文文案字典 + 每页 title/description + 语言切换 + 复制命令
+assets/arch.js       架构页独有的数据与渲染器（仅 /architecture/ 加载）
 assets/ui.js         主题切换、移动端菜单、滚动揭示
 assets/fonts/        Instrument Sans + IBM Plex Mono（自托管）
 content.md           子页的英文内容底稿（手动同步，不自动渲染）
 ```
 
 - 子页英文在 HTML 里，中文由 `main.js` 按 `data-block` 覆盖；`<html lang>` 与 `<title>` 一起切换。
+- 架构页的组件表与 preset 矩阵由 `arch.js` 按 `ARCH_I18N` 与数据数组渲染；改这两块只改 `arch.js`。
 - 首页是模板自己的脚本与样式（`tw-` 前缀的 Tailwind + `css/index.css`），不加载 `app.css`、不参与语言切换。
 
 ## 改文案
 
 - **首页**：直接改 `index.html`（模板文案全是普通 HTML，按小节标题搜索即可）。
 - **子页**：改 `content.md` → 同步英文进对应 HTML → 同步中文进 `main.js` 的 `I18N.zh`。
+- **架构页**：静态段落进 `arch.js` 的 `I18N`（`ARCH_I18N`），表格/矩阵改 `COMPONENTS`、`PRESETS` 数组。
 - 技术名词、包名、命令不翻译。
 
 ## 授权
