@@ -46,6 +46,7 @@
 | P8 | 自动更新 | 应用层自动更新（壳/插件/profile）；壳自身升级走安装器；DSH 走官方更新器。 |
 | P9 | 代码签名 | **不买证书**。安装器与更新包未签名；接受 SmartScreen/杀软提示。 |
 | P10 | 目标平台 | Windows 10/11 x64；WebView2 Evergreen。 |
+| P11 | 桌面版 profile | **固定 profile 名 `dsh-automation-suite`**（不随版本号变）。安装器升级前备份旧 `cordis.patch.yml`，把用户覆盖项合并进新蓝图；合并冲突保留备份并提示，不静默丢弃。Web 版的版本化 profile 策略不变。 |
 
 ---
 
@@ -121,7 +122,7 @@ releaseDate: '2026-10-23T08:02:12.038Z'
 
 - Windows 10/11 的 Evergreen WebView2 通常已随 Edge 安装；缺失时可用约 2 MB 的
   Evergreen Bootstrapper 安装。
-- 不打包 Chromium；壳可以用 .NET 8 自包含单文件，体积远小于 Electron。
+- 不打包 Chromium；壳可以用 .NET 10 自包含单文件，体积远小于 Electron。
 - 目标平台本来就是 Windows-only（TIA），不需要跨平台壳。
 
 ---
@@ -137,7 +138,7 @@ releaseDate: '2026-10-23T08:02:12.038Z'
 | `latest.json` | 自动更新清单（版本、URL、sha256、minShell） | < 5 KB | 每次发布 |
 | DSH 运行时 | 官方 feed 的安装包 | 约 276 MB | 安装时按需下载 |
 
-> 自包含 .NET 8 的壳约 60–80 MB；如果改为依赖系统 .NET Desktop Runtime，可把 setup
+> 自包含 .NET 10 的壳约 60–80 MB；如果改为依赖系统 .NET Desktop Runtime，可把 setup
 > 降到约 5–15 MB，但需要额外的运行时检测/引导。**第一版建议自包含**，减少环境变量。
 
 ### 4.2 安装目录
@@ -158,11 +159,11 @@ releaseDate: '2026-10-23T08:02:12.038Z'
   uninstall.exe
 ```
 
-用户数据仍放在独立 DSH_HOME：
+用户数据仍放在独立 DSH_HOME。桌面版用**固定 profile 名**，应用层目录才按版本分：
 
 ```
 %USERPROFILE%\dsh-automation-suite-home\
-  profiles\dsh-automation-suite-v<ver>\
+  profiles\dsh-automation-suite\        (固定；升级时合并用户覆盖项)
   storages\workspace.json
   sessions\
   .credentials.yaml
@@ -254,7 +255,7 @@ releaseDate: '2026-10-23T08:02:12.038Z'
 
 ### 6.1 技术选型
 
-- C# / .NET 8，WinForms（或 WPF），自包含单文件发布。
+- C# / .NET 10，WinForms（或 WPF），自包含单文件发布。
 - `Microsoft.Web.WebView2` NuGet；Evergreen Runtime。
 - 不使用 Electron：避免再打包一份 Chromium。
 
@@ -339,9 +340,15 @@ releaseDate: '2026-10-23T08:02:12.038Z'
 1. 启动后延迟检查（每天一次 / 手动）。
 2. `minShellVersion` 高于当前壳 → 提示下载 setup，不做增量更新。
 3. 下载 app zip → 校验 sha256 → 解压到 `app\<new>`。
-4. 停止 CLI → 切换 `current.txt`（写临时文件后原子替换）→ 重启壳。
-5. 健康检查（窗口加载 + CLI 心跳）；失败则切回上一版并提示。
-6. 保留上一版目录；清理更早版本。
+4. **备份并合并 profile 覆盖项**（固定 profile `dsh-automation-suite`）：
+   - 先把旧 `package.json` / `cordis.patch.yml` 备份为 `.bak-<timestamp>`；
+   - 用旧 patch 里**用户自己加的 id 条目**覆盖新蓝图中的同名条目（例如 `requestTimeoutMs`、
+     `modelVisibility`、`provider`）；蓝图新增的行保留；
+   - 无法安全合并的条目（结构冲突、目标行已不存在）**保留备份并在 doctor 里报告**，
+     不静默丢弃、也不阻塞启动。
+5. 停止 CLI → 切换 `current.txt`（写临时文件后原子替换）→ 重启壳。
+6. 健康检查（窗口加载 + CLI 心跳 + doctor）；失败则切回上一版并提示。
+7. 保留上一版目录；清理更早版本。
 
 ### 7.4 无签名更新
 
@@ -443,6 +450,7 @@ releaseDate: '2026-10-23T08:02:12.038Z'
 | CLI 启动失败 | 60 s 无 token | 显示 stderr/日志；重启/换端口 |
 | WebView2 缺失 | 运行时检测 | 安装 Evergreen Bootstrapper；失败则提示手动安装 |
 | 更新中断/目录被锁 | 解压/切换失败 | 保留旧版；下次重试；必要时重启后应用 |
+| profile 覆盖项合并冲突 | 按 id 合并失败 | 保留 `.bak-<timestamp>`，doctor 报告未合并项；旧版仍可回退 |
 | 杀软隔离壳/更新 | 启动失败/文件消失 | 文档说明白名单；提供 SHA-256 与手动包 |
 | TIA 控制器残留 | 退出后进程检查 | Job Object 杀进程树；记录并提示 |
 

@@ -1,0 +1,12 @@
+# This plugin's own bundle layer: one Loader row. The row is what makes the
+# browser half in `lib/client.js` reachable at all — client-modules discovers
+# bundles by scanning enabled Loader entries, so a package with a perfect
+# `lib/client.js` and no row is never asked for it (and never reports an error).
+#
+# The host half is **not** empty: it registers the read-only status route the
+# panel polls (`GET /changes/api/status`). See src/index.ts.
+#
+# `name` must equal package.json's `name` verbatim.
+- insert:
+    - id: ui-changes
+      name: dsh-ui-changes

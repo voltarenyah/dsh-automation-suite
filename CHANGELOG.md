@@ -10,8 +10,44 @@ GitHub Releases 与 git tag `v<version>` 对齐（发布流程见 [`docs/release
 
 ### Planned
 
-- 桌面壳（WebView2 独立窗口）、安装器、应用层自动更新。设计已定稿、尚未实施：
-  [`docs/desktop-packaging.md`](docs/desktop-packaging.md)。
+- 桌面壳（WebView2 独立窗口）、安装器（固定 profile + 升级时备份并合并用户覆盖项）。
+  设计已定稿、尚未实施：[`docs/desktop-packaging.md`](docs/desktop-packaging.md)。
+
+## [0.1.5] - 2026-11-07
+
+**最后一个以 Web 方式启动的版本。** 安装后仍是本机 Web UI（浏览器标签页 + 控制台窗口），
+桌面壳与安装器从下一阶段开始。
+
+### Added
+
+- **`doctor.ps1` / `doctor.cmd`**：安装末尾自动运行，也可随时双击重跑。检查 DSH/profile/插件行、
+  图谱引擎 `--self-test`、.NET Framework 4.8、TIA V17 + Openness 组、PLCSIM API 4.0、git、
+  PDF/Excel 的 npm 依赖与模型凭据；输出 `[ OK ]` / `[WARN]` / `[FAIL]`，`-Json` 供桌面安装器复用。
+- **`dsh-ui-changes`（P1）**：右侧栏 **Changes** 标签页 + 只读状态路由
+  `GET /changes/api/status`。真实 git 状态（宿主按会话 `header.cwd` 找仓库，
+  `status --porcelain=v1 -z` + `diff --numstat -z -M HEAD`，未跟踪文件按行数计），
+  面板可见时每 5 s 自刷新。**提交区（P2）尚未实现** —— 面板目前只读。
+  设计与 P0/P1 验收记录见 [`docs/ui-changes-panel-plan.md`](docs/ui-changes-panel-plan.md)。
+- 把 0.1.4 之后新增/登记的插件全部纳入发行版：`dsh-drawing`、`dsh-ui-versions`、
+  `dsh-ui-hardware`、`dsh-ui-prompt-guide`、`dsh-ui-project-dashboard`，加上 `dsh-ui-changes`，
+  共 **13 个本地插件** + 公共 `dsh-opencode-go`。
+
+### Changed
+
+- **图谱引擎升到 .NET 10 LTS，并在发布包里自包含**：`dsh-engineering-graph` 的 tarball 现在带一个
+  win-x64 单文件引擎（约 39 MB），**用户不需要安装 .NET 8/10**；`engine/bin` 仍保留
+  framework-dependent 的开发构建。理由与实测见 `docs/decisions.md` D33。
+- 安装器在 `install.json` 里记录 `dshExe`；安装末尾自动跑 doctor。
+- 蓝图增加 `dsh-ui-changes`；`--dump-config` 为 **2090 行 / 14 个插件行**（DSH 0.2.1-rc.2，
+  全新 profile）。
+
+### Notes
+
+- profile：`dsh-automation-suite-v0.1.5`；专用 home 不变。
+- 首次安装仍需网络：十三个 tarball 来自 GitHub Release（约 34 MiB），npm 依赖来自 registry。
+- TIA 部分仍需 Windows + TIA V17；PLCSIM 需 PLCSIM Advanced API 4.0；git 插件需 `git.exe`。
+  这些外部能力由 doctor 报告，不会被安装器静默假装可用。
+- Release：<https://github.com/voltarenyah/dsh-automation-suite/releases/tag/v0.1.5>
 
 ## [0.1.4] - 2026-10-26
 

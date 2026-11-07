@@ -14,6 +14,7 @@
     "dsh-ui-plc-source": "workspace:^",
     "dsh-ui-tia-console": "workspace:^",
     "dsh-ui-versions": "workspace:^",
+    "dsh-ui-changes": "workspace:^",
     "dsh-ui-hardware": "workspace:^",
     "dsh-ui-prompt-guide": "workspace:^",
     "dsh-ui-project-dashboard": "workspace:^"
@@ -32,6 +33,7 @@
         "dsh-ui-plc-source",
         "dsh-ui-tia-console",
         "dsh-ui-versions",
+        "dsh-ui-changes",
         "dsh-ui-hardware",
         "dsh-ui-prompt-guide",
         "dsh-ui-project-dashboard",

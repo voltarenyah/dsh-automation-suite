@@ -3,11 +3,20 @@
   <!--
     dsh-engineering-graph C# engine.
 
-    Targets net8.0, unlike the TIA Openness plugin's controller (net48 / x64): the parser, the
+    Targets net10.0, unlike the TIA Openness plugin's controller (net48 / x64): the parser, the
     graph model and the SQLite store have no Siemens dependency at all — this is
     pure XML plus Microsoft.Data.Sqlite — so there is no reason to hold it to the
-    .NET Framework, and `Microsoft.Data.Sqlite` 8 loads its native provider
-    (e_sqlite3) through SQLitePCLRaw.bundle_e_sqlite3 on net8.
+    .NET Framework, and `Microsoft.Data.Sqlite` 10 loads its native provider
+    (e_sqlite3) through SQLitePCLRaw.bundle_e_sqlite3 on net10.
+
+    Why net10 and not net8: TIA Portal V17 ships .NET Framework 4.8, and the DSH
+    runtime ships Node — neither provides a .NET 8/10 runtime. A framework-dependent
+    engine would therefore require every user to install a runtime for this plugin
+    alone. The release tarball is therefore built as a self-contained single file
+    (win-x64) by scripts/build-distribution.mjs; net8 reached end of support on
+    2026-11-10, so net10 LTS is the shipping baseline. The tracked engine/bin here
+    is the framework-dependent developer build; the self-contained copy is created
+    only while packing a release.
 
     AssemblyName / RootNamespace follow the TIA Openness plugin's <Product>.<Role> rule
     (TiaOpennessV17Min.Controller): the product is this package's name without the
@@ -21,7 +30,7 @@
 
   <PropertyGroup>
     <OutputType>Exe</OutputType>
-    <TargetFramework>net8.0</TargetFramework>
+    <TargetFramework>net10.0</TargetFramework>
     <AssemblyName>EngineeringGraph.Engine</AssemblyName>
     <RootNamespace>EngineeringGraph.Engine</RootNamespace>
     <LangVersion>latest</LangVersion>
@@ -30,6 +39,10 @@
     <!-- Same as the TIA Openness plugin: the executable lands directly in bin/, which is where
          the TypeScript half resolves it from by default. -->
     <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+    <!-- Keep intermediate/publish output under obj/, not inside the tracked engine/bin.
+         `dotnet publish -r win-x64` otherwise writes a full self-contained tree to
+         engine/bin/Release/win-x64 before copying the requested -o directory. -->
+    <BaseOutputPath>$(MSBuildProjectDirectory)\obj\build\</BaseOutputPath>
     <GenerateDocumentationFile>false</GenerateDocumentationFile>
     <Deterministic>true</Deterministic>
     <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
@@ -37,7 +50,7 @@
 
   <ItemGroup>
     <!-- SQLite storage for the property graph; bundle_e_sqlite3 handles native loading. -->
-    <PackageReference Include="Microsoft.Data.Sqlite" Version="8.0.0" />
+    <PackageReference Include="Microsoft.Data.Sqlite" Version="10.0.14" />
   </ItemGroup>
 
   <ItemGroup>

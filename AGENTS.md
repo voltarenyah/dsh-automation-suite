@@ -155,7 +155,7 @@ pnpm -r build
 pnpm -r typecheck
 ```
 
-十个本地插件加 vendor 的 `dsh-tool-git` 用**两种测试运行器**，`pnpm -r test` 会把十一者都跑到：
+本地插件加 vendor 的 `dsh-tool-git` 用**两种测试运行器**，`pnpm -r test` 会把它们都跑到：
 
 | 包 | 运行器 | 命令 |
 |---|---|---|
@@ -170,9 +170,11 @@ pnpm -r typecheck
 | `dsh-ui-versions` | `node:test` | `node scripts/run-tests.mjs`（**先构建再跑**；纯视图解析/筛选/时间线 + 字典，浏览器半侧靠真实 `.dsh/versions-view.json` 验收） |
 | `dsh-ui-hardware` | `node:test` | `node scripts/run-tests.mjs`（**先构建再跑**；视图解析/筛选/机位面 + 字典，浏览器半侧靠真实 `.dsh/hardware-view.json` 验收） |
 | `dsh-ui-prompt-guide` | `node:test` | `node scripts/run-tests.mjs`（**先构建再跑**；内容数据完整性 + 工具白名单、路径安全/trust fence/路由响应、产物包装与 seat 名；浏览器半侧靠真实 dev-env 验收） |
+| `dsh-ui-changes` | `node:test` | `node scripts/run-tests.mjs`（**先构建再跑**；Changes 面板 P1：git 状态路由/服务/字典 + 客户端折叠，48 项） |
 
-⚠️ `dsh-engineering-graph` 还有一个 **C# 引擎**（`engine/`，net8）。`pnpm -r build` 只构建 TypeScript ——
+⚠️ `dsh-engineering-graph` 还有一个 **C# 引擎**（`engine/`，net10，需要 .NET 10 SDK）。`pnpm -r build` 只构建 TypeScript ——
 它的产物 `engine/bin/` **进 git**（与接口插件族的 `controller/bin` 同理），所以 checkout 开箱可用；只有改了 C# 源码才需要 `pwsh -NoProfile -File engine/build.ps1` 重建（输出到 `engine/bin/`，其中 `engine/bin/fixtures/` 与 `engine/obj/` 被 ignore）。
+**发布包里的引擎是 self-contained win-x64 单文件**：`scripts/build-distribution.mjs` 在打包时用 .NET 10 SDK 生成到临时 staging，用户不需要安装 .NET；仓库里的 `engine/bin/` 仍是 framework-dependent 的开发/测试构建（跑测试要有 .NET 10 runtime，或设 `DOTNET_ROOT`）。
 它有一项测试**驱动该引擎**（跑 `--self-test`：原生 SQLite 加载 + 真实导出物解析 + 只读闸门），
 引擎没构建时那条测试会 **skip 并打印构建命令**，而不是失败 —— 所以"全绿"不等于"引擎也验过了"。
 
@@ -213,7 +215,7 @@ profile 组合的端到端验收：
 dsh --profile dsh-automation-suite --dump-config
 ```
 
-预期结尾出现 **12 个插件行**（11 个本地插件 + 公共的 `dsh-opencode-go`），顺序与蓝图的
+预期结尾出现 **14 个插件行**（13 个本地插件 + 公共的 `dsh-opencode-go`），顺序与蓝图的
 `dsh.profile.bundles` 一致；其中 `engineering-context` 带 `disabled: true`（它整行搬进了 `leader` preset）：
 
 ```yaml
@@ -245,24 +247,30 @@ dsh --profile dsh-automation-suite --dump-config
 # == dsh-ui-versions
 - id: ui-versions
   name: dsh-ui-versions
+# == dsh-ui-changes
+- id: ui-changes
+  name: dsh-ui-changes
 # == dsh-ui-hardware
 - id: ui-hardware
   name: dsh-ui-hardware
 # == dsh-ui-prompt-guide
 - id: ui-prompt-guide
   name: dsh-ui-prompt-guide
+# == dsh-ui-project-dashboard
+- id: project-dashboard
+  name: dsh-ui-project-dashboard
 # == dsh-opencode-go
 - id: opencode-go
   name: dsh-opencode-go
 ```
 
-行数基线（**DSH 0.2.1-rc.2 实测，2026-11-03（加上 `dsh-ui-hardware` 与 `dsh-ui-prompt-guide` 之后）**；换宿主版本、改蓝图或增减插件后必须重测）：
+行数基线（**DSH 0.2.1-rc.2 实测，2026-11-07（加入 `dsh-ui-changes` 与 `dsh-ui-project-dashboard` 之后）**；换宿主版本、改蓝图或增减插件后必须重测）：
 
 | 命令 | 行数 |
 |---|---|
 | `dsh --profile web --dump-config`（官方组合，本机当前） | **1183** |
 | `dsh --profile web --patch profile/dsh-automation-suite/cordis.patch.yml --dump-config` | **1890** |
-| 按蓝图物化的 profile：`dsh --profile dsh-automation-suite --dump-config` | **1932**（2026-11-03 在临时 `DSH_HOME` 里按 `-Mode link` 物化后实测，含 `dsh-ui-hardware` 与 `dsh-ui-prompt-guide`；比政策层多出的行来自物化目录里应用回写的设置行 —— `ui-settings-general` 与调大过的 `requestTimeoutMs`） |
+| 按蓝图物化的 profile：`dsh --profile dsh-automation-suite-v0.1.5 --dump-config` | **2090**（2026-11-07 用 v0.1.5 发布物在全新临时 `DSH_HOME` 里实测，14 个插件行；比政策层多出的行来自物化目录里应用回写的设置行 —— `ui-settings-general` 与调大过的 `requestTimeoutMs`） |
 
 > ⚠️ 上一版基线 **1235 / 2003 / 2036**（2026-10-20）已作废：2026-11-02 同日重测时官方 `web` 组合
 > 本身就少了几十行（不是本仓改动 —— 那三条命令的第一条不含本仓任何文件）。别拿新旧数值互相解释，

@@ -15,13 +15,19 @@
 //   node scripts/build-distribution.mjs [--version 0.1.0] [--tag v0.1.0]
 //        [--repo voltarenyah/dsh-automation-suite] [--out dist/release]
 //        [--base-url <url>] [--no-pack] [--pnpm <path-to-pnpm.mjs>]
+//        [--dotnet <path-to-dotnet>] [--no-self-contained]
+//        [--min-dsh 0.2.1-rc.1] [--tested-dsh 0.2.1-rc.2]
 //
 // --base-url overrides the asset URL prefix (default: the GitHub Release URL).
 // --no-pack reuses tarballs already present in <out>/<version>/assets.
+// --dotnet selects the .NET 10 SDK used to build the self-contained graph engine.
+// --no-self-contained packs the framework-dependent engine instead (developer
+// testing only; users would then need the .NET 10 runtime).
 
 import { execFileSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
-import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs'
+import { copyFileSync, cpSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs'
+import { homedir } from 'node:os'
 import { basename, dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -35,6 +41,10 @@ function parseArgs(argv) {
     const key = arg.slice(2)
     if (key === 'no-pack') {
       out.pack = false
+      continue
+    }
+    if (key === 'no-self-contained') {
+      out.selfContained = false
       continue
     }
     const value = argv[i + 1]
@@ -139,9 +149,116 @@ function runPnpm(cwd, argv) {
 }
 
 // ---------------------------------------------------------------------------
+// .NET 10 SDK discovery for the self-contained graph engine. Users must not
+// install a .NET runtime for this plugin (TIA ships .NET Framework 4.8 and DSH
+// ships Node, neither is a .NET 8/10 runtime), so the release tarball carries a
+// self-contained win-x64 engine instead.
+// ---------------------------------------------------------------------------
+const doSelfContained = args.selfContained !== false
+let dotnetPath
+function findDotnet() {
+  if (dotnetPath !== undefined) return dotnetPath
+  const candidates = [
+    args.dotnet,
+    process.env.DOTNET_EXE,
+    join(homedir(), '.dotnet10', 'dotnet.exe'),
+    join(homedir(), '.dotnet10', 'dotnet'),
+    'dotnet',
+  ].filter((candidate) => candidate !== undefined && candidate !== '')
+  const seen = new Set()
+  for (const candidate of candidates) {
+    if (seen.has(candidate)) continue
+    seen.add(candidate)
+    try {
+      const sdks = execFileSync(candidate, ['--list-sdks'], {
+        encoding: 'utf8',
+        stdio: ['ignore', 'pipe', 'pipe'],
+      })
+      if (/^\s*10\./m.test(sdks)) {
+        dotnetPath = candidate
+        return dotnetPath
+      }
+    } catch {
+      // Try the next candidate.
+    }
+  }
+  throw new Error(
+    'the self-contained graph engine needs the .NET 10 SDK. Install it, put dotnet on PATH, ' +
+      'or pass --dotnet <path-to-dotnet> (for a per-user install: %USERPROFILE%\\.dotnet10\\dotnet.exe). ' +
+      'Use --no-self-contained only for local developer testing.',
+  )
+}
+
+// ---------------------------------------------------------------------------
 // 1. Pack every local bundle into assets/.
 // ---------------------------------------------------------------------------
 mkdirSync(profileOut, { recursive: true })
+
+function packDirectory(dir) {
+  const output = runPnpm(dir, ['pack', '--pack-destination', assetsDir, '--silent'])
+  const printed = output.trim().split(/\r?\n/).filter(Boolean).at(-1)
+  const filename = printed === undefined ? undefined : basename(printed)
+  if (!filename || !existsSync(join(assetsDir, filename))) {
+    throw new Error(`pnpm pack in ${dir} did not produce a tarball (output: ${JSON.stringify(output)})`)
+  }
+  return filename
+}
+
+// The shipped graph engine must run on a machine that has neither .NET 8 nor
+// .NET 10: TIA Portal only provides .NET Framework 4.8, and the DSH runtime only
+// provides Node. Pack a staging copy of the package whose engine/bin is a
+// self-contained single-file win-x64 executable, so a normal user never installs
+// a .NET runtime for this plugin. The repository keeps the small
+// framework-dependent developer build in engine/bin.
+function packGraphSelfContained(local) {
+  const staging = join(outDir, '.pack-staging', 'dsh-engineering-graph')
+  const bin = join(staging, 'engine', 'bin')
+  rmSync(staging, { recursive: true, force: true })
+  mkdirSync(bin, { recursive: true })
+  for (const file of ['package.json', 'cordis.patch.yml', 'README.md']) {
+    copyFileSync(join(local.dir, file), join(staging, file))
+  }
+  cpSync(join(local.dir, 'lib'), join(staging, 'lib'), { recursive: true })
+
+  const dotnet = findDotnet()
+  process.stdout.write('building self-contained graph engine ... ')
+  try {
+    execFileSync(
+      dotnet,
+      [
+        'publish',
+        join(local.dir, 'engine', 'EngineeringGraph.Engine.csproj'),
+        '-c', 'Release',
+        '-r', 'win-x64',
+        '--self-contained', 'true',
+        '-p:PublishSingleFile=true',
+        '-p:IncludeNativeLibrariesForSelfExtract=true',
+        '-p:EnableCompressionInSingleFile=true',
+        '-p:DebugType=None',
+        '-o', bin,
+        '--nologo', '-v', 'minimal',
+      ],
+      { stdio: 'inherit', env: { ...process.env, DOTNET_NOLOGO: '1', DOTNET_CLI_TELEMETRY_OPTOUT: '1' } },
+    )
+  } catch (error) {
+    rmSync(staging, { recursive: true, force: true })
+    throw new Error(`dotnet publish failed for the self-contained graph engine: ${error.message}`)
+  }
+
+  rmSync(join(bin, 'fixtures'), { recursive: true, force: true })
+  rmSync(join(bin, 'EngineeringGraph.Engine.pdb'), { force: true })
+  const exe = join(bin, 'EngineeringGraph.Engine.exe')
+  if (!existsSync(exe)) {
+    rmSync(staging, { recursive: true, force: true })
+    throw new Error(`the self-contained graph engine produced no executable at ${exe}`)
+  }
+  process.stdout.write(`(${Math.round(statSync(exe).size / (1024 * 1024))} MiB) `)
+  try {
+    return packDirectory(staging)
+  } finally {
+    rmSync(staging, { recursive: true, force: true })
+  }
+}
 
 const tarballs = new Map()
 if (doPack) {
@@ -149,12 +266,10 @@ if (doPack) {
   mkdirSync(assetsDir, { recursive: true })
   for (const [name, local] of localPackages) {
     process.stdout.write(`packing ${name} ... `)
-    const output = runPnpm(local.dir, ['pack', '--pack-destination', assetsDir, '--silent'])
-    const printed = output.trim().split(/\r?\n/).filter(Boolean).at(-1)
-    const filename = printed === undefined ? undefined : basename(printed)
-    if (!filename || !existsSync(join(assetsDir, filename))) {
-      throw new Error(`pnpm pack for ${name} did not produce a tarball (output: ${JSON.stringify(output)})`)
-    }
+    const filename =
+      doSelfContained && name === '@voltarenyah/dsh-engineering-graph'
+        ? packGraphSelfContained(local)
+        : packDirectory(local.dir)
     tarballs.set(name, filename)
     process.stdout.write(`${filename}\n`)
   }
@@ -227,6 +342,10 @@ const manifest = {
   tag,
   repo,
   baseUrl,
+  minDshVersion: args['min-dsh'] ?? '0.2.1-rc.1',
+  testedDshVersion: args['tested-dsh'] ?? '0.2.1-rc.2',
+  engine: doSelfContained ? 'self-contained single-file win-x64' : 'framework-dependent (developer build)',
+  doctor: 'doctor.ps1',
   generatedAt: new Date().toISOString(),
   profile: {
     dependencyCount: Object.keys(profileDependencies).length,
@@ -345,7 +464,7 @@ if ($LASTEXITCODE -ne 0) { throw "dsh plugin install failed with exit code $LAST
 # Remember where this copy was installed so start.ps1 needs no arguments.
 # It lives next to install.ps1 in the extracted release folder.
 try {
-  $state = [ordered]@{ dshHome = $DshHome; profile = $Profile } | ConvertTo-Json
+  $state = [ordered]@{ dshHome = $DshHome; profile = $Profile; dshExe = $DshExe } | ConvertTo-Json
   Set-Content -LiteralPath (Join-Path $here 'install.json') -Value $state -Encoding utf8
 } catch {
   Write-Host ('warning: could not write install.json next to install.ps1: ' + $_.Exception.Message)
@@ -357,6 +476,18 @@ Write-Host ('  "' + $here + '\start.cmd"')
 Write-Host '(or: start.cmd -DshHome ... -Profile ... to override; start.ps1 accepts -Port / -NoOpen)'
 Write-Host ''
 Write-Host ('upgrade this same profile later with: install.ps1 -Profile ' + $Profile + ' -Force')
+
+# Report capability gaps now, not the first time a TIA/graph/git tool is called.
+# Warnings do not fail the install; a hard failure means the profile will not load.
+$doctor = Join-Path $here 'doctor.ps1'
+if (Test-Path -LiteralPath $doctor) {
+  Write-Host ''
+  & $doctor -DshHome $DshHome -Profile $Profile -DshExe $DshExe
+  if ($LASTEXITCODE -ne 0) {
+    Write-Host ''
+    Write-Host 'doctor reported a fatal problem; fix it before starting the app.'
+  }
+}
 `
 writeFileSync(join(outDir, 'install.ps1'), installer.replace('__VERSION__', version).replace('__REPO__', repo).replaceAll('__PROFILE__', defaultProfile).replaceAll('__HOME__', defaultHomeName))
 
@@ -381,6 +512,24 @@ pause
 exit /b %CODE%
 `
 writeFileSync(join(outDir, 'install.cmd'), installerCmd)
+
+// doctor.ps1 is copied from the repository; doctor.cmd makes it double-clickable
+// (same MOTW/execution-policy wrapper as install.cmd). install.ps1 runs the same
+// script at the end, so there is one implementation, not one per entry point.
+copyFileSync(join(root, 'scripts', 'doctor.ps1'), join(outDir, 'doctor.ps1'))
+const doctorCmd = String.raw`@echo off
+setlocal
+rem Double-click to re-check which capabilities this machine has.
+set "PS=powershell"
+where pwsh >nul 2>nul
+if %errorlevel%==0 set "PS=pwsh"
+"%PS%" -NoProfile -ExecutionPolicy Bypass -File "%~dp0doctor.ps1" %*
+set "CODE=%errorlevel%"
+echo.
+pause
+exit /b %CODE%
+`
+writeFileSync(join(outDir, 'doctor.cmd'), doctorCmd)
 
 // start.ps1 / start.cmd: launch the installed release with its own DSH_HOME and
 // a free port. install.json (written by install.ps1) records the chosen home and

@@ -355,7 +355,7 @@ V17 子集需实测确认；该包 `docs/EXTENDED-SURFACE.md` 已在接线 `incl
 4. **12 个 vendored `.cs` 全部拍平为单一命名空间 `EngineeringGraph.Engine`** ——
    照接口插件族的**实际做法**（该族当前成员的 14 个 `.cs` 共用一个扁平命名空间，**不按子目录再分子命名空间**）。
    改名后的文件用**文件级** `namespace EngineeringGraph.Engine;`
-   （net8 + `LangVersion latest` 允许；该族当前成员因 `LangVersion 7.3` 只能用块级）。
+   （net10 + `LangVersion latest` 允许；该族当前成员因 `LangVersion 7.3` 只能用块级）。
 5. **默认引擎路径** `engine/bin/EngineeringGraph.Engine.exe`。
 
 **后果**：
@@ -417,7 +417,7 @@ crawl 模式 7/7 个 fixture、**72 节点 / 153 边**，节点种类覆盖
    一行一个 JSON 对象；`ready` 帧宣告就绪并列出操作目录，每个请求恰好一个 `result` 帧，
    中间可有 `progress` 帧；请求形如 `{id, type:"operation", operation, params}`。
    **操作目录是安全边界**，不在此列的名字一律 `unsupported_operation`。
-   两处**刻意偏离**：net8 直接用 `System.Text.Json`（接口插件族因 net48 无依赖才手写）；
+   两处**刻意偏离**：net10 直接用 `System.Text.Json`（接口插件族因 net48 无依赖才手写）；
    错误对象在接口插件族的 `code`/`message`/`details` 之外**保留来源库的 `remediation`** ——
    是超集，不丢信息，两个消费端都能渲染。
 2. **引擎四个模式**：无参 = stdio 服务；`--call <Op> [json]` 一次性执行并打印结果帧
@@ -1127,3 +1127,40 @@ MODEL_METADATA_UNAVAILABLE
 `session-controller` / `workspace-controller` / `schedule` / `ui-deliverables` 全部停在 `pending` ——
 界面症状是"模型选择空白、发消息没反应"，和模型配置问题长得完全不一样，容易误判。
 处理：把那个会话目录整体挪出 `sessions/`（本次挪到 `<home>/sessions-quarantine/`），**不要删**。
+
+---
+
+## D33 · 图谱引擎升 net10 + 发布包自包含：用户不再为一个插件装 .NET ✅
+
+**背景**：引擎最初选 `net8.0` 是**工程上的顺手**，不是硬约束 —— 它不依赖 Siemens 程序集，
+`Microsoft.Data.Sqlite` 8 能在 net8 上通过 SQLitePCLRaw 加载原生 `e_sqlite3`，而且 net8 支持
+文件级命名空间与 `LangVersion latest`（D17/D19）。但发行版把它推向用户后，这个选择变成部署问题：
+
+- TIA Portal V17 只提供 **.NET Framework 4.8**，不提供 .NET 8/10；DSH 运行时只带 Node。
+- 机器上装了 .NET 10 也不能让 `net8.0` 的 framework-dependent apphost 默认跨大版本运行。
+- .NET 8 LTS 于 **2026-11-10** 结束支持。
+
+**决定**：
+
+1. 引擎目标框架改为 **`net10.0`**，`Microsoft.Data.Sqlite` 用 **10.0.14**（配套 SQLitePCLRaw 10）。
+2. **发布包里的引擎是 self-contained win-x64 单文件**：`scripts/build-distribution.mjs` 用
+   .NET 10 SDK `dotnet publish -r win-x64 --self-contained true -p:PublishSingleFile=true`
+   （压缩单文件，约 38.9 MB）打到临时 staging，再 `pnpm pack`；**仓库里的 `engine/bin/`
+   仍是 framework-dependent 的开发/测试构建**，不提交自包含产物。
+3. 用户不需要安装任何 .NET；`doctor.ps1` 不再检查系统 .NET 版本，而是直接跑
+   `EngineeringGraph.Engine.exe --self-test`（覆盖原生 SQLite 加载）。
+4. 维护者构建引擎/发版需要 **.NET 10 SDK**（本机可装在 `%USERPROFILE%\.dotnet10`，
+   `build-distribution.mjs` 会自动找它，也可 `--dotnet <path>`）。
+
+**验证（2026-11-07）**：
+
+- 临时副本 net10 构建 **0 warning / 0 error**；`--self-test` 的 SQLite 往返通过。
+- 用 `engine/fixtures` 跑完整自检：8/8 文件、87 节点 / 192 边，ingest/query/LAD/read-only/
+  incremental update/removal/atomicity 全通过。
+- 单文件自包含产物（未设 `DOTNET_ROOT`）同样通过上述自检；发布 tarball 里只有
+  `engine/bin/EngineeringGraph.Engine.exe`（38.9 MB）。
+- 全仓 `pnpm -r test` 通过（graph 128 项，ui-changes 48 项）；v0.1.5 发布物安装后
+  `doctor.ps1` 的图谱项为 `self-test: OK`。
+
+**回退**：`TargetFramework` 改回 `net8.0`、`Microsoft.Data.Sqlite` 改回 `8.0.0`，并去掉
+`build-distribution.mjs` 的 self-contained 分支；回退后用户必须自己装 .NET 8，且该运行时已 EOL。

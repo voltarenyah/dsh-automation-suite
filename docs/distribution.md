@@ -91,7 +91,7 @@ pnpm 成功后，插件管理器把**本次新增的直接依赖**里声明了 `
 
 `evaluatePluginCompatibility` 只看两样：包自己的 `engines.dsh`（有就单独决定），否则看
 `peerDependencies` 里的 `@deepseek-ai/dsh*`。不满足会拒绝安装并提示
-`dsh plugin allow-version … --accept-risk`。本仓七个插件目前都没有这两类字段，等于不设闸门；
+`dsh plugin allow-version … --accept-risk`。本仓十三个插件目前都没有这两类字段，等于不设闸门；
 伞形包可以显式写 `engines.dsh` 来钉住宿主版本。
 
 ---
@@ -110,7 +110,7 @@ pnpm 成功后，插件管理器把**本次新增的直接依赖**里声明了 `
 
 ```
 dist/release/<version>/
-  assets/*.tgz            七个插件的 tarball（GitHub Release 资产）
+  assets/*.tgz            十三个插件的 tarball（GitHub Release 资产）
   profile/package.json    直接依赖 = 每个 tarball 的 Release URL
   profile/cordis.patch.yml 政策层，逐字节复制蓝图
   profile/pnpm-workspace.yaml  nodeLinker: hoisted + allowBuilds
@@ -139,8 +139,8 @@ dist/release/<version>/
 
 ### 方案 C：npm 发布
 
-七个插件里六个可以按 `@voltarenyah/*` 发布；`dsh-tool-git` **不能**——上游已经占用了这个名字
-和 `0.1.3` 这个版本。三条出路：
+多数插件可以按现有名字发布；`dsh-tool-git` **不能**——上游已经占用了这个名字和 `0.1.3`
+这个版本（另有若干 UI 插件本来就不带 scope）。三条出路：
 
 1. 改名为 `@voltarenyah/dsh-tool-git`（要同步改 `cordis.patch.yml` 的 `insert[].name`、蓝图的
    `bundles`、本仓测试；是独立决策）；
@@ -197,8 +197,13 @@ pwsh -NoProfile -File install.ps1 -Profile dsh-automation-suite-release -Force
 
 - **默认 home 是发布版专用目录**：`%USERPROFILE%\dsh-automation-suite-home`，不是日常 `~/.dsh`。
 - **默认 profile 名带版本号**：`dsh-automation-suite-v<version>`，每次发布一个独立目录。
-- `install.ps1` 在解压目录写 `install.json`（记录这次用的 home 与 profile），`start.cmd` 据此启动。
+- `install.ps1` 在解压目录写 `install.json`（记录这次用的 home、profile 与 `dshExe`），`start.cmd` 据此启动。
 - **junction/symlink 一律拒绝**（即使加 `-Force`）；对真实 profile 加 `-Force` 会先备份两个清单文件。
+- **安装末尾自动跑 `doctor.ps1`**，解压目录里也有可双击的 `doctor.cmd`。它检查 DSH/profile/插件行、
+  图谱引擎自检、.NET Framework 4.8、TIA V17（含 `Siemens TIA Openness` 组）、PLCSIM API 4.0、
+  git、PDF/Excel 的 npm 依赖与模型凭据；输出 `[ OK ]` / `[WARN]` / `[FAIL]` 三档。只有 `[FAIL]`
+  会让它退出 1，`[WARN]` 表示对应能力暂不可用，不阻止 App 启动。`doctor.ps1 -Json` 是给桌面安装器
+  复用的机器可读契约。
 
 ### 为什么发布版默认用独立 DSH_HOME
 
@@ -275,42 +280,47 @@ cmd /c rmdir /s /q "%USERPROFILE%\dsh-automation-suite-home"
 发布前不必发到 GitHub，用本地 HTTP 服务器就能验完整链路：
 
 ```powershell
-node scripts/build-distribution.mjs --version 0.1.3 --base-url http://127.0.0.1:8766 --out dist/release/test
+node scripts/build-distribution.mjs --version 0.1.5 --base-url http://127.0.0.1:8766 --out dist/release/test
 # 另开一个进程，把 assets 目录当作静态站点
-python -m http.server 8766 --bind 127.0.0.1 --directory dist/release/test/0.1.3/assets
+python -m http.server 8766 --bind 127.0.0.1 --directory dist/release/test/0.1.5/assets
 
-# 默认 profile 名为 dsh-automation-suite-v0.1.3，默认 home 是专用目录；
+# 默认 profile 名为 dsh-automation-suite-v0.1.5，默认 home 是专用目录；
 # 测试时用 -DshHome 指到临时目录，避免碰真实的发布版 home
-pwsh -NoProfile -File dist/release/test/0.1.3/install.ps1 -DshHome C:\temp\dsh-test
+pwsh -NoProfile -File dist/release/test/0.1.5/install.ps1 -DshHome C:\temp\dsh-test
 ```
 
-实测结果（DSH 0.2.1-rc.2，v0.1.3）：
+实测结果（DSH 0.2.1-rc.2，v0.1.5）：
 
 | 检查 | 结果 |
 |---|---|
-| `install.ps1` | 退出 0，七个包 + `dsh-opencode-go` 装上；profile 为 `dsh-automation-suite-v0.1.3`，并写出 `install.json` |
+| `install.ps1` | 退出 0，十三个包 + `dsh-opencode-go` 装上；profile 为 `dsh-automation-suite-v0.1.5`，并写出 `install.json`（含 `dshExe`） |
+| `doctor.ps1` / `doctor.cmd` | 安装末尾自动跑；本机 11 项 OK、1 项 WARN（模型凭据未配）、0 项 FAIL；图谱项为 `self-test: OK`（自包含引擎，不依赖系统 .NET） |
 | `start.cmd` | 读取 `install.json` 的 home/profile；3080 被占用时自动选到 **3093** 并正常监听 |
 | 专用 home 的 workspace 注册表 | 首次启动后 `<home>/storages/workspace.json` 为 `initialized=true`、**0 条 workspace**，不含 desktop 的项目 |
-| `--dump-config` | **退出 0，2033 行**；8 个插件行（含 `plcsim-advanced`）、3 个 preset、`engineering-context` 为 `disabled: true`，无 `not found` / 错误 |
-| `--dump-config-schema` | 退出 1（预期：preset 行的 `unrecognized Loader tree carrier`，与插件无关）；输出含 `opennessDir`、`destructivePolicy`，证明插件被真实 import |
+| `--dump-config` | **退出 0，2090 行**；14 个插件行（含 `plcsim-advanced`、`drawing`、`ui-changes`、`ui-project-dashboard`）、3 个 preset、`engineering-context` 为 `disabled: true`，无 `not found` / 错误 |
+| `--dump-config-schema` | 退出 1（预期：preset 行的 `unrecognized Loader tree carrier`，与插件无关）；输出含 `opennessDir`、`enginePath`，证明插件被真实 import |
 | 显式装到已存在的 profile | 报错并提示 `-Profile` / `-Force`，不写任何文件 |
 | 对 junction 加 `-Force` | 拒绝写入，链接目标里的哨兵文件未被改动 |
 | 对真实 profile 加 `-Force` | 先产生 `package.json.bak-<时间>` / `cordis.patch.yml.bak-<时间>`，再安装 |
 | 启动后 | `Get-Process TiaOpennessV17Min.Controller` 有进程 = TIA 插件 `apply()` 跑过（需 TIA V17） |
 
-> 2033 行是**全新 profile** 的数字；本机日常开发 profile 的 2036 行基线多了应用回写的 3 行设置，
-> 两者不要互相解释。行数只用来发现"整行消失"这类事故。
+> 2090 行是**全新 profile** 的数字（2026-11-07，v0.1.5）；它比政策层多出的是物化目录里应用回写的
+> 设置行。行数只用来发现"整行消失"这类事故。
 
 ---
 
 ## 6. 已知限制
 
+- **图谱引擎自包含**：发布 tarball 里的 `dsh-engineering-graph` 带一个约 39 MB 的 win-x64 单文件引擎，
+  **用户不需要安装 .NET 8/10**；代价是图谱 tarball 从约 13 MB 增到约 34 MB（压缩后），整套 zip 约 48 MB。
+  维护者重新构建引擎/发版需要 .NET 10 SDK（`build-distribution.mjs` 自动找 `%USERPROFILE%\.dotnet10`，
+  也可 `--dotnet <path>`）。
 - **宿主版本耦合**：政策层里三个 preset 的工具清单是照 DSH 0.2.1-rc.2 的 `standard` 抄的。
   升级 DSH 后要按 `profile/dsh-automation-suite/cordis.patch.yml` 头部注释重新生成。
   profile 分发没有兼容性闸门（`engines.dsh` 只在 bundle 上生效）；伞形 bundle 可以补。
 - **TIA 部分仅 Windows + TIA V17**，还需要 Openness DLL、.NET Framework 4.8 x64、
   当前用户在 `Siemens TIA Openness` 本地组里。git / UI 插件跨平台。
-- **首次安装有网络依赖**：七个 tarball 来自 GitHub Release（约 15 MiB），
+- **首次安装有网络依赖**：十三个 tarball 来自 GitHub Release（约 34 MiB，其中图谱引擎自包含单文件约 39 MB），
   `dsh-opencode-go` 及其依赖来自 npm。
 - **默认超时**：TIA 与知识图谱插件的 `requestTimeoutMs` 默认 300000；大工程要自己调到
   900000（在 profile 的 `cordis.patch.yml` 里覆盖，或用应用的设置页）。

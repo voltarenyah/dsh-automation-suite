@@ -13,6 +13,8 @@ lib/
 # risks the two drifting apart.
 engine/obj/
 engine/bin/fixtures/
+# Defensive: a publish with an older csproj used to nest its intermediate tree here.
+engine/bin/Release/
 
 # Local development links to the DeepSeek Harness runtime packages, created by
 # scripts/link-dsh-runtime.mjs. They are never shipped: an installed plugin

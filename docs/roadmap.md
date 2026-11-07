@@ -35,14 +35,22 @@
 
 ### 1.1 Web GUI 视图插件（不占三层编号）
 
-这三个客户端插件只**读**上面两层已经落盘的东西，不新增子进程、不新增 HTTP 路由，
-也不往模型工具面里加任何东西：
+这一组客户端插件只**读**上面两层已经落盘的东西（或宿主当前的只读状态），不新增子进程，
+也不往模型工具面里加任何东西；只有宿主侧数据没法落盘时才自开一条只读路由（见下表后的说明）：
 
 | 插件 | 读什么 | 落点 | 状态 |
 |---|---|---|---|
 | `dsh-ui-plc-source` | `source/<device>/_manifest.json`（清单不可读时退回目录列举） | 右侧栏 **PLC Blocks** | ✅ |
 | `dsh-ui-tia-console` | 会话里的 `command/*`、`tool/*` 事件 | 输入框上方 **TIA 控制台** | ✅ |
 | `dsh-ui-versions` | `<workspace>/.dsh/versions-view.json` | 右侧栏 **Versions**（PLC Blocks 之后） | ✅ 2026-11-02 |
+| `dsh-ui-changes` | 宿主路由现算的未提交变更（真实 git：路径 + 每文件 `+N/−M`，未跟踪按行数计） | 右侧栏 **Changes**（Versions 之后） | 🟡 P1 2026-11-06（只读；提交区 P2 未做），见[设计稿](ui-changes-panel-plan.md) |
+
+> **两条只读路由**：`dsh-ui-project-dashboard`（工作区标签）与 `dsh-ui-changes`（git 状态）各新增了
+> 一条宿主路由 —— 它们的输入不在工作区里，也没有可等的落盘产物。`ctx.webServer` 的路由
+> **没有**宿主鉴权，所以两者都自抄了同一份 trust fence（拒绝 cross-site、`Host` 限 loopback、
+> `Origin` 必须等于 `Host`）；`dsh-ui-changes` 另外只回路径与计数、不回文件内容。
+> 见 [`ui-changes-panel-plan.md`](ui-changes-panel-plan.md) §6。
+
 **`dsh-ui-versions` 读的是派生视图，不是账本。** 那份 JSON 由工程上下文插件写出
 （`src/version/view.ts`：`buildVersionView` + `writeVersionView`，在 `project_version_reindex`、
 提交、`project_version_annotate` 之后各写一次），内容是设备/工作区身份、`counts`
