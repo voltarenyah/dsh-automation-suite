@@ -10,7 +10,7 @@
 > whose preview carries information are dry-run by default.
 >
 > 插件由**两个 Loader 行**组成：宿主行（`.`,`src/index.ts`）持有控制器子进程、`engineeringAccess`
-> 服务与知识库；工具行（`./tools`,`src/tools-entry.ts`）才是 39 个模型可见的工具，
+> 与 `projectTextAccess` 服务与知识库；工具行（`./tools`,`src/tools-entry.ts`）才是 39 个模型可见的工具，
 > **由 agent preset 决定要不要声明** —— 主 agent（leader）声明它、子 agent（expert）不声明，
 > 于是子 agent 看不到任何 TIA 工具。见 [§4.0](#40-两个-loader-行宿主行与-tools-行)。
 
@@ -200,7 +200,7 @@ TIA 工具），所以注册被拆成两行；**人**用的斜线指令是第三
 
 | 行 | 子路径导出 | `name` | `inject` | 内容 |
 |---|---|---|---|---|
-| 宿主行 | `.`（`lib/index.js`） | `tia-openness-v17-min` | `[]` | `ControllerProcess` + `ctx.effect` 的所有权、`engineeringAccess` 服务（公开缝）、`tiaOpennessRuntime`（本包另两行的内部缝）、bundled skill provider |
+| 宿主行 | `.`（`lib/index.js`） | `tia-openness-v17-min` | `[]` | `ControllerProcess` + `ctx.effect` 的所有权、`engineeringAccess` 服务（只读公开缝）、`projectTextAccess` 服务（项目文本/语言/归档/保存的写缝）、`tiaOpennessRuntime`（本包另两行的内部缝）、bundled skill provider |
 | 工具行 | `./tools`（`lib/tools-entry.js`） | `tia-openness-v17-min-tools` | `['tools', 'tiaOpennessRuntime']` | 39 个模型可见工具（`src/tools.ts`） |
 | 命令行 | `./commands`（`lib/commands-entry.js`） | `tia-openness-v17-min-commands` | `['commands', 'tiaOpennessRuntime']` | 7 个 `/tia-…` 斜线指令（`src/commands.ts`，复用工具的操作与渲染） |
 
@@ -414,12 +414,13 @@ commit `b5c7041`）**逐字**打进包里，并注册成模型可见的**一个*
 
 ### 4.5 给工程上下文插件的服务：`engineeringAccess`
 
-宿主行**不注册任何模型可见工具**，它注册两个 cordis 服务。公开的那个是 `engineeringAccess`
+宿主行**不注册任何模型可见工具**，它注册三个 cordis 服务。公开的读缝是 `engineeringAccess`
 （[`src/access.ts`](src/access.ts)），供**工程上下文插件**调用 —— 它要指纹做工程级
 变更检测，而按架构规定它**自己不允许与 TIA Portal 对话**（发行版
-[`docs/decisions.md`](../../docs/decisions.md) **D12** 的"缝 A"）。另一个是
-`tiaOpennessRuntime`（[`src/runtime-service.ts`](src/runtime-service.ts)），只给本包的工具行读，
-**不是公开接口**：其它插件要驱动 TIA 只能走 `engineeringAccess`。
+[`docs/decisions.md`](../../docs/decisions.md) **D12** 的"缝 A"）。项目文本/语言/归档/保存的
+**写缝**是 `projectTextAccess`（`src/project-text-access.ts`），供翻译工作流使用；
+`tiaOpennessRuntime`（[`src/runtime-service.ts`](src/runtime-service.ts)）只给本包的工具行读，
+**不是公开接口**。其它插件读工程走 `engineeringAccess`，写项目文本走 `projectTextAccess`。
 
 | 方法 | 触发的操作 | 关键点 |
 |---|---|---|
@@ -447,6 +448,18 @@ commit `b5c7041`）**逐字**打进包里，并注册成模型可见的**一个*
 - 为什么"翻页"在 V17 上不存在、为什么 `closeProject` 这样定、`source/` 布局为什么归本插件：
   [`docs/decisions.md`](docs/decisions.md) **D20** / **D21**；契约镜像在
   [`packages/dsh-engineering-context/docs/ARCHITECTURE.md`](../dsh-engineering-context/docs/ARCHITECTURE.md) §5.3。
+
+#### 4.5.1 `projectTextAccess`：项目文本/语言的写缝
+
+`src/project-text-access.ts` 暴露：`exportTexts` / `importTexts` / `readLanguages` /
+`setLanguages` / `archiveProject` / `saveProject` / `listBlocks`。它同样复用
+`runOperation`，与模型面的 `project_texts` / `project_languages` / `save_project` /
+`archive_project` / `list_plc_objects` 走同一条路径。
+
+- **不放进 `engineeringAccess`**：那个缝的定位是读；`importTexts` 不可回滚、`setLanguages`
+  会改项目语言配置，必须让调用方显式处理权限与回滚。
+- **`listBlocks`** 只为按 `programmingLanguage=F_*` 识别 F 块；组名是用户任意命名的，不能用于排除。
+- **模型面工具数不变**：这些方法只是给工程上下文插件的工作流用的服务面，不新增工具。
 
 ---
 

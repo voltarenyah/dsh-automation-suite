@@ -378,6 +378,9 @@ manifest.json     # name / cpuType / communication / ip / subnetMask / gateway /
 3. **`upload`（StationUploadProvider）/ `compare_online`（PlcSoftware.CompareToOnline）**——S3 未实现；
 4. 上述通过后，把矩阵里 `Downloading hardware and software components…` 从“部分”改成“已适配”。
 
+> 真实 PLC 的完整评估（interface 选择、证书、下载配置策略、超时与验证）见
+> [`REAL-PLC-DOWNLOAD-ASSESSMENT.md`](REAL-PLC-DOWNLOAD-ASSESSMENT.md)。
+
 ### 11.4 复跑一次 V17 下载（命令级）
 
 ```powershell
