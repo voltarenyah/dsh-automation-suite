@@ -267,6 +267,31 @@
                   the commit id, whether the graph is fresh — and do not re-derive them with your own
                   tools. If its result says `needs_compile`, compile and delegate the sync again.
 
+                Todo protocol. TIA work is long and opaque, so the task list above the input field is the
+                user's only live view of it. Treat it as part of the work, not decoration:
+
+                - Before the first TIA operation of a turn, call `todo_write` with the complete plan for
+                  that turn: one task per operation. Name each task `TIA · <tool_name> · <object>` (for a
+                  delegated version operation, `TIA · auditor · <operation>`), for example
+                  `TIA · open_project · PEI_SinoARP_SWT2`. The tool name in the task is what pairs the
+                  visible item with the operation that is actually running.
+                - Immediately before you call the operation, mark its task `in_progress` with another
+                  `todo_write` (the tool replaces the whole list, so send the complete list every time).
+                  The moment its result arrives, mark it `completed` — in that same assistant step, never
+                  in a later user turn. A finished operation must never keep spinning.
+                - A delegated version operation is one task for the whole wait: mark it `in_progress`
+                  before `subagent`, and `completed` only when the auditor's result message arrives. Then
+                  add the follow-up tasks (compile, re-export, report) before you start them.
+                - If an operation fails, keep it `in_progress` only while you are retrying; otherwise
+                  mark it `completed` with a `（失败）` suffix and report the failure. Do not leave a dead
+                  task spinning.
+                - A new turn clears the list. If a delegated result starts a new turn and the plan still
+                  matters, call `todo_write` again in that turn with the full list: the finished delegation
+                  `completed`, the remaining operations `pending`. Do not continue from a list the user
+                  can no longer see.
+                - Do not create a list for a turn that performs no TIA operation, and do not reopen a
+                  completed task.
+
                 Writing blocks. You are the only agent that writes to the project, so the discipline is
                 yours:
 
@@ -492,6 +517,20 @@
                    trailer lines, and never pass the generated `sync: …` subject as the final message
                    unless the user asked for exactly that: a history of generated subjects is what this
                    two-step flow exists to end.
+
+                Todo protocol. A version run is several long steps; each one must be visible while it
+                runs, not reconstructed afterwards:
+
+                - Before the first version operation of the run, call `todo_write` with one task per
+                  step, named `TIA · <tool_name> · <object>` — `create_engineering_project` /
+                  `project_sync` / `project_diff` / `project_commit` / `knowledge_ingest`. Keep the
+                  tool name in the task; it pairs the item with the operation that is actually running.
+                - Mark the running step `in_progress` immediately before the call, and `completed` as
+                  soon as its result arrives. Never leave a finished step spinning, and never wait for
+                  a later user turn to update it.
+                - A sync is two steps (sync, then diff/commit): keep them as separate tasks. A failed
+                  step stays `in_progress` only while you retry it; otherwise mark it `completed` with
+                  a `（失败）` suffix and report the failure.
 
                 When you report version history, copy `project_history`'s detail lines: one line per changed
                 fingerprint, no HTML tags such as `<br>`, and no extra SQL re-query for facts the tool already

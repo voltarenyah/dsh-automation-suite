@@ -88,6 +88,23 @@
 页面内容不进模型上下文；slot 名与 `startSession` 都是内部约定，宿主升级要复核。实现说明、四个座位的
 机制与验收见该包 README。
 
+### 1.3 TIA 操作的 Todo 兜底（✅ 2026-11-07）
+
+输入框上方的 Todo 面板由会话 `todos` 投影驱动，只有 `todo_write` 才会出现。为了让 TIA 操作
+**总有可见进度、结束后不残留转圈**，本发行版做了两层：
+
+- **政策层**：leader / auditor 的 persona 各加一段 “Todo protocol”，规定任务名
+  `TIA · <tool_name> · <object>`、开始前 `in_progress`、结果到达即 `completed`；派发的版本操作
+  在 `subagent` 前标 `in_progress`、auditor 结果消息到达才结束。
+- **兜底层**：`packages/dsh-tia-todo-bridge`（宿主面一行，不注册工具/服务）监听
+  `tools/execute` / `tools/post-execute` / `session/event`。模型没写清单时补一行并自动结束；
+  模型自己写了清单则完全不改（对应项在操作返回时还没 `completed` 的话，只发一条 model-visible
+  的 settlement 提醒）。纯查询与 `subagent` 不自动建项。
+
+验收：不写清单做一次 `open_project`，应出现 `TIA · open_project · <工程名>` 并在返回后变已完成；
+模型自己写清单后做 `export_blocks`，清单不被插件改写。见
+[`packages/dsh-tia-todo-bridge/README.md`](../packages/dsh-tia-todo-bridge/README.md)。
+
 ---
 
 ## 2. 接口插件族 · 工控软件接口插件 🟡

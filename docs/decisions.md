@@ -1164,3 +1164,59 @@ MODEL_METADATA_UNAVAILABLE
 
 **回退**：`TargetFramework` 改回 `net8.0`、`Microsoft.Data.Sqlite` 改回 `8.0.0`，并去掉
 `build-distribution.mjs` 的 self-contained 分支；回退后用户必须自己装 .NET 8，且该运行时已 EOL。
+
+---
+
+## D34 · TIA 操作的 Todo 清单：政策负责"怎么写"，插件负责"漏写时也有" ✅
+
+**背景**：2026-11-07 的用户反馈——输入框上方的 Todo 面板**很少出现**；偶尔出现了，列了几个任务，
+状态又更新不及时，活干完了某项还在转。根因不在面板本身：它读的是会话 `todos` 投影，
+只有模型调用 `todo_write` 才会出现，而发行版的 persona 此前没有任何 Todo 纪律；模型写了之后，
+也没有规则要求它在工具返回的同一轮把对应项改成 `completed`。
+
+宿主的 todo 工具是**单 owner、整表替换、无读回工具**（`@deepseek-ai/dsh-tool-todo` README），
+所以本仓能动的只有两处：给模型的规则（persona）与宿主侧的事件观察（插件）。核心 Web 面板
+（`dsh-client-ui-conversation` 的 `TodoPanel`）不归本仓，不能改。
+
+**决定**：两层，所有权分开。
+
+1. **政策层（persona）**：`preset-leader` 与 `preset-auditor` 各加一段 “Todo protocol”：
+   - 第一次 TIA 操作前用 `todo_write` 写出完整计划，任务名 `TIA · <tool_name> · <object>`
+     （派发用 `TIA · auditor · <operation>`）；
+   - 操作前标 `in_progress`、结果到达的**同一 assistant step** 标 `completed`；
+   - 派发的版本操作在 `subagent` 前标 `in_progress`，auditor 的结果消息到达才结束；
+   - 失败项只在重试期间保留 `in_progress`，否则 `（失败）` + `completed`，不许死转。
+2. **兜底层（`@voltarenyah/dsh-tia-todo-bridge`）**：宿主面一个 Loader 行，不注册工具/服务，
+   监听 `tools/execute` / `tools/post-execute` / `session/event`：
+   - 模型没有清单（或清单由本插件创建）时，为 32 个**改状态或耗时**的 TIA / 版本操作补一行
+     `in_progress`，工具返回改为 `completed`（失败加 `（失败）`）；
+   - 模型一旦自己写了清单，**完全不改**；本轮所有权归模型，插件只在下一轮重新判断。
+     若模型清单里对应项在操作返回时还没 `completed`，插件只发一条 model-visible 的
+     settlement notice（`source.kind = 'tia-todo-bridge'`）要求它立即 `todo_write`，仍然不动清单；
+   - 纯查询（`project_info` / `list_plc_objects` / `controller_status` / `knowledge_query` …）
+     不建项；`subagent` 不建项（它立即返回，真正的等待由 persona 的派发任务承接）。
+
+**为什么不用"自动写模型清单"的做法**：那会覆盖模型的整表计划，模型下一次 `todo_write`
+又会把自动项冲掉，形成来回覆盖。兜底只在没有模型清单时接管，模型写了就退出，所有权是单向的。
+
+**为什么不做成 UI 插件**：面板与投影都在宿主核心；本仓能读到的是 `session/event` 与工具流水线，
+写入 `todo/write` 就是宿主投影的合法输入。新增一个客户端面板会与核心 Todo 面板并存，反而更乱。
+
+**后果**：
+
+- 新增包 `packages/dsh-tia-todo-bridge`（`bridge.ts` 纯状态机 + `index.ts` 接线 + 18 项单测），
+  并登记进蓝图 `dependencies` / `dsh.profile.bundles` 与根 `pnpm-lock.yaml`。
+- persona 只改 `preset-leader` / `preset-auditor` 两处 block scalar（全局 persona 与非 preset agent 不受影响）。
+- 新增的 todo 事件是 `todo/write`（宿主已知事件类型），不新增会话事件、不改会话格式。
+- 兜底项不进入模型上下文：模型看不到插件写了什么，下一次 `todo_write` 仍按自己的计划整表替换；
+  只有“模型自己清单里的对应项还没完成”时，插件才附带一条 settlement notice。
+
+**验证（2026-11-07）**：
+
+- `node node_modules/typescript/bin/tsc -p packages/dsh-tia-todo-bridge` 通过；
+- `node --test --test-reporter=spec "packages/dsh-tia-todo-bridge/test/*.test.mjs"` 18/18 通过；
+- 单测覆盖：无模型清单时建项并结束、模型清单不被改写、失败后缀、两个操作各自结束、
+  纯查询不建项、`turn/start` 重置、重复操作内容去重、`stateFromLog` 重建。
+
+**回退**：从蓝图 `dependencies` / `bundles` 删掉该包并重跑 `pnpm install --lockfile-only`；
+persona 里删掉两段 “Todo protocol”。插件与政策互不依赖，可单独回退。

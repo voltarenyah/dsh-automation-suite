@@ -1,0 +1,9 @@
+# This plugin's own bundle layer: one Loader row. It registers no tools and no
+# services; it listens to the tool pipeline and the session event feed, so a
+# single host row covers every agent and stays inert on sessions without a
+# `todos` projection.
+#
+# `name` must equal package.json's `name` verbatim.
+- insert:
+    - id: tia-todo-bridge
+      name: '@voltarenyah/dsh-tia-todo-bridge'

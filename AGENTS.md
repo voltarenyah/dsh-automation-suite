@@ -150,7 +150,7 @@ pnpm run clean:build      # 清构建产物（只碰 lib/ dist/）
 ## 4. 测试与验收
 
 ```powershell
-pnpm test          # 全仓：TIA 112 项（111 通过 / 1 跳过）+ dsh-tool-git 51 项 + engineering-context 151 项 + engineering-graph 128 项 + drawing 23 项 + plcsim-advanced 10 项 + ui-plc-source 47 项 + ui-tia-console 22 项 + ui-versions 15 项 + ui-hardware 9 项 + ui-prompt-guide 23 项
+pnpm test          # 全仓：TIA 112 项（111 通过 / 1 跳过）+ dsh-tool-git 51 项 + engineering-context 151 项 + engineering-graph 128 项 + drawing 23 项 + plcsim-advanced 10 项 + ui-plc-source 47 项 + ui-tia-console 22 项 + ui-versions 15 项 + ui-hardware 9 项 + ui-prompt-guide 23 项 + tia-todo-bridge 18 项
 pnpm -r build
 pnpm -r typecheck
 ```
@@ -171,6 +171,7 @@ pnpm -r typecheck
 | `dsh-ui-hardware` | `node:test` | `node scripts/run-tests.mjs`（**先构建再跑**；视图解析/筛选/机位面 + 字典，浏览器半侧靠真实 `.dsh/hardware-view.json` 验收） |
 | `dsh-ui-prompt-guide` | `node:test` | `node scripts/run-tests.mjs`（**先构建再跑**；内容数据完整性 + 工具白名单、路径安全/trust fence/路由响应、产物包装与 seat 名；浏览器半侧靠真实 dev-env 验收） |
 | `dsh-ui-changes` | `node:test` | `node scripts/run-tests.mjs`（**先构建再跑**；Changes 面板 P1：git 状态路由/服务/字典 + 客户端折叠，48 项） |
+| `dsh-tia-todo-bridge` | `node:test` | `node --test --test-reporter=spec "test/*.test.mjs"`（纯状态机 + manifest，18 项；不依赖 TIA） |
 
 ⚠️ `dsh-engineering-graph` 还有一个 **C# 引擎**（`engine/`，net10，需要 .NET 10 SDK）。`pnpm -r build` 只构建 TypeScript ——
 它的产物 `engine/bin/` **进 git**（与接口插件族的 `controller/bin` 同理），所以 checkout 开箱可用；只有改了 C# 源码才需要 `pwsh -NoProfile -File engine/build.ps1` 重建（输出到 `engine/bin/`，其中 `engine/bin/fixtures/` 与 `engine/obj/` 被 ignore）。
@@ -215,7 +216,7 @@ profile 组合的端到端验收：
 dsh --profile dsh-automation-suite --dump-config
 ```
 
-预期结尾出现 **14 个插件行**（13 个本地插件 + 公共的 `dsh-opencode-go`），顺序与蓝图的
+预期结尾出现 **15 个插件行**（14 个本地插件 + 公共的 `dsh-opencode-go`），顺序与蓝图的
 `dsh.profile.bundles` 一致；其中 `engineering-context` 带 `disabled: true`（它整行搬进了 `leader` preset）：
 
 ```yaml
@@ -259,18 +260,21 @@ dsh --profile dsh-automation-suite --dump-config
 # == dsh-ui-project-dashboard
 - id: project-dashboard
   name: dsh-ui-project-dashboard
+# == @voltarenyah/dsh-tia-todo-bridge
+- id: tia-todo-bridge
+  name: '@voltarenyah/dsh-tia-todo-bridge'
 # == dsh-opencode-go
 - id: opencode-go
   name: dsh-opencode-go
 ```
 
-行数基线（**DSH 0.2.1-rc.2 实测，2026-11-07（加入 `dsh-ui-changes` 与 `dsh-ui-project-dashboard` 之后）**；换宿主版本、改蓝图或增减插件后必须重测）：
+行数基线（**DSH 0.2.1-rc.2 实测，2026-11-07（加入 `dsh-ui-changes`、`dsh-ui-project-dashboard` 与 `dsh-tia-todo-bridge` 之后）**；换宿主版本、改蓝图或增减插件后必须重测）：
 
 | 命令 | 行数 |
 |---|---|
 | `dsh --profile web --dump-config`（官方组合，本机当前） | **1183** |
-| `dsh --profile web --patch profile/dsh-automation-suite/cordis.patch.yml --dump-config` | **1890** |
-| 按蓝图物化的 profile：`dsh --profile dsh-automation-suite-v0.1.5 --dump-config` | **2090**（2026-11-07 用 v0.1.5 发布物在全新临时 `DSH_HOME` 里实测，14 个插件行；比政策层多出的行来自物化目录里应用回写的设置行 —— `ui-settings-general` 与调大过的 `requestTimeoutMs`） |
+| `dsh --profile web --patch profile/dsh-automation-suite/cordis.patch.yml --dump-config` | **2099**（2026-11-07 重测） |
+| 按蓝图物化的 profile（link 模式，当前工作树）：`dsh --profile dsh-automation-suite --dump-config` | **2148**（2026-11-07 在全新临时 `DSH_HOME` 里实测，15 个插件行；比政策层多出的行来自物化目录里应用回写的设置行 —— `ui-settings-general` 与调大过的 `requestTimeoutMs`） |
 
 > ⚠️ 上一版基线 **1235 / 2003 / 2036**（2026-10-20）已作废：2026-11-02 同日重测时官方 `web` 组合
 > 本身就少了几十行（不是本仓改动 —— 那三条命令的第一条不含本仓任何文件）。别拿新旧数值互相解释，

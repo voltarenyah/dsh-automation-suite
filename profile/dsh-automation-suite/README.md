@@ -17,6 +17,7 @@
 | `dsh-tool-git` | 结构化 Git 工具族 + `gitContext` 服务 + 破坏性命令闸门（vendor 自上游 `lxj808624/dsh-tool-git` v0.1.3）。**模型面工具已拆到 `dsh-tool-git/tools`，只挂 `leader`**；`expert` / `auditor` 看不到 |
 | `dsh-ui-plc-source` | **纯 UI 插件**：右侧栏多一个 **PLC Blocks** 标签页（读 `source/<device>/_manifest.json`，按 device 与 simaticType 筛选，点行打开既有文档预览）。宿主半侧是空 `apply()`，**不注册任何模型可见的东西**；必须在 `dsh-web-app` 之后，浏览器半侧才拿得到客户端座位 |
 | `dsh-ui-tia-console` | **仅浏览器半侧**：会话输入框上方的 **TIA 控制台**（状态 + 打开/保存/编译/关闭/刷新五个按钮，dispatch 现有 `/tia-*` 指令）。同样不注册任何模型可见的东西 |
+| `@voltarenyah/dsh-tia-todo-bridge` | **宿主面兜底**：模型没写 Todo 清单时，把 `open_project` / `export_blocks` / `project_diff` 等 TIA 与版本操作补进会话 `todos` 投影，操作返回即改 `completed`；模型自己写了清单则完全不改。不注册工具、不注册服务，见 [包 README](../../packages/dsh-tia-todo-bridge/README.md) 与下面「TIA 操作的 Todo 清单」 |
 | `dsh-ui-versions` | **仅浏览器半侧**：右侧栏多一个 **Versions** 标签页（排队在 PLC Blocks 之后，读工程上下文插件写出的 `.dsh/versions-view.json`；上面是版本历史，点块 key 看该块的跨版本轨迹）。宿主半侧是空 `apply()`，不注册任何模型可见的东西；同样必须在 `dsh-web-app` 之后 |
 | `dsh-opencode-go` | **公共插件**（npm 上的第三方 bundle，不是本仓代码）：OpenCode Go 模型提供方 + 设置页。见下面的「公共插件」一节 |
 
@@ -118,6 +119,37 @@ DSH 的工具可见性是**按声明作用域**解析的（`dsh-tools` 的 `view
 
 > ✅ `dsh-tool-git` 的 12 个模型工具已从宿主行拆到 `dsh-tool-git/tools`，只挂 `leader`；
 > `auditor` / `expert` 看不到它们。宿主行保留 `gitContext` 服务与破坏性命令闸门。
+
+### TIA 操作的 Todo 清单（两层：政策 + 兜底）
+
+输入框上方的 Todo 面板读的是会话 `todos` 投影，只有模型调用 `todo_write` 才出现。为了让
+TIA 操作**总有可见进度、且结束后不残留转圈**，这里做成两层：
+
+1. **政策层（`cordis.patch.yml` 的 persona）**：leader / auditor 在第一次 TIA 操作前必须写清单，
+   任务名统一为 `TIA · <tool_name> · <object>`；操作开始前标 `in_progress`，结果一到立刻标
+   `completed`。派发出去的版本操作（create / sync / diff / commit / 图谱重建）也要在
+   `subagent` 前标 `in_progress`，auditor 的结果消息到达后才标 `completed`。
+2. **兜底层（`@voltarenyah/dsh-tia-todo-bridge`）**：模型**没有**写清单时，插件在第一个同步
+   TIA 操作开始时补一行 `in_progress`，操作返回时改成 `completed`（失败加 `（失败）`）。
+   模型一旦自己写了清单，插件**完全不改**，所有权归模型；若清单里的对应项在操作返回时还没
+   `completed`，只发一条 model-visible 的 settlement notice 要求模型立即 `todo_write`。
+   纯查询（`project_info` / `list_plc_objects` / `controller_status` …）和 `subagent` 不自动建项：
+   前者一秒完成、不值一行，后者启动后立即返回，真正的等待由 persona 的“派发任务”承接。
+
+```text
+模型没写清单：
+  TIA · open_project · PEI_SinoARP_SWT2        ← 打开时 in_progress，返回后 completed
+  TIA · export_blocks · Sino_PEI               ← 下一个操作追加，返回后 completed
+
+模型自己写了清单：
+  [模型的任务 1] / [模型的任务 2] …             ← 插件不碰；状态由模型按 persona 更新
+```
+
+验收：启动 suite 环境，让模型做一次 `open_project` 且**不**主动写清单，上方应出现一行
+`TIA · open_project · <工程名>`，工具返回后变已完成；再让模型写自己的清单并做一次
+`export_blocks`，确认模型清单没有被插件改写。细节见
+[`packages/dsh-tia-todo-bridge/README.md`](../../packages/dsh-tia-todo-bridge/README.md)。
+
 
 ### 子 agent 的"只读"靠什么保证
 
