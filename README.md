@@ -1019,7 +1019,7 @@ TIA 排障第一步永远是让模型调：
 | [`docs/distribution.md`](docs/distribution.md) | **公开发行与安装**：DSH 的安装面实测（`dsh plugin` 的 spec 形式、bundle 对账、patch 语义、pnpm 11 的两个错误）、三种打包方案对比、Release 发布步骤与验收记录 |
 | [`docs/releases.md`](docs/releases.md) | **发布台账与流程**：已发布版本表（0.1.0–0.1.5）、tag 偏移的已知问题、版本规则、发布检查清单与常见错误 |
 | [`CHANGELOG.md`](CHANGELOG.md) | **发行版版本摘要**：0.1.0–0.1.5 的能力变化；插件版本与 DSH 版本独立 |
-| [`docs/desktop-packaging.md`](docs/desktop-packaging.md) | **桌面壳与打包方案（前置件已完成，壳/安装器待实施）**：WebView2 独立窗口、预装或安装时联网下载 DSH、Inno 安装器、固定 profile、无签名策略、产物/目录/失败处理/验收清单与分阶段工作量 |
+| [`docs/desktop-packaging.md`](docs/desktop-packaging.md) | **桌面壳与打包方案（Phase 1 壳已实现，安装器待实施）**：WebView2 独立窗口、预装或安装时联网下载 DSH、Inno 安装器、固定 profile、无签名策略、产物/目录/失败处理/验收清单与分阶段工作量 |
 | [`profile/dsh-automation-suite/README.md`](profile/dsh-automation-suite/README.md) | 蓝图的组成、三种部署方式、验收方式 |
 | [`packages/dsh-tia-openness-v17-min/README.md`](packages/dsh-tia-openness-v17-min/README.md) | TIA 插件的完整说明（验证状态、协议、工具、错误码、V17 API 要点） |
 | [`packages/dsh-tia-openness-v17-min/docs/`](packages/dsh-tia-openness-v17-min/docs/) | `PROTOCOL.md`（线路协议权威描述）、`decisions.md`（技术取舍）、`REAL-RUN.md`（真实项目实测）、`FUNCTIONAL-TEST.md`、`verification.md`（验证清单）、`ECOSYSTEM-COMPAT.md`（生态兼容与事故记录） |
