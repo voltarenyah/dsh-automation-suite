@@ -70,6 +70,12 @@ layout, then a repo checkout's `dist/desktop*/<ver>/app` found by walking the
 exe's ancestors. This means the build-output exe (`desktop/.../bin/...`) also
 works; if you copy the exe away from all of these, pass `--app-dir`.
 
+Both `dotnet build` and publish output are **self-contained**. That means the
+`DshSuite.Shell.exe` must stay beside its `coreclr.dll`, `hostfxr.dll` and
+`DshSuite.Shell.runtimeconfig.json`. Copying the exe alone gives the Windows
+".NET must be installed" dialog — that is not the shipped shape and does not mean
+the app requires a separate .NET install.
+
 ## Installer skeleton
 
 ```powershell

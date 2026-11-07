@@ -11,6 +11,10 @@
     <Platforms>x64</Platforms>
     <PlatformTarget>x64</PlatformTarget>
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <!-- Keep `dotnet build` self-contained too. A framework-dependent build
+         output makes a double-click show the .NET install prompt, which is not
+         the shipped shape and caused a false alarm during Phase 1 testing. -->
+    <SelfContained>true</SelfContained>
     <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
     <!-- The WebView2 package carries both WinForms and WPF assemblies; the WPF
          reference's WindowsBase conflict is harmless for this WinForms app. -->
