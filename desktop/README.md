@@ -156,6 +156,28 @@ merged patch + JSON report. App-owned `- insert:` blocks come from the new
 baseline; only user-modified `- id:` blocks override it. The installer must keep
 a `.bak-<timestamp>` next to the old files and report conflicts.
 
+## Windows Sandbox test environment
+
+For clean-Windows packaging tests (no ISO/license), enable Windows Sandbox once
+(elevated PowerShell + reboot):
+
+```powershell
+Enable-WindowsOptionalFeature -Online -FeatureName Containers-DisposableClientVM -All
+```
+
+Then:
+
+```powershell
+pwsh -NoProfile -File desktop/sandbox/start-sandbox.ps1 -AppVersion 0.2.0
+# offline failure-path:
+pwsh -NoProfile -File desktop/sandbox/start-sandbox.ps1 -AppVersion 0.2.0 -Offline
+```
+
+It maps `dist/` read-only to `C:\dist`, a host output folder read-write to
+`C:\out`, and opens the release folder. See [`sandbox/README.md`](sandbox/README.md)
+for the test matrix. WebView2-missing and TIA/PLCSIM cases are explicitly out of
+scope for the sandbox.
+
 ## Next steps
 
 1. Phase 2 completion: DSH/WebView2 bootstrap, fixed-profile backup/merge on

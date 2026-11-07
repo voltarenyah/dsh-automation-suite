@@ -592,6 +592,8 @@ Phase 1 壳、Phase 2a 安装器、Phase 2b 的 profile 安装/三方合并/安�
   `current.txt` + 快捷方式/卸载；`install-profile.ps1` 负责复制固定 profile、备份并三方合并旧
   `cordis.patch.yml`、写 `install.json`、跑 `doctor.ps1 -Json`（fail 则恢复旧 profile）。
   **仍缺**：DSH 自动下载/安装、WebView2 bootstrapper（Phase 2c）；`dsh.cmd` 缺失时安装器直接阻止。
+- `desktop/sandbox/` — Windows Sandbox 启动脚本：`dist/` 只读映射为 `C:\dist`，宿主机输出目录
+  映射为 `C:\out`；`-Offline` 关闭网络。用于干净安装/升级/卸载测试；WebView2 缺失与 TIA/PLCSIM 不在范围内。
 - 设计、目录布局、安装器状态机与验收矩阵见 `docs/desktop-packaging.md`；
   打包前置件索引见 `desktop/README.md`。
 

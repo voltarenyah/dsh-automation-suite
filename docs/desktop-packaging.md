@@ -541,6 +541,23 @@ pwsh -NoProfile -File desktop/build-installer.ps1 -Version 0.2.0
 
 ## 13. 验收清单
 
+**干净测试环境：Windows Sandbox（默认）**
+
+本机没有 Windows VM 时，用 Windows Pro 自带的 **Windows Sandbox** 做干净安装测试：
+
+```powershell
+# 管理员 + 重启一次
+Enable-WindowsOptionalFeature -Online -FeatureName Containers-DisposableClientVM -All
+# 之后：
+pwsh -NoProfile -File desktop/sandbox/start-sandbox.ps1 -AppVersion 0.2.0
+pwsh -NoProfile -File desktop/sandbox/start-sandbox.ps1 -Offline   # 断网失败路径
+```
+
+它把 `dist/` 只读映射到沙箱的 `C:\dist`，把 `%USERPROFILE%\dsh-sandbox-output`
+读写映射到 `C:\out`，关闭即销毁，适合反复做“干净安装/升级/卸载”。**不适用**于验证
+WebView2 缺失（沙箱自带 Edge/WebView2）和 TIA/PLCSIM（商业软件，仍在本机测）。
+详见 [`desktop/sandbox/README.md`](../desktop/sandbox/README.md)。
+
 **打包前置件（已完成 2026-11-07）**
 - [x] app layer 无 symlink/junction，无宿主 `@deepseek-ai` 运行时（仅 3 个工具包）。
 - [x] app layer 在**不跑 pnpm** 的临时 `DSH_HOME` 里 `--dump-config` 通过（15 个 bundle 行）。
