@@ -64,6 +64,12 @@ owns the process tree via a Job Object. Closing the window hides to the tray;
 tray Exit stops DSH. A `--smoke-test` run creates a hidden WebView2 window, waits
 for `NavigationCompleted`, writes `smoke-result.json`, and exits without showing UI.
 
+App-layer discovery order: `--app-dir`, `DSH_SUITE_APP_DIR`, the exe's sibling
+`profile/` + `app-manifest.json`, the installed `current.txt` / `app/<ver>`
+layout, then a repo checkout's `dist/desktop*/<ver>/app` found by walking the
+exe's ancestors. This means the build-output exe (`desktop/.../bin/...`) also
+works; if you copy the exe away from all of these, pass `--app-dir`.
+
 ## Installer skeleton
 
 ```powershell

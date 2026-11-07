@@ -7,37 +7,109 @@ internal static class AppPaths
 {
     public static string ResolveAppDir(string? argument)
     {
-        var candidates = new List<string?>
+        // An explicit app dir wins.
+        foreach (var explicitDir in new[] { argument, Environment.GetEnvironmentVariable("DSH_SUITE_APP_DIR") })
         {
-            argument,
-            Environment.GetEnvironmentVariable("DSH_SUITE_APP_DIR"),
-            Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..")),
-            Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..")),
-            Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..")),
-        };
-
-        foreach (var candidate in candidates)
-        {
-            if (string.IsNullOrWhiteSpace(candidate)) continue;
-            var full = Path.GetFullPath(candidate);
-            if (IsAppDir(full)) return full;
+            if (!string.IsNullOrWhiteSpace(explicitDir) && IsAppDir(Path.GetFullPath(explicitDir)))
+            {
+                return Path.GetFullPath(explicitDir);
+            }
         }
 
-        // Installed layout: <root>\shell\DshSuite.Shell.exe and
-        // <root>\app\<version>\{profile,app-manifest.json}. Prefer current.txt,
-        // then the newest app-manifest version.
-        var root = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, ".."));
-        var installed = FindInstalledApp(root);
-        if (installed is not null) return installed;
+        // Search the executable's ancestors and the current directory's
+        // ancestors. This makes the build-output exe (desktop/.../bin/...)
+        // find dist/desktop/<ver>/app, and the installed shell find
+        // <root>/app/<ver> via current.txt or the newest manifest.
+        var roots = new List<string>();
+        void AddRoot(string? path)
+        {
+            if (string.IsNullOrWhiteSpace(path)) return;
+            try
+            {
+                var full = Path.GetFullPath(path);
+                if (Directory.Exists(full)) roots.Add(full);
+            }
+            catch
+            {
+                // Ignore malformed paths.
+            }
+        }
+
+        foreach (var start in new[] { AppContext.BaseDirectory, Environment.CurrentDirectory })
+        {
+            var directory = new DirectoryInfo(start);
+            for (var i = 0; i < 10 && directory is not null; i++)
+            {
+                AddRoot(directory.FullName);
+                directory = directory.Parent;
+            }
+        }
+
+        foreach (var root in roots.Distinct(StringComparer.OrdinalIgnoreCase))
+        {
+            var found = FindAppUnderRoot(root);
+            if (found is not null) return found;
+        }
 
         throw new InvalidOperationException(
             "cannot find the desktop app layer (profile/package.json + app-manifest.json). " +
-            "Pass --app-dir <dir> or set DSH_SUITE_APP_DIR.");
+            "Pass --app-dir <dir> or set DSH_SUITE_APP_DIR. " +
+            $"Searched from {AppContext.BaseDirectory} and {Environment.CurrentDirectory}.");
     }
 
-    private static bool IsAppDir(string directory) =>
-        File.Exists(Path.Combine(directory, "profile", "package.json")) &&
-        File.Exists(Path.Combine(directory, "app-manifest.json"));
+    private static string? FindAppUnderRoot(string root)
+    {
+        if (IsAppDir(root)) return root;
+
+        var installed = FindInstalledApp(root);
+        if (installed is not null) return installed;
+
+        var name = Path.GetFileName(root.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
+        if (name.Equals("desktop", StringComparison.OrdinalIgnoreCase) ||
+            name.Equals("desktop-build", StringComparison.OrdinalIgnoreCase))
+        {
+            var versioned = FindVersionedApp(root);
+            if (versioned is not null) return versioned;
+        }
+
+        // Repo checkout: <repo>/dist/desktop/<ver>/app or <repo>/dist/desktop-build/<ver>/app.
+        foreach (var tree in new[] { "desktop", "desktop-build" })
+        {
+            var versioned = FindVersionedApp(Path.Combine(root, "dist", tree));
+            if (versioned is not null) return versioned;
+        }
+
+        // Ancestor is <repo>/dist: scan its desktop* children.
+        var dist = Path.Combine(root, "dist");
+        if (Directory.Exists(dist))
+        {
+            foreach (var child in Directory.GetDirectories(dist))
+            {
+                var childName = Path.GetFileName(child);
+                if (!childName.StartsWith("desktop", StringComparison.OrdinalIgnoreCase)) continue;
+                var versioned = FindVersionedApp(child);
+                if (versioned is not null) return versioned;
+            }
+        }
+
+        return null;
+    }
+
+    private static string? FindVersionedApp(string root)
+    {
+        if (!Directory.Exists(root)) return null;
+
+        var candidates = new List<(Version Version, string AppDir)>();
+        foreach (var versionDir in Directory.GetDirectories(root))
+        {
+            var appDir = Path.Combine(versionDir, "app");
+            if (!IsAppDir(appDir)) continue;
+            var version = ReadAppVersion(Path.Combine(appDir, "app-manifest.json"), versionDir);
+            if (version is not null) candidates.Add((version, appDir));
+        }
+
+        return candidates.OrderByDescending(candidate => candidate.Version).FirstOrDefault().AppDir;
+    }
 
     private static string? FindInstalledApp(string root)
     {
@@ -56,26 +128,35 @@ internal static class AppPaths
         foreach (var directory in Directory.GetDirectories(apps))
         {
             if (!IsAppDir(directory)) continue;
-            var manifest = Path.Combine(directory, "app-manifest.json");
-            try
-            {
-                using var document = JsonDocument.Parse(File.ReadAllText(manifest));
-                var text = document.RootElement.TryGetProperty("appLayerVersion", out var version)
-                    ? version.GetString()
-                    : null;
-                if (text is not null && Version.TryParse(text, out var parsed))
-                {
-                    candidates.Add((parsed, directory));
-                }
-            }
-            catch
-            {
-                // A broken manifest is ignored; another version may be usable.
-            }
+            var version = ReadAppVersion(Path.Combine(directory, "app-manifest.json"), directory);
+            if (version is not null) candidates.Add((version, directory));
         }
 
         return candidates.OrderByDescending(candidate => candidate.Version).FirstOrDefault().Directory;
     }
+
+    private static Version? ReadAppVersion(string manifestPath, string fallbackDirectory)
+    {
+        try
+        {
+            using var document = JsonDocument.Parse(File.ReadAllText(manifestPath));
+            var text = document.RootElement.TryGetProperty("appLayerVersion", out var version)
+                ? version.GetString()
+                : null;
+            if (text is not null && Version.TryParse(text, out var parsed)) return parsed;
+        }
+        catch
+        {
+            // Fall through to the directory name.
+        }
+
+        var name = Path.GetFileName(fallbackDirectory.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
+        return Version.TryParse(name, out var fallback) ? fallback : null;
+    }
+
+    private static bool IsAppDir(string directory) =>
+        File.Exists(Path.Combine(directory, "profile", "package.json")) &&
+        File.Exists(Path.Combine(directory, "app-manifest.json"));
 
     public static string ResolveDshHome(string? argument)
     {
