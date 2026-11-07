@@ -8,6 +8,8 @@
     "typecheck": "pnpm -r typecheck",
     "test": "pnpm -r test",
     "build:distribution": "node scripts/build-distribution.mjs",
+    "build:app-layer": "node scripts/build-app-layer.mjs",
+    "test:merge-profile": "node --test scripts/test-merge-profile.mjs",
     "clean:build": "node scripts/clean-build.mjs"
   },
   "devDependencies": {

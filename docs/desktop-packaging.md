@@ -1,7 +1,8 @@
 # 桌面壳与打包发行方案
 
-> 状态：**设计定稿，尚未实施**（2026-10-26）。等发行版的基本功能完善后，按 §12 的
-> Phase 1–4 执行。
+> 状态：设计定稿；**打包前置件已落地**（2026-11-07）。已完成 app layer 物化、doctor JSON 契约、
+> 固定 profile 三方合并、DSH 启动/清理探针、安装器 runtime bootstrap 探针；Phase 1（WebView2 壳）
+> 与 Phase 2（安装器）尚未开始。按 §12 的 Phase 顺序继续。
 >
 > 适用范围：Windows 10/11 x64。TIA 功能仍要求 TIA Portal V17（Windows-only）。
 >
@@ -40,7 +41,7 @@
 | P2 | DSH 下载源 | DeepSeek 官方 feed：`https://download.deepseek.com/dsh-desk/feeds/win-x64/nightly.yml`；安装包 URL、sha512、size 均来自该清单。 |
 | P3 | 静默安装 | 先尝试官方安装器 `/S`；失败或未被接受时回退到官方交互安装器。 |
 | P4 | 版本下限 | DSH **≥ 0.2.1-rc.1**。 |
-| P5 | 版本上限 | 以 **0.2.1-rc.3** 为已验证参考上限；更高版本**只警告、不阻止**。 |
+| P5 | 版本上限 | 以 **0.2.1-rc.2** 为已验证参考；**0.2.2-rc.1 已出现在官方 feed**（2026-11-07），更高版本**只警告、不阻止**。 |
 | P6 | 已装但过低 | **提示“先升级 DSH”**，不自动覆盖用户安装。 |
 | P7 | UI 形态 | **WebView2 + 独立窗口 + 托盘**；不使用系统浏览器标签页。 |
 | P8 | 自动更新 | 应用层自动更新（壳/插件/profile）；壳自身升级走安装器；DSH 走官方更新器。 |
@@ -94,15 +95,15 @@ publisherName:
   - CN=Hangzhou DeepSeek Artificial Intelligence Co., Ltd., ...
 ```
 
-`nightly.yml`（2026-10-26 实测）：
+`nightly.yml`（2026-11-07 实测）：
 
 ```yaml
-version: 0.2.1-rc.3
+version: 0.2.2-rc.1
 files:
-  - url: https://download.deepseek.com/dsh-desk/bin/win-x64/deepseek-harness-0.2.1-rc.3-win-x64.exe
-    sha512: q5IGr2Bf+TvvCpagHj49Ypn/ZrqR7kqrYpLjqXP7VfDINmddlqZQmG+YfsdL3q3EdTRMRlKz/a3jDAEzdNdDOw==
-    size: 289415960
-releaseDate: '2026-10-23T08:02:12.038Z'
+  - url: https://download.deepseek.com/dsh-desk/bin/win-x64/deepseek-harness-0.2.2-rc.1-win-x64.exe
+    sha512: swcK0J6ofGka...（以清单为准）
+    size: 293425336
+releaseDate: '...'
 ```
 
 > 只有 `nightly.yml` 是这个清单；`latest.yml` 在该域名上返回的是下载站 HTML，不能当成
@@ -133,10 +134,10 @@ releaseDate: '2026-10-23T08:02:12.038Z'
 
 | 产物 | 内容 | 估算大小 | 更新频率 |
 |---|---|---|---|
-| `dsh-automation-suite-setup-<ver>.exe` | Inno Setup 安装器：壳 + 应用层 + 安装逻辑（**不含 DSH 运行时**） | 约 50–90 MB | 壳/安装器变化时 |
-| `dsh-automation-suite-app-<ver>.zip` | 插件、profile、UI、`manifest.json`（壳除外） | 约 20–40 MB | 每次应用层迭代 |
-| `latest.json` | 自动更新清单（版本、URL、sha256、minShell） | < 5 KB | 每次发布 |
-| DSH 运行时 | 官方 feed 的安装包 | 约 276 MB | 安装时按需下载 |
+| `dsh-automation-suite-setup-<ver>.exe` | Inno Setup 安装器：壳 + 应用层 + 安装逻辑（**不含 DSH 运行时**） | 约 100–140 MB | 壳/安装器变化时 |
+| `dsh-automation-suite-app-<ver>.zip` | 物化 profile（含 node_modules）、doctor、`manifest.json`（壳除外） | 约 50–70 MB（解压后约 103 MiB） | 每次应用层迭代 |
+| `manifest.json` / `SHA256SUMS` | 版本、依赖、sha256（无自动更新，仍用于校验） | < 10 KB | 每次发布 |
+| DSH 运行时 | 官方 feed 的安装包 | 约 293 MB（2026-11-07 实测 0.2.2-rc.1） | 安装时按需下载 |
 
 > 自包含 .NET 10 的壳约 60–80 MB；如果改为依赖系统 .NET Desktop Runtime，可把 setup
 > 降到约 5–15 MB，但需要额外的运行时检测/引导。**第一版建议自包含**，减少环境变量。
@@ -148,9 +149,10 @@ releaseDate: '2026-10-23T08:02:12.038Z'
   app\
     <version>\
       shell\                 DshSuite.exe（自包含）、WebView2Loader.dll、图标
-      profile\               package.json / cordis.patch.yml / pnpm-workspace.yaml
-      plugins\               构建产物（真实文件，不是 pnpm junction）
-      manifest.json
+      profile\               package.json / cordis.patch.yml / node_modules\（真实文件）
+      doctor.ps1
+      manifest.json          doctor 契约（testedDshVersion 等）
+      app-manifest.json      构建来源（commit、包版本、大小）
     <previous>\              保留一版用于回滚
   current.txt                当前 app 版本目录名
   install.json               dshHome / profile / dshExe / 安装时版本
@@ -158,6 +160,10 @@ releaseDate: '2026-10-23T08:02:12.038Z'
   updates\                   下载中的更新包与解压暂存
   uninstall.exe
 ```
+
+`app\<version>\profile` 是**已经物化好的 profile**：安装器把它复制到
+`%DSH_HOME%\profiles\dsh-automation-suite\`，不运行 pnpm、不访问 npm registry。应用层目录按版本分，
+profile 名固定；升级时备份并合并 `cordis.patch.yml` 的用户覆盖项。
 
 用户数据仍放在独立 DSH_HOME。桌面版用**固定 profile 名**，应用层目录才按版本分：
 
@@ -191,14 +197,21 @@ releaseDate: '2026-10-23T08:02:12.038Z'
  ├─ 检查 WebView2（缺失 → 下载 Evergreen Bootstrapper → 静默安装）
  ├─ 检测 DSH
  │   ├─ 已安装且 ≥ 0.2.1-rc.1
- │   │   ├─ ≤ 0.2.1-rc.3 → 直接使用
- │   │   └─ > 0.2.1-rc.3 → 警告“未验证”，继续
+ │   │   ├─ ≤ 0.2.1-rc.2 → 直接使用
+ │   │   └─ > 0.2.1-rc.2 → 警告“未验证”，继续（当前 feed 0.2.2-rc.1）
  │   ├─ 已安装但 < 0.2.1-rc.1 → 提示先升级；提供“下载官方新版”或退出（不覆盖）
  │   └─ 未安装 → 询问后下载 nightly.yml → 校验 → /S 安装 → 失败回退交互 → 复核
  ├─ 解压应用层到 app\<version>，写 current.txt / install.json
+ ├─ 复制 app\<version>\profile → <DSH_HOME>\profiles\dsh-automation-suite\
+ │   ├─ 已存在：备份旧 package.json / cordis.patch.yml，跑 merge-profile.mjs 合并用户覆盖项
+ │   └─ 不存在：直接复制
+ ├─ 跑 doctor.ps1 -Json；summary.fail > 0 则保留旧版并报错
  ├─ 创建快捷方式、注册卸载项
  └─ 可选：立即启动壳
 ```
+
+`scripts/probe-dsh-runtime.ps1` 是这套状态机的 dry-run 原型：检测 DSH/WebView2/.NET 4.8、
+解析官方 `nightly.yml`（含 `url: >-` 折行），但不下载、不安装。
 
 ### 5.2 DSH 检测
 
@@ -236,8 +249,8 @@ releaseDate: '2026-10-23T08:02:12.038Z'
 |---|---|
 | 未安装 | 下载官方 nightly 最新版 → 安装 |
 | `< 0.2.1-rc.1` | 阻止继续；提示升级；提供打开官方下载页/自动下载 |
-| `0.2.1-rc.1` … `0.2.1-rc.3` | 正常使用 |
-| `> 0.2.1-rc.3` | 允许，但首次启动显示“该 DSH 版本尚未验证”的警告（可关闭） |
+| `0.2.1-rc.1` … `0.2.1-rc.2` | 正常使用 |
+| `> 0.2.1-rc.2` | 允许，但首次启动显示“该 DSH 版本尚未验证”的警告（可关闭）；当前 feed 为 0.2.2-rc.1 |
 
 下限/上限写在 `manifest.json`（`minDshVersion` / `testedDshVersion`），升级发行版时更新，
 不要硬编码在安装器里。
@@ -307,7 +320,11 @@ releaseDate: '2026-10-23T08:02:12.038Z'
 
 ---
 
-## 7. 自动更新
+## 7. 自动更新（本轮不做，保留为未来设计）
+
+> 本轮范围明确**不做自动更新**：升级 = 用户手动下载新版 setup 覆盖安装；安装器负责停旧版、
+> 物化新 app layer、合并固定 profile 覆盖项、跑 doctor、切换 `current.txt`，并保留上一版回滚。
+> 以下 §7.1–7.4 保留为未来设计，不进入第一版。
 
 ### 7.1 更新对象
 
@@ -330,7 +347,7 @@ releaseDate: '2026-10-23T08:02:12.038Z'
     "size": 23456789
   },
   "minShellVersion": "0.1.0",
-  "testedDshVersion": "0.2.1-rc.3",
+  "testedDshVersion": "0.2.1-rc.2",
   "notes": "..."
 }
 ```
@@ -367,18 +384,33 @@ releaseDate: '2026-10-23T08:02:12.038Z'
 - `dotnet run` 或本地构建壳；插件用 `pnpm -r build`。
 - 迭代成本：壳 30–60 秒；插件 1–2 分钟。
 
-### 8.2 应用层打包
+### 8.2 应用层打包（已实现）
 
-1. 构建六个/七个插件（`pnpm -r build`）。
-2. 在 staging profile 里安装插件，**物化 node_modules**：
-   - 不能用 pnpm store 的 junction/hardlink 直接压 zip（到用户机器会变成死链接）；
-   - 方案 A：`pnpm deploy --prod --node-linker=hoisted`（需实测）；
-   - 方案 B：用 tarball 在普通目录 `pnpm install` 后复制真实文件；
-   - 验收：递归检查 `node_modules` 下无 ReparsePoint，且 `lib/`、`controller/bin`、
-     `engine/bin` 均在。
-3. 拷贝 profile 三件套与 `manifest.json`（插件版本、profile 哈希、`minDshVersion`、
-   `testedDshVersion`）。
-4. 打 `dsh-automation-suite-app-<ver>.zip`。
+```powershell
+node scripts/build-app-layer.mjs --version 0.2.0
+# 或复用已有 release：--skip-pack；跳过运行时自检：--no-verify
+```
+
+它做这些事：
+
+1. 用 `scripts/build-distribution.mjs` 打包当前工作树（图谱引擎是 .NET 10 self-contained 单文件）；
+2. 建 staging profile，把 tarball 写成 `file:` 依赖，跑
+   `pnpm install --prod --node-linker=hoisted`，**物化 node_modules**；
+3. 删除 tarball/lockfile，把依赖改回版本号，复制成
+   `dist/desktop/<ver>/app/profile`；
+4. 递归检查 `node_modules` 无 symlink/junction，`@deepseek-ai` 下只允许
+   `cosmokit` / `dsh-brand` / `schemastery` 三个工具包（其余是宿主运行时，D19）；
+5. 跑图谱引擎 `--self-test`；
+6. 把 app layer 复制到临时 `DSH_HOME/profiles/dsh-automation-suite`，**不跑 pnpm**，
+   跑 `dsh --dump-config`、逐 bundle 行检查与 `doctor.ps1 -Json`，要求
+   `summary.fail = 0`；
+7. 写出 `manifest.json`（doctor 契约）与 `app-manifest.json`（commit、包版本、大小）。
+
+当前基线：**15 个依赖、app layer 约 103 MiB、`--dump-config` 2149 行**（2026-11-07，
+DSH 0.2.1-rc.2）。安装器只需把 `app/profile` 复制到固定 profile，不需要 pnpm。
+
+安装器打包（Phase 2）再把 app layer + 壳产物交给 Inno Setup，生成
+`dsh-automation-suite-setup-<ver>.exe`、`app.zip`、`manifest.json`、`SHA256SUMS`。
 
 ### 8.3 安装器打包
 
@@ -411,7 +443,8 @@ releaseDate: '2026-10-23T08:02:12.038Z'
 - **发行版版本**（0.1.x）≠ 插件版本（0.1.0）≠ DSH 版本（0.2.1-rc.x）。
 - `manifest.json` 记录：
   - `minDshVersion`：0.2.1-rc.1
-  - `testedDshVersion`：0.2.1-rc.3（每次升级 DSH 后更新）
+  - `testedDshVersion`：0.2.1-rc.2（每次升级 DSH 后更新；2026-11-07 feed 已是 0.2.2-rc.1，
+  安装器应警告而不是阻止）
   - 插件版本、profile patch 的哈希。
 - DSH 升级后必须回归：
   - `--dump-config` 行数与 preset 注册；
@@ -461,16 +494,25 @@ releaseDate: '2026-10-23T08:02:12.038Z'
 | 阶段 | 内容 | 预估 | 验收 |
 |---|---|---|---|
 | Phase 0（已完成） | zip + `install.cmd` / `start.cmd` + 专用 home | — | v0.1.x 可用 |
+| **Prep（已完成 2026-11-07）** | app layer 物化、doctor JSON 契约、profile 三方合并、DSH 启动/清理探针、runtime bootstrap 探针 | 1–2 天 | `build-app-layer.mjs` 离线 `--dump-config` + doctor 通过 |
 | **Phase 1** | WebView2 壳（开发模式，指向已装 DSH）：窗口、托盘、单实例、启动/停止、日志 | 5–8 天 | 双击图标出窗口；退出无残留 |
-| **Phase 2** | 安装器 + DSH 检测/下载/校验/静默安装 + 版本策略 + 快捷方式/卸载 | 3–5 天 | 无 DSH 机器可一键装好；有 DSH 不重复下载 |
-| **Phase 3** | 应用层打包（物化 node_modules）+ 自动更新 + 回滚 | 3–5 天 | 无 DSH 网络时更新只下 20–40 MB；失败可回滚 |
+| **Phase 2** | 安装器 + DSH 检测/下载/校验/静默安装 + 版本策略 + 快捷方式/卸载 + 合并固定 profile | 3–5 天 | 无 DSH 机器可一键装好；有 DSH 不重复下载 |
+| **Phase 3** | 应用层打包已完成；本轮只做 **setup 覆盖式升级 + 回滚**，不做自动更新 | 2–3 天 | 升级保留 DSH_HOME 与用户覆盖项；失败可回退 |
 | **Phase 4** | 无签名兼容、首次引导、日志、异常恢复、文档 | 3–5 天 | 新机全流程通过验收清单 |
 
-总计约 **3–4 周**（一人）。建议按阶段交付，每阶段保持“开发模式不打包运行时”的快循环。
+总计约 **2–3 周**（一人，自动更新已从范围移除）。建议按阶段交付，每阶段保持“开发模式不打包运行时”的快循环。
 
 ---
 
 ## 13. 验收清单
+
+**打包前置件（已完成 2026-11-07）**
+- [x] app layer 无 symlink/junction，无宿主 `@deepseek-ai` 运行时（仅 3 个工具包）。
+- [x] app layer 在**不跑 pnpm** 的临时 `DSH_HOME` 里 `--dump-config` 通过（15 个 bundle 行）。
+- [x] `doctor.ps1 -Json` 纯 JSON，schema v1，`summary.fail = 0`。
+- [x] 固定 profile 三方合并测试通过（含真实 suite patch）。
+- [x] DSH 启动探针拿到 token URL，taskkill 进程树后无新增 TIA 控制器。
+- [x] runtime bootstrap 探针能检测 DSH/WebView2/.NET 4.8 并解析官方 feed。
 
 **安装**
 - [ ] 干净 Windows 10/11 x64、未装 DSH、未装 WebView2：安装器自动补齐并完成安装。
@@ -511,7 +553,8 @@ releaseDate: '2026-10-23T08:02:12.038Z'
 | 官方安装器 `/S` | 未实测；可能按机器/版本不同 | Phase 2 在干净 VM 实测；失败回退交互 |
 | DSH 运行时更新 | 自动更新到未验证版本 | 启动时版本检测 + 警告横幅；回归清单 |
 | 未签名 | SmartScreen/杀软误报 | 发布 SHA-256；文档指引；不做静默提权 |
-| node_modules 物化 | pnpm junction 进 zip 会失效 | `pnpm deploy`/普通 install 后递归检查 ReparsePoint |
+| node_modules 物化 | pnpm junction 进 zip 会失效 | 已由 `build-app-layer.mjs` 递归检查 ReparsePoint；app layer 约 103 MiB |
+| 官方 feed 版本漂移 | 2026-11-07 feed 已是 0.2.2-rc.1，高于 tested 0.2.1-rc.2 | 安装器只警告不阻止；升级发行版前重跑回归 |
 | WebView2 企业策略 | 被组策略禁用 | 检测并提示；不绕过 |
 | 壳自更新 | 运行中 exe 无法替换 | 第一版用 setup 覆盖；后续再做 stub/版本目录 |
 | 安装器语言/权限 | 中文路径、非管理员 | per-user 安装；路径用 Unicode API |
@@ -522,5 +565,11 @@ releaseDate: '2026-10-23T08:02:12.038Z'
 
 - [`distribution.md`](distribution.md) — 当前 zip + install/start 的发行方式与实测。
 - `profile/dsh-automation-suite/` — profile 蓝图（政策层、三个 preset）。
-- `scripts/build-distribution.mjs` — 现有发布目录生成器；Phase 2 在其上增加 app zip / setup。
+- `scripts/build-distribution.mjs` — Web 发布目录生成器（tarball + profile + doctor）。
+- `scripts/build-app-layer.mjs` — **桌面 app layer 物化**：tarball → 真实 node_modules → 离线验收。
+- `scripts/dsh-launch.mjs` — 直接 Electron 调用 DSH 的启动契约（避开 `dsh.cmd` 引号问题）。
+- `scripts/probe-dsh-web.mjs` — 启动/清理探针：等待 token URL、超时、进程树清理。
+- `scripts/merge-profile.mjs` — 固定 profile 三方合并（旧 patch × 旧基线 × 新基线）。
+- `scripts/probe-dsh-runtime.ps1` — 安装器 bootstrap 探针：DSH/WebView2/feed。
+- `scripts/doctor.ps1` / `scripts/test-doctor-json.ps1` — 能力报告与 JSON 契约测试。
 - 根 `README.md` §6.3 — 使用者视角的当前安装方式。

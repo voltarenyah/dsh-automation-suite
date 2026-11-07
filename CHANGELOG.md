@@ -8,6 +8,13 @@ GitHub Releases 与 git tag `v<version>` 对齐（发布流程见 [`docs/release
 
 ## [Unreleased]
 
+### Added
+
+- **桌面打包前置件**（2026-11-07）：`build-app-layer.mjs`（真实 `node_modules` 物化 +
+  离线 `--dump-config`/doctor 验收）、doctor JSON 契约（`schemaVersion: 1`）、
+  固定 profile 三方合并 `merge-profile.mjs`、DSH 直接启动/清理探针 `probe-dsh-web.mjs`、
+  安装器 runtime bootstrap 探针 `probe-dsh-runtime.ps1`。见 `desktop/README.md`。
+
 ### Planned
 
 - 桌面壳（WebView2 独立窗口）、安装器（固定 profile + 升级时备份并合并用户覆盖项）。

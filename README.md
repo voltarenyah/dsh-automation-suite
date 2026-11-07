@@ -434,7 +434,7 @@ pwsh -NoProfile -File install.ps1
 
 它把 profile 的三件套（`package.json` / `cordis.patch.yml` / `pnpm-workspace.yaml`）复制到
 **专用 home** `%USERPROFILE%\dsh-automation-suite-home\profiles\dsh-automation-suite-v<version>\`
-（不是日常 `~/.dsh`），再用 DSH 自带的 pnpm 安装十三个本地插件的 tarball（Release 资产，profile 里是
+（不是日常 `~/.dsh`），再用 DSH 自带的 pnpm 安装十四个本地插件的 tarball（Release 资产，profile 里是
 **直接 URL 依赖**，不需要 npm 账号）。同时在解压目录写下 `install.json`，记录这次用的 home 与 profile。
 
 **双击 `start.cmd` 启动**：它读取 `install.json`、设置 `DSH_HOME`、从 3093 起自动挑一个空闲端口并打开浏览器，
@@ -459,11 +459,14 @@ node scripts/build-distribution.mjs
 
 为什么不能直接 `dsh plugin add` 装整份发行版：命令只接受带 `dsh.bundle.patch` 的 **bundle**，
 而蓝图声明的是 `dsh.profile.bundles`，会被拒为 `not-a-bundle`。方案对比、`ERR_PNPM_*` 两个坑、
-发布与本地验收步骤见 [`docs/distribution.md`](docs/distribution.md)。十三个插件本身是标准 bundle，
+发布与本地验收步骤见 [`docs/distribution.md`](docs/distribution.md)。十四个插件本身是标准 bundle，
 仍可单独 `dsh plugin --profile web add <包名或 tarball>`。
 
 桌面图标、独立窗口与安装器属于下一阶段；设计、产物、失败处理与分阶段工作量见
-[`docs/desktop-packaging.md`](docs/desktop-packaging.md)（设计定稿，尚未实施）。
+[`docs/desktop-packaging.md`](docs/desktop-packaging.md)。**打包前置件已完成**：
+`node scripts/build-app-layer.mjs --version 0.2.0` 可物化离线 app layer（真实 `node_modules`、
+无 pnpm/网络安装），并带有 doctor JSON 契约、固定 profile 三方合并、DSH 启动/清理探针与
+安装器 runtime bootstrap 探针；WebView2 壳与安装器本身尚未开始。见 [`desktop/README.md`](desktop/README.md)。
 
 ### 6.4 首次进入必须自己配模型
 
@@ -1013,9 +1016,9 @@ TIA 排障第一步永远是让模型调：
 | [`packages/dsh-engineering-context/README.md`](packages/dsh-engineering-context/README.md) | 工程上下文插件的用法、配置与开发命令（**S2 已实现**：创建 + 状态 + 同步） |
 | [`packages/dsh-engineering-context/docs/`](packages/dsh-engineering-context/docs/) | 该插件的设计与取舍：`ARCHITECTURE.md`（核心架构、作用域模型、版本管理、工具面）、`PATH-RULES.md`（workspace 内路径规则与账本/清单）、`decisions.md`（编号决策 D1–D26） |
 | [`docs/distribution.md`](docs/distribution.md) | **公开发行与安装**：DSH 的安装面实测（`dsh plugin` 的 spec 形式、bundle 对账、patch 语义、pnpm 11 的两个错误）、三种打包方案对比、Release 发布步骤与验收记录 |
-| [`docs/releases.md`](docs/releases.md) | **发布台账与流程**：已发布版本表（0.1.0–0.1.4）、tag 偏移的已知问题、版本规则、发布检查清单与常见错误 |
-| [`CHANGELOG.md`](CHANGELOG.md) | **发行版版本摘要**：0.1.0–0.1.4 的能力变化；插件版本与 DSH 版本独立 |
-| [`docs/desktop-packaging.md`](docs/desktop-packaging.md) | **桌面壳与打包方案（设计定稿，待实施）**：WebView2 独立窗口、预装或安装时联网下载 DSH、Inno 安装器、应用层自动更新、无签名策略、产物/目录/失败处理/验收清单与分阶段工作量 |
+| [`docs/releases.md`](docs/releases.md) | **发布台账与流程**：已发布版本表（0.1.0–0.1.5）、tag 偏移的已知问题、版本规则、发布检查清单与常见错误 |
+| [`CHANGELOG.md`](CHANGELOG.md) | **发行版版本摘要**：0.1.0–0.1.5 的能力变化；插件版本与 DSH 版本独立 |
+| [`docs/desktop-packaging.md`](docs/desktop-packaging.md) | **桌面壳与打包方案（前置件已完成，壳/安装器待实施）**：WebView2 独立窗口、预装或安装时联网下载 DSH、Inno 安装器、固定 profile、无签名策略、产物/目录/失败处理/验收清单与分阶段工作量 |
 | [`profile/dsh-automation-suite/README.md`](profile/dsh-automation-suite/README.md) | 蓝图的组成、三种部署方式、验收方式 |
 | [`packages/dsh-tia-openness-v17-min/README.md`](packages/dsh-tia-openness-v17-min/README.md) | TIA 插件的完整说明（验证状态、协议、工具、错误码、V17 API 要点） |
 | [`packages/dsh-tia-openness-v17-min/docs/`](packages/dsh-tia-openness-v17-min/docs/) | `PROTOCOL.md`（线路协议权威描述）、`decisions.md`（技术取舍）、`REAL-RUN.md`（真实项目实测）、`FUNCTIONAL-TEST.md`、`verification.md`（验证清单）、`ECOSYSTEM-COMPAT.md`（生态兼容与事故记录） |

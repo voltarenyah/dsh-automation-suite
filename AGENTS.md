@@ -564,3 +564,29 @@ create_engineering_project({
 
 工具在宿主面注册，按 §1「宿主面注册的工具会被每个 agent 继承」，leader 与它派出的子 agent
 都能用 `claim_files`。并行子 agent 切包干活时各领一个 `packages/<包>/` 就不会互踩。
+---
+
+## 9. 桌面打包前置件（2026-11-07）
+
+桌面壳与安装器尚未开始；打包所需的**前置件**已落地，改动它们时要保持契约稳定：
+
+- `scripts/build-app-layer.mjs` — 从当前工作树物化桌面 app layer：
+  `node scripts/build-app-layer.mjs --version 0.2.0`。它调用 `build-distribution.mjs` 打包
+  （图谱引擎自包含），用 `pnpm install --prod --node-linker=hoisted` 生成真实 `node_modules`，
+  检查无 symlink/junction、`@deepseek-ai` 只允许 `cosmokit`/`dsh-brand`/`schemastery`，
+  再复制到临时 `DSH_HOME/profiles/dsh-automation-suite` 做**不跑 pnpm** 的 `--dump-config` +
+  `doctor.ps1 -Json` 验收。产物在 `dist/desktop/<version>/app/`（gitignored）。
+- `scripts/doctor.ps1` — doctor 的唯一实现；`-Json` 必须只输出 JSON，`schemaVersion` 当前为 1；
+  `scripts/test-doctor-json.ps1` 校验契约。安装器和壳都调用它，不要复制检查逻辑。
+- `scripts/merge-profile.mjs` — 固定 profile 的三方合并（旧用户 patch × 旧基线 × 新基线）；
+  只合并用户改过的 `- id:` 块，`- insert:` 政策块以新基线为准；测试在 `scripts/test-merge-profile.mjs`。
+- `scripts/dsh-launch.mjs` — 直接调用 `DeepSeek Harness.exe --expose-internals <cli.js>`，
+  **不要**从 Node spawn `dsh.cmd`（路径含空格，cmd 引号会失败）。
+- `scripts/probe-dsh-web.mjs` — 启动/清理探针：等待 token URL、超时、taskkill 进程树。
+- `scripts/probe-dsh-runtime.ps1` — 安装器 bootstrap dry-run：DSH/WebView2/.NET 4.8 检测 +
+  官方 `nightly.yml` 解析（折行 scalar）；不下载、不安装。
+- 设计、目录布局、安装器状态机与验收矩阵见 `docs/desktop-packaging.md`；
+  打包前置件索引见 `desktop/README.md`。
+
+构建前置条件：本机 .NET 10 SDK（`%USERPROFILE%\.dotnet10` 会被 `build-distribution` 自动发现）、
+DSH 已安装（验调用 app layer 时需要）、pnpm 由 DSH 自带副本自动发现。

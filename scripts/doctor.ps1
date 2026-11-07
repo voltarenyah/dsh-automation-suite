@@ -24,6 +24,9 @@ $ErrorActionPreference = 'Stop'
 $here = Split-Path -Parent $PSCommandPath
 $results = @()
 $dshVersion = ''
+# Bump only when the JSON shape changes. The desktop installer and shell parse
+# this contract; keep field names stable across releases.
+$schemaVersion = 1
 
 function Add-Result {
     param(
@@ -281,12 +284,14 @@ $summary = [pscustomobject]@{
 
 if ($Json) {
     [pscustomobject]@{
-        dshHome    = $DshHome
-        profile    = $Profile
-        dshExe     = $resolvedDsh
-        dshVersion = $dshVersion
-        results    = $results
-        summary    = $summary
+        schemaVersion = $schemaVersion
+        generatedAt   = (Get-Date).ToUniversalTime().ToString('o')
+        dshHome       = $DshHome
+        profile       = $Profile
+        dshExe        = $resolvedDsh
+        dshVersion    = $dshVersion
+        results       = $results
+        summary       = $summary
     } | ConvertTo-Json -Depth 6
 }
 else {
