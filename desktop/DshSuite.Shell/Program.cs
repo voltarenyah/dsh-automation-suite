@@ -25,6 +25,7 @@ internal static class Program
         var log = new Log(Path.Combine(options.DshHome, "logs"));
         try
         {
+            log.Write("shell", $"resolving app layer; base={AppContext.BaseDirectory}");
             var appDir = AppPaths.ResolveAppDir(options.AppDir);
             if (options.SmokeTest)
             {

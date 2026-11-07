@@ -4,7 +4,9 @@ This directory is reserved for the WebView2 shell and installer. The packaging
 preparation lives in `scripts/` so it can be tested without the shell UI.
 
 Status (2026-11-07): **Phase 1 shell implemented (WebView2, tray, single instance,
-logs, hidden smoke test); Phase 2 installer not started.**
+logs, hidden smoke test); Phase 2 installer skeleton implemented** (Inno, stable
+layout, `current.txt`, install/uninstall). DSH download/bootstrap, fixed-profile
+merge on upgrade, and doctor-on-install remain.
 
 ## What is already in place
 
@@ -62,9 +64,31 @@ owns the process tree via a Job Object. Closing the window hides to the tray;
 tray Exit stops DSH. A `--smoke-test` run creates a hidden WebView2 window, waits
 for `NavigationCompleted`, writes `smoke-result.json`, and exits without showing UI.
 
-Current boundaries: no installer, no fixed-profile upgrade merge in the shell
-(the installer owns it), no auto-update, and the existing profile is reused
-as-is (pass a fresh `--dsh-home` for a clean test).
+## Installer skeleton
+
+```powershell
+pwsh -NoProfile -File desktop/build-installer.ps1 -Version 0.2.0
+```
+
+Output: `dist/desktop/0.2.0/dsh-automation-suite-setup-0.2.0.exe` (about 76 MiB).
+It installs per-user under `%LOCALAPPDATA%\dsh-automation-suite`:
+
+```
+shell\DshSuite.Shell.exe      stable shortcut target
+app\0.2.0\                    versioned app layer (profile + node_modules)
+current.txt                   active app-layer version
+unins000.exe
+```
+
+Install/uninstall was verified in a sandbox (`/VERYSILENT /NOICONS /DIR=C:\temp\...`):
+`current.txt` written, installed shell resolves `app\0.2.0` via `current.txt` and
+passes the hidden smoke test; uninstall removes everything including `current.txt`.
+
+Current boundaries: the skeleton does **not** download/install DSH (it warns if
+the default `dsh.cmd` is missing), does not merge an existing fixed profile on
+upgrade, and does not run doctor during install. Those are the next Phase 2
+tasks. No auto-update; the existing profile is reused as-is (pass a fresh
+`--dsh-home` for a clean test).
 
 ## Contracts
 
@@ -110,7 +134,7 @@ a `.bak-<timestamp>` next to the old files and report conflicts.
 
 ## Next steps
 
-1. Phase 2 installer: Inno Setup + C# setup helper — DSH/WebView2 bootstrap, app
-   layer copy, fixed-profile backup/merge, doctor, shortcuts/uninstall.
+1. Phase 2 completion: DSH/WebView2 bootstrap, fixed-profile backup/merge on
+   upgrade, doctor-on-install, and a C# setup helper for failure handling.
 2. Fixed-profile upgrade/rollback and clean-VM acceptance matrix.
 3. Signed/unsigned distribution decision (currently unsigned per docs P9).

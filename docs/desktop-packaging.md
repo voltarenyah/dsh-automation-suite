@@ -1,8 +1,9 @@
 # 桌面壳与打包发行方案
 
-> 状态：设计定稿；**打包前置件已落地、Phase 1 壳已实现**（2026-11-07）。已完成 app layer 物化、
-> doctor JSON 契约、固定 profile 三方合并、DSH 启动/清理探针、安装器 runtime bootstrap 探针；
-> WebView2 壳（窗口/托盘/单实例/日志/隐藏 smoke）已可构建运行。Phase 2（安装器）尚未开始。
+> 状态：设计定稿；**Phase 1 壳与 Phase 2 安装器骨架已实现**（2026-11-07）。app layer 物化、
+> doctor JSON 契约、固定 profile 三方合并、启动/清理探针、runtime bootstrap 探针、WebView2 壳
+> 均可运行；Inno 安装器可安装/卸载并在沙箱通过。仍缺：DSH 自动下载/安装、升级时合并固定 profile、
+> 安装期 doctor。Phase 2 完成后再做干净 VM 全流程验收。
 >
 > 适用范围：Windows 10/11 x64。TIA 功能仍要求 TIA Portal V17（Windows-only）。
 >
@@ -430,12 +431,20 @@ DSH 0.2.1-rc.2）。安装器只需把 `app/profile` 复制到固定 profile，�
 安装器打包（Phase 2）再把 app layer + 壳产物交给 Inno Setup，生成
 `dsh-automation-suite-setup-<ver>.exe`、`app.zip`、`manifest.json`、`SHA256SUMS`。
 
-### 8.3 安装器打包
+### 8.3 安装器打包（Phase 2 骨架已实现）
 
-- Inno Setup（per-user，无需管理员）。
-- 内容：壳自包含产物 + 应用层 + `uninstall.exe`。
-- 生成 `latest.json` 与 SHA-256 清单。
-- 不包含 DSH 运行时。
+```powershell
+pwsh -NoProfile -File desktop/build-installer.ps1 -Version 0.2.0
+```
+
+- Inno Setup（per-user，无需管理员），脚本 `desktop/installer/dsh-automation-suite.iss`。
+- 安装布局：`%LOCALAPPDATA%\dsh-automation-suite\shell`（稳定）+ `app\<ver>`（版本化）+
+  `current.txt`（壳按它找 app layer）。
+- 内容：壳自包含产物 + 物化 profile（含 `node_modules`）+ doctor + manifest + `unins000.exe`。
+- 沙箱实测（`/VERYSILENT /NOICONS /DIR=C:\temp\...`）：`current.txt` 写入、安装后的壳能解析
+  `app\0.2.0` 并通过隐藏 smoke；卸载后目录（含 `current.txt`）被清空。
+- **骨架边界**：不下载/安装 DSH（默认路径缺失时提示），不做升级 profile 合并，不在安装期跑 doctor。
+  这三点是 Phase 2 的下一步；仍不包含 DSH 运行时、无自动更新。
 
 ### 8.4 CI（建议）
 
@@ -514,7 +523,8 @@ DSH 0.2.1-rc.2）。安装器只需把 `app/profile` 复制到固定 profile，�
 | Phase 0（已完成） | zip + `install.cmd` / `start.cmd` + 专用 home | — | v0.1.x 可用 |
 | **Prep（已完成 2026-11-07）** | app layer 物化、doctor JSON 契约、profile 三方合并、DSH 启动/清理探针、runtime bootstrap 探针 | 1–2 天 | `build-app-layer.mjs` 离线 `--dump-config` + doctor 通过 |
 | Phase 1（已完成 2026-11-07） | WebView2 壳：窗口、托盘、单实例、启动/停止、日志、隐藏 smoke | — | 双击图标出窗口；退出无残留 |
-| **Phase 2** | 安装器 + DSH 检测/下载/校验/静默安装 + 版本策略 + 快捷方式/卸载 + 合并固定 profile | 3–5 天 | 无 DSH 机器可一键装好；有 DSH 不重复下载 |
+| Phase 2a（已完成 2026-11-07） | Inno 安装器骨架：稳定 shell + 版本化 app layer + `current.txt` + 快捷方式/卸载 | — | 沙箱安装/卸载 + 安装后 smoke 通过 |
+| Phase 2b | DSH 检测/下载/校验/静默安装 + 版本策略 + 升级时合并固定 profile + 安装期 doctor | 3–5 天 | 无 DSH 机器可一键装好；有 DSH 不重复下载 |
 | **Phase 3** | 应用层打包已完成；本轮只做 **setup 覆盖式升级 + 回滚**，不做自动更新 | 2–3 天 | 升级保留 DSH_HOME 与用户覆盖项；失败可回退 |
 | **Phase 4** | 无签名兼容、首次引导、日志、异常恢复、文档 | 3–5 天 | 新机全流程通过验收清单 |
 
@@ -531,6 +541,12 @@ DSH 0.2.1-rc.2）。安装器只需把 `app/profile` 复制到固定 profile，�
 - [x] 固定 profile 三方合并测试通过（含真实 suite patch）。
 - [x] DSH 启动探针拿到 token URL，taskkill 进程树后无新增 TIA 控制器。
 - [x] runtime bootstrap 探针能检测 DSH/WebView2/.NET 4.8 并解析官方 feed。
+
+**Phase 1/2a（已完成 2026-11-07）**
+- [x] 壳隐藏 smoke：13–19 s 拿到 token URL、WebView2 `NavigationCompleted`、退出无新增 TIA 控制器。
+- [x] 安装器沙箱安装：`current.txt` 写入、`app\0.2.0` 与稳定 `shell` 就位。
+- [x] 安装后的壳能按 `current.txt` 解析 app layer 并通过 smoke。
+- [x] 卸载器清空安装目录（含 `current.txt`），DSH_HOME 不受影响。
 
 **安装**
 - [ ] 干净 Windows 10/11 x64、未装 DSH、未装 WebView2：安装器自动补齐并完成安装。
@@ -568,7 +584,7 @@ DSH 0.2.1-rc.2）。安装器只需把 `app/profile` 复制到固定 profile，�
 | 项 | 风险 | 验证/缓解 |
 |---|---|---|
 | 官方 feed 通道 | 只有 `nightly.yml`；未来可能改名/改结构 | 解析失败时回退手动下载；把 URL 做成可配置 |
-| 官方安装器 `/S` | 未实测；可能按机器/版本不同 | Phase 2 在干净 VM 实测；失败回退交互 |
+| 官方安装器 `/S` | 未实测；可能按机器/版本不同 | Phase 2b 在干净 VM 实测；失败回退交互 |
 | DSH 运行时更新 | 自动更新到未验证版本 | 启动时版本检测 + 警告横幅；回归清单 |
 | 未签名 | SmartScreen/杀软误报 | 发布 SHA-256；文档指引；不做静默提权 |
 | node_modules 物化 | pnpm junction 进 zip 会失效 | 已由 `build-app-layer.mjs` 递归检查 ReparsePoint；app layer 约 103 MiB |

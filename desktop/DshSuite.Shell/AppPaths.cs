@@ -20,16 +20,61 @@ internal static class AppPaths
         {
             if (string.IsNullOrWhiteSpace(candidate)) continue;
             var full = Path.GetFullPath(candidate);
-            if (File.Exists(Path.Combine(full, "profile", "package.json")) &&
-                File.Exists(Path.Combine(full, "app-manifest.json")))
-            {
-                return full;
-            }
+            if (IsAppDir(full)) return full;
         }
+
+        // Installed layout: <root>\shell\DshSuite.Shell.exe and
+        // <root>\app\<version>\{profile,app-manifest.json}. Prefer current.txt,
+        // then the newest app-manifest version.
+        var root = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, ".."));
+        var installed = FindInstalledApp(root);
+        if (installed is not null) return installed;
 
         throw new InvalidOperationException(
             "cannot find the desktop app layer (profile/package.json + app-manifest.json). " +
             "Pass --app-dir <dir> or set DSH_SUITE_APP_DIR.");
+    }
+
+    private static bool IsAppDir(string directory) =>
+        File.Exists(Path.Combine(directory, "profile", "package.json")) &&
+        File.Exists(Path.Combine(directory, "app-manifest.json"));
+
+    private static string? FindInstalledApp(string root)
+    {
+        var current = Path.Combine(root, "current.txt");
+        if (File.Exists(current))
+        {
+            var version = File.ReadAllText(current).Trim().TrimStart('v', 'V');
+            var candidate = Path.Combine(root, "app", version);
+            if (IsAppDir(candidate)) return candidate;
+        }
+
+        var apps = Path.Combine(root, "app");
+        if (!Directory.Exists(apps)) return null;
+
+        var candidates = new List<(Version Version, string Directory)>();
+        foreach (var directory in Directory.GetDirectories(apps))
+        {
+            if (!IsAppDir(directory)) continue;
+            var manifest = Path.Combine(directory, "app-manifest.json");
+            try
+            {
+                using var document = JsonDocument.Parse(File.ReadAllText(manifest));
+                var text = document.RootElement.TryGetProperty("appLayerVersion", out var version)
+                    ? version.GetString()
+                    : null;
+                if (text is not null && Version.TryParse(text, out var parsed))
+                {
+                    candidates.Add((parsed, directory));
+                }
+            }
+            catch
+            {
+                // A broken manifest is ignored; another version may be usable.
+            }
+        }
+
+        return candidates.OrderByDescending(candidate => candidate.Version).FirstOrDefault().Directory;
     }
 
     public static string ResolveDshHome(string? argument)

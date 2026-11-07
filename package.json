@@ -10,6 +10,7 @@
     "build:distribution": "node scripts/build-distribution.mjs",
     "build:app-layer": "node scripts/build-app-layer.mjs",
     "build:shell": "pwsh -NoProfile -File desktop/build-shell.ps1",
+    "build:installer": "pwsh -NoProfile -File desktop/build-installer.ps1",
     "test:merge-profile": "node --test scripts/test-merge-profile.mjs",
     "clean:build": "node scripts/clean-build.mjs"
   },
