@@ -7,6 +7,10 @@ node_modules/
 # profile). Publish it as GitHub Release assets; it is never committed.
 /dist/
 
+# Desktop shell build output (the published shell is copied into dist/).
+/desktop/DshSuite.Shell/bin/
+/desktop/DshSuite.Shell/obj/
+
 # Local preview screenshots (site/architecture rendered for review, never shipped).
 /.preview/
 

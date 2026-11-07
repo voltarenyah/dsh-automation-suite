@@ -14,6 +14,8 @@ GitHub Releases 与 git tag `v<version>` 对齐（发布流程见 [`docs/release
   离线 `--dump-config`/doctor 验收）、doctor JSON 契约（`schemaVersion: 1`）、
   固定 profile 三方合并 `merge-profile.mjs`、DSH 直接启动/清理探针 `probe-dsh-web.mjs`、
   安装器 runtime bootstrap 探针 `probe-dsh-runtime.ps1`。见 `desktop/README.md`。
+- **Phase 1 WebView2 壳**（`desktop/DshSuite.Shell`）：独立窗口、托盘、单实例、日志、
+  `--smoke-test` 隐藏导航；Job Object 持有 DSH 进程树，退出无残留。尚未打包安装器。
 
 ### Planned
 

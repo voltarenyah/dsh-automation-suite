@@ -1,8 +1,8 @@
 # 桌面壳与打包发行方案
 
-> 状态：设计定稿；**打包前置件已落地**（2026-11-07）。已完成 app layer 物化、doctor JSON 契约、
-> 固定 profile 三方合并、DSH 启动/清理探针、安装器 runtime bootstrap 探针；Phase 1（WebView2 壳）
-> 与 Phase 2（安装器）尚未开始。按 §12 的 Phase 顺序继续。
+> 状态：设计定稿；**打包前置件已落地、Phase 1 壳已实现**（2026-11-07）。已完成 app layer 物化、
+> doctor JSON 契约、固定 profile 三方合并、DSH 启动/清理探针、安装器 runtime bootstrap 探针；
+> WebView2 壳（窗口/托盘/单实例/日志/隐藏 smoke）已可构建运行。Phase 2（安装器）尚未开始。
 >
 > 适用范围：Windows 10/11 x64。TIA 功能仍要求 TIA Portal V17（Windows-only）。
 >
@@ -134,13 +134,14 @@ releaseDate: '...'
 
 | 产物 | 内容 | 估算大小 | 更新频率 |
 |---|---|---|---|
-| `dsh-automation-suite-setup-<ver>.exe` | Inno Setup 安装器：壳 + 应用层 + 安装逻辑（**不含 DSH 运行时**） | 约 100–140 MB | 壳/安装器变化时 |
+| `dsh-automation-suite-setup-<ver>.exe` | Inno Setup 安装器：壳 + 应用层 + 安装逻辑（**不含 DSH 运行时**） | 约 120–170 MB | 壳/安装器变化时 |
 | `dsh-automation-suite-app-<ver>.zip` | 物化 profile（含 node_modules）、doctor、`manifest.json`（壳除外） | 约 50–70 MB（解压后约 103 MiB） | 每次应用层迭代 |
 | `manifest.json` / `SHA256SUMS` | 版本、依赖、sha256（无自动更新，仍用于校验） | < 10 KB | 每次发布 |
 | DSH 运行时 | 官方 feed 的安装包 | 约 293 MB（2026-11-07 实测 0.2.2-rc.1） | 安装时按需下载 |
 
-> 自包含 .NET 10 的壳约 60–80 MB；如果改为依赖系统 .NET Desktop Runtime，可把 setup
-> 降到约 5–15 MB，但需要额外的运行时检测/引导。**第一版建议自包含**，减少环境变量。
+> 自包含 .NET 10 的壳实测约 **111 MiB**（WinForms + WebView2 + 运行时）；如果改为依赖系统
+> .NET Desktop Runtime，可把壳降到约 5–15 MB，但需要额外的运行时检测/引导。**第一版建议自包含**，
+> 减少环境变量。壳 + app layer 未压缩约 214 MiB，Inno 压缩后预计 120–170 MB。
 
 ### 4.2 安装目录
 
@@ -318,6 +319,18 @@ profile 名固定；升级时备份并合并 `cordis.patch.yml` 的用户覆盖�
 - 轮转 7 天；托盘“查看日志”打开目录。
 - 安装/更新日志单独保存，失败时在界面给出路径。
 
+### 6.6 Phase 1 实现（2026-11-07）
+
+- `desktop/DshSuite.Shell`：C# `net10.0-windows`、WinForms、`Microsoft.Web.WebView2 1.0.4314.35`。
+- 直接 Electron 启动（`ELECTRON_RUN_AS_NODE=1` + `--expose-internals cli.js`），不使用 `dsh.cmd`；
+  Job Object + `Kill(entireProcessTree)` 清理；token 只在内存/URL，日志经 `Log.Redact`。
+- 单实例 `Local\DshAutomationSuite`；关窗到托盘；托盘菜单 Open / Doctor / Open logs / Exit；
+  Doctor 调用同一份 `doctor.ps1`。
+- 首次运行把 `app/profile` 复制到固定 profile；已有 profile 原样复用（升级合并归安装器）。
+- `--smoke-test`：隐藏 WebView2 窗口 → 等待 token URL → `NavigationCompleted` → 写
+  `smoke-result.json` → 停 DSH → 退出。2026-11-07 实测 **13.8 s**，导航完成，无新增 TIA 控制器。
+- 构建：`pwsh -NoProfile -File desktop/build-shell.ps1 -Version 0.2.0 -SmokeTest`。
+
 ---
 
 ## 7. 自动更新（本轮不做，保留为未来设计）
@@ -380,9 +393,14 @@ profile 名固定；升级时备份并合并 `cordis.patch.yml` 的用户覆盖�
 
 ### 8.1 开发模式（内循环）
 
-- 壳直接指向**已安装的 DSH**（不打包运行时）。
-- `dotnet run` 或本地构建壳；插件用 `pnpm -r build`。
-- 迭代成本：壳 30–60 秒；插件 1–2 分钟。
+```powershell
+node scripts/build-app-layer.mjs --version 0.2.0
+pwsh -NoProfile -File desktop/build-shell.ps1 -Version 0.2.0 -SmokeTest
+dist\desktop\0.2.0\app\shell\DshSuite.Shell.exe --dsh-home C:\temp\dsh-shell-dev
+```
+
+- 壳直接指向**已安装的 DSH**（不打包运行时），首次运行复制 app profile。
+- 壳约 30–60 秒构建；插件 `pnpm -r build` 1–2 分钟；app layer 物化约 10 秒（缓存 npm 时）。
 
 ### 8.2 应用层打包（已实现）
 
@@ -495,7 +513,7 @@ DSH 0.2.1-rc.2）。安装器只需把 `app/profile` 复制到固定 profile，�
 |---|---|---|---|
 | Phase 0（已完成） | zip + `install.cmd` / `start.cmd` + 专用 home | — | v0.1.x 可用 |
 | **Prep（已完成 2026-11-07）** | app layer 物化、doctor JSON 契约、profile 三方合并、DSH 启动/清理探针、runtime bootstrap 探针 | 1–2 天 | `build-app-layer.mjs` 离线 `--dump-config` + doctor 通过 |
-| **Phase 1** | WebView2 壳（开发模式，指向已装 DSH）：窗口、托盘、单实例、启动/停止、日志 | 5–8 天 | 双击图标出窗口；退出无残留 |
+| Phase 1（已完成 2026-11-07） | WebView2 壳：窗口、托盘、单实例、启动/停止、日志、隐藏 smoke | — | 双击图标出窗口；退出无残留 |
 | **Phase 2** | 安装器 + DSH 检测/下载/校验/静默安装 + 版本策略 + 快捷方式/卸载 + 合并固定 profile | 3–5 天 | 无 DSH 机器可一键装好；有 DSH 不重复下载 |
 | **Phase 3** | 应用层打包已完成；本轮只做 **setup 覆盖式升级 + 回滚**，不做自动更新 | 2–3 天 | 升级保留 DSH_HOME 与用户覆盖项；失败可回退 |
 | **Phase 4** | 无签名兼容、首次引导、日志、异常恢复、文档 | 3–5 天 | 新机全流程通过验收清单 |
@@ -572,4 +590,6 @@ DSH 0.2.1-rc.2）。安装器只需把 `app/profile` 复制到固定 profile，�
 - `scripts/merge-profile.mjs` — 固定 profile 三方合并（旧 patch × 旧基线 × 新基线）。
 - `scripts/probe-dsh-runtime.ps1` — 安装器 bootstrap 探针：DSH/WebView2/feed。
 - `scripts/doctor.ps1` / `scripts/test-doctor-json.ps1` — 能力报告与 JSON 契约测试。
+- `desktop/DshSuite.Shell/` — Phase 1 WebView2 壳（WinForms、Job Object、托盘、隐藏 smoke）。
+- `desktop/build-shell.ps1` — 自包含发布壳到 `app/shell`，可带 `-SmokeTest`。
 - 根 `README.md` §6.3 — 使用者视角的当前安装方式。

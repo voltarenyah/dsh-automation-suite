@@ -463,10 +463,11 @@ node scripts/build-distribution.mjs
 仍可单独 `dsh plugin --profile web add <包名或 tarball>`。
 
 桌面图标、独立窗口与安装器属于下一阶段；设计、产物、失败处理与分阶段工作量见
-[`docs/desktop-packaging.md`](docs/desktop-packaging.md)。**打包前置件已完成**：
-`node scripts/build-app-layer.mjs --version 0.2.0` 可物化离线 app layer（真实 `node_modules`、
-无 pnpm/网络安装），并带有 doctor JSON 契约、固定 profile 三方合并、DSH 启动/清理探针与
-安装器 runtime bootstrap 探针；WebView2 壳与安装器本身尚未开始。见 [`desktop/README.md`](desktop/README.md)。
+[`docs/desktop-packaging.md`](docs/desktop-packaging.md)。**打包前置件已完成，Phase 1 WebView2 壳已可运行**：
+`node scripts/build-app-layer.mjs --version 0.2.0` 物化离线 app layer；
+`pwsh desktop/build-shell.ps1 -Version 0.2.0 -SmokeTest` 构建自包含壳并跑隐藏冒烟测试
+（WebView2、托盘、单实例、日志、进程树清理）。安装器（Phase 2）尚未开始。
+见 [`desktop/README.md`](desktop/README.md)。
 
 ### 6.4 首次进入必须自己配模型
 

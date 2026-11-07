@@ -566,9 +566,9 @@ create_engineering_project({
 都能用 `claim_files`。并行子 agent 切包干活时各领一个 `packages/<包>/` 就不会互踩。
 ---
 
-## 9. 桌面打包前置件（2026-11-07）
+## 9. 桌面打包（2026-11-07）
 
-桌面壳与安装器尚未开始；打包所需的**前置件**已落地，改动它们时要保持契约稳定：
+Phase 1 的 WebView2 壳已实现；Phase 2 安装器尚未开始。打包前置件与壳的契约如下，改动时要保持稳定：
 
 - `scripts/build-app-layer.mjs` — 从当前工作树物化桌面 app layer：
   `node scripts/build-app-layer.mjs --version 0.2.0`。它调用 `build-distribution.mjs` 打包
@@ -585,6 +585,9 @@ create_engineering_project({
 - `scripts/probe-dsh-web.mjs` — 启动/清理探针：等待 token URL、超时、taskkill 进程树。
 - `scripts/probe-dsh-runtime.ps1` — 安装器 bootstrap dry-run：DSH/WebView2/.NET 4.8 检测 +
   官方 `nightly.yml` 解析（折行 scalar）；不下载、不安装。
+- `desktop/DshSuite.Shell/` — Phase 1 WebView2 壳（WinForms、Job Object、托盘、单实例、日志）；
+  `--smoke-test` 隐藏 WebView2 跑完整启动/导航/清理。构建：
+  `pwsh -NoProfile -File desktop/build-shell.ps1 -Version 0.2.0 -SmokeTest`。
 - 设计、目录布局、安装器状态机与验收矩阵见 `docs/desktop-packaging.md`；
   打包前置件索引见 `desktop/README.md`。
 
