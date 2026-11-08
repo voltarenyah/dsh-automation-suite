@@ -168,7 +168,7 @@ packages/dsh-ui-prompt-guide/
 ```powershell
 # 包内（本机 pnpm 不在 PATH，用 node 直接跑脚本）
 node scripts\build.mjs          # lib/index.js, lib/guide.js, lib/page.js, lib/client.js
-node scripts\run-tests.mjs      # 先构建再跑 node:test（23 项）
+node scripts\run-tests.mjs      # 先构建再跑 node:test（25 项）
 node scripts\tsc.mjs -p tsconfig.json --noEmit
 
 # 全仓

@@ -26,6 +26,8 @@
 
 import { createElement, useEffect, useRef } from 'react'
 
+import { NS, zh, en } from './locales.js'
+
 /** Package name; also the panel id and the `main` seat key — they must agree. */
 export const ID = 'dsh-ui-prompt-guide'
 
@@ -36,7 +38,7 @@ const PANEL = 'prompt-guide'
 const SRC = '/prompt-guide/'
 
 /** Services this plugin waits for before its body runs. */
-export const inject = ['slots', 'uiWorkspace']
+export const inject = ['slots', 'uiWorkspace', 'locale']
 
 /** The rail row must sit after the shipped entries (Plugins is below 6). */
 const ORDER = 7
@@ -74,6 +76,27 @@ function GuideIcon(props) {
 export function apply(ctx) {
   const frames = new Set()
   let scheme = null
+
+  // Dictionaries first: the rail label and the iframe's accessible name both
+  // resolve through the locale service, and registration after mount still
+  // takes effect (renderers re-resolve the label thunk on locale change).
+  try {
+    ctx.effect(() => ctx.locale.register(NS, { zh, en }), `${ID}: dictionaries`)
+  } catch (error) {
+    ctx.logger?.warn?.(`${ID}: dictionary registration failed: ${String(error)}`)
+  }
+
+  /** Resolve one dictionary key; undefined keeps the English fallback working. */
+  const translate = (key) => {
+    try {
+      const value = ctx.locale.bind(NS)(key)
+      // A missing dictionary falls back to printing the key itself, which is not
+      // a label. Treat that as "unknown" so the caller's fallback wins.
+      return typeof value === 'string' && value !== key ? value : undefined
+    } catch {
+      return undefined
+    }
+  }
 
   /** Push the current scheme into one frame, if the page is ready for it. */
   const post = (frame) => {
@@ -137,7 +160,7 @@ export function apply(ctx) {
     return createElement('iframe', {
       ref,
       src: SRC,
-      title: 'Prompt Guide',
+      title: translate('iframe.title') ?? 'Prompt Guide',
       allow: 'fullscreen',
       onLoad: (event) => post(event.currentTarget),
       style: { width: '100%', height: '100%', border: 0, display: 'block' },
@@ -146,14 +169,23 @@ export function apply(ctx) {
 
   try {
     ctx.slots.inject('sidebar.panellist', () =>
-      ctx.slots.register({ name: 'sidebar.panellist', id: PANEL, order: ORDER, label: () => 'Prompt Guide' }, GuideIcon),
+      ctx.slots.register(
+        {
+          name: 'sidebar.panellist',
+          id: PANEL,
+          order: ORDER,
+          label: () => translate('label') ?? 'Prompt Guide',
+          locale: NS,
+        },
+        GuideIcon,
+      ),
     )
   } catch (error) {
     ctx.logger?.warn?.(`${ID}: the sidebar entry could not be registered: ${String(error)}`)
   }
 
   try {
-    ctx.slots.inject('main', () => ctx.slots.register({ name: 'main', key: PANEL }, GuidePanel))
+    ctx.slots.inject('main', () => ctx.slots.register({ name: 'main', key: PANEL, locale: NS }, GuidePanel))
   } catch (error) {
     ctx.logger?.warn?.(`${ID}: the main panel could not be registered: ${String(error)}`)
   }

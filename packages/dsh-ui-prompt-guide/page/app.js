@@ -20,7 +20,7 @@
 
   var UI = {
     zh: {
-      title: 'Prompt Guide',
+      title: '提示词引导',
       lede: '这个发行版能做什么，以及该怎么说。每张卡片都是一句可以直接发出去的话：复制它，或者在新会话里打开再补上你的对象名。',
       search: '搜索功能、工具或说法…',
       all: '全部',
@@ -32,14 +32,14 @@
       starting: '正在打开…',
       startOk: '已在新会话里填好',
       startFail: '打开新会话失败',
-      startUnavailable: '请从侧栏的 Prompt Guide 打开本页',
+      startUnavailable: '请从左侧栏的「提示词引导」打开本页',
       empty: '没有匹配的 Prompt。换个词试试，或点“全部”。',
       outcome: '会发生什么',
       note: '注意',
       loadFailed: '指南内容加载失败。',
       retry: '重试',
       meta: function (count, version) {
-        return 'Prompt Guide · ' + count + ' 条 · guide v' + version + ' · dsh-automation-suite'
+        return '提示词引导 · ' + count + ' 条 · guide v' + version + ' · dsh-automation-suite'
       },
     },
     en: {
@@ -81,6 +81,7 @@
   var lastStartButton = null
 
   var el = {
+    title: document.querySelector('.pg-head h1'),
     lede: document.getElementById('lede'),
     search: document.getElementById('search'),
     nav: document.getElementById('nav'),
@@ -324,6 +325,8 @@
   function render() {
     if (!doc) return
     document.documentElement.lang = state.lang === 'zh' ? 'zh-CN' : 'en'
+    if (el.title) el.title.textContent = t('title')
+    document.title = t('title') + ' · dsh-automation-suite'
     el.lede.textContent = t('lede')
     el.search.setAttribute('placeholder', t('search'))
     document.querySelectorAll('.pg-lang button').forEach(function (button) {

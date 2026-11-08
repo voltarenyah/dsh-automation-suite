@@ -152,7 +152,7 @@ pnpm run clean:build      # 清构建产物（只碰 lib/ dist/）
 ## 4. 测试与验收
 
 ```powershell
-pnpm test          # 全仓：TIA 112 项（111 通过 / 1 跳过）+ dsh-tool-git 51 项 + engineering-context 151 项 + engineering-graph 128 项 + drawing 23 项 + plcsim-advanced 10 项 + ui-plc-source 47 项 + ui-tia-console 22 项 + ui-versions 15 项 + ui-hardware 9 项 + ui-prompt-guide 23 项 + ui-brandmark 5 项 + tia-todo-bridge 18 项
+pnpm test          # 全仓：TIA 112 项（111 通过 / 1 跳过）+ dsh-tool-git 51 项 + engineering-context 151 项 + engineering-graph 128 项 + drawing 23 项 + plcsim-advanced 10 项 + ui-plc-source 47 项 + ui-tia-console 22 项 + ui-versions 15 项 + ui-hardware 9 项 + ui-prompt-guide 25 项 + ui-brandmark 5 项 + tia-todo-bridge 18 项
 pnpm -r build
 pnpm -r typecheck
 ```

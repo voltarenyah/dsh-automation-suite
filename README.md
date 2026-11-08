@@ -196,7 +196,7 @@ PLC 对象增删改、监视表与软件单元、F 相关服务、编译与关�
 | `dsh-ui-hardware` | 插件 bundle（**仅浏览器半侧**） | 0.1.0 | **一个 Loader 行 + 一个右侧栏 tab 类型**：在右侧栏增加 **Hardware**，把 `.dsh/hardware-view.json` 渲染成「工程机架」——设备按角色分组、槽位画成机位条、选中槽位看型号/订货号/地址窗口，另有网络与信号映射视图。数据由 TIA 插件的 `hardware_view` 工具写入 |
 | `dsh-ui-changes` | 插件 bundle（**浏览器半侧 + 一条只读路由**） | 0.1.0 | **一个 Loader 行 + 右侧栏 Changes tab**：按会话 `header.cwd` 经 `gitContext` 读真实 git 状态，列出未提交文件与每文件 `+N/−M`，面板可见时每 5 s 刷新；宿主路由 `GET /changes/api/status` 只回路径/计数，不写工作区、不提交。**P1 只读；提交区 P2 未实现** |
 | `dsh-ui-project-dashboard` | 插件 bundle（**浏览器半侧 + 标签路由**） | 0.1.0 | **一个 Loader 行 + 全局工作区面板**：在 Plugins 上方提供 workspace 行、标签/搜索/归档，宿主半侧维护 `<DSH_HOME>/storages/project-dashboard/tags.json` 并提供 loopback-only 标签路由 |
-| `dsh-ui-prompt-guide` | 插件 bundle（**浏览器半侧 + 宿主静态路由**） | 0.1.0 | **一个 Loader 行 + 主栏整页帮助页**：左侧栏「Plugins」下面增加 **Prompt Guide**，点开是 9 个分类、32 条可搜索的 Prompt（中英双语，每条带「什么时候用 / 会发生什么 / 由哪个工具或子 agent 执行」）。卡片可复制，或「在新会话中使用」把 Prompt 填进输入框（不自动发送）。内容在 `src/guide.ts`，宿主经 `/prompt-guide/api/guide` 发出；页面是静态 `page/`，改文案不用重建客户端半侧。宿主路由只发自带文案、不读用户数据，并带最小 trust fence（`Sec-Fetch-Site: cross-site` 或 Origin/Host 不一致直接 403）。机制与验收见该包 README |
+| `dsh-ui-prompt-guide` | 插件 bundle（**浏览器半侧 + 宿主静态路由**） | 0.1.0 | **一个 Loader 行 + 主栏整页帮助页**：左侧栏「Plugins」下面增加 **提示词引导（Prompt Guide）**，点开是 9 个分类、32 条可搜索的 Prompt（中英双语，每条带「什么时候用 / 会发生什么 / 由哪个工具或子 agent 执行」）。卡片可复制，或「在新会话中使用」把 Prompt 填进输入框（不自动发送）。内容在 `src/guide.ts`，宿主经 `/prompt-guide/api/guide` 发出；页面是静态 `page/`，改文案不用重建客户端半侧。宿主路由只发自带文案、不读用户数据，并带最小 trust fence（`Sec-Fetch-Site: cross-site` 或 Origin/Host 不一致直接 403）。机制与验收见该包 README |
 | `dsh-ui-brandmark` | 插件 bundle（**仅浏览器半侧**） | 0.1.0 | **一个 Loader 行 + 首页 hero 品牌**：把 DSH 首页的「Into the Unknown / Preview / 鱼形图标」换成发行版自己的「`dsh-automation-suite` / `TIA-V17` / 桌面壳 app 图标」。文案取自 `conversation` 命名空间的 `hero.headline` / `hero.preview`，官方没有配置项；插件在客户端 locale 服务的 `translate` 上只拦这两个 key，其余原样落回字典，装/卸各 `publish` 一次触发重渲染。图标占用单座 `conversation.hero.brand.mark`，注册 occupant 即替换默认鱼形 fallback。两个字符串在 `src/model.ts`。内部 API 不是官方扩展点，失效时只告警、保留原首页 |
 | `profile/dsh-automation-suite` | profile 蓝图 | 0.1.0 | 把官方 Web 组合（`dsh-base` + `dsh-web-app`）与上面的本地插件叠成一个可直接启动的 profile；并声明三个 preset：`leader`（主 agent）、`auditor`（版本管理）与 `expert`（子 agent）。另外挂一行**公共插件** `dsh-opencode-go@0.1.24`（npm 上的 OpenCode Go 提供方 + 设置页，与桌面 profile 同版本；钉死版本、`pnpm-workspace.yaml` 里为它写了 `allowBuilds`；0.1.24 起内置表里带 `deepseek-v4.1-flash`、并把 models.dev 元数据缓存到磁盘，理由见该目录 README 与 D32） |
 | `scripts/start-env.ps1` | 启动器 | — | 一条命令完成"物化 profile + 装插件 + 起服务 + 带 token 开浏览器" |
@@ -733,13 +733,13 @@ packages/
     src/client/                    apply(ctx) + 面板组件 + 样式（esbuild → lib/client.js，宿主认的 loader 包装）
     test/                          node:test 套件（15 项，纯模型 10 + 字典 5）
     scripts/                       tsc.mjs / build.mjs / run-tests.mjs
-  dsh-ui-prompt-guide/             主栏「Prompt Guide」整页：9 分类 / 32 条 Prompt，可搜索、复制、开新会话
+  dsh-ui-prompt-guide/             主栏「提示词引导」整页：9 分类 / 32 条 Prompt，可搜索、复制、开新会话
     src/guide.ts                   内容数据（分类、条目、工具白名单；中英双语）
     src/page.ts                    纯函数：路径安全、MIME、trust fence、answer()
     src/index.ts                   宿主半侧：/prompt-guide 前缀路由（静态页 + /api/guide）
     src/client/index.jsx           sidebar.panellist + main 座位、主题转发、startSession 桥
     page/                          静态页 index.html / app.js / style.css（不经构建，改文案刷新即生效）
-    test/                          node:test 套件（23 项：数据 / 路由 / 产物）
+    test/                          node:test 套件（25 项：数据 / 路由 / 产物 / 字典）
     scripts/                       tsc.mjs / build.mjs / run-tests.mjs
   dsh-ui-brandmark/               首页 hero 品牌：标题 / 徽标 / 桌面图标（仅浏览器半侧）
     src/model.ts                  纯模型：conversation 命名空间两个 key 的文案映射（tsc → lib/）
@@ -795,7 +795,7 @@ pnpm run clean:build      # 清构建产物（只碰 lib/ dist/）
 | `@voltarenyah/dsh-tia-todo-bridge` | `node:test`（`node --test test/*.test.mjs`） | 18 项全通过（纯状态机 16 + manifest 2；不依赖真实 TIA） |
 | `dsh-ui-versions` | `node:test`（`node scripts/run-tests.mjs`，先构建再跑） | 15 项全通过（纯模型 10 + 字典 5；浏览器半侧靠真实 dev-env 验收） |
 | `dsh-ui-hardware` | `node:test`（`node scripts/run-tests.mjs`，先构建再跑） | 9 项全通过（视图解析/筛选/槽位/机位面/格式化；浏览器半侧靠真实 `.dsh/hardware-view.json` 验收） |
-| `dsh-ui-prompt-guide` | `node:test`（`node scripts/run-tests.mjs`，先构建再跑） | 23 项全通过（数据完整性/工具白名单 7 + 路由与 fence 10 + 产物与座位 6；浏览器半侧靠真实 dev-env 验收） |
+| `dsh-ui-prompt-guide` | `node:test`（`node scripts/run-tests.mjs`，先构建再跑） | 25 项全通过（数据完整性/工具白名单 7 + 路由与 fence 10 + 产物与座位 6 + 字典 2；浏览器半侧靠真实 dev-env 验收） |
 | `dsh-ui-brandmark` | `node:test`（`node scripts/run-tests.mjs`，先构建再跑） | 5 项全通过（文案映射与字典落回 + 128px 图标 + manifest/行一致性；浏览器半侧靠真实 dev-env 验收） |
 
 单测都需要**真实的** `@deepseek-ai/*` 运行时（不是 stub）。裸 checkout 首次运行时，

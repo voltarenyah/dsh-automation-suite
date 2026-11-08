@@ -31,7 +31,9 @@
     },
     "client": {
       "platform": "web",
-      "inject": []
+      "inject": [
+        "@deepseek-ai/dsh-client-locale"
+      ]
     }
   },
   "keywords": [

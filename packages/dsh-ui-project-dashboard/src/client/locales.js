@@ -12,9 +12,9 @@
 export const NS = 'projectDashboard'
 
 export const zh = {
-  panel: 'Project Dashboard',
+  panel: '项目看板',
   eyebrow: '全局面板 · P1',
-  title: 'Project Dashboard',
+  title: '项目看板',
   subtitle: '所有工作区的一页总览 · 会话、标签与分组',
   'board.title': '工作区列表',
 

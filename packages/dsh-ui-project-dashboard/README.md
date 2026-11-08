@@ -129,7 +129,7 @@ test/                     01 结构 + 10 客户端模型 + 11 存储 + 12 路由
 # 构建 / 类型检查 / 测试（pnpm install 已把 typescript 与 @types/node 装进本包）
 node scripts/build.mjs
 node scripts/tsc.mjs -p tsconfig.json --noEmit
-node scripts/run-tests.mjs      # 33 项
+node scripts/run-tests.mjs      # 35 项
 ```
 
 装进发行版验收环境（3095）：
