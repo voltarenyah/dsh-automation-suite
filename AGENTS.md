@@ -568,7 +568,7 @@ create_engineering_project({
 
 ## 9. 桌面打包（2026-11-07）
 
-Phase 1 壳、Phase 2a 安装器、Phase 2b 的 profile 安装/三方合并/安装期 doctor、Phase 2c 的 DSH/WebView2 自动补齐已实现，并在干净 Windows 11 LTSC 2024 VM 上验收通过（无 DSH、无 WebView2 → 全部补齐，壳 smoke 通过）。契约如下，改动时要保持稳定：
+Phase 1 壳、Phase 2a 安装器、Phase 2b 的 profile 安装/三方合并/安装期 doctor、Phase 2c 的 DSH/WebView2 自动补齐已实现，并在干净 Windows 11 LTSC 2024 VM 上分别覆盖“无 DSH（WebView2 存在）”与“无 WebView2（DSH 已装）”验收通过（壳 smoke 通过）。契约如下，改动时要保持稳定：
 
 - `scripts/build-app-layer.mjs` — 从当前工作树物化桌面 app layer：
   `node scripts/build-app-layer.mjs --version 0.2.0`。它调用 `build-distribution.mjs` 打包

@@ -2,8 +2,9 @@
 
 > 状态：设计定稿；**Phase 1 壳、Phase 2c DSH/WebView2 自动补齐、profile 安装/合并、
 > 安装期 doctor 已实现并在干净 Windows 11 LTSC 2024 VM 上验收通过**（2026-11-08）。
-> VM 初始无 DSH、无 WebView2；安装器补齐两者、复制 profile、跑 doctor（8 OK / 4 WARN /
-> 0 FAIL）、壳 smoke 通过、卸载干净。仍缺：DSH 最低/参考版本策略、Windows 10 单独验收。
+> VM 分别覆盖“无 DSH（WebView2 存在）”与“无 WebView2（DSH 已装）”：安装器分别补齐
+> DSH/WebView2、复制 profile、跑 doctor（8 OK / 4 WARN / 0 FAIL）、壳 smoke 通过、卸载干净。
+> 仍缺：DSH 最低/参考版本策略、Windows 10 单独验收。
 >
 > 适用范围：Windows 10/11 x64。TIA 功能仍要求 TIA Portal V17（Windows-only）。
 >
@@ -453,10 +454,11 @@ pwsh -NoProfile -File desktop/build-installer.ps1 -Version 0.2.0
   （DeepSeek），静默安装并等待 `dsh.cmd`；已存在则 no-op。`install-dsh.json` 记录版本/URL/hash。
   真实下载 + 校验路径已用 `-VerifyOnly` 实测；沙箱内用预取安装包完成无 DSH 安装
   （profile/doctor/current 全部生成）。
-- 干净 VM 验收（2026-11-08，Windows 11 Enterprise LTSC 2024）：VM 初始无 DSH、无 WebView2；
-  setup 下载 DSH 0.2.2-rc.1、WebView2 bootstrapper 安装 157.0.4341.42、profile/doctor
-  （8 OK / 4 WARN / 0 FAIL）/`install.json`/`current.txt` 生成；壳 `--smoke-test` 通过
-  （`ok=true`, `navigation=completed`）；卸载后安装目录清空、DSH_HOME 保留。
+- 干净 VM 验收（2026-11-08，Windows 11 Enterprise LTSC 2024）：两次运行分别覆盖
+  “无 DSH（WebView2 存在）”与“无 WebView2（DSH 已装）”。DSH 下载/安装 0.2.2-rc.1、
+  WebView2 bootstrapper 安装 157.0.4341.42、profile/doctor（8 OK / 4 WARN / 0 FAIL）/
+  `install.json`/`current.txt` 生成；壳 `--smoke-test` 通过（`ok=true`, `navigation=completed`）；
+  卸载后安装目录清空、DSH_HOME 保留。
 - **仍缺**：DSH 最低/参考版本策略；Windows 10 未单独验收；仍不包含 DSH 运行时、无自动更新。
 
 ### 8.4 CI（建议）
@@ -589,7 +591,7 @@ WebView2 缺失（沙箱自带 Edge/WebView2）和 TIA/PLCSIM（商业软件，�
 - [x] 无 DSH 的 Sandbox 跑 setup：bootstrap 安装 0.2.2-rc.1，profile/doctor/`current.txt`/`install.json` 均生成。
 - [x] 官方 feed 真实下载 + SHA-512 + Authenticode 校验通过（`bootstrap-dsh.ps1 -VerifyOnly`）。
 - [x] DSH 已安装时 bootstrap no-op。
-- [x] 干净 Win11 LTSC VM（无 DSH、无 WebView2）：WebView2 bootstrap 安装 157，壳 smoke 通过。
+- [x] 干净 Win11 LTSC VM：分别覆盖无 DSH 与无 WebView2；WebView2 bootstrap 安装 157，壳 smoke 通过。
 - [x] 干净 VM 卸载：安装目录清空，DSH_HOME 保留。
 - [ ] DSH 版本策略、Windows 10 单独验收、离线安装指引。
 

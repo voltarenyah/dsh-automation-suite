@@ -24,9 +24,9 @@ GitHub Releases 与 git tag `v<version>` 对齐（发布流程见 [`docs/release
   沙箱安装/模拟升级/卸载已验。
 - **Phase 2c DSH/WebView2 bootstrap**：DSH 缺失时从官方 feed 下载，校验 SHA-512 +
   DeepSeek Authenticode，静默安装并等待 `dsh.cmd`；WebView2 缺失时安装 Evergreen
-  Bootstrapper。干净 Windows 11 LTSC 2024 VM（初始无 DSH、无 WebView2）验收通过：
-  DSH 0.2.2-rc.1、WebView2 157.0.4341.42、profile/doctor（8 OK / 4 WARN / 0 FAIL）、
-  壳 smoke `ok=true`、卸载干净。
+  Bootstrapper。干净 Windows 11 LTSC 2024 VM 分别验收“无 DSH（WebView2 存在）”与
+  “无 WebView2（DSH 已装）”两条路径：DSH 0.2.2-rc.1、WebView2 157.0.4341.42、
+  profile/doctor（8 OK / 4 WARN / 0 FAIL）、壳 smoke `ok=true`、卸载干净。
 
 ### Known limitations
 

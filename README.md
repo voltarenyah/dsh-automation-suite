@@ -468,7 +468,7 @@ Phase 2c DSH/WebView2 bootstrap 已可运行**：`node scripts/build-app-layer.m
 物化离线 app layer；`pwsh desktop/build-shell.ps1 -Version 0.2.0 -SmokeTest` 构建自包含壳并跑
 隐藏冒烟测试；`pwsh desktop/build-installer.ps1 -Version 0.2.0` 生成 Inno 安装器。安装器会在
 DSH/WebView2 缺失时下载并校验官方安装包，然后复制固定 profile、备份并三方合并旧覆盖项、跑
-doctor、写 `install.json`。已在干净 Windows 11 LTSC VM（初始无 DSH、无 WebView2）验收通过。
+doctor、写 `install.json`。已在干净 Windows 11 LTSC VM 上分别覆盖“无 DSH”和“无 WebView2”两条路径并验收通过。
 见 [`desktop/README.md`](desktop/README.md)。
 
 ### 6.4 首次进入必须自己配模型

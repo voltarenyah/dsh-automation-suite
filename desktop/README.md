@@ -4,9 +4,10 @@ This directory is reserved for the WebView2 shell and installer. The packaging
 preparation lives in `scripts/` so it can be tested without the shell UI.
 
 Status (2026-11-08): **Phase 1 shell + Phase 2c desktop installer implemented and
-accepted on a clean Windows 11 Enterprise LTSC 2024 VM.** The VM had no DSH and
-no WebView2; setup installed both, the profile, doctor (8 OK / 4 WARN / 0 FAIL),
-and the shell smoke passed.
+accepted on a clean Windows 11 Enterprise LTSC 2024 VM.** Two runs cover the
+missing prerequisites separately: DSH absent (WebView2 present) and WebView2
+absent (DSH present). Both ended with profile + doctor (8 OK / 4 WARN / 0 FAIL)
+and a passing shell smoke.
 
 ## What is already in place
 
