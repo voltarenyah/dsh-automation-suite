@@ -16,6 +16,7 @@
 
 import { Panel } from './Panel.jsx'
 import { Title } from './Title.jsx'
+import { GuideIcon } from './guide-icon.jsx'
 import { ensureStyle } from './style.js'
 import { NS, en, zh } from './locales.js'
 import { VIEW_FILE } from '../model.js'
@@ -103,6 +104,7 @@ export function apply(ctx) {
                 order: 102,
                 title: () => t('guide.title'),
                 description: () => t('guide.description'),
+                icon: GuideIcon,
               },
             ],
           })
