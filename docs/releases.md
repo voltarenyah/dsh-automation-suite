@@ -12,6 +12,7 @@
 
 | 版本 | 发布日期 | profile 名 | 主要变化 | 内容提交 | 远端 tag 现状 |
 |---|---|---|---|---|---|
+| **0.2.1** | 2026-11-08 | `dsh-automation-suite`（桌面固定 profile） | **DPI + 图标热修复**；PerMonitorV2 显式生效；多尺寸 app.ico | `e212031` | ✅ `v0.2.1` → `e212031` |
 | **0.2.0** | 2026-11-08 | `dsh-automation-suite`（桌面固定 profile） | **首个桌面安装包**；DSH/WebView2 自动补齐、固定 profile 合并、doctor；干净 Win11 LTSC VM 验收 | `c981aac` | ✅ `v0.2.0` → `c981aac` |
 | **0.1.5** | 2026-11-07 | `dsh-automation-suite-v0.1.5` | **最后一个 Web 启动版**；doctor；图谱引擎 net10 自包含；Changes P1 + 0.1.4 后 5 个插件 | `c89d130` | ✅ `v0.1.5` → `c89d130` |
 | **0.1.4** | 2026-10-26 | `dsh-automation-suite-v0.1.4` | 四个内置 preset 默认禁用；选择器只留 3 个 | `de237b8` | ⚠️ `v0.1.4` → `bee7947`（旧一版） |
