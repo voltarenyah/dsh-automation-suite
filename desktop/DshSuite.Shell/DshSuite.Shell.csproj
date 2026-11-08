@@ -27,4 +27,8 @@
     <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.4314.35" />
   </ItemGroup>
 
+  <ItemGroup>
+    <EmbeddedResource Include="TitleBarScript.js" LogicalName="DshSuite.Shell.TitleBarScript.js" />
+  </ItemGroup>
+
 </Project>

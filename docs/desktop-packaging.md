@@ -333,6 +333,63 @@ profile 名固定；升级时备份并合并 `cordis.patch.yml` 的用户覆盖�
   `smoke-result.json` → 停 DSH → 退出。2026-11-07 实测 **13.8 s**，导航完成，无新增 TIA 控制器。
 - 构建：`pwsh -NoProfile -File desktop/build-shell.ps1 -Version 0.2.0 -SmokeTest`。
 
+### 6.7 无边框标题栏（2026-11-08）
+
+目标：让壳的窗口与 DeepSeek Harness 桌面版一致——没有系统白底标题栏和 `Ready` 状态行，
+顶部是 40 px、与应用同色的标题条：左侧侧边栏开关、`Application` / `Edit` 菜单，右侧最小化 /
+最大化 / 关闭。
+
+窗口层（`MainForm.cs` + `NativeMethods.cs`）：
+
+- `FormBorderStyle.None`，`CreateParams` 加 `WS_THICKFRAME | WS_MINIMIZEBOX |
+  WS_MAXIMIZEBOX | WS_SYSMENU`，并用 `WM_NCCALCSIZE` 把客户区设为整个窗口（最大化时设为
+  监视器工作区）。否则 Windows 会在标题条上方留出约 8 px 的尺寸边框，按帧颜色绘制——
+  深色主题下就是一条黑边。客户区铺满后，网页标题条从窗口最上沿开始。
+- 边框消失后原生拖边缩放没有命中区域，改由 `TitleBarScript.js` 在左/右/下边缘做 4 px
+  命中检测，通过 WebMessage 让宿主 `ReleaseCapture()` + `WM_NCLBUTTONDOWN(HTLEFT/…)`
+  进入系统缩放循环；顶部的 40 px 标题条仍然只负责拖动/双击最大化。
+- `DwmExtendFrameIntoClientArea(1,1,1,1)` 保留阴影和圆角；
+  `DWMWA_WINDOW_CORNER_PREFERENCE = ROUND`；
+  用 `DWMWA_BORDER_COLOR = DWMWA_COLOR_NONE` 关掉 DWM 那 1 px 边框，
+  避免它在网页内容边缘再画一条线。
+- 页面把当前主题（`data-ds-dark-theme`）发给宿主，宿主据此设置
+  `DWMWA_USE_IMMERSIVE_DARK_MODE`；浅色主题**不能**用系统 `prefers-color-scheme`
+  兜底（系统深色 + 应用浅色会把帧刷成黑色），以 `data-ds-dark-theme` 为准。
+- 初始尺寸改为工作区的 90% 并居中（高 DPI 下旧的 1440×900 物理像素只有约 740 CSS px 宽，
+  DSH 布局会自动收起侧边栏）。
+- 旧的 30 px 状态行删除；启动期改为覆盖整个客户区的深色加载层，`NavigationCompleted` 后隐藏，
+  启动失败时保留并把错误写在该层上。
+
+网页层（`TitleBarScript.js`，作为嵌入资源注入）：
+
+- 用 `AddScriptToExecuteOnDocumentCreatedAsync` 在页面脚本之前注入；设置
+  `<html data-windows-titlebar>` 和 `--dsh-windows-titlebar-height: 40px`。DSH Web 客户端
+  原生支持这套标记：标题条底色、内容区左上圆角、侧边栏开关上移到标题条、菜单起点
+  `--dsh-windows-menu-start`（展开 48 px / 收起 84 px）都由它自己的 CSS 完成。
+- 宿主打开 `CoreWebView2Settings.IsNonClientRegionSupportEnabled`，让 DSH 标题条上的
+  `-webkit-app-region: drag` 生效：拖动标题条移动窗口、双击最大化/还原、右键系统菜单都由
+  WebView2 处理（与官方 Electron 版行为一致）。
+- 在页面里渲染 `Application` / `Edit` 菜单（未展开侧边栏时随 DSH 的 CSS 变量右移）、
+  右侧 46×40 的三个窗口按钮；颜色全部用 DSH 主题 token，浅/深色自动跟随。
+- `Application`：关于 / 打开日志 / 运行诊断 / 退出；`Edit`：撤销、重做、剪切、复制、粘贴、
+  全选。编辑命令在页面内用 `document.execCommand`，粘贴经 WebMessage 向宿主取剪贴板文本
+  （`Clipboard.GetText`）后 `insertText`，保留撤销栈。
+- 窗口按钮点击 → `postMessage` → 宿主执行最小化/最大化/关闭（关闭仍按既有约定收进托盘）；
+  宿主在激活、尺寸变化时把 `{maximized, active}` 发回页面，按钮图标随之切换。
+- 菜单按钮通过 `pointerdown` 阻止默认行为以保持编辑框焦点；菜单打开时记住编辑框与选区，
+  关闭/执行命令前恢复。
+
+验收（手工，2026-11-08 已做）：
+
+1. 发布后启动，确认没有系统标题栏、没有 `Ready` 行；标题条与侧边栏同色、内容区左上圆角；浅/深色下标题条上沿都直达窗口边缘，没有黑边。
+2. 拖标题条移动窗口；双击标题条最大化/还原；拖窗口边缘缩放。
+3. `Application` / `Edit` 菜单可打开；`Edit → 复制/粘贴` 与系统剪贴板互通。
+4. 关闭按钮 → 窗口隐藏、进程仍在托盘；`Application → Exit` → 进程与 DSH 子进程退出。
+5. 切深/浅色主题，标题条、按钮、DWM 边框颜色跟随。
+
+已知限制：窗口按钮是网页自绘的，Windows 11 的贴靠布局浮出（悬停最大化按钮）不会出现；
+标题条拖动、双击最大化、贴靠拖动仍可用。
+
 ---
 
 ## 7. 自动更新（本轮不做，保留为未来设计）
@@ -654,5 +711,6 @@ WebView2 缺失（沙箱自带 Edge/WebView2）和 TIA/PLCSIM（商业软件，�
 - `scripts/probe-dsh-runtime.ps1` — 安装器 bootstrap 探针：DSH/WebView2/feed。
 - `scripts/doctor.ps1` / `scripts/test-doctor-json.ps1` — 能力报告与 JSON 契约测试。
 - `desktop/DshSuite.Shell/` — Phase 1 WebView2 壳（WinForms、Job Object、托盘、隐藏 smoke）。
+  `TitleBarScript.js`（嵌入资源）负责无边框标题条的菜单/窗口按钮；`NativeMethods.cs` 是 DWM/窗口样式互操作。
 - `desktop/build-shell.ps1` — 自包含发布壳到 `app/shell`，可带 `-SmokeTest`。
 - 根 `README.md` §6.3 — 使用者视角的当前安装方式。

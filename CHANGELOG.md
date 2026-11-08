@@ -6,6 +6,42 @@
 格式参考 [Keep a Changelog](https://keepachangelog.com/)；日期为本地日期；版本从
 GitHub Releases 与 git tag `v<version>` 对齐（发布流程见 [`docs/releases.md`](docs/releases.md)）。
 
+## [0.2.2] - 2026-11-08
+
+标题栏与窗口外观版本；插件/profile 内容与安装流程不变。
+
+### Added
+
+- 桌面壳改为与 DeepSeek Harness 桌面版一致的无边框标题栏：40 px 标题条与侧边栏同色，
+  左侧侧边栏开关 + `Application` / `Edit` 菜单，右侧最小化/最大化/关闭；颜色全部使用
+  DSH 主题 token，浅/深色自动跟随。
+- 标题条拖动、双击最大化/还原、右键系统菜单由 WebView2 非客户区拖动支持完成；
+  `Application` 提供关于/打开日志/运行诊断/退出，`Edit` 提供撤销/重做/剪切/复制/粘贴/全选
+  （粘贴经 WebMessage 读取宿主剪贴板，保留撤销栈）。
+- 启动期改为覆盖客户区的加载层；移除原来的 30 px 状态行与 `Ready`。
+- 初始窗口改为工作区的 90% 并居中（高 DPI 下旧的 1440×900 物理像素只有约 740 CSS px，
+  DSH 布局会自动收起侧边栏）。
+
+### Fixed
+
+- **浅色/深色标题条上方的黑边**：`WM_NCCALCSIZE` 让客户区铺满整个窗口，不再保留系统
+  8 px 尺寸边框；`DWMWA_BORDER_COLOR = DWMWA_COLOR_NONE` 关闭 DWM 1 px 边框；主题判断
+  以应用自己的 `data-ds-dark-theme` 为准，不再用系统深色兜底。
+- 客户区铺满后左/右/下边缘缩放改由 `TitleBarScript.js` 命中后调用系统缩放循环；
+  最大化时客户区固定为监视器工作区。
+
+### Verified
+
+- `pnpm -r test`（设置 `DOTNET_ROOT` 到 `.dotnet10` 后）、`pnpm -r build`、`pnpm -r typecheck`。
+- 0.2.2 静默安装 + 固定 profile + 壳 `--smoke-test`。
+- 手工验收：拖动/双击/缩放、窗口按钮、Application/Edit 菜单、复制/粘贴、关闭到托盘、
+  Exit 清理 DSH 子进程、浅/深色主题。
+
+### Known limitations
+
+- 窗口按钮为网页自绘，Windows 11 的贴靠布局浮出（悬停最大化按钮）不会出现；
+  顶部 40 px 为拖动区，缩放从左/右/下边缘发起。
+
 ## [0.2.1] - 2026-11-08
 
 0.2.0 的 DPI 与图标热修复，不改变 profile/插件内容与安装流程。
