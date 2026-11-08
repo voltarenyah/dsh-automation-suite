@@ -10,11 +10,21 @@
 param(
     [string]$AppVersion = '0.2.0',
     [string]$OutputDir = '',
-    [switch]$Offline
+    [switch]$Offline,
+    [switch]$Test
 )
 
 $ErrorActionPreference = 'Stop'
 $sandboxExe = 'C:\Windows\System32\WindowsSandbox.exe'
+
+$existing = Get-Process WindowsSandboxRemoteSession,WindowsSandboxServer -ErrorAction SilentlyContinue
+if ($existing) {
+    throw "A Windows Sandbox session is already running. Close its window; if it is stuck, reboot before starting another test."
+}
+$orphan = Get-Process vmmemWindowsSandbox -ErrorAction SilentlyContinue
+if ($orphan) {
+    throw "An orphaned Windows Sandbox VM is still resident (vmmemWindowsSandbox). Reboot before starting another test."
+}
 if (-not (Test-Path -LiteralPath $sandboxExe)) {
     throw @'
 Windows Sandbox is not enabled on this machine.
@@ -33,16 +43,30 @@ New-Item -ItemType Directory -Force -Path $OutputDir | Out-Null
 
 function Escape-Xml([string]$text) { [System.Security.SecurityElement]::Escape($text) }
 $network = if ($Offline) { 'Disable' } else { 'Enable' }
+$sandboxXml = Escape-Xml $PSScriptRoot
 $distXml = Escape-Xml $dist
 $outXml = Escape-Xml $OutputDir
+$logon = if ($Test) {
+    'powershell.exe -NoProfile -ExecutionPolicy Bypass -File C:\sandbox\clean-install-test.ps1'
+} else {
+    "cmd.exe /c start `"`" `"C:\dist\desktop\$AppVersion`""
+}
+$logonXml = Escape-Xml $logon
 
 $wsb = @"
 <Configuration>
   <Networking>$network</Networking>
+  <!-- vGPU sharing can make the Sandbox RDP client log off; the shell is 2D only. -->
+  <VGpu>Disable</VGpu>
   <MappedFolders>
     <MappedFolder>
       <HostFolder>$distXml</HostFolder>
       <SandboxFolder>C:\dist</SandboxFolder>
+      <ReadOnly>true</ReadOnly>
+    </MappedFolder>
+    <MappedFolder>
+      <HostFolder>$sandboxXml</HostFolder>
+      <SandboxFolder>C:\sandbox</SandboxFolder>
       <ReadOnly>true</ReadOnly>
     </MappedFolder>
     <MappedFolder>
@@ -52,7 +76,7 @@ $wsb = @"
     </MappedFolder>
   </MappedFolders>
   <LogonCommand>
-    <Command>cmd.exe /c start "" "C:\dist\desktop\$AppVersion"</Command>
+    <Command>$logonXml</Command>
   </LogonCommand>
 </Configuration>
 "@
@@ -63,4 +87,5 @@ Write-Host "sandbox config: $wsbPath"
 Write-Host "  release (ro): $dist"
 Write-Host "  output (rw):  $OutputDir"
 Write-Host "  networking:   $network"
+Write-Host "  mode:         $(if ($Test) { 'automated clean-install test' } else { 'interactive' })"
 Start-Process -FilePath $sandboxExe -ArgumentList "`"$wsbPath`""

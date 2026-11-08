@@ -118,6 +118,37 @@ function Find-PreviousApp {
 }
 
 $dsh = Find-Dsh
+
+# Windows Sandbox has Edge but no WebView2 Runtime; DSH itself does not install
+# it for us. Keep this as a prerequisite of the fixed profile.
+$webviewScript = Join-Path $InstallRoot 'installer\bootstrap-webview2.ps1'
+if ($env:DSH_SUITE_SKIP_WEBVIEW2 -eq '1') {
+    Write-Log 'skipping WebView2 bootstrap (DSH_SUITE_SKIP_WEBVIEW2=1; test-only)'
+}
+elseif (Test-Path -LiteralPath $webviewScript) {
+    Write-Log 'ensuring WebView2 runtime'
+    $webviewOut = Join-Path $logDir 'webview2.out.log'
+    $webviewErr = Join-Path $logDir 'webview2.err.log'
+    $webviewProcess = Start-Process -FilePath 'powershell.exe' `
+        -ArgumentList @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $webviewScript) `
+        -RedirectStandardOutput $webviewOut -RedirectStandardError $webviewErr `
+        -WindowStyle Hidden -PassThru
+    if (-not $webviewProcess.WaitForExit(180000)) {
+        try { $webviewProcess.Kill() } catch { }
+        throw 'WebView2 bootstrap timed out after 180 s'
+    }
+    foreach ($file in @($webviewOut, $webviewErr)) {
+        if (-not (Test-Path -LiteralPath $file)) { continue }
+        Get-Content -LiteralPath $file -ErrorAction SilentlyContinue | ForEach-Object { Write-Log "webview2: $_" }
+    }
+    if ($webviewProcess.ExitCode -ne 0) {
+        throw "WebView2 bootstrap failed with exit code $($webviewProcess.ExitCode)"
+    }
+}
+else {
+    Write-Log 'WARNING: bootstrap-webview2.ps1 not found; shell may fail without WebView2'
+}
+
 $appManifest = Get-Content -LiteralPath (Join-Path $appDir 'app-manifest.json') -Raw | ConvertFrom-Json
 $hadProfile = Test-Path -LiteralPath (Join-Path $profileDir 'package.json')
 $previousApp = if ($hadProfile) { Find-PreviousApp -Root $InstallRoot -CurrentVersion $AppVersion } else { $null }

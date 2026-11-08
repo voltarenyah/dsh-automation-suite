@@ -64,6 +64,7 @@ Source: "{#SourceApp}\doctor.ps1"; DestDir: "{app}\app\{#AppVersion}"; Flags: ig
 Source: "{#SourceApp}\test-doctor-json.ps1"; DestDir: "{app}\app\{#AppVersion}"; Flags: ignoreversion
 Source: "{#SourceApp}\merge-profile.mjs"; DestDir: "{app}\app\{#AppVersion}"; Flags: ignoreversion
 Source: "install-profile.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion
+Source: "bootstrap-webview2.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion
 ; The shell is stable; the app layer is versioned.
 Source: "{#SourceShell}\*"; DestDir: "{app}\shell"; Flags: ignoreversion recursesubdirs createallsubdirs
 
@@ -99,10 +100,11 @@ begin
   Result := Exec('powershell.exe', Params, ExpandConstant('{app}'), SW_SHOW, ewWaitUntilTerminated, ResultCode);
   if (not Result) or (ResultCode <> 0) then
   begin
-    MsgBox('The desktop profile could not be installed (exit code ' + IntToStr(ResultCode) + ').' + #13#10 +
-           'See ' + ExpandConstant('{app}') + '\logs\install-profile-*.log for details.' + #13#10 +
-           'The app layer is installed, but the app will not launch until the profile is fixed.',
-           mbError, MB_OK);
+    if not WizardSilent then
+      MsgBox('The desktop profile could not be installed (exit code ' + IntToStr(ResultCode) + ').' + #13#10 +
+             'See ' + ExpandConstant('{app}') + '\logs\install-profile-*.log for details.' + #13#10 +
+             'The app layer is installed, but the app will not launch until the profile is fixed.',
+             mbError, MB_OK);
     Result := False;
   end;
 end;
@@ -122,10 +124,13 @@ begin
     Dsh := ExpandConstant('{localappdata}\Programs\DeepSeek Harness\resources\runtime\cli\bin\dsh.cmd');
   if not FileExists(Dsh) then
   begin
-    MsgBox('DeepSeek Harness (dsh.cmd) was not found.' + #13#10 +
-           'Install DeepSeek Harness first (or set DSH_EXE), then run this installer again.' + #13#10 +
-           'The app layer is installed without pnpm and does not need the npm registry.',
-           mbError, MB_OK);
+    // Never show a blocking dialog in silent mode; the exit code is enough for
+    // automation and avoids an unattended installer hanging forever.
+    if not WizardSilent then
+      MsgBox('DeepSeek Harness (dsh.cmd) was not found.' + #13#10 +
+             'Install DeepSeek Harness first (or set DSH_EXE), then run this installer again.' + #13#10 +
+             'The app layer is installed without pnpm and does not need the npm registry.',
+             mbError, MB_OK);
     Result := False;
   end;
 end;

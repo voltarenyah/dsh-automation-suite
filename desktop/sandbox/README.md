@@ -49,3 +49,20 @@ and opens `C:\dist\desktop\<version>` in Explorer.
 - **TIA Portal / PLCSIM**: commercial software and heavy install; test those on
   the host machine, not the sandbox.
 - **Persistent snapshots**: use Hyper-V if repeated checkpoint/rollback is needed.
+
+## The "remote environment is logging off" client message
+
+That message comes from the **Windows Sandbox RDP client**, not from the suite
+installer. It appears when the sandbox VM session ends, most often because
+`WindowsSandboxRemoteSession` / `WindowsSandboxServer` was force-stopped from the
+host (this is how we produced it during early runs), an older sandbox VM was
+still alive, or vGPU sharing crashed the remote session.
+
+The `.wsb` disables vGPU, and the automated test starts Explorer before the
+LogonCommand exits so the desktop stays alive. Do not kill sandbox processes to
+close a test: close the window. If `vmmemWindowsSandbox` / `vmwp` remain and the
+launcher refuses to start, reboot once.
+
+**WebView2 correction:** Windows Sandbox contains an EdgeWebView folder but no
+registered WebView2 Runtime; the shell can fail with "Couldn't find a compatible
+Webview2 Runtime installation". That is a real prerequisite, not a test artifact.
