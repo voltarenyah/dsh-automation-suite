@@ -15,6 +15,7 @@
 
 | 版本 | 发布日期 | profile 名 | 主要变化 | 内容提交 | 远端 tag 现状 |
 |---|---|---|---|---|---|
+| **0.2.3** | 2026-11-08 | `dsh-automation-suite`（桌面固定 profile） | **首页 hero 品牌**（dsh-automation-suite / TIA-V17 / 桌面壳图标）；侧栏中文（提示词引导 / 项目看板）；右侧栏五个 tab 独立图标；应用内目录选择器 | `44bdef6` | ✅ `v0.2.3` → `44bdef6` |
 | **0.2.2** | 2026-11-08 | `dsh-automation-suite`（桌面固定 profile） | **DSH 桌面版标题栏**；Application/Edit 菜单与窗口按钮；去掉标题条上方黑边；无框客户区 + 边缘缩放 | `91ff64e` | ✅ `v0.2.2` → `91ff64e` |
 | **0.2.1** | 2026-11-08 | `dsh-automation-suite`（桌面固定 profile） | **DPI + 图标热修复**；PerMonitorV2 显式生效；多尺寸 app.ico | `e212031` | ✅ `v0.2.1` → `e212031` |
 | **0.2.0** | 2026-11-08 | `dsh-automation-suite`（桌面固定 profile） | **首个桌面安装包**；DSH/WebView2 自动补齐、固定 profile 合并、doctor；干净 Win11 LTSC VM 验收 | `c981aac` | ✅ `v0.2.0` → `c981aac` |
