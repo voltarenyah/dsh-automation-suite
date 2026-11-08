@@ -18,7 +18,8 @@
     "dsh-ui-changes": "workspace:^",
     "dsh-ui-hardware": "workspace:^",
     "dsh-ui-prompt-guide": "workspace:^",
-    "dsh-ui-project-dashboard": "workspace:^"
+    "dsh-ui-project-dashboard": "workspace:^",
+    "dsh-ui-brandmark": "workspace:^"
   },
   "dsh": {
     "profile": {
@@ -38,6 +39,7 @@
         "dsh-ui-hardware",
         "dsh-ui-prompt-guide",
         "dsh-ui-project-dashboard",
+        "dsh-ui-brandmark",
         "@voltarenyah/dsh-tia-todo-bridge",
         "dsh-opencode-go"
       ]

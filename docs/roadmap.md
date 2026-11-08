@@ -105,6 +105,23 @@
 模型自己写清单后做 `export_blocks`，清单不被插件改写。见
 [`packages/dsh-tia-todo-bridge/README.md`](../packages/dsh-tia-todo-bridge/README.md)。
 
+### 1.4 首页 Hero 品牌（✅ 2026-11-08）
+
+`packages/dsh-ui-brandmark`（仅浏览器半侧）把 DSH 首页 hero 的 `Into the Unknown` / `Preview` /
+鱼形图标换成发行版自己的品牌：标题 `dsh-automation-suite`、徽标 `TIA-V17`、图标 = 桌面壳的
+`desktop/DshSuite.Shell/app.ico`（128 px PNG，构建期内联为 data URL）。
+
+- **文案**没有配置项，也不归官方 `dsh-client-ui-brand-*` 管：hero 取 `conversation` 命名空间的
+  `hero.headline` / `hero.preview`。插件在客户端 locale 服务的 `translate` 上包一层，只拦这两个 key，
+  其余（别的 key、`common` 命名空间、未来新增字符串）原样落回真实字典；装/卸各 `publish` 一次，
+  订阅者立即重渲染，不用刷新。
+- **图标**走既有的单座 `conversation.hero.brand.mark`：注册 occupant 即替换默认的鱼形 fallback。
+- 两个字符串在 `src/model.ts`，图标在 `assets/brandmark.png`；改完重建。`translate` / `publish` 是
+  DSH 0.2.1-rc.2 的内部方法，不是官方扩展点 —— 宿主升级要复核；失效时插件只告警，首页保持原样。
+
+验收：隔离 profile 里启动 → 首页标题 / 徽标 / 图标均为上述值，控制台无错误；包内 5 项单测覆盖
+文案映射、字典落回、128px 图标与 manifest / Loader 行一致性。
+
 ---
 
 ## 2. 接口插件族 · 工控软件接口插件 🟡
