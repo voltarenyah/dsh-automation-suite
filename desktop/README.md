@@ -3,9 +3,11 @@
 This directory is reserved for the WebView2 shell and installer. The packaging
 preparation lives in `scripts/` so it can be tested without the shell UI.
 
-Status (2026-11-07): **Phase 1 shell implemented; Phase 2 installer implements
-profile setup, fixed-profile merge, doctor-on-install and install.json**. DSH
-download/install and WebView2 bootstrapper remain (Phase 2b).
+Status (2026-11-08): **Phase 1 shell implemented; Phase 2c DSH download/install,
+profile setup, fixed-profile merge, doctor-on-install and install.json are
+implemented.** WebView2 bootstrap exists but cannot be reliably tested inside
+Windows Sandbox (stale EdgeWebView files); that one acceptance remains a
+clean-VM item.
 
 ## What is already in place
 
@@ -108,11 +110,24 @@ Verified in a sandbox (`/VERYSILENT /NOICONS /DIR=C:\temp\...` with a temporary
 removes the install directory. A simulated upgrade (old app layer 0.1.9 + a
 `deepseek-v4-pro` user override) preserved the override and created a backup.
 
-Current boundaries: **DSH must already be installed** (the installer blocks with
-a clear message if `dsh.cmd` is missing); there is no DSH download/install yet;
-WebView2 is not bootstrapped by the installer; no auto-update. The shell reads
-`install.json` for custom DSH_HOME/profile and reuses an existing profile
-(profile replacement/merge is done by the installer).
+DSH bootstrap is now part of setup (`installer\bootstrap-dsh.ps1`):
+
+- if `dsh.cmd` is missing, fetch the official feed, download the installer,
+  verify its SHA-512 and Authenticode signer (DeepSeek), run it silently, and
+  wait for `dsh.cmd`;
+- if DSH is already present, it is a no-op;
+- `install-dsh.json` records the downloaded version/URL/hash;
+- `DSH_SETUP_OVERRIDE` is test-only (Sandbox uses a prefetched installer).
+
+Verified: no-DSH Sandbox install with prefetched DSH completed profile + doctor
+(7 OK / 5 WARN / 0 FAIL); real download/hash/signature path verified with
+`bootstrap-dsh.ps1 -VerifyOnly`.
+
+Current boundaries: WebView2 inside Windows Sandbox is unreliable (unregistered
+EdgeWebView folder; bootstrapper 0x80040902), so shell/WebView2 acceptance still
+needs a clean VM. No auto-update. The shell reads `install.json` for custom
+DSH_HOME/profile and reuses an existing profile (profile replacement/merge is
+done by the installer).
 
 ## Contracts
 

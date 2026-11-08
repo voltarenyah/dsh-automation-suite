@@ -1,9 +1,9 @@
 # 桌面壳与打包发行方案
 
-> 状态：设计定稿；**Phase 1 壳、Phase 2 安装器、profile 安装/合并、安装期 doctor 已实现**
-> （2026-11-07）。Inno 安装器可安装/卸载、复制固定 profile、备份并三方合并旧覆盖项、跑 doctor、
-> 写 `install.json`；沙箱安装与模拟 0.1.9→0.2.0 升级均通过。仍缺：DSH 自动下载/安装、
-> WebView2 bootstrapper、干净 VM 全流程验收。
+> 状态：设计定稿；**Phase 1 壳、Phase 2c DSH 自动下载/安装、profile 安装/合并、
+> 安装期 doctor 已实现**（2026-11-08）。Inno 安装器可安装/卸载、下载并校验官方 DSH、
+> 复制固定 profile、备份并三方合并旧覆盖项、跑 doctor、写 `install.json`；沙箱无 DSH
+> 安装与真实下载校验均通过。仍缺：WebView2 在干净 VM 上的验收、干净 VM 全流程验收。
 >
 > 适用范围：Windows 10/11 x64。TIA 功能仍要求 TIA Portal V17（Windows-only）。
 >
@@ -449,8 +449,12 @@ pwsh -NoProfile -File desktop/build-installer.ps1 -Version 0.2.0
   `install.json` 并通过隐藏 smoke；卸载后目录清空。
 - 模拟升级（旧 app layer 0.1.9 + 用户把模型改成 `deepseek-v4-pro`）：合并后覆盖项保留，
   旧 profile 备份为 `dsh-automation-suite.bak-<stamp>`。
-- **仍缺**：DSH 自动下载/安装（当前 `dsh.cmd` 缺失时安装器直接阻止）、WebView2 bootstrapper；
-  仍不包含 DSH 运行时、无自动更新。
+- `bootstrap-dsh.ps1`：DSH 缺失时从官方 feed 下载，校验 SHA-512 + Authenticode
+  （DeepSeek），静默安装并等待 `dsh.cmd`；已存在则 no-op。`install-dsh.json` 记录版本/URL/hash。
+  真实下载 + 校验路径已用 `-VerifyOnly` 实测；沙箱内用预取安装包完成无 DSH 安装
+  （profile/doctor/current 全部生成）。
+- **仍缺**：WebView2 在干净 VM 上的验收（Sandbox 的 EdgeWebView 残留会导致
+  Bootstrapper `0x80040902`）；仍不包含 DSH 运行时、无自动更新。
 
 ### 8.4 CI（建议）
 
@@ -531,7 +535,8 @@ pwsh -NoProfile -File desktop/build-installer.ps1 -Version 0.2.0
 | Phase 1（已完成 2026-11-07） | WebView2 壳：窗口、托盘、单实例、启动/停止、日志、隐藏 smoke | — | 双击图标出窗口；退出无残留 |
 | Phase 2a（已完成 2026-11-07） | Inno 安装器骨架：稳定 shell + 版本化 app layer + `current.txt` + 快捷方式/卸载 | — | 沙箱安装/卸载 + 安装后 smoke 通过 |
 | Phase 2b（部分完成 2026-11-07） | 固定 profile 安装/备份/三方合并 + 安装期 doctor + `install.json` | — | 沙箱安装、模拟 0.1.9→0.2.0 升级通过 |
-| Phase 2c | DSH 检测/下载/校验/静默安装 + 版本策略 + WebView2 bootstrapper | 3–5 天 | 无 DSH 机器可一键装好；有 DSH 不重复下载 |
+| Phase 2c（已完成 2026-11-08） | DSH 检测/下载/校验/静默安装 + WebView2 bootstrapper | — | 无 DSH 沙箱安装通过；真实下载校验通过；WebView2 待干净 VM |
+| Phase 2d | 干净 VM 上的 WebView2 / 无 DSH / 离线 / 升级回滚全流程 | 1–2 天 | 新机全流程通过验收清单 |
 | **Phase 3** | 应用层打包已完成；本轮只做 **setup 覆盖式升级 + 回滚**，不做自动更新 | 2–3 天 | 升级保留 DSH_HOME 与用户覆盖项；失败可回退 |
 | **Phase 4** | 无签名兼容、首次引导、日志、异常恢复、文档 | 3–5 天 | 新机全流程通过验收清单 |
 
@@ -576,7 +581,12 @@ WebView2 缺失（沙箱自带 Edge/WebView2）和 TIA/PLCSIM（商业软件，�
 - [x] 安装期复制固定 profile、写 `install.json`、跑 `doctor.ps1 -Json`（11 OK / 1 WARN / 0 FAIL）。
 - [x] 模拟 0.1.9→0.2.0 升级：用户 `deepseek-v4-pro` 覆盖项保留，旧 profile 备份为 `.bak-<stamp>`。
 - [x] 安装后的壳读取 `install.json` 的 DSH_HOME/profile，并通过隐藏 smoke。
-- [ ] DSH 自动下载/安装、WebView2 bootstrapper（Phase 2c）。
+
+**Phase 2c（已完成 2026-11-08）**
+- [x] 无 DSH 的 Sandbox 跑 setup：bootstrap 安装 0.2.2-rc.1，profile/doctor/`current.txt`/`install.json` 均生成。
+- [x] 官方 feed 真实下载 + SHA-512 + Authenticode 校验通过（`bootstrap-dsh.ps1 -VerifyOnly`）。
+- [x] DSH 已安装时 bootstrap no-op。
+- [ ] WebView2 在干净 VM 上的安装/壳 smoke（Sandbox 的 EdgeWebView 残留导致 `0x80040902`）。
 
 **安装**
 - [ ] 干净 Windows 10/11 x64、未装 DSH、未装 WebView2：安装器自动补齐并完成安装。

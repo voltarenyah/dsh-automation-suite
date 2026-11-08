@@ -568,7 +568,7 @@ create_engineering_project({
 
 ## 9. 桌面打包（2026-11-07）
 
-Phase 1 壳、Phase 2a 安装器、Phase 2b 的 profile 安装/三方合并/安装期 doctor 已实现；Phase 2c（DSH 下载安装、WebView2 bootstrapper）尚未开始。契约如下，改动时要保持稳定：
+Phase 1 壳、Phase 2a 安装器、Phase 2b 的 profile 安装/三方合并/安装期 doctor、Phase 2c 的 DSH 下载安装已实现；WebView2 bootstrapper 已写但在 Windows Sandbox 上不可靠（干净 VM 待验）。契约如下，改动时要保持稳定：
 
 - `scripts/build-app-layer.mjs` — 从当前工作树物化桌面 app layer：
   `node scripts/build-app-layer.mjs --version 0.2.0`。它调用 `build-distribution.mjs` 打包
@@ -591,7 +591,11 @@ Phase 1 壳、Phase 2a 安装器、Phase 2b 的 profile 安装/三方合并/安�
 - `desktop/installer/` + `desktop/build-installer.ps1` — Inno 安装器：稳定 shell + `app\<ver>` +
   `current.txt` + 快捷方式/卸载；`install-profile.ps1` 负责复制固定 profile、备份并三方合并旧
   `cordis.patch.yml`、写 `install.json`、跑 `doctor.ps1 -Json`（fail 则恢复旧 profile）。
-  **仍缺**：DSH 自动下载/安装、WebView2 bootstrapper（Phase 2c）；`dsh.cmd` 缺失时安装器直接阻止。
+  `bootstrap-dsh.ps1` 在 DSH 缺失时从官方 feed 下载（SHA-512 + DeepSeek Authenticode）并静默安装；
+  `bootstrap-webview2.ps1` 仍只在干净 VM 上可靠（Sandbox 的 EdgeWebView 残留会 `0x80040902`）。
+  安装器是 32 位 Inno，所有 PowerShell 子进程必须走 `{sysnative}`/`Sysnative` 的 64 位 PowerShell；
+  5.1 下 `Start-Process -RedirectStandardOutput` 的 `ExitCode` 可能为空，WebView2 调用用
+  `System.Diagnostics.Process` 读取。
 - `desktop/sandbox/` — Windows Sandbox 启动脚本：`dist/` 只读映射为 `C:\dist`，宿主机输出目录
   映射为 `C:\out`；`-Offline` 关闭网络。用于干净安装/升级/卸载测试；WebView2 缺失与 TIA/PLCSIM 不在范围内。
 - 设计、目录布局、安装器状态机与验收矩阵见 `docs/desktop-packaging.md`；

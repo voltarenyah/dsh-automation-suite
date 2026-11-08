@@ -19,7 +19,11 @@ GitHub Releases 与 git tag `v<version>` 对齐（发布流程见 [`docs/release
 - **Phase 2 安装器**：Inno 安装器稳定 shell + 版本化 app layer；`install-profile.ps1`
   复制固定 profile、备份并三方合并旧 `cordis.patch.yml`、写 `install.json`、跑
   `doctor.ps1 -Json`（fail 则恢复旧 profile）。壳读取 `install.json` 的 DSH_HOME/profile。
-  沙箱安装/模拟升级/卸载已验；仍缺 DSH 自动下载与 WebView2 bootstrapper。
+  沙箱安装/模拟升级/卸载已验。
+- **Phase 2c DSH bootstrap**：DSH 缺失时从官方 feed 下载，校验 SHA-512 + DeepSeek
+  Authenticode，静默安装并等待 `dsh.cmd`；已安装则 no-op。沙箱无 DSH 安装（profile/doctor/
+  current 全部生成）与真实下载校验通过。WebView2 bootstrapper 已写，但 Sandbox 的
+  EdgeWebView 残留会 `0x80040902`，留给干净 VM 验收。
 
 ### Planned
 

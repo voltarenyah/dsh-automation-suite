@@ -20,6 +20,11 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+# Inno Setup is 32-bit; prefer native 64-bit PowerShell for WebView2/node/doctor.
+$psExe = Join-Path $env:SystemRoot 'Sysnative\WindowsPowerShell\v1.0\powershell.exe'
+if (-not (Test-Path -LiteralPath $psExe)) {
+    $psExe = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
+}
 $InstallRoot = [System.IO.Path]::GetFullPath($InstallRoot)
 $appDir = Join-Path $InstallRoot "app\$AppVersion"
 $newProfile = Join-Path $appDir 'profile'
@@ -129,20 +134,34 @@ elseif (Test-Path -LiteralPath $webviewScript) {
     Write-Log 'ensuring WebView2 runtime'
     $webviewOut = Join-Path $logDir 'webview2.out.log'
     $webviewErr = Join-Path $logDir 'webview2.err.log'
-    $webviewProcess = Start-Process -FilePath 'powershell.exe' `
-        -ArgumentList @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $webviewScript) `
-        -RedirectStandardOutput $webviewOut -RedirectStandardError $webviewErr `
-        -WindowStyle Hidden -PassThru
+    # Use System.Diagnostics.Process instead of Start-Process: Windows
+    # PowerShell 5.1 can return a null ExitCode for a redirected child even
+    # after WaitForExit(), which made a successful bootstrap look failed.
+    $psi = New-Object System.Diagnostics.ProcessStartInfo
+    $psi.FileName = $psExe
+    $psi.Arguments = '-NoProfile -ExecutionPolicy Bypass -File "' + $webviewScript + '"'
+    $psi.UseShellExecute = $false
+    $psi.RedirectStandardOutput = $true
+    $psi.RedirectStandardError = $true
+    $psi.CreateNoWindow = $true
+    $psi.WorkingDirectory = $InstallRoot
+    $webviewProcess = [System.Diagnostics.Process]::Start($psi)
+    $stdoutTask = $webviewProcess.StandardOutput.ReadToEndAsync()
+    $stderrTask = $webviewProcess.StandardError.ReadToEndAsync()
     if (-not $webviewProcess.WaitForExit(180000)) {
         try { $webviewProcess.Kill() } catch { }
         throw 'WebView2 bootstrap timed out after 180 s'
     }
-    foreach ($file in @($webviewOut, $webviewErr)) {
-        if (-not (Test-Path -LiteralPath $file)) { continue }
-        Get-Content -LiteralPath $file -ErrorAction SilentlyContinue | ForEach-Object { Write-Log "webview2: $_" }
+    $webviewExit = $webviewProcess.ExitCode
+    $webviewStdout = $stdoutTask.Result
+    $webviewStderr = $stderrTask.Result
+    Set-Content -LiteralPath $webviewOut -Value $webviewStdout -Encoding utf8
+    Set-Content -LiteralPath $webviewErr -Value $webviewStderr -Encoding utf8
+    foreach ($line in (($webviewStdout + "`n" + $webviewStderr) -split "\r?\n")) {
+        if ($line) { Write-Log "webview2: $line" }
     }
-    if ($webviewProcess.ExitCode -ne 0) {
-        throw "WebView2 bootstrap failed with exit code $($webviewProcess.ExitCode)"
+    if ($webviewExit -ne 0) {
+        throw "WebView2 bootstrap failed with exit code $webviewExit"
     }
 }
 else {
@@ -214,7 +233,7 @@ Write-Log "profile installed at $profileDir"
 
 if (-not $NoDoctor -and (Test-Path -LiteralPath $doctor)) {
     Write-Log 'running doctor'
-    $doctorOutput = & powershell -NoProfile -File $doctor -DshHome $DshHome -Profile $Profile -Json -NoFail 2>&1
+    $doctorOutput = & $psExe -NoProfile -File $doctor -DshHome $DshHome -Profile $Profile -Json -NoFail 2>&1
     $doctorText = ($doctorOutput | Out-String).Trim()
     $report = $null
     try { $report = $doctorText | ConvertFrom-Json } catch { }

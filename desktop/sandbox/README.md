@@ -35,7 +35,7 @@ and opens `C:\dist\desktop\<version>` in Explorer.
 
 | Scenario | Steps |
 |---|---|
-| Installer with DSH missing | Run `dsh-automation-suite-setup-<ver>.exe`; it should block and explain DSH is required (Phase 2c will make it download DSH). |
+| Installer with DSH missing | Run `dsh-automation-suite-setup-<ver>.exe`; it should download/verify/install DSH, then install the profile. `bootstrap-dsh-test.ps1` automates this with a prefetched installer. |
 | Install with DSH present | Install DSH in the sandbox, then run setup; check `%USERPROFILE%\dsh-automation-suite-home\profiles\dsh-automation-suite`, `install.json`, `current.txt`, doctor. |
 | Shell UI | Launch the desktop shortcut or `C:\dist\desktop\<ver>\app\shell\DshSuite.Shell.exe`; confirm the WebView2 window. |
 | Upgrade in one session | Install version A, modify a user setting in `cordis.patch.yml`, then install version B; confirm backup + merged override. |

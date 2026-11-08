@@ -65,6 +65,7 @@ Source: "{#SourceApp}\test-doctor-json.ps1"; DestDir: "{app}\app\{#AppVersion}";
 Source: "{#SourceApp}\merge-profile.mjs"; DestDir: "{app}\app\{#AppVersion}"; Flags: ignoreversion
 Source: "install-profile.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion
 Source: "bootstrap-webview2.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion
+Source: "bootstrap-dsh.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion
 ; The shell is stable; the app layer is versioned.
 Source: "{#SourceShell}\*"; DestDir: "{app}\shell"; Flags: ignoreversion recursesubdirs createallsubdirs
 
@@ -78,7 +79,9 @@ Filename: "{app}\shell\DshSuite.Shell.exe"; Description: "Launch {#AppName}"; Fl
 [UninstallDelete]
 Type: files; Name: "{app}\current.txt"
 Type: files; Name: "{app}\install.json"
+Type: files; Name: "{app}\install-dsh.json"
 Type: filesandordirs; Name: "{app}\logs"
+Type: dirifempty; Name: "{app}\installer"
 Type: dirifempty; Name: "{app}\app\{#AppVersion}"
 Type: dirifempty; Name: "{app}\app"
 Type: dirifempty; Name: "{app}"
@@ -86,6 +89,36 @@ Type: dirifempty; Name: "{app}"
 [Code]
 var
   ProfileSetupOK: Boolean;
+
+function PowerShellExe(): String;
+begin
+  // The setup itself is a 32-bit process. Use the 64-bit Windows PowerShell so
+  // WebView2/node/registry probing sees the native machine view.
+  if IsWin64 then
+    Result := ExpandConstant('{sysnative}\WindowsPowerShell\v1.0\powershell.exe')
+  else
+    Result := ExpandConstant('{sys}\WindowsPowerShell\v1.0\powershell.exe');
+end;
+
+function RunDshBootstrap(): Boolean;
+var
+  ResultCode: Integer;
+  Script: String;
+  Params: String;
+begin
+  Script := ExpandConstant('{app}\installer\bootstrap-dsh.ps1');
+  Params := '-NoProfile -ExecutionPolicy Bypass -File "' + Script + '"' +
+            ' -InstallRoot "' + ExpandConstant('{app}') + '"';
+  Result := Exec(PowerShellExe(), Params, ExpandConstant('{app}'), SW_SHOW, ewWaitUntilTerminated, ResultCode);
+  if (not Result) or (ResultCode <> 0) then
+  begin
+    if not WizardSilent then
+      MsgBox('The DeepSeek Harness runtime could not be prepared (exit code ' + IntToStr(ResultCode) + ').' + #13#10 +
+             'See ' + ExpandConstant('{app}') + '\logs\bootstrap-dsh-*.log for details.',
+             mbError, MB_OK);
+    Result := False;
+  end;
+end;
 
 function RunProfileSetup(): Boolean;
 var
@@ -97,7 +130,7 @@ begin
   Params := '-NoProfile -ExecutionPolicy Bypass -File "' + Script + '"' +
             ' -InstallRoot "' + ExpandConstant('{app}') + '"' +
             ' -AppVersion "{#AppVersion}"';
-  Result := Exec('powershell.exe', Params, ExpandConstant('{app}'), SW_SHOW, ewWaitUntilTerminated, ResultCode);
+  Result := Exec(PowerShellExe(), Params, ExpandConstant('{app}'), SW_SHOW, ewWaitUntilTerminated, ResultCode);
   if (not Result) or (ResultCode <> 0) then
   begin
     if not WizardSilent then
@@ -124,15 +157,13 @@ begin
     Dsh := ExpandConstant('{localappdata}\Programs\DeepSeek Harness\resources\runtime\cli\bin\dsh.cmd');
   if not FileExists(Dsh) then
   begin
-    // Never show a blocking dialog in silent mode; the exit code is enough for
-    // automation and avoids an unattended installer hanging forever.
     if not WizardSilent then
-      MsgBox('DeepSeek Harness (dsh.cmd) was not found.' + #13#10 +
-             'Install DeepSeek Harness first (or set DSH_EXE), then run this installer again.' + #13#10 +
-             'The app layer is installed without pnpm and does not need the npm registry.',
-             mbError, MB_OK);
-    Result := False;
+      MsgBox('DeepSeek Harness was not found. Setup will download the official runtime' + #13#10 +
+             'and verify its SHA-512 and Authenticode signature before installing it.' + #13#10 +
+             'An internet connection is required for this step.',
+             mbInformation, MB_OK);
   end;
+  Result := True;
 end;
 
 procedure CurStepChanged(CurStep: TSetupStep);
@@ -140,7 +171,9 @@ begin
   if CurStep = ssPostInstall then
   begin
     ForceDirectories(ExpandConstant('{app}'));
-    ProfileSetupOK := RunProfileSetup();
+    ProfileSetupOK := RunDshBootstrap();
+    if ProfileSetupOK then
+      ProfileSetupOK := RunProfileSetup();
     if ProfileSetupOK then
       SaveStringToFile(ExpandConstant('{app}\current.txt'), '{#AppVersion}', False);
   end;
