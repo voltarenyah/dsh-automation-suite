@@ -32,6 +32,7 @@
 AppId={#AppId}
 AppName={#AppName}
 AppVersion={#AppVersion}
+SetupIconFile=..\DshSuite.Shell\app.ico
 AppPublisher={#AppPublisher}
 DefaultDirName={localappdata}\dsh-automation-suite
 DefaultGroupName={#AppName}

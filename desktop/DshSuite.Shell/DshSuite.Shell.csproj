@@ -16,6 +16,7 @@
          the shipped shape and caused a false alarm during Phase 1 testing. -->
     <SelfContained>true</SelfContained>
     <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
+    <ApplicationIcon>app.ico</ApplicationIcon>
     <!-- The WebView2 package carries both WinForms and WPF assemblies; the WPF
          reference's WindowsBase conflict is harmless for this WinForms app. -->
     <NoWarn>$(NoWarn);MSB3277</NoWarn>

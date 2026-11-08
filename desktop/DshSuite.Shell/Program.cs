@@ -8,6 +8,10 @@ internal static class Program
     [STAThread]
     private static int Main(string[] args)
     {
+        // The csproj property alone is not applied unless ApplicationConfiguration.Initialize()
+        // is used. Set it explicitly before any window/control is created: a system-DPI-aware
+        // WinForms host makes Windows bitmap-scale the whole window (blurry WebView2).
+        Application.SetHighDpiMode(HighDpiMode.PerMonitorV2);
         Application.EnableVisualStyles();
         Application.SetCompatibleTextRenderingDefault(false);
 

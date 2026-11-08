@@ -6,6 +6,23 @@
 格式参考 [Keep a Changelog](https://keepachangelog.com/)；日期为本地日期；版本从
 GitHub Releases 与 git tag `v<version>` 对齐（发布流程见 [`docs/releases.md`](docs/releases.md)）。
 
+## [0.2.1] - 2026-11-08
+
+0.2.0 的 DPI 与图标热修复，不改变 profile/插件内容与安装流程。
+
+### Fixed
+
+- 壳显式调用 `Application.SetHighDpiMode(HighDpiMode.PerMonitorV2)`；此前
+  csproj 的 `ApplicationHighDpiMode` 未生成实际调用，导致 Windows 位图缩放、
+  WebView2 界面模糊。进程 DPI awareness 已验证为 `2`（per-monitor）。
+- 新增 `desktop/DshSuite.Shell/app.ico`（16–256 多尺寸），并用于 exe、窗口、
+  托盘、安装器、桌面快捷方式与卸载项。
+
+### Verified
+
+- 0.2.1 静默安装 + 固定 profile + 壳 smoke 通过；图标可从 exe 与 setup 提取；
+  本机视觉确认 DPI/图标正常。
+
 ## [0.2.0] - 2026-11-08
 
 首个桌面安装包版本。

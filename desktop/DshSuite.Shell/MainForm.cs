@@ -43,6 +43,9 @@ internal sealed class MainForm : Form
         Controls.Add(_webView);
         Controls.Add(_status);
 
+        var appIcon = Icon.ExtractAssociatedIcon(Application.ExecutablePath) ?? SystemIcons.Application;
+        Icon = (Icon)appIcon.Clone();
+
         var menu = new ContextMenuStrip();
         menu.Items.Add("Open", null, (_, _) => RestoreWindow());
         menu.Items.Add("Doctor", null, async (_, _) => await ShowDoctorAsync());
@@ -52,7 +55,7 @@ internal sealed class MainForm : Form
 
         _tray = new NotifyIcon
         {
-            Icon = SystemIcons.Application,
+            Icon = appIcon,
             Text = "DSH Automation Suite",
             Visible = true,
             ContextMenuStrip = menu,
