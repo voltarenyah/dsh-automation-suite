@@ -6,6 +6,40 @@
 格式参考 [Keep a Changelog](https://keepachangelog.com/)；日期为本地日期；版本从
 GitHub Releases 与 git tag `v<version>` 对齐（发布流程见 [`docs/releases.md`](docs/releases.md)）。
 
+## [0.2.3] - 2026-11-08
+
+首页品牌、中文界面与桌面交互修正；插件与 profile 有更新，安装流程不变。
+
+### Added
+
+- **首页 hero 品牌**（`dsh-ui-brandmark`）：标题改为 `dsh-automation-suite`，徽标改为 `TIA-V17`，
+  左侧图标改为桌面壳的 app 图标（`desktop/DshSuite.Shell/app.ico` 的 128 px PNG，构建期内联为
+  data URL）。文案只覆盖 `conversation` 命名空间的 `hero.headline` / `hero.preview`，其余翻译
+  原样落回字典；图标占用单座 `conversation.hero.brand.mark`，替换默认的鱼形 fallback。
+- **侧栏插件中文名**：`Prompt Guide` → 提示词引导，`Project Dashboard` → 项目看板；提示词引导页
+  的标题、`<h1>`、元信息与「从侧栏打开」的提示随语言切换。
+- **右侧栏起始页的独立图标**：PLC 块 / 版本 / 变更 / 硬件组态 / 图纸 各有自己的 36-viewBox 图标，
+  不再共用起始页的通用方块。
+
+### Changed
+
+- **目录选择器固定为应用内浏览**：profile 关闭上游 `directory-picker`（auto），改为显式挂
+  `dsh-host-directory-picker-browse` + `dsh-client-ui-directory-picker-browse`。本地回环与
+  远端/SSH 都弹应用内「选择工作区目录」，不再弹 Windows 系统文件夹对话框；安装器与 `start-env`
+  共用同一份 profile patch。
+
+### Fixed
+
+- 中文环境下侧栏两个插件入口仍显示英文。
+- 本地桌面/开发环境添加工作区时弹系统文件夹对话框（改为应用内 Miller 列对话框）。
+
+### Verified
+
+- `pnpm -r test`（16 个包全绿）、`pnpm -r build`、`pnpm -r typecheck`。
+- `build-app-layer.mjs --version 0.2.3`：离线 `--dump-config` + doctor。
+- 0.2.3 静默安装 + 固定 profile + doctor + 壳 `--smoke-test`。
+- 浏览器实测（zh-CN）：首页品牌、侧栏中文、应用内目录选择、五个 tab 图标。
+
 ## [0.2.2] - 2026-11-08
 
 标题栏与窗口外观版本；插件/profile 内容与安装流程不变。
