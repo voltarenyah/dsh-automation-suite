@@ -12,6 +12,7 @@
 
 | 版本 | 发布日期 | profile 名 | 主要变化 | 内容提交 | 远端 tag 现状 |
 |---|---|---|---|---|---|
+| **0.2.0** | 2026-11-08 | `dsh-automation-suite`（桌面固定 profile） | **首个桌面安装包**；DSH/WebView2 自动补齐、固定 profile 合并、doctor；干净 Win11 LTSC VM 验收 | `c981aac` | ✅ `v0.2.0` → `c981aac` |
 | **0.1.5** | 2026-11-07 | `dsh-automation-suite-v0.1.5` | **最后一个 Web 启动版**；doctor；图谱引擎 net10 自包含；Changes P1 + 0.1.4 后 5 个插件 | `c89d130` | ✅ `v0.1.5` → `c89d130` |
 | **0.1.4** | 2026-10-26 | `dsh-automation-suite-v0.1.4` | 四个内置 preset 默认禁用；选择器只留 3 个 | `de237b8` | ⚠️ `v0.1.4` → `bee7947`（旧一版） |
 | **0.1.3** | 2026-10-26 | `dsh-automation-suite-v0.1.3` | 专用 DSH_HOME；`start.cmd` / `install.json`；自动端口 | `bee7947` | ⚠️ `v0.1.3` → `2d83df5`（旧一版） |
@@ -76,7 +77,8 @@ git show de237b8:profile/dsh-automation-suite/cordis.patch.yml |
 - 发布 tag：`v<version>`；**永不复用**已发布过的版本号。
 - profile 名：`dsh-automation-suite-v<version>`（0.1.0 例外，当时还没有版本化命名）。
 - 专用 home：`%USERPROFILE%\dsh-automation-suite-home`。
-- 资产命名：`dsh-automation-suite-<version>.zip`、`<scope>-<name>-<pluginVersion>.tgz`。
+- 资产命名：`dsh-automation-suite-<version>.zip`、`<scope>-<name>-<pluginVersion>.tgz`；
+  桌面版额外发布 `dsh-automation-suite-setup-<version>.exe`、同名 `.sha256` 与 `desktop-manifest.json`。
 - 版本记录三处同步：本文件表格、`CHANGELOG.md`、GitHub Release 标题/tag。
 
 ---
