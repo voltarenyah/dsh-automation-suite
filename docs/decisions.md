@@ -1220,3 +1220,90 @@ MODEL_METADATA_UNAVAILABLE
 
 **回退**：从蓝图 `dependencies` / `bundles` 删掉该包并重跑 `pnpm install --lockfile-only`；
 persona 里删掉两段 “Todo protocol”。插件与政策互不依赖，可单独回退。
+
+---
+
+## D35 · 目录选择器固定为应用内浏览：不再弹 Windows 系统文件夹对话框 ✅
+
+**背景**：2026-11-08 的用户反馈——官方 DSH 桌面 app 里点 "Add workspace" 弹的是应用内
+"Select Workspace Directory"（Miller 两列 + New folder / Show hidden files / Open），
+而本发行版（含它的 WinForms/WebView2 壳）点同一个按钮弹的是 Windows 系统文件夹对话框。
+用户希望统一成前者。
+
+**根因**：上游 `@deepseek-ai/dsh-web-app` 的 `directory-picker` 行是
+`@deepseek-ai/dsh-host-directory-picker-auto`：它在启动时**采样一次宿主**，然后运行时挂载
+`native` 或 `browse` 两个后端之一（连各自的浏览器半边一起挂）。判定表（`resolve.ts`）：
+
+| 条件 | 后端 |
+|---|---|
+| `trustedHosts` 里有一条非回环 authority | `browse` |
+| bind host 不是回环 | `browse` |
+| `SSH_CONNECTION` / `SSH_TTY` 存在 | `browse` |
+| darwin / win32 | `native` |
+| linux 有 zenity/kdialog + 显示器 | `native` |
+| 其它 | `browse` |
+
+本发行版（以及壳）连的是 `127.0.0.1`、非 SSH、win32 ⇒ 必然解析成 `native` ⇒ 系统对话框。
+官方 app 那边看到 `browse`，通常是因为它所在的 profile 装了远端访问类插件
+（`trustedHosts` 出现非回环 authority），判定直接走 `browse`——不是"官方 app 更特殊"。
+
+**决定**：在蓝图 `cordis.patch.yml` 里**钉死 browse 这一对**，不跟随宿主情况漂移：
+
+```yaml
+- id: directory-picker
+  disabled: true
+
+- insert:
+    - id: directory-picker-browse
+      name: '@deepseek-ai/dsh-host-directory-picker-browse'
+    - id: directory-picker-browse-surface
+      name: '@deepseek-ai/dsh-client-ui-directory-picker-browse'
+```
+
+这正是 `-auto` README 写明的 swap 点（"Pinning an interaction is not a config field here:
+compose the `-native` or `-browse` row directly"），不是绕开上游行为。关掉 `auto` 行而不是
+给它换 `name`，是因为 **patch 对已存在的行做 name 校验**：改 `name` 会以
+`patch: name mismatch for "directory-picker" (expected "@deepseek-ai/dsh-host-directory-picker-auto",
+got "@deepseek-ai/dsh-host-directory-picker-browse"), skipping` 被整块跳过——界面照旧、且不报错。
+
+`-browse` 是双面的：宿主后端（`directoryPicker/list` + `directoryPicker/createDirectory`）
+与浏览器半边（填 `ui-workspace` 的两个目录槽）必须**成对**声明；只插后端时
+"Add workspace" 点了没有任何反应。
+
+**为什么不改成全局默认（或改上游）**：`auto` 的 native 分支在"本地有人坐在机器前"时体验更好
+（系统对话框有收藏夹、网络位置），但它无法服务远端浏览器；本发行版的宿主是壳里的
+WebView2 与终端里起的 `dsh web`，两者都是回环，"本地有人"这个前提并不可靠。所以按发行版
+自己的产品取向固定 browse，而不是改上游默认。
+
+**验证（2026-11-08，DSH 0.2.1-rc.2）**：
+
+- `dsh --profile web --patch profile/dsh-automation-suite/cordis.patch.yml --dump-config`：
+  `directory-picker` 行带 `disabled: true`，并出现 `directory-picker-browse` /
+  `directory-picker-browse-surface` 两行（全新 `DSH_HOME`，2091 → 2098 行，+7）；
+- 按蓝图在全新 `DSH_HOME` 里物化并起服务（`scripts/start-env.ps1 -SkipBuild -NoOpen -Port 0`），
+  用 Playwright 打开带 token 的地址、点侧栏 ADD 按钮：弹出应用内 "Select Workspace Directory"
+  （Home / AppData / … / New folder / Show hidden files / Cancel / Open），截图与用户给的样式一致；
+- 同一次里 `dsh --profile dsh-automation-suite --dump-config` 2162 行（16 个插件行），
+  行数基线已按新值更新到根 `AGENTS.md` §4；
+- **安装器那条路也验过（这才是"桌面版装完就是应用内对话框"的证据）**：
+  `node scripts/build-app-layer.mjs --version 0.2.3-picker-check` 通过内置验收
+  （`runtime verification OK: dump-config 2159 lines, 48 '# ==' rows; doctor 11 ok / 1 warn / 0 fail`），
+  然后把该 app layer 的 `app\profile\` 拷进一个全新 `DSH_HOME` 起服务，同样点 ADD 得到应用内对话框。
+  这个 app layer 的 `profile\cordis.patch.yml` 与蓝图**逐字节相同**
+  （`build-distribution.mjs` 用 `copyFileSync` 拷这一份），所以 `start-env` 的调试 web 版和安装版
+  读的是同一份策略文件 —— **一套组合，不需要分成两套切换**；`browse` 本来就同时服务
+  WebView2 壳、普通浏览器与远端浏览器，只有 `native` 才需要"人坐在宿主机器前"。
+
+**后果与边界**：
+
+- 目录浏览完全走宿主文件系统 API，**不需要**系统对话框，也不受"壳是不是 WebView2"影响；
+  远端/SSH 访问同样是应用内对话框。
+- 少了系统对话框的原生能力：没有收藏夹/网络位置的快捷入口，Windows 盘符切换要靠路径编辑框
+  （上游已知限制：`browse` 不做盘符枚举）；隐藏项判定在 Windows 上按点前缀，不读
+  `FILE_ATTRIBUTE_HIDDEN`。
+- 已安装的用户升级后：安装器的三方合并（`scripts/merge-profile.mjs`）以新基线为准替换
+  `- insert:` 政策块、并保留 `- id:` 块里的用户改动，所以这两条会随新基线进入既有 profile；
+  手工物化的 profile 需要 `-Reset` 或按新基线合并（老 profile 里的 `directory-picker` 行
+  若已被应用回写，也要一并关掉）。
+- **回退**：删掉这三行 patch（恢复 `directory-picker` 为 `auto`）即可；上游若把包名改掉，
+  症状是 boot 时模块解析失败而不是静默降级。

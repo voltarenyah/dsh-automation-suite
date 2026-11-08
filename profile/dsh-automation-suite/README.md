@@ -209,6 +209,48 @@ TIA 操作**总有可见进度、且结束后不残留转圈**，这里做成两
 升级 DSH 后上游若改了 `standard`，`preset-leader` 这份副本**不会**自动跟随，需要按文件头注释重新生成；
 `preset-auditor` / `preset-expert` 只需核对它们引用的那几个包名是否还在。
 
+### 目录选择器固定为**应用内浏览**（不要 Windows 系统文件夹对话框）
+
+上游 `@deepseek-ai/dsh-web-app` 的 `directory-picker` 行是 `dsh-host-directory-picker-auto`：
+它在启动时采样宿主（bind host、`trustedHosts`、`SSH_CONNECTION`/`SSH_TTY`、平台/显示器），
+**Windows 本地回环 + 非 SSH 启动 ⇒ 解析成 `native`**，于是 "Add workspace" 弹出的是操作系统
+文件夹对话框。发行版（以及托管它的 WinForms/WebView2 壳，壳连的也是 `127.0.0.1`）要的是
+应用内的 Miller 列对话框，所以这里按上游 README 的 pin 方式**直接挂 `-browse` 这一对**：
+
+```yaml
+- id: directory-picker            # 关掉 auto 行
+  disabled: true
+
+- insert:
+    - id: directory-picker-browse          # 宿主后端：目录列举 + 建目录
+      name: '@deepseek-ai/dsh-host-directory-picker-browse'
+    - id: directory-picker-browse-surface  # 浏览器半边：那两列 UI
+      name: '@deepseek-ai/dsh-client-ui-directory-picker-browse'
+```
+
+三条会踩空的细节（都实测过）：
+
+1. **不能靠改 `auto` 行的 `name` 来换实现**。patch 对已存在的行做 name 校验，改 name 只会打印
+   `patch: name mismatch for "directory-picker" (expected "@deepseek-ai/dsh-host-directory-picker-auto", got …), skipping`
+   然后**整块跳过** —— 界面依旧是 native，且不报错。必须先 `disabled: true` 再 insert 新 id。
+2. **两个面必须成对出现**。只插后端时 `ui-workspace` 的目录槽没人填，"Add workspace" 点了没有任何反应；
+   `dsh-client-ui-directory-picker-browse` 的 node 半侧是空 `apply`，它存在的意义就是让客户端模块表
+   发现那个 UI 插件（`package.json` 的 `dsh.client.platform: web`）。
+3. **这台机器上无法用 `--dump-config` 之外的手段证明它生效**：`auto` 是运行时挂载，配置里看不到它选了
+   哪个后端。所以验收要看界面：起环境 → 点 "Add workspace" → 出现 "Select Workspace Directory"
+   （Home/New folder/Show hidden files/Open）即对；出现系统文件夹对话框就是 patch 没进 profile。
+
+与 `auto` 的唯一区别是**来源**：`auto` 在运行时按宿主情况挂载这两行，这里改成静态声明，因此不再随
+宿主情况漂移 —— 远端/SSH 访问同样是应用内对话框（`browse` 本来哪个环境都能服务，`native` 不行）。
+
+**一套组合同时服务安装版与调试版，不需要两套**：安装器装的是 app layer 里的 `app\profile\`，
+而 `scripts/build-distribution.mjs` 对这个 `cordis.patch.yml` 是**逐字节拷贝**
+（`copyFileSync(blueprintDir/cordis.patch.yml, profileOut/cordis.patch.yml)`）；调试用的
+`scripts/start-env.ps1` 同样是从本目录拷进物化 profile。所以这一处改动同时进入
+「安装器装出来的桌面版」与「调试 web 版」，两边读的是同一份策略文件。兼容性也没问题：
+`browse` 本来就是"浏览器 + 宿主 API"的交互，WebView2 壳、普通 Chrome、远端浏览器都能用；
+`native` 才是需要"用户就坐在宿主那台机器前"的那个特例。
+
 ### 验收
 
 ```powershell
@@ -236,6 +278,14 @@ dsh --profile web --patch .\profile\dsh-automation-suite\cordis.patch.yml --dump
   config:
     id: expert
     ...
+# 目录选择器：auto 行被关掉，换成 browse 的一对（见上节）
+- id: directory-picker
+  name: '@deepseek-ai/dsh-host-directory-picker-auto'
+  disabled: true
+- id: directory-picker-browse
+  name: '@deepseek-ai/dsh-host-directory-picker-browse'
+- id: directory-picker-browse-surface
+  name: '@deepseek-ai/dsh-client-ui-directory-picker-browse'
 ```
 
 **两条比行数更硬的断言**（行数只用来发现"整行消失"这类事故）：
@@ -254,8 +304,8 @@ dsh --profile dsh-automation-suite --dump-config | Select-String "engineering-co
 dsh --profile dsh-automation-suite --dump-config
 ```
 
-输出以 **8 个插件行**结尾（7 个本地插件 + 公共的 `dsh-opencode-go`）。行数基线见根 `AGENTS.md` §4 的权威表
-（本蓝图加上三个 preset 与 `dsh-opencode-go` 后已重测）。
+输出以 **16 个插件行**结尾（15 个本地插件 + 公共的 `dsh-opencode-go`）。行数基线见根 `AGENTS.md` §4 的权威表
+（本蓝图加上三个 preset、`dsh-opencode-go` 与目录选择器那一对后已重测）。
 
 > ⚠️ `start-env.ps1` 只在 profile 目录**尚不存在**时从蓝图拷贝 `cordis.patch.yml`
 > （`if (-not (Test-Path $manifest))`）。所以改完蓝图后要让它生效，得 `-Reset` 重建，
@@ -367,9 +417,11 @@ dsh --profile dsh-automation-suite --dump-config
   name: dsh-opencode-go
 ```
 
-行数（**DSH 0.2.1-rc.2，2026-11-02 重测**）：官方 web 组合 **1177 行**；叠加本蓝图政策层 **1884 行**；
-当前物化的套件 profile **1912 行**（权威表与口径见根 `AGENTS.md` §4）。
-这三个数会随宿主升级、上游 preset 改动、以及增减插件而变，换版本或改蓝图后要重测。
+行数（**DSH 0.2.1-rc.2，2026-11-08 重测**，三个数在同一次会话里、同一个**全新** `DSH_HOME` 里跑出来）：
+官方 web 组合 **1229 行**；叠加本蓝图政策层 **2098 行**；按蓝图物化的套件 profile **2162 行**
+（权威表与口径见根 `AGENTS.md` §4；日常 `~/.dsh` 里同样的前两条命令各多 6 行 —— 那里有应用回写/
+装过的 bundle 带来的行，别混着比）。这三个数会随宿主升级、上游 preset 改动、以及增减插件而变，
+换版本或改蓝图后要重测。
 
 > 注意这两条命令都是对**已物化的 profile**生效的：`--profile` 读的是
 > `$DSH_HOME/profiles/dsh-automation-suite/`，不是本蓝图目录。想在不改动任何环境的前提下

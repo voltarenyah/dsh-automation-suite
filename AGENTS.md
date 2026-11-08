@@ -274,18 +274,20 @@ dsh --profile dsh-automation-suite --dump-config
   name: dsh-opencode-go
 ```
 
-行数基线（**DSH 0.2.1-rc.2 实测，2026-11-08（加入 `dsh-ui-changes`、`dsh-ui-project-dashboard`、`dsh-tia-todo-bridge` 与 `dsh-ui-brandmark` 之后）**；换宿主版本、改蓝图或增减插件后必须重测）：
+行数基线（**DSH 0.2.1-rc.2 实测，2026-11-08（加入 `dsh-ui-changes`、`dsh-ui-project-dashboard`、
+`dsh-tia-todo-bridge`、`dsh-ui-brandmark` 与目录选择器 pin 之后）**；换宿主版本、改蓝图或增减插件后必须重测）：
 
 | 命令 | 行数 |
 |---|---|
-| `dsh --profile web --dump-config`（官方组合，本机当前） | **1183** |
-| `dsh --profile web --patch profile/dsh-automation-suite/cordis.patch.yml --dump-config` | **2099**（2026-11-07 重测） |
-| 按蓝图物化的 profile（link 模式，当前工作树）：`dsh --profile dsh-automation-suite --dump-config` | **2155**（2026-11-08 在全新临时 `DSH_HOME` 里实测，16 个插件行；比政策层多出的行来自物化目录里应用回写的设置行 —— `ui-settings-general` 与调大过的 `requestTimeoutMs`） |
+| `dsh --profile web --dump-config`（官方组合，全新 `DSH_HOME`） | **1229** |
+| `dsh --profile web --patch profile/dsh-automation-suite/cordis.patch.yml --dump-config`（全新 `DSH_HOME`） | **2098** |
+| 按蓝图物化的 profile（link 模式，当前工作树）：`dsh --profile dsh-automation-suite --dump-config` | **2162**（2026-11-08 在全新临时 `DSH_HOME` 里实测，16 个插件行；比政策层多出的行来自物化目录里应用回写的设置行 —— `ui-settings-general` 与调大过的 `requestTimeoutMs`） |
 
-> ⚠️ 上一版基线 **1235 / 2003 / 2036**（2026-10-20）已作废：2026-11-02 同日重测时官方 `web` 组合
-> 本身就少了几十行（不是本仓改动 —— 那三条命令的第一条不含本仓任何文件）。别拿新旧数值互相解释，
-> 用自己那次跑出来的三个数一起看。行数只用来发现「整行消失」这类事故，别把它当精确断言。
-> **要证明插件真的被 import 过，用下面的 `--dump-config-schema`。**
+> ⚠️ 上一版基线 **1183 / 2099 / 2155**（2026-11-08 早些时候，同日重测已不重现）作废：同一条命令、同一宿主
+> 版本，2026-11-08 晚上重测得到 **1229 / 2098 / 2162**（前两条在**全新** `DSH_HOME` 里跑；日常 `~/.dsh` 里
+> 同样的前两条各多 6 行 = 1235 / 2104，那 6 行来自应用回写/装过的 bundle）。更早的 1235 / 2003 / 2036
+> （2026-10-20）同样作废。别拿新旧数值互相解释，用**同一次**跑出来的三个数一起看。行数只用来发现
+> 「整行消失」这类事故，别把它当精确断言。**要证明插件真的被 import 过，用下面的 `--dump-config-schema`。**
 
 装 tarball 的验收链路：
 

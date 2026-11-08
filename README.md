@@ -592,6 +592,14 @@ plugin_manager(action: "install_bundle", target: "C:\\Users\\Ansel\\dsh-automati
 > 自动结束，模型自己写了清单则完全不改。机制、覆盖范围与验收见 profile README 的
 > 「TIA 操作的 Todo 清单」。
 
+> **目录选择器固定为应用内浏览**：蓝图里关掉了上游的 `directory-picker`
+> （默认行 `@deepseek-ai/dsh-host-directory-picker-auto` —— Windows 回环启动会解析成 `native`，
+> 也就是系统文件夹对话框），插入 `directory-picker-browse` 后端与它的浏览器半边
+> `@deepseek-ai/dsh-client-ui-directory-picker-browse`。于是 "Add workspace" 弹的是应用内的
+> "Select Workspace Directory"（Home / 两列 / New folder / Show hidden files / Open），
+> 远端与 SSH 访问也一样，壳是 WebView2 还是浏览器都不影响。三条踩坑（改 `name` 会被 patch 跳过、
+> 两个面必须成对、只能靠界面验收）见 profile README 与 [`docs/decisions.md`](docs/decisions.md) **D35**。
+
 #### 两层 agent 为什么这样切
 
 目的只有一个：**拆上下文与拆时长**。主 agent 管对话和编辑环（开工程、导入/导出、改块、编译），
@@ -896,6 +904,14 @@ dsh --profile dsh-automation-suite --dump-config
   name: '@deepseek-ai/dsh-agent-preset'
 - id: engineering-context
   disabled: true
+# 目录选择器：关掉 auto 行，换成 browse 的一对（见 §8.1 的说明）
+- id: directory-picker
+  name: '@deepseek-ai/dsh-host-directory-picker-auto'
+  disabled: true
+- id: directory-picker-browse
+  name: '@deepseek-ai/dsh-host-directory-picker-browse'
+- id: directory-picker-browse-surface
+  name: '@deepseek-ai/dsh-client-ui-directory-picker-browse'
 ```
 
 想在不改动任何环境的前提下预览政策层，用 `--patch` 叠加（`--dump-config` 不会挂载插件）：

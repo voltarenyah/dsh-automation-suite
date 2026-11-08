@@ -128,6 +128,32 @@
 - id: engineering-context
   disabled: true
 
+# ── 目录选择器固定为**应用内浏览**，不要系统文件夹对话框 ────────────────────────
+# 上游 @deepseek-ai/dsh-web-app 的 `directory-picker` 行是 `dsh-host-directory-picker-auto`：
+# 它在启动时采样宿主情况，本地回环 + 非 SSH 启动 + 有显示器 ⇒ 解析成 native，于是
+# "Add workspace" 弹出的是 Windows 系统文件夹对话框（WinForms 壳也一样，因为壳同样连
+# 127.0.0.1）。发行版要的是应用内的 Miller 列 "Select Workspace Directory" 对话框，
+# 所以按上游 README 的 pin 方式直接挂 -browse 这一对：
+#   1. 关掉 `directory-picker`（auto 行）—— 不能靠改它的 name：patch 对已存在行做
+#      name 校验，改 name 只会以 "name mismatch … skipping" 被跳过（实测）；
+#   2. 插入 browse 后端（`dsh-host-directory-picker-browse`）；
+#   3. 插入它的浏览器半边（`dsh-client-ui-directory-picker-browse`）。两个面必须成对
+#      出现 —— 只挂后端会让 ui-workspace 的目录槽没人填，"Add workspace" 打不开任何东西。
+#
+# `-auto` 的 README 明确写了这正是它的 swap 点（"Pinning an interaction is not a config
+# field here: compose the -native or -browse row directly"），所以这不是绕开它。
+# 与 auto 的区别只在**来源**：auto 运行时挂载这两行，这里改成静态声明，且不再随宿主情况
+# 漂移 —— 远端/SSH 访问同样是应用内对话框（browse 本来哪个环境都能服务）。
+- id: directory-picker
+  disabled: true
+
+- insert:
+    - id: directory-picker-browse
+      name: '@deepseek-ai/dsh-host-directory-picker-browse'
+    # 浏览器半边：node 半侧是空 apply，只负责让客户端模块表发现这个 ui 插件。
+    - id: directory-picker-browse-surface
+      name: '@deepseek-ai/dsh-client-ui-directory-picker-browse'
+
 - insert:
     # ══ leader：主 agent 的 preset ════════════════════════════════════════════
     # 工具面 = 内置 standard 的全部 + 本发行版的四个工程工具面（TIA 26 / 工程上下文 3 + diff 1 /
