@@ -46,6 +46,17 @@ content.md           子页的英文内容底稿（手动同步，不自动渲�
 - **架构页**：静态段落进 `arch.js` 的 `I18N`（`ARCH_I18N`），表格/矩阵改 `COMPONENTS`、`PRESETS` 数组。
 - 技术名词、包名、命令不翻译。
 
+### 可视化改文案（浏览器里点着改，自动写回源文件）
+
+```powershell
+node tools/site-editor/server.mjs     # 自动打开 http://127.0.0.1:4173/
+```
+
+点页面上任意文字就地编辑，回车即写回它真正的来源（首页 → `index.html`；子页英文/中文 →
+`assets/main.js` 的 `I18N`；架构页段落与组件表 → `assets/arch.js`），Esc 取消，可撤销、可看
+`git diff site/`。工具位于 `tools/site-editor/`（不随 Pages 发布），说明与验收见其 `README.md`。
+
+
 ## 授权
 
 模板为付费授权（`license-pixa.txt`）：可自用与修改，**不可把模板本身再分发或开源**；

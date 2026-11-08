@@ -1,0 +1,332 @@
+/* site-editor — overlay chrome. Deliberately scoped under .se-* so it cannot collide
+   with the site's own Tailwind / app.css classes. */
+
+.se-ui {
+  box-sizing: border-box;
+  font-family: "Segoe UI", system-ui, -apple-system, "Microsoft YaHei", sans-serif;
+  font-size: 13px;
+  line-height: 1.45;
+  font-weight: 400;
+  letter-spacing: 0;
+  text-align: left;
+  color: #e7edf3;
+}
+
+.se-ui *,
+.se-ui *::before,
+.se-ui *::after {
+  box-sizing: border-box;
+}
+
+.se-ui button {
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+}
+
+/* ---------------------------------------------------------------- edit hints */
+
+.se-run.is-hover {
+  outline: 1px dashed rgba(56, 189, 248, 0.85);
+  outline-offset: 2px;
+  background: rgba(56, 189, 248, 0.1);
+  border-radius: 3px;
+  cursor: text;
+}
+
+.se-run.is-editing {
+  outline: 2px solid #38bdf8;
+  outline-offset: 2px;
+  background: rgba(56, 189, 248, 0.16);
+  border-radius: 3px;
+  cursor: text;
+  caret-color: #38bdf8;
+  box-shadow: 0 0 0 4px rgba(56, 189, 248, 0.12);
+}
+
+.se-run.is-editing:focus {
+  outline: 2px solid #38bdf8;
+}
+
+body.se-hovering .se-run,
+body.se-hovering .se-run * {
+  cursor: text;
+}
+
+body.se-edit-off .se-run {
+  outline: none !important;
+  background: none !important;
+}
+
+/* ---------------------------------------------------------------------- bar */
+
+.se-bar {
+  position: fixed;
+  right: 16px;
+  bottom: 16px;
+  z-index: 2147483000;
+  width: 300px;
+  max-width: calc(100vw - 32px);
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: rgba(12, 17, 23, 0.94);
+  border: 1px solid rgba(148, 163, 184, 0.28);
+  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.35);
+  backdrop-filter: blur(10px);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.se-bar .se-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.se-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #34d399;
+  box-shadow: 0 0 0 3px rgba(52, 211, 153, 0.18);
+  flex: none;
+}
+
+.se-dot.is-off {
+  background: #94a3b8;
+  box-shadow: none;
+}
+
+.se-state-text {
+  font-size: 12.5px;
+  letter-spacing: 0.02em;
+}
+
+.se-grow { flex: 1 1 auto; }
+
+.se-file {
+  font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
+  font-size: 11px;
+  color: #93a4b8;
+  max-width: 150px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.se-pages { gap: 4px; }
+
+.se-chip {
+  display: inline-block;
+  padding: 3px 8px;
+  border-radius: 999px;
+  font-size: 11.5px;
+  color: #c9d6e4;
+  text-decoration: none;
+  background: rgba(148, 163, 184, 0.12);
+  border: 1px solid transparent;
+}
+
+.se-chip:hover { background: rgba(148, 163, 184, 0.22); color: #fff; }
+
+.se-chip.is-here {
+  background: rgba(56, 189, 248, 0.16);
+  border-color: rgba(56, 189, 248, 0.5);
+  color: #bae6fd;
+}
+
+.se-langs { gap: 4px; }
+
+.se-lang-btn {
+  padding: 2px 9px;
+  border-radius: 999px;
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  background: transparent;
+  font-size: 11.5px;
+  color: #c9d6e4;
+}
+
+.se-lang-btn.is-on {
+  background: #38bdf8;
+  border-color: #38bdf8;
+  color: #04121d;
+  font-weight: 600;
+}
+
+.se-status {
+  font-size: 11px;
+  color: #8fa3b8;
+  font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
+  min-height: 15px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.se-actions { gap: 6px; }
+
+.se-btn {
+  padding: 4px 9px;
+  border-radius: 7px;
+  border: 1px solid rgba(148, 163, 184, 0.3);
+  background: rgba(148, 163, 184, 0.12);
+  font-size: 11.5px;
+  color: #dbe6f2;
+}
+
+.se-btn:hover { background: rgba(148, 163, 184, 0.24); }
+
+.se-btn--ghost {
+  background: transparent;
+  border-color: transparent;
+  color: #9fb3c8;
+}
+
+.se-btn--ghost:hover { background: rgba(148, 163, 184, 0.14); color: #e8f1fa; }
+
+.se-btn--link {
+  display: inline-block;
+  text-decoration: none;
+  line-height: 1.5;
+}
+
+.se-btn--primary {
+  background: #38bdf8;
+  border-color: #38bdf8;
+  color: #04121d;
+  font-weight: 600;
+}
+
+.se-btn--primary:hover { background: #7dd3fc; }
+
+/* -------------------------------------------------------------------- panel */
+
+.se-panel {
+  position: fixed;
+  z-index: 2147483001;
+  width: 360px;
+  max-width: calc(100vw - 16px);
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: rgba(12, 17, 23, 0.97);
+  border: 1px solid rgba(56, 189, 248, 0.45);
+  box-shadow: 0 16px 36px rgba(0, 0, 0, 0.4);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.se-panel[hidden] { display: none; }
+
+.se-panel-src {
+  font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
+  font-size: 11px;
+  color: #7dd3fc;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.se-panel-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.se-kbd {
+  margin-left: auto;
+  font-size: 10.5px;
+  color: #8fa3b8;
+}
+
+.se-panel-msg {
+  font-size: 11px;
+  color: #8fa3b8;
+  min-height: 0;
+}
+
+.se-panel-msg:empty { display: none; }
+
+.se-panel-msg.is-error { color: #fca5a5; }
+
+/* -------------------------------------------------------------------- toast */
+
+.se-toast {
+  position: fixed;
+  left: 16px;
+  bottom: 16px;
+  z-index: 2147483002;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  max-width: min(560px, calc(100vw - 340px));
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: rgba(12, 17, 23, 0.95);
+  border: 1px solid rgba(52, 211, 153, 0.4);
+  box-shadow: 0 14px 30px rgba(0, 0, 0, 0.35);
+}
+
+.se-toast[hidden] { display: none; }
+
+.se-toast-msg {
+  font-size: 12px;
+  color: #d7f5e6;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@media (max-width: 760px) {
+  .se-toast { max-width: calc(100vw - 32px); bottom: 210px; }
+}
+
+/* -------------------------------------------------------------------- modal */
+
+.se-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 2147483003;
+  background: rgba(2, 6, 12, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+}
+
+.se-modal[hidden] { display: none; }
+
+.se-modal-card {
+  width: min(980px, 100%);
+  max-height: 82vh;
+  display: flex;
+  flex-direction: column;
+  border-radius: 12px;
+  background: #0b1118;
+  border: 1px solid rgba(148, 163, 184, 0.28);
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.5);
+  overflow: hidden;
+}
+
+.se-modal-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 14px;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.2);
+  font-size: 12.5px;
+}
+
+.se-diff {
+  margin: 0;
+  padding: 14px;
+  overflow: auto;
+  font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
+  font-size: 12px;
+  line-height: 1.5;
+  color: #cfe0f2;
+  white-space: pre;
+}

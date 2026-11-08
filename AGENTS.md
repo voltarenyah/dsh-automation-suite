@@ -14,6 +14,8 @@ scripts/     Monorepo 级工具脚本
 docs/        发行版层面的文档：vision.md（愿景与分层方案）、architecture.md（接口插件族与两个工程插件的目标架构）、
              decisions.md（已定的取舍）、open-questions.md（待决策问题，用户直接在里面填答复）、
              roadmap.md（路线图与现状）
+site/        产品介绍页（GitHub Pages 发布物，纯静态；pages.yml 只上传这一目录）
+tools/       仓库级本地工具，不进发布物：site-editor = 站点文案可视化编辑（见 §10）
 ```
 
 `docs/` 只放**发行版层面**的说明；插件自己的文档归各包的 `docs/`。
@@ -603,3 +605,36 @@ Phase 1 壳、Phase 2a 安装器、Phase 2b 的 profile 安装/三方合并/安�
 
 构建前置条件：本机 .NET 10 SDK（`%USERPROFILE%\.dotnet10` 会被 `build-distribution` 自动发现）、
 DSH 已安装（验调用 app layer 时需要）、pnpm 由 DSH 自带副本自动发现。
+
+---
+
+## 10. 站点文案（`site/`）：可视化改、直接写回源文件
+
+`site/` 是发布到 <https://voltarenyah.github.io/dsh-automation-suite/> 的产品介绍页
+（`.github/workflows/pages.yml` 只上传这一目录）。它是**纯静态、无构建**的，文案分散在四处：
+首页全部在 `site/index.html`；子页英文在 HTML、中文在 `site/assets/main.js` 的 `I18N`；
+架构页段落与两张表在 `site/assets/arch.js`（`I18N` / `COMPONENTS` / `PRESETS` / `GROUPS`）；
+`site/content.md` 是英文底稿，手工同步。**手改 HTML 不直观，也没有任何构建能发现改错**。
+
+使用者说「改站点文案 / 文案改起来不直观 / 想在浏览器里改并实时预览 / 改完直接同步到 HTML」时，
+**用 `tools/site-editor`，不要盲改文件**：
+
+```powershell
+node tools/site-editor/server.mjs        # 默认 http://127.0.0.1:4173/，自动开浏览器；也可双击 start.cmd
+```
+
+- 在真实页面里点字就地改：回车保存、Esc 取消；悬浮栏显示来源（`index.html · 第 98 行`、
+  `assets/main.js · zh · arch.head.lead`、`assets/arch.js · COMPONENTS[3.role.zh]`），可切四页、
+  切 EN/中文、撤销上次保存、看 `git diff site/`、`?plain=1` 原样预览（不注入编辑层）。
+- 写回是**按源文件字符区间替换**：属性、缩进、注释、行尾（架构页是 CRLF）都不动；每次保存先校验
+  「这段原来是什么」，对不上就 409 要求刷新，绝不盲写；`fs.watch` 让其它标签页自动刷新。
+- 参数：`--port <n>`、`--site <dir>`、`--no-open`、`--help`。只监听 `127.0.0.1`，写接口校验
+  一次性 token（每次启动重生成、不落盘）+ 同源；站点代码本身不需要任何改动。
+- 边界：按钮/输入框内的文字不进入编辑（保证控件可点）；`<title>`/`<meta>` 不参与；子页 EN 改的是
+  字典，HTML 里给无脚本场景兜底的英文不同步；`content.md` 仍需手工回写；首页演示对话由
+  `components.js` 运行时生成、不可编辑。整段文本节点替换会连带吃掉原来的前后缩进换行
+  （对渲染无影响，介意就手工补回）。
+- 验收：`tools/site-editor/test/smoke.py`（Python Playwright，41 项；用**副本 + 两个端口**跑，
+  步骤见 `tools/site-editor/README.md`）。`tools/` 不进 Pages 上传范围、不是 npm 包，
+  不参与 `pnpm -r build/test`。
+
