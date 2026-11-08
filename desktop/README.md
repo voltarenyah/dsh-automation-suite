@@ -3,11 +3,10 @@
 This directory is reserved for the WebView2 shell and installer. The packaging
 preparation lives in `scripts/` so it can be tested without the shell UI.
 
-Status (2026-11-08): **Phase 1 shell implemented; Phase 2c DSH download/install,
-profile setup, fixed-profile merge, doctor-on-install and install.json are
-implemented.** WebView2 bootstrap exists but cannot be reliably tested inside
-Windows Sandbox (stale EdgeWebView files); that one acceptance remains a
-clean-VM item.
+Status (2026-11-08): **Phase 1 shell + Phase 2c desktop installer implemented and
+accepted on a clean Windows 11 Enterprise LTSC 2024 VM.** The VM had no DSH and
+no WebView2; setup installed both, the profile, doctor (8 OK / 4 WARN / 0 FAIL),
+and the shell smoke passed.
 
 ## What is already in place
 
@@ -123,11 +122,11 @@ Verified: no-DSH Sandbox install with prefetched DSH completed profile + doctor
 (7 OK / 5 WARN / 0 FAIL); real download/hash/signature path verified with
 `bootstrap-dsh.ps1 -VerifyOnly`.
 
-Current boundaries: WebView2 inside Windows Sandbox is unreliable (unregistered
-EdgeWebView folder; bootstrapper 0x80040902), so shell/WebView2 acceptance still
-needs a clean VM. No auto-update. The shell reads `install.json` for custom
-DSH_HOME/profile and reuses an existing profile (profile replacement/merge is
-done by the installer).
+Current boundaries: **DSH version policy** (minimum/reference version) is not
+implemented; an existing DSH is used as-is. No auto-update. The shell reads
+`install.json` for custom DSH_HOME/profile and reuses an existing profile
+(profile replacement/merge is done by the installer). Windows 10 was not
+separately tested; the clean VM was Windows 11 LTSC.
 
 ## Contracts
 

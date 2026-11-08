@@ -6,7 +6,9 @@
 格式参考 [Keep a Changelog](https://keepachangelog.com/)；日期为本地日期；版本从
 GitHub Releases 与 git tag `v<version>` 对齐（发布流程见 [`docs/releases.md`](docs/releases.md)）。
 
-## [Unreleased]
+## [0.2.0] - 2026-11-08
+
+首个桌面安装包版本。
 
 ### Added
 
@@ -20,14 +22,18 @@ GitHub Releases 与 git tag `v<version>` 对齐（发布流程见 [`docs/release
   复制固定 profile、备份并三方合并旧 `cordis.patch.yml`、写 `install.json`、跑
   `doctor.ps1 -Json`（fail 则恢复旧 profile）。壳读取 `install.json` 的 DSH_HOME/profile。
   沙箱安装/模拟升级/卸载已验。
-- **Phase 2c DSH bootstrap**：DSH 缺失时从官方 feed 下载，校验 SHA-512 + DeepSeek
-  Authenticode，静默安装并等待 `dsh.cmd`；已安装则 no-op。沙箱无 DSH 安装（profile/doctor/
-  current 全部生成）与真实下载校验通过。WebView2 bootstrapper 已写，但 Sandbox 的
-  EdgeWebView 残留会 `0x80040902`，留给干净 VM 验收。
+- **Phase 2c DSH/WebView2 bootstrap**：DSH 缺失时从官方 feed 下载，校验 SHA-512 +
+  DeepSeek Authenticode，静默安装并等待 `dsh.cmd`；WebView2 缺失时安装 Evergreen
+  Bootstrapper。干净 Windows 11 LTSC 2024 VM（初始无 DSH、无 WebView2）验收通过：
+  DSH 0.2.2-rc.1、WebView2 157.0.4341.42、profile/doctor（8 OK / 4 WARN / 0 FAIL）、
+  壳 smoke `ok=true`、卸载干净。
 
-### Planned
+### Known limitations
 
-- 桌面壳（WebView2 独立窗口）、安装器（固定 profile + 升级时备份并合并用户覆盖项）。
+- 安装器未签名，SmartScreen 会提示未知发布者。
+- 无自动更新；升级 = 运行新版 setup，固定 profile 会备份并三方合并用户覆盖项。
+- DSH 版本策略未实现（已装 DSH 直接复用，doctor 只警告版本差异）。
+- Windows 10 未单独验收；干净 VM 验收用的是 Windows 11 LTSC。
   设计已定稿、尚未实施：[`docs/desktop-packaging.md`](docs/desktop-packaging.md)。
 
 ## [0.1.5] - 2026-11-07

@@ -464,11 +464,12 @@ node scripts/build-distribution.mjs
 
 桌面图标、独立窗口与安装器属于下一阶段；设计、产物、失败处理与分阶段工作量见
 [`docs/desktop-packaging.md`](docs/desktop-packaging.md)。**Phase 1 壳、Phase 2 安装器与
-Phase 2c DSH bootstrap 已可运行**：`node scripts/build-app-layer.mjs --version 0.2.0`
+Phase 2c DSH/WebView2 bootstrap 已可运行**：`node scripts/build-app-layer.mjs --version 0.2.0`
 物化离线 app layer；`pwsh desktop/build-shell.ps1 -Version 0.2.0 -SmokeTest` 构建自包含壳并跑
 隐藏冒烟测试；`pwsh desktop/build-installer.ps1 -Version 0.2.0` 生成 Inno 安装器。安装器会在
-DSH 缺失时下载并校验官方安装包，然后复制固定 profile、备份并三方合并旧覆盖项、跑 doctor、
-写 `install.json`。WebView2 在干净 VM 上的验收仍待补。见 [`desktop/README.md`](desktop/README.md)。
+DSH/WebView2 缺失时下载并校验官方安装包，然后复制固定 profile、备份并三方合并旧覆盖项、跑
+doctor、写 `install.json`。已在干净 Windows 11 LTSC VM（初始无 DSH、无 WebView2）验收通过。
+见 [`desktop/README.md`](desktop/README.md)。
 
 ### 6.4 首次进入必须自己配模型
 
@@ -1020,7 +1021,7 @@ TIA 排障第一步永远是让模型调：
 | [`docs/distribution.md`](docs/distribution.md) | **公开发行与安装**：DSH 的安装面实测（`dsh plugin` 的 spec 形式、bundle 对账、patch 语义、pnpm 11 的两个错误）、三种打包方案对比、Release 发布步骤与验收记录 |
 | [`docs/releases.md`](docs/releases.md) | **发布台账与流程**：已发布版本表（0.1.0–0.1.5）、tag 偏移的已知问题、版本规则、发布检查清单与常见错误 |
 | [`CHANGELOG.md`](CHANGELOG.md) | **发行版版本摘要**：0.1.0–0.1.5 的能力变化；插件版本与 DSH 版本独立 |
-| [`docs/desktop-packaging.md`](docs/desktop-packaging.md) | **桌面壳与打包方案（Phase 1 壳、Phase 2 安装器与 DSH bootstrap 已实现；WebView2 干净 VM 验收待补）**：WebView2 独立窗口、预装或安装时联网下载 DSH、Inno 安装器、固定 profile、无签名策略、产物/目录/失败处理/验收清单与分阶段工作量 |
+| [`docs/desktop-packaging.md`](docs/desktop-packaging.md) | **桌面壳与打包方案（Phase 1 壳、Phase 2c 安装器/DSH/WebView2 bootstrap 已实现并在干净 Win11 LTSC VM 验收通过）**：WebView2 独立窗口、预装或安装时联网下载 DSH、Inno 安装器、固定 profile、无签名策略、产物/目录/失败处理/验收清单与分阶段工作量 |
 | [`profile/dsh-automation-suite/README.md`](profile/dsh-automation-suite/README.md) | 蓝图的组成、三种部署方式、验收方式 |
 | [`packages/dsh-tia-openness-v17-min/README.md`](packages/dsh-tia-openness-v17-min/README.md) | TIA 插件的完整说明（验证状态、协议、工具、错误码、V17 API 要点） |
 | [`packages/dsh-tia-openness-v17-min/docs/`](packages/dsh-tia-openness-v17-min/docs/) | `PROTOCOL.md`（线路协议权威描述）、`decisions.md`（技术取舍）、`REAL-RUN.md`（真实项目实测）、`FUNCTIONAL-TEST.md`、`verification.md`（验证清单）、`ECOSYSTEM-COMPAT.md`（生态兼容与事故记录） |
