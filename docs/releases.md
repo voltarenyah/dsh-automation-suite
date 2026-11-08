@@ -3,6 +3,9 @@
 本文件是发行版的**发布台账**：记录了哪些版本发布过、每个版本对应哪个提交，以及下次发布
 必须走哪些步骤。版本摘要另见根 [`CHANGELOG.md`](../CHANGELOG.md)。
 
+桌面安装包的额外步骤（app layer、壳、Inno、`desktop-manifest.json`、sha256）见
+[`docs/releases/desktop.md`](releases/desktop.md)。
+
 > **唯一事实来源**：GitHub Releases 与其 git tag（`v<version>`）。本文件与 `CHANGELOG.md`
 > 是仓库内的镜像；三者不一致时，以 GitHub Release 的资产与 tag 为准，并立即修正台账。
 
