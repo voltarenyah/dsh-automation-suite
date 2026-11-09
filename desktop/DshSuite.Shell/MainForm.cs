@@ -121,14 +121,25 @@ internal sealed class MainForm : Form
     protected override void WndProc(ref Message message)
     {
         const int WmNcCalcSize = 0x0083;
+
+        if (message.Msg == NativeMethods.WmGetMinMaxInfo)
+        {
+            // A borderless form is a popup window, so the default maximized
+            // rectangle is the whole monitor and covers the taskbar. Pin it to
+            // the work area before the normal handling sees it.
+            base.WndProc(ref message);
+            NativeMethods.ApplyMaximizedWorkArea(Handle, message.LParam);
+            message.Result = IntPtr.Zero;
+            return;
+        }
+
         if (message.Msg == WmNcCalcSize && message.WParam != IntPtr.Zero)
         {
             if (NativeMethods.IsMaximized(Handle))
             {
-                // The maximized window rectangle overhangs the monitor by the
-                // (invisible) frame. Pin the client to the work area so the
-                // title strip starts at the visible top edge instead of being
-                // pushed off-screen.
+                // The maximized window rectangle already equals the work area
+                // (see WM_GETMINMAXINFO); keep the client on the same rectangle
+                // so no unpainted non-client strip is left at the edges.
                 var parameters = Marshal.PtrToStructure<NcCalcSizeParams>(message.LParam);
                 parameters.Rgrc0 = NativeMethods.GetWorkArea(Handle);
                 Marshal.StructureToPtr(parameters, message.LParam, false);

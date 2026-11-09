@@ -6,6 +6,15 @@
 格式参考 [Keep a Changelog](https://keepachangelog.com/)；日期为本地日期；版本从
 GitHub Releases 与 git tag `v<version>` 对齐（发布流程见 [`docs/releases.md`](docs/releases.md)）。
 
+## [Unreleased]
+
+### Fixed
+
+- **桌面壳最大化后任务栏点不动**：无边框窗口（`WS_POPUP` 家族）最大化时按整个显示器取尺寸，
+  窗口盖住任务栏，外壳的全屏启发式再把任务栏降级为非置顶，于是任务栏"看得见、点不动"。
+  壳现在接管 `WM_GETMINMAXINFO`，把最大化矩形钉到工作区（含副屏换算）；实测最大化后点时钟
+  弹快捷设置、点开始弹搜索、任务栏图标可切换应用。
+
 ## [0.2.3] - 2026-11-08
 
 首页品牌、中文界面与桌面交互修正；插件与 profile 有更新，安装流程不变。

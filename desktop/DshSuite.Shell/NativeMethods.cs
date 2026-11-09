@@ -1,3 +1,4 @@
+using System.Drawing;
 using System.Runtime.InteropServices;
 
 namespace DshSuite.Shell;
@@ -19,6 +20,7 @@ internal static class NativeMethods
     private const int DwmColorNone = unchecked((int)0xFFFFFFFE);
 
     internal const int WmNcLButtonDown = 0x00A1;
+    internal const int WmGetMinMaxInfo = 0x0024;
     internal const int HtLeft = 10;
     internal const int HtRight = 11;
     internal const int HtTop = 12;
@@ -53,6 +55,17 @@ internal static class NativeMethods
         public Rect Monitor;
         public Rect Work;
         public int Flags;
+    }
+
+    /// <summary>Win32 MINMAXINFO; every field is a POINT (two 32-bit ints).</summary>
+    [StructLayout(LayoutKind.Sequential)]
+    private struct MinMaxInfo
+    {
+        public Point Reserved;
+        public Point MaxSize;
+        public Point MaxPosition;
+        public Point MinTrackSize;
+        public Point MaxTrackSize;
     }
 
     [DllImport("dwmapi.dll")]
@@ -107,6 +120,37 @@ internal static class NativeMethods
         var monitor = MonitorFromWindow(hwnd, 2);
         var info = new MonitorInfo { Size = Marshal.SizeOf<MonitorInfo>() };
         return GetMonitorInfo(monitor, ref info) ? info.Work : new Rect();
+    }
+
+    /// <summary>
+    /// Size a maximized window to the monitor's work area instead of the whole
+    /// monitor. A borderless form is a <c>WS_POPUP</c> window, so
+    /// <c>DefWindowProc</c> answers <c>WM_GETMINMAXINFO</c> with the full monitor
+    /// rectangle: the maximized window then covers the taskbar. Once the shell's
+    /// fullscreen heuristic demotes the taskbar from topmost, that overlap turns
+    /// into "the taskbar is visible but every click on it lands in our window"
+    /// (its non-client strip at the bottom is never painted, so the taskbar
+    /// shows through it). Pinning the maximized rectangle to the work area keeps
+    /// the window off the taskbar.
+    /// </summary>
+    internal static void ApplyMaximizedWorkArea(IntPtr hwnd, IntPtr minMaxInfo)
+    {
+        if (minMaxInfo == IntPtr.Zero) return;
+
+        var monitor = MonitorFromWindow(hwnd, 2);
+        var info = new MonitorInfo { Size = Marshal.SizeOf<MonitorInfo>() };
+        if (!GetMonitorInfo(monitor, ref info)) return;
+
+        var limits = Marshal.PtrToStructure<MinMaxInfo>(minMaxInfo);
+        // ptMaxPosition is relative to the monitor's top-left corner, not to the
+        // desktop, so a taskbar on a secondary monitor still resolves correctly.
+        limits.MaxPosition = new Point(
+            info.Work.Left - info.Monitor.Left,
+            info.Work.Top - info.Monitor.Top);
+        limits.MaxSize = new Point(
+            info.Work.Right - info.Work.Left,
+            info.Work.Bottom - info.Work.Top);
+        Marshal.StructureToPtr(limits, minMaxInfo, false);
     }
 
     /// <summary>Switch the DWM frame (1 px border and shadow) to dark colours.</summary>

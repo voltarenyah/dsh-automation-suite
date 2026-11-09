@@ -348,6 +348,11 @@ profile 名固定；升级时备份并合并 `cordis.patch.yml` 的用户覆盖�
 - 边框消失后原生拖边缩放没有命中区域，改由 `TitleBarScript.js` 在左/右/下边缘做 4 px
   命中检测，通过 WebMessage 让宿主 `ReleaseCapture()` + `WM_NCLBUTTONDOWN(HTLEFT/…)`
   进入系统缩放循环；顶部的 40 px 标题条仍然只负责拖动/双击最大化。
+- 接管 `WM_GETMINMAXINFO`，把最大化的窗口矩形钉到**工作区**（`NativeMethods.ApplyMaximizedWorkArea`）。
+  无边框 Form 是 `WS_POPUP` 家族，`DefWindowProc` 会按**整个显示器**给最大化尺寸：窗口盖住
+  任务栏，外壳的全屏启发式随后又把任务栏的 `WS_EX_TOPMOST` 降级，结果任务栏"看得见、点不动"
+  ——窗口底部那条非客户区不绘制，任务栏从里面透出来，但命中测试仍归窗口。钉到工作区后
+  `窗口矩形 = 客户区 = 工作区`，重叠消失；副屏时 `ptMaxPosition` 按"相对监视器原点"换算。
 - `DwmExtendFrameIntoClientArea(1,1,1,1)` 保留阴影和圆角；
   `DWMWA_WINDOW_CORNER_PREFERENCE = ROUND`；
   用 `DWMWA_BORDER_COLOR = DWMWA_COLOR_NONE` 关掉 DWM 那 1 px 边框，
@@ -383,9 +388,11 @@ profile 名固定；升级时备份并合并 `cordis.patch.yml` 的用户覆盖�
 
 1. 发布后启动，确认没有系统标题栏、没有 `Ready` 行；标题条与侧边栏同色、内容区左上圆角；浅/深色下标题条上沿都直达窗口边缘，没有黑边。
 2. 拖标题条移动窗口；双击标题条最大化/还原；拖窗口边缘缩放。
-3. `Application` / `Edit` 菜单可打开；`Edit → 复制/粘贴` 与系统剪贴板互通。
-4. 关闭按钮 → 窗口隐藏、进程仍在托盘；`Application → Exit` → 进程与 DSH 子进程退出。
-5. 切深/浅色主题，标题条、按钮、DWM 边框颜色跟随。
+3. 最大化（网页按钮或双击标题条）后任务栏仍可点：点时钟弹快捷设置、点开始弹搜索，
+   任务栏图标能切到别的应用（回归项，见上一条 `WM_GETMINMAXINFO`）。
+4. `Application` / `Edit` 菜单可打开；`Edit → 复制/粘贴` 与系统剪贴板互通。
+5. 关闭按钮 → 窗口隐藏、进程仍在托盘；`Application → Exit` → 进程与 DSH 子进程退出。
+6. 切深/浅色主题，标题条、按钮、DWM 边框颜色跟随。
 
 已知限制：窗口按钮是网页自绘的，Windows 11 的贴靠布局浮出（悬停最大化按钮）不会出现；
 标题条拖动、双击最大化、贴靠拖动仍可用。
