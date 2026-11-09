@@ -173,7 +173,10 @@ with sync_playwright() as p:
     page.goto(TMP, wait_until="load", timeout=30000)
     freeze_scroll(page)
     page.wait_for_timeout(1200)
-    target = find_text(page, "Code understanding")
+    # take the first card heading from the page instead of hard-coding copy that
+    # changes with the site; the test only needs *a* heading in index.html
+    needle = page.evaluate("document.querySelector('.card-title').textContent.trim()")
+    target = find_text(page, needle)
     check("tmp: found known heading", target is not None)
     if target:
         click_point(page, target)
@@ -184,11 +187,11 @@ with sync_playwright() as p:
         check("tmp: save toast shown", page.evaluate("!document.querySelector('.se-toast').hidden"), panel_msg(page))
         check("tmp: own save does not reload the tab", page.evaluate("window.__survivedSelfWrite === 1"))
         index_html = (SITE_TMP / "index.html").read_text(encoding="utf-8")
-        check("tmp: html file contains edit", "Code understanding（已改）" in index_html)
-        check("tmp: exactly one occurrence", index_html.count("Code understanding（已改）") == 1)
+        check("tmp: html file contains edit", (needle + "（已改）") in index_html)
+        check("tmp: exactly one occurrence", index_html.count(needle + "（已改）") == 1)
         page.reload(wait_until="load")
         page.wait_for_timeout(900)
-        check("tmp: reload keeps edit", page.evaluate("document.body.innerText.includes('Code understanding（已改）')"))
+        check("tmp: reload keeps edit", page.evaluate("(t) => document.body.innerText.includes(t)", needle + "（已改）"))
 
         token = page.evaluate("window.__SITE_EDIT__.token")
         status, body = page.evaluate(

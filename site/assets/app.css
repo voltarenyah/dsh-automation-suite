@@ -548,6 +548,38 @@ html[lang="zh-CN"] .page-head h1 { letter-spacing: 0; }
 .table--matrix .no { color: var(--line-2); }
 .table--matrix .celltext { font-family: var(--mono); font-size: 11px; color: var(--muted); }
 
+/* ---------- desktop installer walkthrough ---------- */
+.walk { display: grid; gap: 18px; }
+.walk__step {
+  padding: 22px 24px 24px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-sm);
+}
+.walk__head { display: flex; align-items: baseline; gap: 14px; }
+.walk__n { font-family: var(--mono); font-size: 11px; letter-spacing: 0.1em; color: var(--muted); }
+.walk__head h3 { font-size: 17px; font-weight: 600; letter-spacing: -0.01em; }
+.walk__desc { margin-top: 7px; max-width: 74ch; font-size: 14.5px; color: var(--muted); text-wrap: pretty; }
+.walk__desc a { color: var(--ink-2); border-bottom: 1px solid var(--line-2); }
+.walk__desc a:hover { color: var(--ink); border-bottom-color: var(--ink); }
+.walk__fig { margin-top: 18px; max-width: 720px; }
+.walk__fig--wide { max-width: 100%; }
+.walk__shot {
+  display: block;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  overflow: hidden;
+  background: var(--panel);
+  box-shadow: var(--shadow-sm);
+  transition: box-shadow 0.25s var(--ease), border-color 0.25s var(--ease);
+}
+.walk__shot:hover { box-shadow: var(--shadow-md); border-color: var(--line-2); }
+.walk__shot img, .walk__gallery img { display: block; width: 100%; height: auto; }
+.walk__fig figcaption, .walk__gallery figcaption { margin-top: 8px; font-family: var(--mono); font-size: 10.5px; letter-spacing: 0.03em; color: var(--muted); }
+.walk__gallery { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; margin-top: 14px; }
+.walk__gallery figure { margin: 0; }
+
 /* ---------- responsive ---------- */
 @media (max-width: 900px) {
   .site-header { gap: 8px; padding: 0 12px; }
@@ -576,6 +608,7 @@ html[lang="zh-CN"] .page-head h1 { letter-spacing: 0; }
 }
 
 @media (max-width: 760px) {
+  .walk__gallery { grid-template-columns: 1fr; }
   .table--components thead { display: none; }
   .table--components,
   .table--components tbody,
@@ -622,6 +655,7 @@ html[lang="zh-CN"] .page-head h1 { letter-spacing: 0; }
 }
 
 @media (max-width: 560px) {
+  .walk__step { padding: 18px 16px 20px; }
   .brand span { display: none; }
   .hero h1 { font-size: clamp(34px, 9vw, 46px); }
   .hero .lead { font-size: 15.5px; }

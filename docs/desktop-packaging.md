@@ -326,7 +326,7 @@ profile 名固定；升级时备份并合并 `cordis.patch.yml` 的用户覆盖�
 - `desktop/DshSuite.Shell`：C# `net10.0-windows`、WinForms、`Microsoft.Web.WebView2 1.0.4314.35`。
 - 直接 Electron 启动（`ELECTRON_RUN_AS_NODE=1` + `--expose-internals cli.js`），不使用 `dsh.cmd`；
   Job Object + `Kill(entireProcessTree)` 清理；token 只在内存/URL，日志经 `Log.Redact`。
-- 单实例 `Local\DshAutomationSuite`；关窗到托盘；托盘菜单 Open / Doctor / Open logs / Exit；
+- 单实例 `Local\DshAutomationSuite`；关窗到托盘；托盘菜单 Open / Doctor / Report issues / Open logs / Exit；
   Doctor 调用同一份 `doctor.ps1`。
 - 首次运行把 `app/profile` 复制到固定 profile；已有 profile 原样复用（升级合并归安装器）。
 - `--smoke-test`：隐藏 WebView2 窗口 → 等待 token URL → `NavigationCompleted` → 写
@@ -376,9 +376,12 @@ profile 名固定；升级时备份并合并 `cordis.patch.yml` 的用户覆盖�
   WebView2 处理（与官方 Electron 版行为一致）。
 - 在页面里渲染 `Application` / `Edit` 菜单（未展开侧边栏时随 DSH 的 CSS 变量右移）、
   右侧 46×40 的三个窗口按钮；颜色全部用 DSH 主题 token，浅/深色自动跟随。
-- `Application`：关于 / 打开日志 / 运行诊断 / 退出；`Edit`：撤销、重做、剪切、复制、粘贴、
+- `Application`：关于 / 打开日志 / 运行诊断 / 报告问题 / 退出；`Edit`：撤销、重做、剪切、复制、粘贴、
   全选。编辑命令在页面内用 `document.execCommand`，粘贴经 WebMessage 向宿主取剪贴板文本
   （`Clipboard.GetText`）后 `insertText`，保留撤销栈。
+- `Application → 报告问题…` 经 `{type: "app", action: "issues"}` 交给宿主，用默认浏览器打开
+  <https://github.com/voltarenyah/dsh-automation-suite/issues>（URL 常量化在 `MainForm.IssuesUrl`，
+  点击时先写壳日志，便于事后判断"菜单是否被点过"）；浏览器起不来时弹框给出可复制的地址。
 - 窗口按钮点击 → `postMessage` → 宿主执行最小化/最大化/关闭（关闭仍按既有约定收进托盘）；
   宿主在激活、尺寸变化时把 `{maximized, active}` 发回页面，按钮图标随之切换。
 - 菜单按钮通过 `pointerdown` 阻止默认行为以保持编辑框焦点；菜单打开时记住编辑框与选区，
@@ -709,6 +712,8 @@ WebView2 缺失（沙箱自带 Edge/WebView2）和 TIA/PLCSIM（商业软件，�
 ## 15. 相关文件
 
 - [`distribution.md`](distribution.md) — 当前 zip + install/start 的发行方式与实测。
+- `site/assets/images/desktop/` — 0.2.3 安装器与壳的截图（站点 Get Started 的装机流程用；
+  文件名、尺寸与复用方式见该目录 `README.md`）。
 - `profile/dsh-automation-suite/` — profile 蓝图（政策层、三个 preset）。
 - `scripts/build-distribution.mjs` — Web 发布目录生成器（tarball + profile + doctor）。
 - `scripts/build-app-layer.mjs` — **桌面 app layer 物化**：tarball → 真实 node_modules → 离线验收。

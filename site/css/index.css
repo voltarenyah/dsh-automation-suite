@@ -468,9 +468,9 @@ hr{
 /* keeps the three feature-card bodies starting on the same line even when
    one title wraps to two lines and the others do not */
 .card-title {
-    min-height: 2.4em;
-    /* 30px made "Code understanding" wrap in the 270px card; 27px fits on one line */
-    font-size: 27px;
+    min-height: 1.4em;
+    /* one line inside the 270px card body: 27px wrapped "Project comprehension", 24px fits */
+    font-size: 24px;
 }
 
 .ctx-panel {
@@ -741,3 +741,37 @@ hr{
     }
     .ww-word > .ww-w { opacity: 1; }
 }
+
+/* ---------- home: capability status pills ---------- */
+
+.home-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 9px;
+    border-radius: 999px;
+    border: 1px solid #e5e7eb;
+    background: #f6f7fb;
+    color: #6b7280;
+    font-size: 10px;
+    letter-spacing: 0.09em;
+    text-transform: uppercase;
+    white-space: nowrap;
+}
+.home-pill::before {
+    content: "";
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: currentColor;
+}
+.home-pill--ok { color: #15803d; border-color: #bbf7d0; background: #f0fdf4; }
+.home-pill--partial { color: #b45309; border-color: #fde68a; background: #fffbeb; }
+.home-pill--proto { color: #475569; border-color: #e2e8f0; background: #f8fafc; }
+.home-pill--plan { color: #6b7280; border-color: #e5e7eb; background: #f6f7fb; }
+
+.tw-dark .home-pill { color: #a1a1aa; border-color: #26272c; background: #141417; }
+.tw-dark .home-pill--ok { color: #4ade80; border-color: #14532d; background: #0b1a11; }
+.tw-dark .home-pill--partial { color: #fbbf24; border-color: #4a3410; background: #1a1408; }
+.tw-dark .home-pill--proto { color: #94a3b8; border-color: #2b2e36; background: #101216; }
+.tw-dark .home-pill--plan { color: #a1a1aa; border-color: #26272c; background: #141417; }

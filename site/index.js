@@ -177,6 +177,7 @@ function closeVideo(){
  * Animations
  */
 
+if (window.gsap && window.ScrollTrigger) {
 gsap.registerPlugin(ScrollTrigger)
 
 
@@ -202,6 +203,7 @@ gsap.to("#dashboard", {
     }
 
 })
+} // end gsap guard
 
 const faqAccordion = document.querySelectorAll('.faq-accordion')
 
@@ -231,7 +233,7 @@ faqAccordion.forEach(function (btn) {
 
 // ------------- reveal section animations ---------------
 
-const sections = gsap.utils.toArray("section")
+const sections = window.gsap ? gsap.utils.toArray("section") : []
 
 sections.forEach((sec) => {
 
@@ -262,37 +264,95 @@ sections.forEach((sec) => {
 // that only make sense as our internal design vocabulary are deliberately absent.
 // A trailing "*" marks a roadmap item — rendered with a star, explained by a legend.
 
+// Bilingual vocabulary. `en` keys CAPABILITY_ANCHORS and carries the star suffix;
+// `zh` is what the wall renders when the page is in Chinese. Product names and
+// abbreviations stay identical in both languages.
 const CAPABILITY_TERMS = [
+
     // --- TIA Portal objects and operations ---
-    "TIA Portal V17", "TIA Openness", "Export blocks", "Import blocks", "Compile PLC",
-    "Generate source", "External source", "OB · FB · FC · DB", "UDT", "Tag tables",
-    "Watch tables", "Force tables", "Project archive", "Project library", "Master copy",
-    "Type version", "Software units", "Know-how protection", "Safety signature",
-    "Project languages", "Open in block editor", "Save as",
+    { en: "TIA Portal V17", zh: "TIA Portal V17" },
+    { en: "TIA Openness", zh: "TIA Openness" },
+    { en: "Export blocks", zh: "导出块" },
+    { en: "Import blocks", zh: "导入块" },
+    { en: "Compile PLC", zh: "编译 PLC" },
+    { en: "Generate source", zh: "生成源文件" },
+    { en: "External source", zh: "外部源文件" },
+    { en: "OB · FB · FC · DB", zh: "OB · FB · FC · DB" },
+    { en: "UDT", zh: "UDT" },
+    { en: "Tag tables", zh: "变量表" },
+    { en: "Watch tables", zh: "监控表" },
+    { en: "Force tables", zh: "强制表" },
+    { en: "Project archive", zh: "项目归档" },
+    { en: "Project library", zh: "项目库" },
+    { en: "Master copy", zh: "主副本" },
+    { en: "Type version", zh: "类型版本" },
+    { en: "Software units", zh: "软件单元" },
+    { en: "Know-how protection", zh: "Know-how 保护" },
+    { en: "Safety signature", zh: "安全签名" },
+    { en: "Project languages", zh: "项目语言" },
+    { en: "Open in block editor", zh: "在块编辑器中打开" },
 
     // --- reading a project ---
-    "Call structure", "Cross references", "Variable usage", "Block search",
+    { en: "Save as", zh: "另存为" },
+    { en: "Call structure", zh: "调用结构" },
+    { en: "Cross references", zh: "交叉引用" },
+    { en: "Variable usage", zh: "变量使用" },
+    { en: "Block search", zh: "块搜索" },
 
     // --- versioning ---
-    "Version control", "Version history", "Git diff", "Project translation",
+    { en: "Version control", zh: "版本控制" },
+    { en: "Version history", zh: "版本历史" },
+    { en: "Git diff", zh: "Git 差异" },
+    { en: "Project translation", zh: "项目翻译" },
 
     // --- simulation ---
-    "PLCSIM Advanced", "Power on / off", "RUN / STOP / reset", "Tag read / write",
-    "Snapshot / restore", "Retained data", "Softbus / TCP-IP",
+    { en: "PLCSIM Advanced", zh: "PLCSIM Advanced" },
+    { en: "Power on / off", zh: "上下电" },
+    { en: "RUN / STOP / reset", zh: "RUN / STOP / 复位" },
+    { en: "Tag read / write", zh: "变量读写" },
+    { en: "Snapshot / restore", zh: "快照 / 恢复" },
+    { en: "Retained data", zh: "保持性数据" },
+    { en: "Softbus / TCP-IP", zh: "Softbus / TCP-IP" },
 
     // --- panels ---
-    "PLC blocks panel", "TIA console", "Drawing search",
+    { en: "PLC blocks panel", zh: "PLC 块面板" },
+    { en: "TIA console", zh: "TIA 控制台" },
+    { en: "Drawing search", zh: "图纸检索" },
 
     // --- roadmap: not shipped yet ---
-    "TIA Portal V18*", "Hardware config*", "Online & download*", "Compare blocks*",
-    "Project diff*", "Cable & terminals*"
+    { en: "TIA Portal V18*", zh: "TIA Portal V18*" },
+    { en: "Hardware config*", zh: "硬件组态*" },
+    { en: "Online & download*", zh: "在线与下载*" },
+    { en: "Compare blocks*", zh: "块比较*" },
+    { en: "Project diff*", zh: "项目差异*" },
+    { en: "Cable & terminals*", zh: "电缆与端子*" }
 ]
 
 // Story-level terms: always rendered large, never dropped by the trimming pass.
+// Keyed by the English term, whichever language is rendered.
 const CAPABILITY_ANCHORS = new Set([
     "TIA Portal V17", "TIA Openness", "Export blocks", "Compile PLC",
     "Version control", "PLCSIM Advanced"
 ])
+
+function wallLang() {
+    return document.documentElement.lang === "zh-CN" ? "zh" : "en"
+}
+
+function wallTerms() {
+    const lang = wallLang()
+    return CAPABILITY_TERMS.map((term) => term[lang] || term.en)
+}
+
+function wallAnchors() {
+    const lang = wallLang()
+    const anchors = new Set()
+    CAPABILITY_TERMS.forEach((term) => {
+        if (!CAPABILITY_ANCHORS.has(term.en)) return
+        anchors.add(term[lang] || term.en)
+    })
+    return anchors
+}
 
 function mulberry32(a) {
     return function () {
@@ -311,12 +371,15 @@ function initCapabilityWall() {
 
     const clamp = (value, min, max) => Math.min(max, Math.max(min, value))
     const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches
-    const pool = CAPABILITY_TERMS.slice()
 
     function build() {
         const width = field.clientWidth
         const height = field.clientHeight
         if (width < 80 || height < 80) return
+
+        const pool = wallTerms()
+        const anchors = wallAnchors()
+        const vocabSize = pool.length
 
         const rnd = mulberry32(20261105)
         const narrow = width < 640
@@ -324,7 +387,7 @@ function initCapabilityWall() {
         // fewer rows, fewer words per row, larger type
         const rows = clamp(Math.round(height / (narrow ? 52 : 76)), 4, 12)
         const perRow = clamp(
-            Math.min(Math.ceil(CAPABILITY_TERMS.length / rows), Math.floor(width / (narrow ? 82 : 132))),
+            Math.min(Math.ceil(vocabSize / rows), Math.floor(width / (narrow ? 82 : 132))),
             3, 12
         )
         // reserve room for the sideways sway so no row can be clipped at an edge
@@ -339,9 +402,9 @@ function initCapabilityWall() {
         // Lay the queue out so the words that carry the story survive when the wall
         // has fewer slots than the vocabulary has terms: anchors and roadmap (starred)
         // terms get reserved, evenly spaced positions; plain terms fill the gaps.
-        const anchorTerms = pool.filter(term => CAPABILITY_ANCHORS.has(term))
-        const starredTerms = pool.filter(term => term.endsWith("*") && !CAPABILITY_ANCHORS.has(term))
-        const plainTerms = pool.filter(term => !CAPABILITY_ANCHORS.has(term) && !term.endsWith("*"))
+        const anchorTerms = pool.filter(term => anchors.has(term))
+        const starredTerms = pool.filter(term => term.endsWith("*") && !anchors.has(term))
+        const plainTerms = pool.filter(term => !anchors.has(term) && !term.endsWith("*"))
         const totalSlots = Math.max(rows * perRow, anchorTerms.length + starredTerms.length)
         const reserved = new Map()
 
@@ -391,7 +454,7 @@ function initCapabilityWall() {
             for (let c = 0; c < perRow; c++) {
                 const term = nextTerm()
                 if (!term) break
-                const isAnchor = CAPABILITY_ANCHORS.has(term)
+                const isAnchor = anchors.has(term)
                 const roll = rnd()
                 let size, weight, opacity
                 if (isAnchor) {
@@ -500,6 +563,15 @@ function initCapabilityWall() {
         wall.style.setProperty("--mx", "50%")
         wall.style.setProperty("--my", "42%")
     })
+
+    // main.js calls this after a language switch so the vocabulary re-lays in the
+    // other language (the wall words are generated, not part of the dictionary).
+    return function relayoutWall() {
+        lastWidth = field.clientWidth
+        lastHeight = field.clientHeight
+        build()
+    }
 }
 
-initCapabilityWall()
+const rebuildCapabilityWall = initCapabilityWall()
+document.addEventListener("das:langchange", () => { if (rebuildCapabilityWall) rebuildCapabilityWall() })

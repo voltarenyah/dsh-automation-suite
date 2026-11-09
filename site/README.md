@@ -7,22 +7,20 @@
 
 | 路径 | 视觉 | 文件 |
 |---|---|---|
-| `/` | **Pixa 模板原样**（点阵、辉光、衬线标题、Try Prompts 窗口、定价、FAQ） | `index.html` + `css/` + `index.js` + `scripts/` + `assets/images/` |
+| `/` | **Pixa 模板改造的套件首页**（点阵、辉光、衬线标题、能力词墙），中英双语 | `index.html` + `css/` + `index.js` + `assets/main.js` + `assets/images/` |
 | `/architecture/` | 自制四页版（浮动玻璃栏、卡片、表格） | `architecture/index.html` |
 | `/roadmap/` | 同上 | `roadmap/index.html` |
 | `/get-started/` | 同上 | `get-started/index.html` |
 
 四页共用一套顶部导航（Home / Architecture / Roadmap / Get Started），所以从模板首页可以进入三个子页，反之亦然。
 
-### 首页相对模板的改动（只有这几处）
+### 首页相对模板的改动
 
-1. **顶栏**换成四项导航 + GitHub 按钮（去掉模板的 API/Blog/Solutions/Features/Pricing 与 “Try playground”）；
-   主题切换保留，`index.js` 里对已删除的特性下拉做了空值保护。
-2. **隐藏的 YouTube 视频弹窗整套删除**（`#video-container-bg` 与 iframe），连带删掉首屏的 “Watch video” 按钮。
-3. 首屏 “Get started” 按钮指向 `get-started/`。
-4. 去掉了模板自带的 GTM 空 ID 脚本（`G-`，没有追踪作用）。
-
-其余文案、图片、版式与模板一致。
+1. **顶栏**保留模板的四项导航与主题切换，把「中文」按钮接上（原模板里它是 `disabled`），并在语言开关右侧加回 GitHub 图标；去掉模板的 API/Blog/Solutions/Features/Pricing 与 “Try playground”。
+2. **首屏**换成能力词墙（`#capability-wall`，由 `index.js` 按中英双语词表生成），删掉模板的 Try Prompts 演示窗口与视频弹窗。
+3. **文案换成套件的**：删掉模板残留的 AI 工具卡片、订阅套餐（$9/$17/$29）、假推荐语、博客区、Pixa/LLM FAQ 与假页脚；换成「What ships today」六张能力卡（带状态）、套件自己的 FAQ、CTA 与页脚。首屏文案保持 `Agent Tool for PLC Programming` / `DeepSeek Harness integrated with the Siemens TIA Openness toolkit.` 不变。
+4. 首页现在和子页共用一套机制：英文写在 `index.html` 的 `data-block` 里，中文在 `assets/main.js` 的 `I18N.zh`，语言偏好存 `das.lang`（与子页互通）。
+5. 只保留模板的点阵背景、辉光、衬线排版与 Tailwind 类；模板 logo 换成站点自己的 20×20 标记，未引用的模板图片与 `scripts/components.js` 已删除（授权见下）。
 
 ### 子页的文件
 
@@ -37,11 +35,11 @@ content.md           子页的英文内容底稿（手动同步，不自动渲�
 
 - 子页英文在 HTML 里，中文由 `main.js` 按 `data-block` 覆盖；`<html lang>` 与 `<title>` 一起切换。
 - 架构页的组件表与 preset 矩阵由 `arch.js` 按 `ARCH_I18N` 与数据数组渲染；改这两块只改 `arch.js`。
-- 首页是模板自己的脚本与样式（`tw-` 前缀的 Tailwind + `css/index.css`），不加载 `app.css`、不参与语言切换。
+- 首页保留模板自己的脚本与样式（`tw-` 前缀的 Tailwind + `css/index.css`，不加载 `app.css`），但**语言切换走同一个 `assets/main.js`**：`<body data-page="home">`，中文在 `I18N.zh` 的 `home.*`。能力词墙是 `index.js` 生成的，`main.js` 切语言后会派发 `das:langchange`，词墙据此用另一语言重建。
 
 ## 改文案
 
-- **首页**：直接改 `index.html`（模板文案全是普通 HTML，按小节标题搜索即可）。
+- **首页**：改 `index.html` 里的 `data-block` 段落 → 中文同步进 `main.js` 的 `I18N.zh`（`home.*`）；英文改完也要更新 `I18N.en` 同名条目，否则从中文切回英文会显示旧文案。能力词墙改 `index.js` 的 `CAPABILITY_TERMS`（`{ en, zh }` 成对）。
 - **子页**：改 `content.md` → 同步英文进对应 HTML → 同步中文进 `main.js` 的 `I18N.zh`。
 - **架构页**：静态段落进 `arch.js` 的 `I18N`（`ARCH_I18N`），表格/矩阵改 `COMPONENTS`、`PRESETS` 数组。
 - 技术名词、包名、命令不翻译。

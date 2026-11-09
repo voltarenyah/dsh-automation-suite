@@ -3,24 +3,27 @@
     <head>
         <meta charset="UTF-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-        <title>Your Automation Programming Copilot — dsh-automation-suite</title>
-        <meta name="description" content="Boost industrial automation programming with AI capabilities, help with programming, version control, commissioning, translation based on TIA Openness API." />
-        <link
-            rel="shortcut icon"
-            href="./assets/logo/logo.png"
-            type="image/x-icon"
-        />
+        <script>
+            /* The capability wall is generated from a JS vocabulary, so set the language
+               before first paint / before index.js builds it. main.js takes it over after. */
+            try {
+                if (localStorage.getItem("das.lang") === "zh") document.documentElement.lang = "zh-CN";
+            } catch (e) { /* private mode */ }
+        </script>
+        <title>dsh-automation-suite</title>
+        <meta name="description" content="An unofficial DeepSeek Harness distribution that gives the agent industrial-automation reach: TIA Portal V17 access, an engineering knowledge graph, Git and PLCSIM." />
+        <link rel="icon" href="./assets/logo/app.ico" sizes="any" />
+        <link rel="apple-touch-icon" href="./assets/logo/app.png" />
+        <link rel="canonical" href="https://voltarenyah.github.io/dsh-automation-suite/" />
 
         <!-- Open Graph / Facebook -->
-        <meta property="og:title" content="Your Automation Programming Copilot" />
-        <meta property="og:description" content="Boost industrial automation programming with AI capabilities, help with programming, version control, commissioning, translation based on TIA Openness API." />
+        <meta property="og:title" content="dsh-automation-suite" />
+        <meta property="og:description" content="An unofficial DeepSeek Harness distribution that gives the agent industrial-automation reach: TIA Portal V17 access, an engineering knowledge graph, Git and PLCSIM." />
         <meta property="og:type" content="website" />
-        <meta property="og:url" content="https://github.com/PaulleDemon" />
-        <meta property="og:image" content="" />
+        <meta property="og:url" content="https://voltarenyah.github.io/dsh-automation-suite/" />
 
-        <!-- <link rel="stylesheet" href="css/tailwind-runtime.css" /> -->
-        <link rel="stylesheet" href="css/tailwind-build.css">
-        <link rel="stylesheet" href="css/index.css" />
+        <link rel="stylesheet" href="css/tailwind-build.css?v=20261109">
+        <link rel="stylesheet" href="css/index.css?v=20261109" />
 
         <link
             rel="stylesheet"
@@ -32,13 +35,10 @@
 
     </head>
     <body
+        data-page="home"
         class="tw-flex tw-min-h-[100vh] tw-flex-col tw-bg-[#fcfcfc] 
             tw-text-black dark:tw-bg-black  dark:tw-text-white"
     >
-        <!-- <div class="tw-absolute tw-top-0 tw-left-1/2 tw--translate-x-1/2 tw-flex 
-                    tw-h-[100px] tw-w-full tw-max-w-[80%]">
-            <div class="header-gradient tw-h-full tw-w-full "></div>
-        </div> -->
 
         <header
             class="lg:tw-px-4 tw-max-w-[100vw] tw-max-w-lg:tw-mr-auto max-lg:tw-top-0 tw-fixed tw-top-4 lg:tw-left-1/2 lg:tw--translate-x-1/2 tw-z-20 tw-flex tw-h-[60px] tw-w-full
@@ -50,19 +50,27 @@
             </a>
             <div class="collapsible-header animated-collapse max-lg:tw-shadow-md" id="collapsed-header-items">
                 <nav class="tw-relative tw-flex tw-h-full max-lg:tw-h-max tw-w-max tw-gap-5 tw-text-base max-lg:tw-mt-[30px] max-lg:tw-flex-col max-lg:tw-gap-5 lg:tw-mx-auto tw-place-items-center">
-                    <a class="header-links" href="./">Home</a>
-                    <a class="header-links" href="architecture/">Architecture</a>
-                    <a class="header-links" href="roadmap/">Roadmap</a>
-                    <a class="header-links" href="get-started/">Get Started</a>
+                    <a class="header-links" href="./" data-block="home.nav.home" data-inline>Home</a>
+                    <a class="header-links" href="architecture/" data-block="home.nav.arch" data-inline>Architecture</a>
+                    <a class="header-links" href="roadmap/" data-block="home.nav.road" data-inline>Roadmap</a>
+                    <a class="header-links" href="get-started/" data-block="home.nav.start" data-inline>Get Started</a>
                 </nav>
                 <div class="lg:tw-mx-4 tw-flex tw-place-items-center tw-gap-[20px] tw-text-base max-md:tw-w-full max-md:tw-flex-col max-md:tw-place-content-center">
                     <button type="button" onclick="toggleMode()" class="header-links tw-text-gray-600 dark:tw-text-gray-300" title="toggle-theme" id="theme-toggle">
                         <i class="bi bi-sun" id="toggle-mode-icon"></i>
                     </button>
                     <div class="lang-switch" role="group" aria-label="Language">
-                        <button type="button" aria-pressed="true">EN</button>
-                        <button type="button" aria-pressed="false" disabled title="Chinese interface not ready yet">中文</button>
+                        <button type="button" class="lang__btn is-on" data-lang="en" aria-pressed="true">EN</button>
+                        <button type="button" class="lang__btn" data-lang="zh" aria-pressed="false" lang="zh-CN">中文</button>
                     </div>
+                    <a
+                        class="header-links tw-text-gray-600 dark:tw-text-gray-300"
+                        href="https://github.com/voltarenyah/dsh-automation-suite"
+                        aria-label="GitHub"
+                        title="GitHub"
+                    >
+                        <i class="bi bi-github"></i>
+                    </a>
                 </div>
             </div>
             <button class="bi bi-list tw-absolute tw-right-3 tw-top-3 tw-z-50 tw-text-3xl tw-text-gray-500 lg:tw-hidden" onclick="toggleHeader()" aria-label="menu" id="collapse-btn"></button>
@@ -85,6 +93,7 @@
                 >
                     <h2
                         class="reveal-up tw-text-center tw-text-7xl tw-font-semibold tw-uppercase tw-leading-[90px] max-lg:tw-text-4xl max-md:tw-leading-snug"
+                        data-block="home.hero.title"
                     >
                         <span class=""> Your Automation </span>
                         <br />
@@ -93,10 +102,8 @@
                     <div
                         class="reveal-up tw-mt-8 tw-max-w-[450px] tw-text-lg max-lg:tw-text-base tw-p-2 tw-text-center
                          tw-text-gray-800 dark:tw-text-white max-lg:tw-max-w-full"
-                    >
-                        <!-- Test, Develop and Deploy all your AI models in one place, with Pixa seamless playground interface -->
-                        Boost industrial automation programming with AI capabilities, focus on core engineering
-                    </div>
+                        data-block="home.hero.lead"
+                    >Put engineering effort where it counts.<br />Leave the rest to your AI partner.</div>
 
                     <div
                         class="reveal-up tw-mt-10 max-md:tw-flex-col tw-flex tw-place-items-center tw-gap-4"
@@ -106,14 +113,13 @@
                             class="btn tw-group max-lg:!tw-w-[160px] tw-flex tw-gap-2 tw-shadow-lg !tw-w-[170px] !tw-rounded-xl !tw-py-4 max-lg:!tw-py-2 tw-transition-transform tw-duration-[0.3s] hover:tw-scale-x-[1.03]"
                             href="get-started/"
                         >
-                            <span>Get started</span>
+                            <span data-block="home.hero.cta" data-inline>Get started</span>
                             <i class="bi bi-arrow-right group-hover:tw-translate-x-1 tw-duration-300"></i>
                         </a>
-                        
+
                     </div>
                 </div>
                 
-                <!-- prompt container -->
                 <div
                     class="reveal-up  tw-relative tw-mt-8 tw-flex tw-w-full tw-place-content-center tw-place-items-center"
                     id="dashboard-container"
@@ -137,15 +143,15 @@
                                 <div class="ww-halo" aria-hidden="true"></div>
 
                                 <div class="ww-top">
-                                    <span class="ww-eyebrow">Capability map</span>
-                                    <span class="ww-hint">hover a term</span>
+                                    <span class="ww-eyebrow" data-block="home.wall.eyebrow" data-inline>Capability map</span>
+                                    <span class="ww-hint" data-block="home.wall.hint" data-inline>hover a term</span>
                                 </div>
 
                                 <div class="ww-fields" id="ww-fields" aria-label="What the copilot can do"></div>
 
                                 <div class="ww-legend">
                                     <span class="ww-legend-star">*</span>
-                                    <span>on the roadmap, not shipped yet</span>
+                                    <span data-block="home.wall.legend" data-inline>on the roadmap, not shipped yet</span>
                                 </div>
                             </div>
                         </div>
@@ -162,21 +168,22 @@
                         tw-flex tw-flex-col tw-max-w-[1050px] tw-gap-4 tw-p-4">
                <div class="purple-bg-grad  reveal-up tw-absolute tw-right-[20%] tw-top-[20%] tw-h-[200px] tw-w-[200px]"
                 ></div>
-                <h2 class="reveal-up tw-text-4xl max-lg:tw-text-2xl tw-text-center tw-leading-snug max-w-[900px]">
+                <h2 class="reveal-up tw-text-4xl max-lg:tw-text-2xl tw-text-center tw-leading-snug max-w-[900px]"
+                    data-block="home.dist.title">
                     
                     <span class="tw-font-semibold">A DeepSeek Harness distribution built for industrial automation</span>
                     <br>
-                    <span class="tw-font-serif">Extend it with <span style="white-space: nowrap">your own plugins</span></span>
+                    <span class="tw-font-serif">Feel free to customize it with <span style="white-space: nowrap">your own plugins</span>.</span>
                 </h2>
-                <p class="reveal-up tw-mt-8 tw-max-w-[650px] tw-text-gray-900 dark:tw-text-gray-200 tw-text-center max-md:tw-text-sm">   
-                    It is one profile assembled from our own TIA plugins — TIA Portal V17 block access,
-                    a graph of blocks and calls, guard-railed Git, PLCSIM — each replaceable on its own.
+                <p class="reveal-up tw-mt-8 tw-max-w-[650px] tw-text-gray-900 dark:tw-text-gray-200 tw-text-center max-md:tw-text-sm"
+                   data-block="home.dist.lead">
+                    It bundles a set of core plugins that extend the agent with industrial-automation capabilities &mdash; TIA Portal access, an engineering knowledge graph, Git and PLCSIM.
                 </p>
                 <div class="reveal-up tw-flex tw-mt-8">
                     <a href="architecture/"
                         class="tw-shadow-md hover:tw-shadow-xl dark:tw-shadow-gray-800 tw-transition-all tw-duration-300 
                                         tw-border-[1px] tw-p-3 tw-px-4 tw-border-black dark:tw-border-white tw-rounded-md">
-                        See Architecture
+                        <span data-block="home.dist.cta" data-inline>See Architecture</span>
                     </a>
                 </div>
             </div>
@@ -186,7 +193,6 @@
             class="tw-relative tw-flex tw-max-w-[100vw] tw-flex-col tw-place-content-center tw-place-items-center tw-overflow-hidden"
         >   
 
-
             <div
                 class="tw-mt-8 tw-flex tw-flex-col tw-w-full tw-h-full tw-place-items-center tw-gap-5"
             >
@@ -195,11 +201,13 @@
                 >
                     <h2
                         class="tw-text-5xl tw-font-medium max-md:tw-text-3xl tw-p-2"
+                        data-block="home.ctx.title"
                     >
-                        Bring AI to engineering context
+                        Collaborate with AI
                     </h2>
                     <p
                         class="tw-max-w-[650px] tw-text-gray-800 dark:tw-text-gray-200 max-md:tw-text-sm max-md:tw-px-4"
+                        data-block="home.ctx.note"
                     >Know your project, help with your work. </p>
                 </div>
                 <div
@@ -210,99 +218,83 @@
                     <div class="max-xl:tw-flex max-xl:tw-flex-col tw-place-items-center tw-grid tw-grid-cols-3 tw-gap-8 
                                 tw-place-content-center tw-auto-rows-auto">
                         <div class="reveal-up tw-w-[350px] tw-h-[540px] tw-flex max-md:tw-w-full">
-                            <a href="#" class=" tw-relative tw-p-10 tw-transition-all tw-duration-300 tw-group/card  tw-gap-5 tw-flex 
+                            <div data-card-link-off class=" tw-relative tw-p-10 tw-transition-all tw-duration-300 tw-group/card  tw-gap-5 tw-flex 
                                 tw-flex-col tw-w-full tw-h-full  tw-bg-[#f6f7fb] dark:tw-bg-[#171717] tw-rounded-3xl 
-                                hover:tw-scale-[1.02]">
+                                ">
                                 <div class="tw-overflow-hidden tw-w-full tw-min-h-[180px] tw-h-[180px]">
-                                    <img src="./assets/images/home/api.png" class="tw-w-full tw-object-contain tw-h-auto" 
-                                        alt="engineering context">
-                                    <!-- <i class="bi bi-grid-1x2-fill"></i> -->
+                                    <img src="./assets/images/home/ctx-comprehension.webp" class="tw-w-full tw-object-contain tw-h-auto"
+                                        alt="TIA Portal block with its cross-reference list">
                                 </div>
-                                <h2 class="card-title tw-text-3xl max-md:tw-text-2xl tw-font-medium">Code understanding</h2>
-                                <p class="tw-text-base tw-leading-normal tw-text-gray-800 dark:tw-text-gray-200">
+                                <h2 class="card-title tw-text-3xl max-md:tw-text-2xl tw-font-medium" data-block="home.ctx.c1.title">Project comprehension</h2>
+                                <p class="tw-text-base tw-leading-normal tw-text-gray-800 dark:tw-text-gray-200" data-block="home.ctx.c1.desc">
                                     Blocks exported, cross-references rebuilt, program sections translated,
                                     drawings indexed — so the agent knows how the project fits together, and
-                                    answers questions that used to need someone who had read all of it.
+                                    answers questions based on necessary context.
                                 </p>
-                                <div class="tw-flex tw-items-center tw-gap-2 tw-mt-auto">
-                                    <span>Learn more</span>
-                                    <i class="bi bi-arrow-right tw-transform tw-transition-transform tw-duration-300 group-hover/card:tw-translate-x-2"></i>
-                                </div>
-                            </a>
+                            </div>
                         </div>
 
                         
                         <div class="reveal-up tw-w-[350px] tw-h-[540px] tw-flex max-md:tw-w-full">
-                            <a href="#" class=" tw-relative tw-p-10 tw-transition-all tw-duration-300 tw-group/card  tw-gap-5 tw-flex 
+                            <div data-card-link-off class=" tw-relative tw-p-10 tw-transition-all tw-duration-300 tw-group/card  tw-gap-5 tw-flex 
                                 tw-flex-col tw-w-full tw-h-full  tw-bg-[#f6f7fb] dark:tw-bg-[#171717] tw-rounded-3xl 
-                                hover:tw-scale-[1.02]">
+                                ">
                                 <div class="tw-w-full tw-min-h-[180px] tw-h-[180px] tw-overflow-hidden">
-                                    <img src="./assets/images/home/api.png" 
-                                        alt="version control" class="tw-w-full tw-h-auto tw-object-contain">
-                                    <!-- <i class="bi bi-grid-1x2-fill"></i> -->
+                                    <img src="./assets/images/home/ctx-version-control.webp" 
+                                        alt="Git client listing the changed files and the diff" class="tw-w-full tw-h-auto tw-object-contain">
                                 </div>
-                                <h2 class="card-title tw-text-3xl max-md:tw-text-2xl tw-font-medium">Version control</h2>
-                                <p class="tw-leading-normal tw-text-gray-800 dark:tw-text-gray-200">
+                                <h2 class="card-title tw-text-3xl max-md:tw-text-2xl tw-font-medium" data-block="home.ctx.c2.title">Version control</h2>
+                                <p class="tw-leading-normal tw-text-gray-800 dark:tw-text-gray-200" data-block="home.ctx.c2.desc">
                                     Block fingerprints show which blocks actually changed. The agent reads that against
                                     the change context and makes the commit for you, keeping the version history
                                     continuous instead of a pile of binary files.
                                 </p>
-                                <div class="tw-flex tw-items-center tw-gap-2 tw-mt-auto">
-                                    <span>Learn more</span>
-                                    <i class="bi bi-arrow-right tw-transform tw-transition-transform tw-duration-300 group-hover/card:tw-translate-x-2"></i>
-                                </div>
-                            </a>
+                            </div>
                         </div>
 
                         
                         <div class="reveal-up tw-w-[350px] tw-h-[540px] tw-flex max-md:tw-w-full">
-                            <a href="#" class=" tw-relative tw-p-10 tw-transition-all tw-duration-300 tw-group/card  tw-gap-5 tw-flex 
+                            <div data-card-link-off class=" tw-relative tw-p-10 tw-transition-all tw-duration-300 tw-group/card  tw-gap-5 tw-flex 
                                 tw-flex-col tw-w-full tw-h-full  tw-bg-[#f6f7fb] dark:tw-bg-[#171717] tw-rounded-3xl 
-                                hover:tw-scale-[1.02]">
+                                ">
                                 <div class="tw-w-full tw-flex tw-place-contet-center tw-min-h-[180px] tw-h-[180px] tw-rounded-xl tw-overflow-hidden">
-                                    <img src="./assets/images/home/integrations1.png" class="tw-w-full tw-h-auto tw-object-contain" 
-                                            alt="Prebuilt integrations">
+                                    <img src="./assets/images/home/ctx-simulation.webp" class="tw-w-full tw-h-auto tw-object-contain"
+                                            alt="Illustration of a simulation hub connected to servers, a workstation and devices">
                                 </div>
-                                <h2 class="card-title tw-text-3xl max-md:tw-text-2xl tw-font-medium">Pre-built Tools</h2>
-                                <p class="tw-leading-normal tw-text-gray-800 dark:tw-text-gray-200">
-                                    Pixa offers pre-built AI integrations for diverse creative tasks including image, video, music, and PDF generation, simplifying advanced feature integration into your apps.
+                                <h2 class="card-title tw-text-3xl max-md:tw-text-2xl tw-font-medium" data-block="home.ctx.c3.title">Simulation</h2>
+                                <p class="tw-leading-normal tw-text-gray-800 dark:tw-text-gray-200" data-block="home.ctx.c3.desc">
+                                    PLCSIM Advanced is wired in through its API 4.0 — power on and off, download, tag
+                                    read and write, snapshot and restore — so the agent can exercise the program and
+                                    judge how it really behaves, not only what the source says.
                                 </p>
-                                <div class="tw-flex tw-items-center tw-gap-2 tw-mt-auto">
-                                    <span>Learn more</span>
-                                    <i class="bi bi-arrow-right tw-transform tw-transition-transform tw-duration-300 group-hover/card:tw-translate-x-2"></i>
-                                </div>
-                            </a>
+                            </div>
                         </div>
                     </div>
                     
                     <div class="reveal-up tw-w-full md:tw-h-[350px] max-md:tw-min-h-[350px] tw-flex">
-                        <a href="#" class=" tw-relative tw-p-10 tw-transition-all tw-duration-300 tw-group/card  tw-gap-5 tw-flex 
+                        <div data-card-link-off class=" tw-relative tw-p-10 tw-transition-all tw-duration-300 tw-group/card  tw-gap-5 tw-flex 
                             max-md:tw-flex-col tw-w-full tw-h-full  tw-bg-[#f6f7fb] dark:tw-bg-[#171717] tw-rounded-3xl 
-                            hover:tw-scale-[1.02]">
+                            ">
                             <div class="tw-w-full tw-h-full max-md:tw-h-[180px] tw-flex">
                                 <div class="ctx-panel">
-                                    <span class="ctx-caption">Also in reach</span>
-                                    <span class="ctx-chip"><i class="bi bi-file-earmark-image"></i>Electrical drawings</span>
-                                    <span class="ctx-chip"><i class="bi bi-clock-history"></i>Change history</span>
-                                    <span class="ctx-chip"><i class="bi bi-journal-text"></i>Technical docs</span>
-                                    <span class="ctx-chip"><i class="bi bi-cpu"></i>Hardware config</span>
-                                    <span class="ctx-chip"><i class="bi bi-puzzle"></i>Installed skills</span>
+                                    <span class="ctx-caption" data-block="home.ctx.wide.caption">Also in reach</span>
+                                    <span class="ctx-chip"><i class="bi bi-file-earmark-image"></i><span data-block="home.ctx.chip1" data-inline>Electrical drawings</span></span>
+                                    <span class="ctx-chip"><i class="bi bi-clock-history"></i><span data-block="home.ctx.chip2" data-inline>Change history</span></span>
+                                    <span class="ctx-chip"><i class="bi bi-journal-text"></i><span data-block="home.ctx.chip3" data-inline>Technical docs</span></span>
+                                    <span class="ctx-chip"><i class="bi bi-cpu"></i><span data-block="home.ctx.chip4" data-inline>Hardware config</span></span>
+                                    <span class="ctx-chip"><i class="bi bi-puzzle"></i><span data-block="home.ctx.chip5" data-inline>Installed skills</span></span>
                                 </div>
                             </div>
                             <div class="tw-flex tw-flex-col tw-gap-4">
-                                <h2 class="tw-text-3xl max-md:tw-text-2xl tw-font-medium">The wider engineering context</h2>
-                                <p class="tw-leading-normal tw-text-gray-800 dark:tw-text-gray-200">
+                                <h2 class="tw-text-3xl max-md:tw-text-2xl tw-font-medium" data-block="home.ctx.wide.title">The wider engineering context</h2>
+                                <p class="tw-leading-normal tw-text-gray-800 dark:tw-text-gray-200" data-block="home.ctx.wide.desc">
                                     A PLC project is more than its program. Once the drawings, change history,
                                     documents and hardware around it are in reach, the agent works from the
                                     project's real background — and can answer how things came to be, not only
                                     what the code says today.
                                 </p>
-                                <div class="tw-flex tw-items-center tw-gap-2 tw-mt-auto">
-                                    <span>Learn more</span>
-                                    <i class="bi bi-arrow-right tw-transform tw-transition-transform tw-duration-300 group-hover/card:tw-translate-x-2"></i>
-                                </div>
                             </div>
-                        </a>
+                        </div>
                     </div>
 
                 </div>
@@ -327,14 +319,20 @@
                         class="tw-top-40 tw-flex tw-flex-col lg:tw-sticky tw-place-items-center tw-max-h-fit tw-max-w-[850px] max-lg:tw-max-h-fit max-lg:tw-max-w-[320px] tw-overflow-hidden"
                     >
                         <h2 class="tw-text-5xl tw-font-serif tw-text-center tw-font-medium  max-md:tw-text-3xl"
+                            data-block="home.ships.title"
                             >
-                            Pre-built AI Tools
+                            What ships today
                         </h2>
-                        
-                        <a href="http://" class="btn !tw-mt-8 !tw-bg-transparent !tw-text-black 
+                        <p class="tw-mt-4 tw-max-w-[320px] tw-text-center tw-text-sm tw-text-gray-800 dark:tw-text-gray-200"
+                           data-block="home.ships.note">
+                            Six families, one profile. Statuses follow the repository roadmap —
+                            nothing planned is presented as shipped.
+                        </p>
+
+                        <a href="architecture/" class="btn !tw-mt-8 !tw-bg-transparent !tw-text-black 
                                                 !tw-border-[1px] !tw-border-black 
                                                 dark:!tw-border-white dark:!tw-text-white">
-                            Start Chat
+                            <span data-block="home.ships.cta" data-inline>See the components</span>
                         </a>
 
                     </div>
@@ -345,10 +343,9 @@
                     class="tw-flex tw-flex-col tw-gap-10 tw-h-full tw-max-w-1/2 max-lg:tw-max-w-full tw-px-[10%]
                              max-lg:tw-px-4 max-lg:tw-gap-3 max-lg:tw-w-full lg:tw-top-[20%]
                              tw-place-items-center
-                             "
-                >   
+                             ">
                     <div class="reveal-up tw-h-[240px] tw-w-[450px] max-md:tw-w-full">
-                        <a href="#"
+                        <a href="architecture/"
                             class="tw-flex tw-w-full tw-h-full tw-gap-8 tw-rounded-xl 
                                     hover:tw-shadow-lg dark:tw-shadow-[#171717] tw-duration-300 tw-transition-all
                                   tw-p-8 tw-group/card"
@@ -358,148 +355,130 @@
                             </div>
 
                             <div class="tw-flex tw-flex-col tw-gap-4">
-                                <h3 class="tw-text-2xl max-md:tw-text-xl">
-                                    AI code generator
+                                <h3 class="tw-text-2xl max-md:tw-text-xl" data-block="home.ships.s1.title">
+                                    TIA Portal V17 access
                                 </h3>
-                                <p class="tw-text-gray-800 dark:tw-text-gray-100 max-md:tw-text-sm">
-                                    AI code generation tools to create code from natural language or patterns, streamlining development and improving efficiency.
+                                <p class="tw-text-gray-800 dark:tw-text-gray-100 max-md:tw-text-sm" data-block="home.ships.s1.desc">
+                                    Blocks, tags and project data through TIA Openness — 46 tools, one whitelisted
+                                    operation per tool, dry-run where it matters and read-back after every write.
                                 </p>
-
-                                <div class="tw-mt-auto tw-flex tw-gap-2 tw-underline tw-underline-offset-4">
-                                    <span>Learn more</span>
-                                    <i class="bi bi-arrow-up-right group-hover/card:tw--translate-y-1
-                                                group-hover/card:tw-translate-x-1 tw-duration-300 tw-transition-transform"></i>
+                                <div class="tw-mt-auto tw-flex tw-items-center tw-gap-2">
+                                    <span class="home-pill home-pill--partial" data-block="home.ships.s1.status" data-inline>Partial</span>
                                 </div>
                             </div>
                         </a>
                     </div>
 
                     <div class="reveal-up tw-h-[240px] tw-w-[450px] max-md:tw-w-full">
-                        <a href="#"
+                        <a href="architecture/"
                             class="tw-flex tw-w-full tw-h-full tw-gap-8 tw-rounded-xl
                                  hover:tw-shadow-lg dark:tw-shadow-[#171717] tw-duration-300 tw-transition-all tw-p-8 tw-group/card"
                         >
                             <div class="tw-text-4xl max-md:tw-text-2xl">
-                                <i class="bi bi-file-pdf-fill"></i>
+                                <i class="bi bi-diagram-3"></i>
                             </div>
-
                             <div class="tw-flex tw-flex-col tw-gap-4">
-                                <h3 class="tw-text-2xl max-md:tw-text-xl">
-                                    PDF generator
+                                <h3 class="tw-text-2xl max-md:tw-text-xl" data-block="home.ships.s2.title">
+                                    Engineering knowledge graph
                                 </h3>
-                                <p class="tw-text-gray-800 dark:tw-text-gray-100 max-md:tw-text-sm">
-                                    Use AI tools to automate PDF creation and content extraction, improving document management and data processing.
+                                <p class="tw-text-gray-800 dark:tw-text-gray-100 max-md:tw-text-sm" data-block="home.ships.s2.desc">
+                                    Exported sources become a queryable graph — blocks, calls, tags and I/O per
+                                    device — so “who calls this block” is a query, not a grep.
                                 </p>
-
-                                <div class="tw-mt-auto tw-flex tw-gap-2 tw-underline tw-underline-offset-4">
-                                    <span>Learn more</span>
-                                    <i class="bi bi-arrow-up-right group-hover/card:tw--translate-y-1
-                                                group-hover/card:tw-translate-x-1 tw-duration-300 tw-transition-transform"></i>
+                                <div class="tw-mt-auto tw-flex tw-items-center tw-gap-2">
+                                    <span class="home-pill home-pill--proto" data-block="home.ships.s2.status" data-inline>Prototype</span>
                                 </div>
                             </div>
                         </a>
                     </div>
 
                     <div class="reveal-up tw-h-[240px] tw-w-[450px] max-md:tw-w-full">
-                        <a href="#"
-                            class="tw-flex tw-w-full tw-h-full tw-gap-8 tw-rounded-xl hover:tw-shadow-lg tw-duration-300 
-                                tw-transition-all dark:tw-shadow-[#171717] tw-p-8 tw-group/card"
+                        <a href="architecture/"
+                            class="tw-flex tw-w-full tw-h-full tw-gap-8 tw-rounded-xl
+                                 hover:tw-shadow-lg dark:tw-shadow-[#171717] tw-duration-300 tw-transition-all tw-p-8 tw-group/card"
                         >
                             <div class="tw-text-4xl max-md:tw-text-2xl">
-                                <i class="bi bi-image-fill"></i>
+                                <i class="bi bi-git"></i>
                             </div>
-
                             <div class="tw-flex tw-flex-col tw-gap-4">
-                                <h3 class="tw-text-2xl max-md:tw-text-xl">
-                                    Image generation
+                                <h3 class="tw-text-2xl max-md:tw-text-xl" data-block="home.ships.s3.title">
+                                    Guard-railed Git
                                 </h3>
-                                <p class="tw-text-gray-800 dark:tw-text-gray-100 max-md:tw-text-sm">
-                                    Prebuilt AI tools for image generation create visuals from text or patterns, enhancing design and creative projects.
+                                <p class="tw-text-gray-800 dark:tw-text-gray-100 max-md:tw-text-sm" data-block="home.ships.s3.desc">
+                                    Twelve Git tools with the destructive ones behind an explicit policy: the agent
+                                    can diff, commit and trace, but cannot quietly rewrite history.
                                 </p>
-
-                                <div class="tw-mt-auto tw-flex tw-gap-2 tw-underline tw-underline-offset-4">
-                                    <span>Learn more</span>
-                                    <i class="bi bi-arrow-up-right group-hover/card:tw--translate-y-1
-                                                group-hover/card:tw-translate-x-1 tw-duration-300 tw-transition-transform"></i>
+                                <div class="tw-mt-auto tw-flex tw-items-center tw-gap-2">
+                                    <span class="home-pill home-pill--partial" data-block="home.ships.s3.status" data-inline>Partial</span>
                                 </div>
                             </div>
                         </a>
                     </div>
 
                     <div class="reveal-up tw-h-[240px] tw-w-[450px] max-md:tw-w-full">
-                        <a href="#"
-                            class="tw-flex tw-w-full dark:tw-shadow-[#171717] tw-h-full tw-gap-8 tw-rounded-xl  hover:tw-shadow-lg tw-duration-300 
-                            tw-transition-all tw-p-8 tw-group/card"
+                        <a href="roadmap/"
+                            class="tw-flex tw-w-full tw-h-full tw-gap-8 tw-rounded-xl
+                                 hover:tw-shadow-lg dark:tw-shadow-[#171717] tw-duration-300 tw-transition-all tw-p-8 tw-group/card"
                         >
                             <div class="tw-text-4xl max-md:tw-text-2xl">
-                                <i class="bi bi-bar-chart-line-fill"></i>
+                                <i class="bi bi-cpu"></i>
                             </div>
-
                             <div class="tw-flex tw-flex-col tw-gap-4">
-                                <h3 class="tw-text-2xl max-md:tw-text-xl">
-                                    AI Analytics
+                                <h3 class="tw-text-2xl max-md:tw-text-xl" data-block="home.ships.s4.title">
+                                    Simulation
                                 </h3>
-                                <p class="tw-text-gray-800 dark:tw-text-gray-100 max-md:tw-text-sm">
-                                    Our AI analytics tools analyze data patterns and trends, providing actionable insights and enhancing decision-making.
+                                <p class="tw-text-gray-800 dark:tw-text-gray-100 max-md:tw-text-sm" data-block="home.ships.s4.desc">
+                                    PLCSIM Advanced over its API 4.0: power on and off, RUN / STOP / reset, tag read
+                                    and write, snapshot and restore.
                                 </p>
-
-                                <div class="tw-mt-auto tw-flex tw-gap-2 tw-underline tw-underline-offset-4">
-                                    <span>Learn more</span>
-                                    <i class="bi bi-arrow-up-right group-hover/card:tw--translate-y-1
-                                                group-hover/card:tw-translate-x-1 tw-duration-300 tw-transition-transform"></i>
-                                </div>
-                            </div>
-                        </a>
-                    </div>
-                    
-                    <div class="reveal-up tw-h-[240px] tw-w-[450px] max-md:tw-w-full">
-                        <a href="#"
-                            class="tw-flex tw-w-full tw-h-full tw-gap-8 tw-rounded-xl dark:tw-shadow-[#171717] hover:tw-shadow-lg tw-duration-300 
-                                tw-transition-all tw-p-8 tw-group/card"
-                        >
-                            <div class="tw-text-4xl max-md:tw-text-2xl">
-                                <i class="bi bi-music-note-beamed"></i>
-                            </div>
-
-                            <div class="tw-flex tw-flex-col tw-gap-4">
-                                <h3 class="tw-text-2xl max-md:tw-text-xl">
-                                    Music generator
-                                </h3>
-                                <p class="tw-text-gray-800 dark:tw-text-gray-100 max-md:tw-text-sm">
-                                    Access our AI music generation tools create original compositions 
-                                    from input parameters, enabling effortless music creation for various needs.
-                                </p>
-
-                                <div class="tw-mt-auto tw-flex tw-gap-2 tw-underline tw-underline-offset-4">
-                                    <span>Learn more</span>
-                                    <i class="bi bi-arrow-up-right group-hover/card:tw--translate-y-1
-                                                group-hover/card:tw-translate-x-1 tw-duration-300 tw-transition-transform"></i>
+                                <div class="tw-mt-auto tw-flex tw-items-center tw-gap-2">
+                                    <span class="home-pill home-pill--proto" data-block="home.ships.s4.status" data-inline>Prototype</span>
                                 </div>
                             </div>
                         </a>
                     </div>
 
                     <div class="reveal-up tw-h-[240px] tw-w-[450px] max-md:tw-w-full">
-                        <a href="#"
-                            class="tw-flex tw-w-full tw-h-full tw-gap-8 tw-rounded-xl 
-                                    hover:tw-shadow-lg dark:tw-shadow-[#171717] tw-duration-300 tw-transition-all tw-p-8 tw-group/card"
+                        <a href="get-started/"
+                            class="tw-flex tw-w-full tw-h-full tw-gap-8 tw-rounded-xl
+                                 hover:tw-shadow-lg dark:tw-shadow-[#171717] tw-duration-300 tw-transition-all tw-p-8 tw-group/card"
                         >
                             <div class="tw-text-4xl max-md:tw-text-2xl">
-                                <i class="bi bi-camera-video-fill"></i>
+                                <i class="bi bi-grid-1x2"></i>
                             </div>
-
                             <div class="tw-flex tw-flex-col tw-gap-4">
-                                <h3 class="tw-text-2xl max-md:tw-text-xl">
-                                    Video generator
+                                <h3 class="tw-text-2xl max-md:tw-text-xl" data-block="home.ships.s5.title">
+                                    Panels in the app
                                 </h3>
-                                <p class="tw-text-gray-800 dark:tw-text-gray-100 max-md:tw-text-sm">
-                                    Use our AI video generation tools create videos from text or templates, streamlining content creation and production.
+                                <p class="tw-text-gray-800 dark:tw-text-gray-100 max-md:tw-text-sm" data-block="home.ships.s5.desc">
+                                    PLC blocks, Versions, Changes, Hardware and Drawings docked next to the chat —
+                                    the same state the model reads, on screen where you can check it.
                                 </p>
+                                <div class="tw-mt-auto tw-flex tw-items-center tw-gap-2">
+                                    <span class="home-pill home-pill--partial" data-block="home.ships.s5.status" data-inline>Partial</span>
+                                </div>
+                            </div>
+                        </a>
+                    </div>
 
-                                <div class="tw-mt-auto tw-flex tw-gap-2 tw-underline tw-underline-offset-4">
-                                    <span>Learn more</span>
-                                    <i class="bi bi-arrow-up-right group-hover/card:tw--translate-y-1
-                                                group-hover/card:tw-translate-x-1 tw-duration-300 tw-transition-transform"></i>
+                    <div class="reveal-up tw-h-[240px] tw-w-[450px] max-md:tw-w-full">
+                        <a href="roadmap/"
+                            class="tw-flex tw-w-full tw-h-full tw-gap-8 tw-rounded-xl
+                                 hover:tw-shadow-lg dark:tw-shadow-[#171717] tw-duration-300 tw-transition-all tw-p-8 tw-group/card"
+                        >
+                            <div class="tw-text-4xl max-md:tw-text-2xl">
+                                <i class="bi bi-signpost-2"></i>
+                            </div>
+                            <div class="tw-flex tw-flex-col tw-gap-4">
+                                <h3 class="tw-text-2xl max-md:tw-text-xl" data-block="home.ships.s6.title">
+                                    What comes next
+                                </h3>
+                                <p class="tw-text-gray-800 dark:tw-text-gray-100 max-md:tw-text-sm" data-block="home.ships.s6.desc">
+                                    TIA Portal V18, hardware configuration, online &amp; download, block
+                                    comparison, cable &amp; terminal drawings — planned, not promised.
+                                </p>
+                                <div class="tw-mt-auto tw-flex tw-items-center tw-gap-2">
+                                    <span class="home-pill home-pill--plan" data-block="home.ships.s6.status" data-inline>Roadmap</span>
                                 </div>
                             </div>
                         </a>
@@ -508,638 +487,6 @@
                 </div>
 
                 
-            </div>
-        </section>
-
-
-        <section
-            class="tw-relative tw-flex  tw-w-full tw-min-h-[110vh] max-md:tw-min-h-[80vh] tw-flex-col tw-place-content-center tw-place-items-center tw-overflow-hidden"
-        >   
-             <div class="tw-w-full max-lg:tw-max-w-full tw-place-content-center tw-items-center 
-                        tw-flex tw-flex-col tw-max-w-[80%] tw-gap-4 tw-p-4">
-               
-                <h3 class="reveal-up tw-text-5xl tw-font-medium max-md:tw-text-3xl tw-text-center tw-leading-normal">
-                    Additional Features
-                </h3>
-                <!-- <p class="reveal-up tw-mt-3 tw-max-w-[600px] tw-text-center ">
-                </p> -->
-                
-                <div class="tw-mt-8 tw-relative tw-gap-10 tw-p-4 tw-grid tw-place-items-center tw-grid-cols-3 max-lg:tw-flex max-lg:tw-flex-col">
-
-
-                    <div class="reveal-up  tw-w-[350px] tw-border-[1px] tw-h-[400px] tw-rounded-md tw-place-items-center tw-p-4
-                                 tw-bg-[#f2f3f4] max-md:tw-w-[320px] dark:tw-bg-[#141414] dark:tw-border-[#1f2123] tw-flex tw-flex-col tw-gap-3">
-
-                        <div class="tw-w-full tw-h-[250px]
-                                    tw-p-4
-                                    tw-rounded-xl 
-                                     tw-backdrop-blur-2xl
-                                     tw-overflow-hidden tw-flex tw-place-content-center">
-                            <img src="./assets/images/home/prompts2.png" 
-                                    alt="Prompt library" class="tw-w-auto tw-h-full tw-object-contain">
-                        </div>
-                        <h3 class="tw-text-2xl">
-                            Prompt Library
-                        </h3>
-                        <p class="tw-text-gray-700 dark:tw-text-gray-300 tw-px-4 tw-text-center tw-text-sm">
-                            Forget about writing your own prompt, use the prompt templates and supercharge your
-                            workflow.
-                        </p>
-                    </div>
-                    
-                    <div class="reveal-up tw-w-[350px] max-md:tw-w-[320px] tw-border-[1px] tw-h-[400px] tw-rounded-md tw-place-items-center tw-p-4
-                                 tw-bg-[#f2f3f4] dark:tw-bg-[#141414] dark:tw-border-[#1f2123] tw-flex tw-flex-col tw-gap-3">
-
-                        <div class="tw-w-full tw-h-[250px]
-                                    tw-p-4
-                                    tw-rounded-xl 
-                                     tw-backdrop-blur-2xl
-                                     tw-overflow-hidden tw-flex tw-place-content-center">
-                            <img src="./assets/images/home/search.png" 
-                                    alt="Web search" class="tw-w-auto tw-h-full tw-object-contain">
-                        </div>
-                        <h3 class="tw-text-2xl">
-                            Real-time web search
-                        </h3>
-                        <p class="tw-text-gray-700 dark:tw-text-gray-300 tw-px-4 tw-text-center tw-text-sm">
-                            Our Real-time web search AI Bot provides instant, live search results directly within the AI chat playground.
-                        </p>
-                    </div>
-
-                    <div class="reveal-up tw-w-[350px] max-md:tw-w-[320px] tw-border-[1px] tw-h-[400px] tw-rounded-lg tw-place-items-center tw-p-4
-                                 tw-bg-[#f2f3f4] dark:tw-bg-[#141414] dark:tw-border-[#1f2123] tw-flex tw-flex-col tw-gap-3">
-
-                        <div class="tw-w-full tw-h-[250px]
-                                    tw-p-4
-                                    tw-rounded-xl 
-                                     tw-backdrop-blur-2xl
-                                     tw-overflow-hidden tw-flex tw-place-content-center">
-                            <img src="./assets/images/home/image.png" 
-                                    alt="Image generation" class="tw-w-auto tw-h-full tw-object-contain">
-                        </div>
-                        <h3 class="tw-text-2xl">
-                            Image Generation
-                        </h3>
-                        <p class="tw-text-gray-700 dark:tw-text-gray-300 tw-px-4 tw-text-center tw-text-sm">
-                            Generate Image instantly from multiple models, create visuals from text descriptions or templates.
-                        </p>
-                    </div>
-
-                    <div class="reveal-up tw-w-[350px] max-md:tw-w-[320px] tw-border-[1px] tw-h-[400px] tw-rounded-lg tw-place-items-center tw-p-4
-                                 tw-bg-[#f2f3f4] dark:tw-bg-[#141414] dark:tw-border-[#1f2123] tw-flex tw-flex-col tw-gap-3">
-
-                        <div class="tw-w-full tw-h-[250px]
-                                    tw-p-4
-                                     tw-rounded-xl 
-                                     tw-backdrop-blur-2xl
-                                     tw-overflow-hidden tw-flex tw-place-content-center">
-                            <img src="./assets/images/home/history.png" 
-                                    alt="History" class="tw-w-auto tw-h-full tw-object-contain">
-                        </div>
-                        <h3 class="tw-text-2xl">
-                            History
-                        </h3>
-                        <p class="tw-text-gray-700 dark:tw-text-gray-300 tw-px-4 tw-text-center tw-text-sm">
-                            All of the models can recall previous topic, so you 
-                            can continue your conversation at any point of time. 
-                        </p>
-                    </div>
-
-                    <div class="reveal-up tw-w-[350px] max-md:tw-w-[320px] tw-border-[1px] tw-h-[400px] tw-rounded-lg tw-place-items-center tw-p-4
-                                 tw-bg-[#f2f3f4] dark:tw-bg-[#141414] dark:tw-border-[#1f2123] tw-flex tw-flex-col tw-gap-3">
-
-                        <div class="tw-w-full tw-h-[250px]
-                                    tw-p-4
-                                    tw-rounded-xl 
-                                     tw-backdrop-blur-2xl
-                                     tw-overflow-hidden tw-flex tw-place-content-center">
-                            <img src="./assets/images/home/import.png" 
-                                    alt="Import content" class="tw-w-auto tw-h-full tw-object-contain">
-                        </div>
-                        <h3 class="tw-text-2xl">
-                            Import content
-                        </h3>
-                        <p class="tw-text-gray-700 dark:tw-text-gray-300 tw-px-4 tw-text-center tw-text-sm">
-                            Effortlessly import PDFs, images, and documents. Use AI to ask questions, extract information, and summarize documents.
-                        </p>
-                    </div>
-
-                    <div class="reveal-up tw-w-[350px] max-md:tw-w-[320px] tw-border-[1px] tw-h-[400px] tw-rounded-lg tw-place-items-center tw-p-4
-                                 tw-bg-[#f2f3f4] dark:tw-bg-[#141414] dark:tw-border-[#1f2123] tw-flex tw-flex-col tw-gap-3">
-
-                        <div class="tw-w-full tw-h-[250px]
-                                    tw-p-4
-                                    tw-rounded-xl 
-                                     tw-backdrop-blur-2xl
-                                     tw-overflow-hidden tw-flex tw-place-content-center">
-                            <img src="./assets/images/home/multilingual.png" 
-                                    alt="Multilingual" class="tw-w-auto tw-h-full tw-object-contain">
-                        </div>
-                        <h3 class="tw-text-2xl">
-                            Multilingual support
-                        </h3>
-                        <p class="tw-text-gray-700 dark:tw-text-gray-300 tw-px-4 tw-text-center tw-text-sm">
-                            ChatGPT, and Gemini can understand and respond in over 100 languages.
-                        </p>
-                    </div>
-
-                </div>
-
-            </div>
-        </section>
-
-        <section
-            class="tw-relative tw-flex  tw-w-full tw-min-h-[100vh] max-md:tw-min-h-[80vh] tw-flex-col tw-place-content-center tw-place-items-center tw-overflow-hidden"
-        >   
-            <div class="tw-w-full max-lg:tw-max-w-full tw-place-content-center tw-place-items-center 
-                        tw-flex tw-flex-col tw-max-w-[80%] tw-gap-4 tw-p-4">
-               
-                <h3 class="reveal-up tw-text-5xl tw-font-medium max-md:tw-text-3xl tw-text-center tw-leading-normal">
-                    One Subscription for it all
-                </h3>
-                <p class="reveal-up tw-mt-3 tw-max-w-[600px] tw-text-center ">
-                    Why pay for multiple expensive subscriptions when one subscription can do it all?
-                    Access multiple AI models and save 1000's of dollar per year. 
-                </p>
-                
-                <div class="tw-mt-8 tw-relative tw-flex max-lg:tw-flex-col tw-gap-5">
-
-                    <div
-                        class="reveal-up tw-flex tw-w-full tw-max-w-[650px] max-md:tw-max-w-full tw-flex-col tw-place-items-center tw-gap-2 tw-rounded-lg tw-border-[1px]
-                            tw-border-outlineColor tw-bg-white dark:tw-bg-[#080808] dark:tw-border-[#1f2123] tw-p-2 tw-shadow-xl max-lg:tw-w-[320px]"
-                            >
-                        <img src="./assets/images/home/multi-sub.png" 
-                            alt="Multi sub">
-                    </div>
-
-                     <div
-                        class="reveal-up tw-flex tw-w-full tw-max-w-[650px] tw-flex-col tw-place-items-center tw-gap-2 tw-rounded-lg tw-border-[1px]
-                            tw-border-outlineColor tw-bg-white dark:tw-bg-[#080808] dark:tw-border-[#1f2123] tw-p-2 tw-shadow-xl max-lg:tw-w-[320px]"
-                            >
-                        <img src="./assets/images/home/single-sub.jpg" 
-                            alt="Single sub">
-                    </div>
-
-                </div>
-
-                <a href="#" class="reveal-up tw-group tw-shadow-xl btn tw-flex tw-gap-2 tw-mt-10">
-                    <span>Start Chat</span>
-                    <i class="bi bi-arrow-right tw-duration-300 group-hover:tw-translate-x-1"></i>
-                </a>
-
-            </div>
-        </section>
-
-        <section
-            class="tw-flex tw-min-h-[100vh] tw-w-full tw-flex-col tw-place-content-center tw-place-items-center tw-p-[2%]"
-        >
-            <h3
-                class="reveal-up tw-text-4xl tw-font-medium tw-text-center max-md:tw-text-2xl"
-            >
-                Join the professionals using Pixa
-            </h3>
-            <!-- Testimonials -->
-            <div
-                class="tw-mt-20 tw-gap-10 tw-space-y-8  max-md:tw-columns-1 lg:tw-columns-2 xl:tw-columns-3"
-            >
-                <div
-                    class="reveal-up tw-flex tw-h-fit tw-w-[350px] tw-break-inside-avoid 
-                        tw-flex-col tw-gap-4 tw-rounded-lg tw-border-[1px] 
-                        tw-bg-[#f6f7fb] dark:tw-bg-[#080808] dark:tw-border-[#1f2123] tw-p-4 max-lg:tw-w-[320px]"
-                >   
-
-                    <div class="tw-flex tw-place-items-center tw-gap-3">
-                        <div
-                            class="tw-h-[50px] tw-w-[50px] tw-overflow-hidden tw-rounded-full"
-                        >
-                            <img
-                                src="./assets/images/people/man2.jpg"
-                                class="tw-h-full tw-w-full tw-object-cover"
-                                alt="man"
-                            />
-                        </div>
-                        <div class="tw-flex tw-flex-col tw-gap-1">
-                            <div class="tw-font-semibold">Mante</div>
-                            <div class="tw-text-gray-700 dark:tw-text-gray-300">Glu, cto</div>
-                        </div>
-                    </div>
-
-                    <p class="tw-mt-4 tw-text-gray-800 dark:tw-text-gray-200">
-                        Lorem ipsum dolor sit amet consectetur, adipisicing
-                        elit. Beatae, vero. Lorem ipsum dolor sit amet consectetur adipisicing elit. Magnam dolore deleniti iusto Numquam!
-                    </p>
-                </div>
-
-                 <div
-                    class="reveal-up tw-flex tw-h-fit tw-w-[350px] tw-break-inside-avoid 
-                        tw-flex-col tw-gap-4 tw-rounded-lg tw-border-[1px] 
-                        tw-bg-[#f6f7fb] dark:tw-bg-[#080808] dark:tw-border-[#1f2123] tw-p-4 max-lg:tw-w-[320px]"
-                >   
-
-                    <div class="tw-flex tw-place-items-center tw-gap-3">
-                        <div
-                            class="tw-h-[50px] tw-w-[50px] tw-overflow-hidden tw-rounded-full"
-                        >
-                            <img
-                                src="./assets/images/people/women.jpg"
-                                class="tw-h-full tw-w-full tw-object-cover"
-                                alt="women"
-                            />
-                        </div>
-                        <div class="tw-flex tw-flex-col tw-gap-1">
-                            <div class="tw-font-semibold">Trich B</div>
-                            <div class="tw-text-gray-700 dark:tw-text-gray-300">AMI, ceo</div>
-                        </div>
-                    </div>
-
-                    <p class="tw-mt-4 tw-text-gray-800 dark:tw-text-gray-200">
-                        Lorem ipsum dolor sit amet consectetur, adipisicing
-                        elit. Beatae, vero. Lorem ipsum dolor sit amet.
-                    </p>
-                </div>
-
-                 <div
-                    class="reveal-up tw-flex tw-h-fit tw-w-[350px] tw-break-inside-avoid 
-                        tw-flex-col tw-gap-4 tw-rounded-lg tw-border-[1px] 
-                        tw-bg-[#f6f7fb] dark:tw-bg-[#080808] dark:tw-border-[#1f2123] tw-p-4 max-lg:tw-w-[320px]"
-                >   
-
-                    <div class="tw-flex tw-place-items-center tw-gap-3">
-                        <div
-                            class="tw-h-[50px] tw-w-[50px] tw-overflow-hidden tw-rounded-full"
-                        >
-                            <img
-                                src="./assets/images/people/man.jpg"
-                                class="tw-h-full tw-w-full tw-object-cover"
-                                alt="man"
-                            />
-                        </div>
-                        <div class="tw-flex tw-flex-col tw-gap-1">
-                            <div class="tw-font-semibold">John B</div>
-                            <div class="tw-text-gray-700 dark:tw-text-gray-300">Benz, ceo</div>
-                        </div>
-                    </div>
-
-                    <p class="tw-mt-4 tw-text-gray-800 dark:tw-text-gray-200">
-                        Lorem ipsum dolor sit amet consectetur adipisicing elit. Ea, expedita nihil repellendus accusamus itaque facere labore, suscipit tempore in harum repellat. Doloribus, dolor facere dolorem impedit facilis rerum beatae exercitationem aliquid porro ea architecto similique illo omnis odio consequatur modi.
-                    </p>
-                </div>
-
-                 <div
-                    class="reveal-up tw-flex tw-h-fit tw-w-[350px] tw-break-inside-avoid 
-                        tw-flex-col tw-gap-4 tw-rounded-lg tw-border-[1px] 
-                        tw-bg-[#f6f7fb] dark:tw-bg-[#080808] dark:tw-border-[#1f2123] tw-p-4 max-lg:tw-w-[320px]"
-                >   
-
-                    <div class="tw-flex tw-place-items-center tw-gap-3">
-                        <div
-                            class="tw-h-[50px] tw-w-[50px] tw-overflow-hidden tw-rounded-full"
-                        >
-                            <img
-                                src="./assets/images/people/man2.jpg"
-                                class="tw-h-full tw-w-full tw-object-cover"
-                                alt="man"
-                            />
-                        </div>
-                        <div class="tw-flex tw-flex-col tw-gap-1">
-                            <div class="tw-font-semibold">Ben Alfert B</div>
-                            <div class="tw-text-gray-700 dark:tw-text-gray-300">XZ tech, cto</div>
-                        </div>
-                    </div>
-
-                    <p class="tw-mt-4 tw-text-gray-800 dark:tw-text-gray-200">
-                        Lorem ipsum dolor sit amet consectetur, adipisicing
-                        elit. Beatae, vero.
-                    </p>
-                </div>
-
-                 <div
-                    class="reveal-up tw-flex tw-h-fit tw-w-[350px] tw-break-inside-avoid 
-                        tw-flex-col tw-gap-4 tw-rounded-lg tw-border-[1px] 
-                        tw-bg-[#f6f7fb] dark:tw-bg-[#080808] dark:tw-border-[#1f2123] tw-p-4 max-lg:tw-w-[320px]"
-                >   
-
-                    <div class="tw-flex tw-place-items-center tw-gap-3">
-                        <div
-                            class="tw-h-[50px] tw-w-[50px] tw-overflow-hidden tw-rounded-full"
-                        >
-                            <img
-                                src="./assets/images/people/women.jpg"
-                                class="tw-h-full tw-w-full tw-object-cover"
-                                alt="women"
-                            />
-                        </div>
-                        <div class="tw-flex tw-flex-col tw-gap-1">
-                            <div class="tw-font-semibold">Rachel</div>
-                            <div class="tw-text-gray-700 dark:tw-text-gray-300">Gem, cto</div>
-                        </div>
-                    </div>
-
-                    <p class="tw-mt-4 tw-text-gray-800 dark:tw-text-gray-200">
-                        Lorem ipsum dolor sit amet consectetur, adipisicing
-                        elit. Beatae, vero. Lorem, ipsum dolor.
-                    </p>
-                </div>
-
-                 <div
-                    class="reveal-up tw-flex tw-h-fit tw-w-[350px] tw-break-inside-avoid 
-                        tw-flex-col tw-gap-4 tw-rounded-lg tw-border-[1px] 
-                        tw-bg-[#f6f7fb] dark:tw-bg-[#080808] dark:tw-border-[#1f2123] tw-p-4 max-lg:tw-w-[320px]"
-                >   
-
-                    <div class="tw-flex tw-place-items-center tw-gap-3">
-                        <div
-                            class="tw-h-[50px] tw-w-[50px] tw-overflow-hidden tw-rounded-full"
-                        >
-                            <img
-                                src="./assets/images/people/man.jpg"
-                                class="tw-h-full tw-w-full tw-object-cover"
-                                alt="man"
-                            />
-                        </div>
-                        <div class="tw-flex tw-flex-col tw-gap-1">
-                            <div class="tw-font-semibold">Jamie</div>
-                            <div class="tw-text-gray-700 dark:tw-text-gray-300">SnapFist.ai, ceo</div>
-                        </div>
-                    </div>
-
-                    <p class="tw-mt-4 tw-text-gray-800 dark:tw-text-gray-200">
-                        Lorem ipsum dolor, sit amet consectetur adipisicing elit. Est, nihil vitae fuga ab reiciendis optio et corporis dolorem alias deserunt, molestias in iusto! Ratione, quisquam incidunt. Reprehenderit ipsam officiis enim.
-                    </p>
-                </div>
-               
-            </div>
-        </section>
-
-
-        <section
-            class="tw-mt-5 tw-flex tw-w-full tw-flex-col tw-gap-6 tw-place-items-center tw-p-[2%]"
-            id="pricing"
-        >
-            <h3
-                class="reveal-up tw-text-5xl tw-font-medium max-md:tw-text-2xl"
-            >
-                Choose the right plan for you
-            </h3>
-            <!-- pricing -->
-            <div
-                class="tw-mt-10 tw-flex tw-flex-wrap tw-place-content-center tw-gap-8 max-lg:tw-flex-col"
-            >
-                <div
-                    class="reveal-up tw-flex tw-w-[350px] tw-flex-col tw-place-items-center tw-gap-2 tw-rounded-lg tw-border-[1px]
-                            tw-border-outlineColor tw-bg-white dark:tw-bg-[#080808] dark:tw-border-[#1f2123] tw-p-8 tw-shadow-xl max-lg:tw-w-[320px]"
-                >
-                    <h3 class="">
-                        <span class="tw-text-5xl max-md:tw-text-3xl tw-font-semibold">$9</span>
-                        <span class="tw-text-2xl tw-text-gray-600 dark:tw-text-gray-300">/mo</span>
-                    </h3>
-                    <p class="tw-mt-3 tw-text-center tw-text-gray-800 dark:tw-text-gray-100">
-                       Essential AI tools for everyday use
-                    </p>
-                    <hr />
-                    <ul
-                        class="tw-mt-4 tw-flex tw-flex-col tw-gap-4 tw-text-base tw-text-gray-800 dark:tw-text-gray-200"
-                    >
-                        <li class="tw-flex tw-gap-2">
-                            <i class="bi bi-check-circle-fill"></i>
-                            <span>1,000 AI powered chat messages</span>    
-                        </li>
-                        <li class="tw-flex tw-gap-2">
-                            <i class="bi bi-check-circle-fill"></i>
-                            <span>30 premium image generations</span>    
-                        </li>
-                        <li class="tw-flex tw-gap-2">
-                            <i class="bi bi-check-circle-fill"></i>
-                            <span>10 premium  music generation</span>    
-                        </li>
-
-                        <li class="tw-flex tw-gap-2 ">
-                            <i class="bi bi-check-circle-fill tw-text-gray-400 dark:tw-text-gray-500"></i>
-                            <span>Access to all premium AI models</span>    
-                        </li>
-
-                        <li class="tw-flex tw-gap-2 ">
-                            <i class="bi bi-check-circle-fill tw-text-gray-400 dark:tw-text-gray-500"></i>
-                            <span>Early access to new features</span>    
-                        </li>
-                  
-                    </ul>
-                    <a
-                        href="#"
-                        class="btn tw-mt-auto !tw-w-full tw-transition-transform tw-duration-[0.3s] 
-                                hover:tw-scale-x-[1.02] !tw-text-black !tw-bg-transparent !tw-border-[1px]
-                                 tw-border-black dark:tw-border-white dark:!tw-text-white"
-                    >
-                        Choose plan
-                    </a>
-                </div>
-                
-                <div
-                    class="reveal-up tw-flex tw-w-[350px] tw-flex-col tw-place-items-center tw-gap-2 tw-rounded-lg tw-border-2
-                            tw-border-outlineColor tw-bg-white dark:tw-bg-[#080808] dark:tw-border-[#595858] tw-p-8 tw-shadow-xl max-lg:tw-w-[320px]"
-                >
-                    <h3 class="">
-                        <span class="tw-text-5xl max-md:tw-text-3xl  tw-font-semibold">$17</span>
-                        <span class="tw-text-2xl max-md:tw-text-xl  tw-text-gray-600 dark:tw-text-gray-300">/mo</span>
-                    </h3>
-                    <p class="tw-mt-3 tw-text-center tw-text-gray-800 dark:tw-text-gray-200">
-                        Advanced features for serious AI enthusiasts.
-                    </p>
-                    <hr />
-                    <ul
-                        class="tw-mt-4 tw-flex tw-flex-col tw-gap-4  tw-text-base tw-text-gray-800 dark:tw-text-gray-100"
-                    >
-                        <li class="tw-flex tw-gap-2">
-                            <i class="bi bi-check-circle-fill"></i>
-                            <span>5,000 AI powered chat messages</span>    
-                        </li>
-                        <li class="tw-flex tw-gap-2">
-                            <i class="bi bi-check-circle-fill"></i>
-                            <span>100 premium image generations</span>    
-                        </li>
-                        <li class="tw-flex tw-gap-2">
-                            <i class="bi bi-check-circle-fill"></i>
-                            <span>40 premium music generation</span>    
-                        </li>
-
-                        <li class="tw-flex tw-gap-2 ">
-                            <i class="bi bi-check-circle-fill"></i>
-                            <span>Access to all premium AI models</span>    
-                        </li>
-
-                        <li class="tw-flex tw-gap-2 ">
-                            <i class="bi bi-check-circle-fill tw-text-gray-400 dark:tw-text-gray-500"></i>
-                            <span>Early access to new features</span>    
-                        </li>
-                  
-                    </ul>
-                    <a
-                        href="#"
-                        class="btn tw-mt-auto !tw-w-full tw-transition-transform tw-duration-[0.3s] hover:tw-scale-x-[1.02]"
-                    >
-                        Choose plan
-                    </a>
-                </div>
-
-                <div
-                    class="reveal-up tw-flex tw-w-[350px] tw-flex-col tw-place-items-center tw-gap-2 tw-rounded-lg tw-border-[1px]
-                            tw-border-outlineColor dark:tw-bg-[#080808] dark:tw-border-[#1f2123] tw-bg-white tw-p-8 tw-shadow-xl max-lg:tw-w-[320px]"
-                >
-                    <h3 class="">
-                        <span class="tw-text-5xl max-md:tw-text-3xl tw-font-semibold">$29</span>
-                        <span class="tw-text-2xl tw-text-gray-600 dark:tw-text-gray-300">/mo</span>
-                    </h3>
-                    <p class="tw-mt-3 tw-text-center tw-text-gray-800 dark:tw-text-gray-100">
-                        Unlimited potential for power users
-                    </p>
-                    <hr />
-                    <ul
-                        class="tw-mt-4 tw-flex tw-flex-col tw-gap-4 tw-text-base 
-                                tw-text-gray-800 dark:tw-text-gray-200"
-                    >
-                        <li class="tw-flex tw-gap-2">
-                            <i class="bi bi-check-circle-fill"></i>
-                            <span>10,000 AI powered chat messages</span>    
-                        </li>
-                        <li class="tw-flex tw-gap-2">
-                            <i class="bi bi-check-circle-fill"></i>
-                            <span>300 premium image generations</span>    
-                        </li>
-                        <li class="tw-flex tw-gap-2">
-                            <i class="bi bi-check-circle-fill"></i>
-                            <span>100 premium music generations</span>    
-                        </li>
-
-                        <li class="tw-flex tw-gap-2 ">
-                            <i class="bi bi-check-circle-fill"></i>
-                            <span>Access to all premium AI models</span>    
-                        </li>
-
-                        <li class="tw-flex tw-gap-2 ">
-                            <i class="bi bi-check-circle-fill "></i>
-                            <span>Early access to new features</span>    
-                        </li>
-                  
-                    </ul>
-                    <a
-                        href="#"
-                        class="btn tw-mt-8 !tw-w-full tw-transition-transform tw-duration-[0.3s] 
-                                hover:tw-scale-x-[1.02] !tw-text-black !tw-bg-transparent 
-                                !tw-border-[1px] tw-border-black dark:tw-border-white dark:!tw-text-white"
-                    >
-                        Choose plan
-                    </a>
-                </div>
-
-            </div>
-        </section>
-
-        <section
-            class="tw-mt-5 tw-flex tw-min-h-[80vh] tw-w-full tw-flex-col tw-place-content-center tw-place-items-center tw-p-[2%] max-lg:tw-p-3"
-        >
-            <h3
-                class="reveal-up tw-text-4xl tw-font-medium max-md:tw-text-2xl"
-            >
-                Read resources by experts ✨
-            </h3>
-            <!-- articles -->
-        
-            <div
-                class="reveal-up tw-mt-10 tw-flex tw-flex-wrap tw-place-content-center tw-gap-10 max-lg:tw-flex-col"
-            >
-                <a
-                    href="#"
-                    class="tw-flex tw-h-[500px] tw-w-[400px] tw-flex-col tw-gap-2 tw-overflow-clip tw-rounded-lg tw-p-4 max-lg:tw-w-[350px]"
-                >
-                    <div
-                        class="tw-h-[350px] tw-min-h-[350px] tw-w-full tw-overflow-hidden tw-rounded-2xl"
-                    >
-                        <img
-                            src="./assets/images/home/article1.png"
-                            alt="article image"
-                            class="tw-h-full tw-w-full tw-object-cover tw-transition-transform tw-duration-700 hover:tw-scale-[1.3]"
-                            srcset=""
-                        />
-                    </div>
-
-                    <div class="tw-text-gray-600 dark:tw-text-gray-300 tw-justify-between tw-flex tw-gap-2">
-                        <div class="tw-text-gray-800 dark:tw-text-gray-200">
-                            Machine learning
-                        </div>
-                        <div class="tw-text-gray-600 dark:tw-text-gray-400">
-                            Jul, 17, 2024
-                        </div>
-                    </div>
-                    <h3
-                        class="tw-mt-1 tw-font-medium tw-text-xl max-md:tw-text-xl"
-                    >
-                        Latest AI tools
-                    </h3>
-                    
-                </a>
-                
-                <a
-                    href="#"
-                    class="tw-flex tw-h-[500px] tw-w-[400px] tw-flex-col tw-gap-2 tw-overflow-clip tw-rounded-lg tw-p-4 max-lg:tw-w-[350px]"
-                >
-                    <div
-                        class="tw-h-[350px] tw-min-h-[350px] tw-w-full tw-overflow-hidden tw-rounded-2xl"
-                    >
-                        <img
-                            src="./assets/images/home/article2.jpg"
-                            alt="article image"
-                            class="tw-h-full tw-w-full tw-object-cover tw-transition-transform tw-duration-700 hover:tw-scale-[1.3]"
-                            srcset=""
-                        />
-                    </div>
-
-                    <div class="tw-text-gray-600 dark:tw-text-gray-300 tw-justify-between tw-flex tw-gap-2">
-                        <div class="tw-text-gray-800 dark:tw-text-gray-200">
-                            Announcement
-                        </div>
-                        <div class="tw-text-gray-600 dark:tw-text-gray-400">
-                            June, 22, 2024
-                        </div>
-                    </div>
-                    <h3
-                        class="tw-mt-1 tw-font-medium tw-text-xl max-md:tw-text-xl"
-                    >
-                        Pixa Unveils new technology
-                    </h3>
-                    
-                </a>
-
-                <a
-                    href="#"
-                    class="tw-flex tw-h-[500px] tw-w-[400px] tw-flex-col tw-gap-2 tw-overflow-clip tw-rounded-lg tw-p-4 max-lg:tw-w-[350px]"
-                >
-                    <div
-                        class="tw-h-[350px] tw-min-h-[350px] tw-w-full tw-overflow-hidden tw-rounded-2xl"
-                    >
-                        <img
-                            src="./assets/images/home/article3.png"
-                            alt="article image"
-                            class="tw-h-full tw-w-full tw-object-cover tw-transition-transform tw-duration-700 hover:tw-scale-[1.3]"
-                            srcset=""
-                        />
-                    </div>
-
-                    <div class="tw-text-gray-600 dark:tw-text-gray-300 tw-justify-between tw-flex tw-gap-2">
-                        <div class="tw-text-gray-800 dark:tw-text-gray-200">
-                            Announcement
-                        </div>
-                        <div class="tw-text-gray-600 dark:tw-text-gray-400">
-                            Apr, 27, 2024
-                        </div>
-                    </div>
-                    <h3
-                        class="tw-mt-1 tw-font-medium tw-text-xl max-md:tw-text-xl"
-                    >
-                        Launching Pixa playground
-                    </h3>
-                    
-                </a>
-
             </div>
         </section>
 
@@ -1147,75 +494,92 @@
             class="tw-relative tw-flex tw-w-full tw-flex-col tw-place-content-center tw-place-items-center tw-gap-[10%] tw-p-[5%] tw-px-[10%]"
         >   
 
-
-            <h3
+            <h2
                 class="tw-text-4xl tw-font-medium max-md:tw-text-2xl"
+                data-block="home.faq.title"
             >
-                Faq
-            </h3>
+                FAQ
+            </h2>
             <div
                 class="tw-mt-5 tw-flex tw-min-h-[300px] tw-w-full tw-max-w-[850px] tw-flex-col tw-gap-4"
             >
-                <div
-                    class="faq tw-w-full"
-                >
-                    <h4
-                        class="faq-accordion tw-flex tw-w-full tw-select-none tw-text-xl max-md:tw-text-lg"
-                    >
-                        <span>What's Pixa playground?</span>
+                <div class="faq tw-w-full">
+                    <h4 class="faq-accordion tw-flex tw-w-full tw-select-none tw-text-xl max-md:tw-text-lg">
+                        <span data-block="home.faq.q1">Is this an official DeepSeek or Siemens product?</span>
                         <i class="bi bi-plus tw-text-xl tw-origin-center tw-duration-300 tw-transition-transform 
                                     tw-ml-auto tw-font-semibold"></i>
                     </h4>
-                    <div class="content max-lg:tw-text-sm">
-                        Pixa's playground is an integrated webapp to seamlessly test different LLM models such as GPT4, Claude,
-                        Gemini, etc.
+                    <div class="content max-lg:tw-text-sm" data-block="home.faq.a1">
+                        No. It is an unofficial DeepSeek Harness distribution plus our own TIA and engineering
+                        plugins. DeepSeek, Siemens and TIA Portal are named for reference only; the MIT license
+                        covers this repository, and TIA Portal / PLCSIM licensing stays with you.
                     </div>
                 </div>
                 <hr>
-                <div
-                    class="faq tw-w-full"
-                >
-                    <h4
-                        class="faq-accordion tw-flex tw-w-full tw-select-none tw-text-xl max-md:tw-text-lg"
-                    >
-                        <span>What are LLM?</span>
+                <div class="faq tw-w-full">
+                    <h4 class="faq-accordion tw-flex tw-w-full tw-select-none tw-text-xl max-md:tw-text-lg">
+                        <span data-block="home.faq.q2">What do I need to run it?</span>
                         <i class="bi bi-plus tw-text-xl tw-origin-center tw-duration-300 tw-transition-transform 
                                     tw-ml-auto tw-font-semibold"></i>
                     </h4>
-                    <div class="content max-lg:tw-text-sm">
-                        LLM stands for "Large Language Model." It's a type of artificial intelligence model trained on vast amounts of text data to understand and generate human-like text. These models, like GPT-4, can perform various tasks, such as answering questions, generating content, translating languages, and more, by leveraging patterns learned from the data they were trained on.
+                    <div class="content max-lg:tw-text-sm" data-block="home.faq.a2">
+                        Windows 10/11 x64 and DeepSeek Harness — the desktop setup fetches DSH if it is missing.
+                        The TIA tools need TIA Portal V17 with Openness, simulation needs PLCSIM Advanced with
+                        API 4.0, and the knowledge graph needs .NET 8.
                     </div>
                 </div>
                 <hr>
-                <div
-                    class="faq tw-w-full"
-                >
-                    <h4
-                        class="faq-accordion tw-flex tw-w-full tw-select-none tw-text-xl max-md:tw-text-lg"
-                    >
-                        <span>Where can I test different AI models?</span>
+                <div class="faq tw-w-full">
+                    <h4 class="faq-accordion tw-flex tw-w-full tw-select-none tw-text-xl max-md:tw-text-lg">
+                        <span data-block="home.faq.q3">Does it write into my project on its own?</span>
                         <i class="bi bi-plus tw-text-xl tw-origin-center tw-duration-300 tw-transition-transform 
                                     tw-ml-auto tw-font-semibold"></i>
                     </h4>
-                    <div class="content max-lg:tw-text-sm">
-                        You can use Pixa's AI Playground to test different models, including
-                        GPT4, Claude, Perplexity and more. 
+                    <div class="content max-lg:tw-text-sm" data-block="home.faq.a3">
+                        No. Reads are explicit calls; writes are tool calls with dry-run where it matters, run
+                        inside a TIA transaction and read back before they are reported as done. If verification
+                        fails, the transaction rolls back and the project is left as it was.
                     </div>
                 </div>
                 <hr>
 
-                <div
-                    class="faq tw-w-full"
-                >
-                    <h4
-                        class="faq-accordion tw-flex tw-w-full tw-select-none tw-text-xl max-md:tw-text-lg"
-                    >
-                        <span>Is Pixa Free to use?</span>
+                <div class="faq tw-w-full">
+                    <h4 class="faq-accordion tw-flex tw-w-full tw-select-none tw-text-xl max-md:tw-text-lg">
+                        <span data-block="home.faq.q4">How are changes versioned?</span>
                         <i class="bi bi-plus tw-text-xl tw-origin-center tw-duration-300 tw-transition-transform 
                                     tw-ml-auto tw-font-semibold"></i>
                     </h4>
-                    <div class="content max-lg:tw-text-sm">
-                        You can start using Pixa for free, and later upgrade your plan to access all its features.
+                    <div class="content max-lg:tw-text-sm" data-block="home.faq.a4">
+                        The project source is exported to text and committed to Git. The Versions panel reads the
+                        last commits, lists per-block changes and their kind — interface, code, comments,
+                        properties — so a change is reviewable instead of a binary blob.
+                    </div>
+                </div>
+                <hr>
+
+                <div class="faq tw-w-full">
+                    <h4 class="faq-accordion tw-flex tw-w-full tw-select-none tw-text-xl max-md:tw-text-lg">
+                        <span data-block="home.faq.q5">Does it need the cloud?</span>
+                        <i class="bi bi-plus tw-text-xl tw-origin-center tw-duration-300 tw-transition-transform 
+                                    tw-ml-auto tw-font-semibold"></i>
+                    </h4>
+                    <div class="content max-lg:tw-text-sm" data-block="home.faq.a5">
+                        It runs locally: shell, plugins and the TIA controller are all on your machine. The only
+                        outbound traffic is the model API you configure, plus GitHub and download.deepseek.com
+                        while installing.
+                    </div>
+                </div>
+                <hr>
+
+                <div class="faq tw-w-full">
+                    <h4 class="faq-accordion tw-flex tw-w-full tw-select-none tw-text-xl max-md:tw-text-lg">
+                        <span data-block="home.faq.q6">What is not there yet?</span>
+                        <i class="bi bi-plus tw-text-xl tw-origin-center tw-duration-300 tw-transition-transform 
+                                    tw-ml-auto tw-font-semibold"></i>
+                    </h4>
+                    <div class="content max-lg:tw-text-sm" data-block="home.faq.a6">
+                        V18 support, hardware configuration, online &amp; download, block comparison and
+                        cable/terminal drawings. The Roadmap page gives the honest status of each.
                     </div>
                 </div>
                 <hr>
@@ -1233,157 +597,98 @@
              <div class="reveal-up tw-w-full tw-h-full tw-min-h-[450px] max-lg:tw-max-w-full tw-rounded-md lg:tw-py-[5%] tw-bg-[#f6f7fb] dark:tw-bg-[#171717] tw-place-content-center tw-items-center 
                         tw-flex tw-flex-col tw-max-w-[80%] tw-gap-4 tw-p-4">
                
-                <h3 class="reveal-up tw-text-5xl tw-font-medium max-md:tw-text-3xl tw-text-center tw-leading-normal">
-                    Access and compare multiple AI models 
-                </h3>
-              
+                <h2 class="reveal-up tw-text-5xl tw-font-medium max-md:tw-text-3xl tw-text-center tw-leading-normal"
+                    data-block="home.end.title">
+                    Install it and open a project
+                </h2>
+                <p class="reveal-up tw-mt-2 tw-max-w-[600px] tw-text-center tw-text-gray-800 dark:tw-text-gray-200 max-md:tw-text-sm"
+                   data-block="home.end.note">
+                    One setup, a private DSH home, no build step. The TIA tools are ready once Portal V17
+                    is installed.
+                </p>
+
                 <div class="tw-mt-8 tw-relative tw-flex max-lg:tw-flex-col tw-gap-5">
 
-                    <a href="#" class="btn  reveal-up !tw-rounded-full !tw-p-4 tw-font-medium">
-                        Launch Playground
+                    <a href="get-started/" class="btn  reveal-up !tw-rounded-full !tw-p-4 tw-font-medium">
+                        <span data-block="home.end.cta" data-inline>Get started</span>
+                    </a>
+                    <a href="architecture/" class="btn reveal-up !tw-rounded-full !tw-p-4 tw-font-medium !tw-bg-transparent 
+                                                  !tw-text-black dark:!tw-text-white !tw-border-[1px] !tw-border-black dark:!tw-border-white">
+                        <span data-block="home.end.cta2" data-inline>Read the architecture</span>
                     </a>
                 </div>
 
-            </div>
-        </section>
-
-        <section
-            class="tw-flex tw-w-full tw-flex-col tw-place-content-center tw-place-items-center tw-gap-[10%] tw-p-[5%] tw-px-[10%] max-md:tw-px-2"
-        >
-            <div
-                class="tw-flex tw-w-full tw-max-w-[80%] tw-place-content-center tw-place-items-center tw-justify-between tw-gap-3 
-                        tw-rounded-lg tw-bg-[#F6F7FB] dark:tw-bg-[#171717] tw-p-6 max-md:tw-max-w-full max-md:tw-flex-col"
-            >
-                <div class="tw-flex tw-flex-col max-lg:tw-text-center tw-gap-1">
-                    <h2 class="tw-text-2xl tw-text-gray-800 dark:tw-text-gray-200 max-md:tw-text-xl">
-                        Join our newsletter
-                    </h2>
-                    <div class="tw-text-gray-700 dark:tw-text-gray-300">Get product insights and updates.</div>
-                </div>
-
-                <div
-                    class="tw-flex tw-h-[60px] tw-place-items-center tw-gap-2 tw-overflow-hidden tw-p-2"
-                >
-                    <input
-                        type="email"
-                        class="input tw-h-full tw-w-full !tw-border-gray-600 tw-p-2 tw-outline-none"
-                        placeholder="email"
-                    />
-                    <a
-                        class="btn !tw-rounded-full !tw-border-[1px] !tw-text-black !tw-border-solid !tw-border-black  dark:!tw-text-white
-                            dark:!tw-border-gray-300 !tw-bg-transparent tw-transition-colors tw-duration-[0.3s]"
-                        href=""
-                    >
-                        Signup
-                    </a>
-                </div>
             </div>
         </section>
 
         <footer
-            class="tw-mt-auto tw-flex tw-flex-col tw-w-full tw-gap-4 tw-text-sm tw-pt-[5%] tw-pb-10 tw-px-[10%] 
-                    tw-text-black dark:tw-text-white max-md:tw-flex-col"
+            class="tw-mt-auto tw-flex tw-flex-col tw-w-full tw-text-sm tw-text-black dark:tw-text-white"
+            style="padding: 48px 6% 40px;"
         >
-            <div class="tw-flex max-md:tw-flex-col max-md:tw-gap-6 tw-gap-3 tw-w-full tw-place-content-around">
-                <div
-                    class="tw-flex tw-h-full tw-w-[250px] tw-flex-col tw-place-items-center tw-gap-6 max-md:tw-w-full"
-                >   
-                    <a href="#" class="tw-w-full tw-place-items-center tw-flex tw-flex-col tw-gap-6">
-                        <img
-                            src="./assets/logo/logo.png"
-                            alt="logo"
-                            srcset=""
-                            class="tw-max-w-[120px] dark:tw-invert"
-                        />
-                        <div class="tw-max-w-[120px] tw-text-center tw-text-3xl tw-h-fit">
-                            PIXA
-                        </div>
+            <div style="display:flex; flex-wrap:wrap; gap:40px; align-items:flex-start; justify-content:space-between;
+                        width:100%; max-width:1100px; margin:0 auto;">
+                <div style="display:flex; flex-direction:column; align-items:center; gap:18px; flex:0 1 220px; min-width:190px;">
+                    <a href="./" style="display:flex; flex-direction:column; align-items:center; gap:14px; text-align:center;">
+                        <img src="./assets/logo/app.png" alt="dsh-automation-suite" width="72" height="72"
+                             style="width:72px; height:72px; display:block;">
+                        <span style="font-size:16px; line-height:1.3;">dsh-automation-suite</span>
                     </a>
-                    <!-- <div class="tw-mt-3 tw-text-lg tw-font-semibold">Follow us</div> -->
-                    <div class="tw-flex tw-gap-4 tw-text-lg">
-                        <a
-                            href="https://github.com/PaulleDemon/"
-                            aria-label="Github"
-                        >
+                    <div style="display:flex; gap:18px; font-size:18px;">
+                        <a href="https://github.com/voltarenyah/dsh-automation-suite" aria-label="GitHub" title="GitHub">
                             <i class="bi bi-github"></i>
                         </a>
-                        <a
-                            href="https://twitter.com/pauls_freeman"
-                            aria-label="Twitter"
-                        >
-                            <i class="bi bi-twitter"></i>
-                        </a>
-                      
-                        <a
-                            href="https://www.linkedin.com/"
-                            aria-label="Linkedin"
-                        >
-                            <i class="bi bi-linkedin"></i>
+                        <a href="https://github.com/voltarenyah/dsh-automation-suite/releases" aria-label="Releases" title="Releases">
+                            <i class="bi bi-box-arrow-down"></i>
                         </a>
                     </div>
-
                 </div>
 
-                <div class="tw-flex max-md:tw-flex-col tw-flex-wrap tw-gap-6 tw-h-full tw-w-full tw-justify-around">
-                    <div class="tw-flex tw-h-full tw-w-[200px] tw-flex-col tw-gap-4">
-                        <h2 class="tw-text-xl">Resources</h2>
-                        <div class="tw-flex tw-flex-col tw-gap-3">
-                            <a href="#" class="footer-link">Getting started</a>
-                            <a href="#" class="footer-link">API Docs</a>
-                            <a href="#" class="footer-link">API Endpoints</a>
-                            <a href="#" class="footer-link">Health status</a>
-                            <a href="#" class="footer-link">Pricing</a>
-                        </div>
+                <div style="display:flex; flex-wrap:wrap; gap:28px 48px; flex:1 1 520px; justify-content:flex-start;">
+                    <div style="display:flex; flex-direction:column; gap:12px; min-width:130px;">
+                        <h2 style="font-size:16px; font-weight:600;" data-block="home.foot.product">Product</h2>
+                        <a href="architecture/" class="footer-link" data-block="home.foot.arch" data-inline>Architecture</a>
+                        <a href="roadmap/" class="footer-link" data-block="home.foot.road" data-inline>Roadmap</a>
+                        <a href="get-started/" class="footer-link" data-block="home.foot.start" data-inline>Get started</a>
+                        <a href="https://github.com/voltarenyah/dsh-automation-suite/releases" class="footer-link" data-block="home.foot.releases" data-inline>Releases</a>
                     </div>
 
-
-                    <div class="tw-flex tw-h-full tw-w-[200px] tw-flex-col tw-gap-4">
-                        <h2 class="tw-text-xl">Company</h2>
-                        <div class="tw-flex tw-flex-col tw-gap-3">
-                            <a href="#" class="footer-link">Support channels</a>
-                            <a href="#" class="footer-link">Systems</a>
-                            <a href="#" class="footer-link">Blog</a>
-                            <a href="https://twitter.com/pauls_freeman" class="footer-link">Twitter</a>
-                            <a href="https://github.com/PaulleDemon" class="footer-link">Github</a>
-                        </div>
+                    <div style="display:flex; flex-direction:column; gap:12px; min-width:130px;">
+                        <h2 style="font-size:16px; font-weight:600;" data-block="home.foot.repo">Repository</h2>
+                        <a href="https://github.com/voltarenyah/dsh-automation-suite" class="footer-link" data-block="home.foot.github" data-inline>GitHub</a>
+                        <a href="https://github.com/voltarenyah/dsh-automation-suite/blob/main/README.md" class="footer-link" data-block="home.foot.readme" data-inline>README</a>
+                        <a href="https://github.com/voltarenyah/dsh-automation-suite/blob/main/LICENSE" class="footer-link" data-block="home.foot.license" data-inline>MIT license</a>
                     </div>
 
-                    <div class="tw-flex tw-h-full tw-w-[200px] tw-flex-col tw-gap-4">
-                        <h2 class="tw-text-xl">Legal</h2>
-                        <div class="tw-flex tw-flex-col tw-gap-3">
-                            <a href="#" class="footer-link">Terms of service</a>
-                            <a href="#" class="footer-link">Privacy Policy</a>
-                            <a href="#" class="footer-link">DCMA - Content Takedown</a>
-                        </div>
+                    <div style="display:flex; flex-direction:column; gap:12px; min-width:190px; max-width:280px;">
+                        <h2 style="font-size:16px; font-weight:600;" data-block="home.foot.notes">Notes</h2>
+                        <span class="tw-text-gray-700 dark:tw-text-gray-300" data-block="home.foot.disclaimer">Unofficial project. Not affiliated with DeepSeek or Siemens.</span>
+                        <span class="tw-text-gray-700 dark:tw-text-gray-300" data-block="home.foot.trademark">TIA Portal and SIMATIC are trademarks of Siemens AG, named here for reference only.</span>
                     </div>
                 </div>
             </div>
 
-            <hr class="tw-mt-8">
-            <div class="tw-mt-2 tw-flex tw-gap-2 tw-flex-col tw-text-gray-700 dark:tw-text-gray-300 tw-place-items-center 
-                    tw-text-[12px] tw-w-full tw-text-center tw-place-content-around">
-                <span>Copyright &#169; 2023-2025</span>
-                <span>All trademarks and copyrights belong to their respective owners.</span>
+            <hr style="width:100%; max-width:1100px; margin:28px auto 0; border:0; border-top:1px solid rgba(128,128,128,.25);">
+            <div style="display:flex; flex-direction:column; gap:6px; align-items:center; text-align:center;
+                        font-size:12px; opacity:.75; margin-top:10px;">
+                <span data-block="home.foot.copy">© 2026 dsh-automation-suite · MIT</span>
+                <span data-block="home.foot.checked">Last checked 2026-11-09</span>
             </div>
-
         </footer>
+
+        <script
+            src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.0/gsap.min.js"
+            integrity="sha512-B1lby8cGcAUU3GR+Fd809/ZxgHbfwJMp0jLTVfHiArTuUt++VqSlJpaJvhNtRf3NERaxDNmmxkdx2o+aHd4bvw=="
+            crossorigin="anonymous"
+            referrerpolicy="no-referrer"
+        ></script>
+        <script
+            src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.0/ScrollTrigger.min.js"
+            integrity="sha512-AY2+JxnBETJ0wcXnLPCcZJIJx0eimyhz3OJ55k2Jx4RtYC+XdIi2VtJQ+tP3BaTst4otlGG1TtPJ9fKrAUnRdQ=="
+            crossorigin="anonymous"
+            referrerpolicy="no-referrer"
+        ></script>
+
+        <script src="./index.js?v=20261109"></script>
+        <script src="./assets/main.js?v=20261109"></script>
     </body>
-
-    <script
-        src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.0/gsap.min.js"
-        integrity="sha512-B1lby8cGcAUU3GR+Fd809/ZxgHbfwJMp0jLTVfHiArTuUt++VqSlJpaJvhNtRf3NERaxDNmmxkdx2o+aHd4bvw=="
-        crossorigin="anonymous"
-        referrerpolicy="no-referrer"
-    ></script>
-    <script
-        src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.0/ScrollTrigger.min.js"
-        integrity="sha512-AY2+JxnBETJ0wcXnLPCcZJIJx0eimyhz3OJ55k2Jx4RtYC+XdIi2VtJQ+tP3BaTst4otlGG1TtPJ9fKrAUnRdQ=="
-        crossorigin="anonymous"
-        referrerpolicy="no-referrer"
-    ></script>
-
-    <script src="./scripts/components.js"></script>
-    <script src="./index.js"></script>
-
-    <!-- By Paul: https://github.com/PaulleDemon -->
 </html>
