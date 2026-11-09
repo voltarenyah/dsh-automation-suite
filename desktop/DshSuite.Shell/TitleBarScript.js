@@ -52,6 +52,7 @@
     about: () => pick("关于 DSH Automation Suite", "About DSH Automation Suite"),
     logs: () => pick("打开日志", "Open Logs"),
     doctor: () => pick("运行诊断", "Run Doctor"),
+    issues: () => pick("报告问题…", "Report Issues…"),
     exit: () => pick("退出", "Exit"),
     undo: () => pick("撤销", "Undo"),
     redo: () => pick("重做", "Redo"),
@@ -455,6 +456,7 @@
       { label: labels.about, run: () => post({ type: "app", action: "about" }) },
       { label: labels.logs, run: () => post({ type: "app", action: "logs" }) },
       { label: labels.doctor, run: () => post({ type: "app", action: "doctor" }) },
+      { label: labels.issues, run: () => post({ type: "app", action: "issues" }) },
       { type: "separator" },
       { label: labels.exit, run: () => post({ type: "app", action: "exit" }) },
     ];

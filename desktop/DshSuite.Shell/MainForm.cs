@@ -20,6 +20,9 @@ internal sealed class MainForm : Form
 {
     private const string TitleBarResource = "DshSuite.Shell.TitleBarScript.js";
 
+    /// <summary>Where "Report Issues…" sends the user (default browser).</summary>
+    private const string IssuesUrl = "https://github.com/voltarenyah/dsh-automation-suite/issues";
+
     private readonly string _appDir;
     private readonly string _dshHome;
     private readonly string _profile;
@@ -68,6 +71,7 @@ internal sealed class MainForm : Form
         var menu = new ContextMenuStrip();
         menu.Items.Add("Open", null, (_, _) => RestoreWindow());
         menu.Items.Add("Doctor", null, async (_, _) => await ShowDoctorAsync());
+        menu.Items.Add("Report issues", null, (_, _) => OpenIssues());
         menu.Items.Add("Open logs", null, (_, _) => OpenLogs());
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add("Exit", null, (_, _) => ExitApp());
@@ -382,6 +386,9 @@ internal sealed class MainForm : Form
             case "doctor":
                 _ = ShowDoctorAsync();
                 break;
+            case "issues":
+                OpenIssues();
+                break;
             case "exit":
                 ExitApp();
                 break;
@@ -577,15 +584,36 @@ internal sealed class MainForm : Form
         }
     }
 
-    private static void OpenExternal(string uri)
+    /// <summary>
+    /// Hand the issue tracker to the user's default browser. The URL is also
+    /// written to the shell log so a support report can show which tracker the
+    /// menu tried to open. If no browser can be started the link is still
+    /// readable (and copyable with Ctrl+C) from the fallback dialog.
+    /// </summary>
+    private void OpenIssues()
+    {
+        _log.Write("shell", $"opening the issue tracker: {IssuesUrl}");
+        if (OpenExternal(IssuesUrl)) return;
+
+        var zh = CultureInfo.CurrentUICulture.TwoLetterISOLanguageName == "zh";
+        var text = zh
+            ? $"无法打开默认浏览器。请手动访问：\n\n{IssuesUrl}"
+            : $"Could not start the default browser. Open this address manually:\n\n{IssuesUrl}";
+        MessageBox.Show(this, text, zh ? "报告问题" : "Report Issues",
+            MessageBoxButtons.OK, MessageBoxIcon.Warning);
+    }
+
+    private static bool OpenExternal(string uri)
     {
         try
         {
             Process.Start(new ProcessStartInfo(uri) { UseShellExecute = true });
+            return true;
         }
         catch
         {
             // The default browser is the user's choice; failure is not fatal.
+            return false;
         }
     }
 

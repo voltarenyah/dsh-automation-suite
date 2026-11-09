@@ -8,6 +8,13 @@ GitHub Releases 与 git tag `v<version>` 对齐（发布流程见 [`docs/release
 
 ## [Unreleased]
 
+### Added
+
+- **`Application → 报告问题…`（Report Issues…）**：桌面壳标题栏菜单新增一项，用默认浏览器打开
+  <https://github.com/voltarenyah/dsh-automation-suite/issues>，方便用户提交 bug；托盘菜单同时
+  增加 `Report issues`。点击会写一条壳日志（`opening the issue tracker: <url>`），取消不了浏览器
+  启动时弹框给出可复制地址。
+
 ### Fixed
 
 - **桌面壳最大化后任务栏点不动**：无边框窗口（`WS_POPUP` 家族）最大化时按整个显示器取尺寸，
