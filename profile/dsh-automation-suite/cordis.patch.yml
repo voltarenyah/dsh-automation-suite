@@ -55,6 +55,14 @@
 #    删除了 tool-subagent-codex / tool-subagent-claude-code / tool-ralph（本文件随之移除），
 #    去掉了 dsh-tool-subagent 上已不存在的 `backgroundMode`，并更新了 plan-mode 的 section 文案。
 #
+#    2026-11-10 针对 DSH 0.2.2-rc.1 的兼容修复（未整份重新生成，只改必要的两处）：
+#    • `@deepseek-ai/dsh-tool-subagent-control` 取消 `/list-agents` 子路径（list_agents
+#      并回默认导出），删除了 `tool-subagent-list-agents` 行——留着它会让 preset 校验以
+#      `agent-preset/invalid: tool-subagent-list-agents (…/list-agents): never started`
+#      拒绝新建会话；升级宿主后必须按新版 `standard.patch.yml` 重核这份清单。
+#    • `tool-subagent` 的 `modelSelectionSettings: true` 换成 0.2.2 的
+#      `modelSelection: true` + `modelDiscovery: true`。
+#
 # ⚠️ 用户若在 UI 里手动选过 preset，注册表条目的 volatile 字段 `selectedDefault` 会优先
 #    于这里的部署默认值（见 dsh-agent-preset-registry README）。改 preset **id** 会让
 #    记录着旧 id 的会话与独立选过 preset 的子会话无法恢复（docs/decisions.md D23）：
@@ -405,10 +413,12 @@
             isolate:
               workflowEngine: true
             config:
+              # 0.2.2-rc.1 起 `dsh-tool-subagent-control` 只剩默认导出
+              # （list_agents 并回默认导出），不再有 `/list-agents` 子路径；
+              # 旧行会让整个 preset 校验失败（agent-preset/invalid … never started），
+              # 新会话直接起不来。别再把它加回来。
               - id: tool-subagent-control
                 name: '@deepseek-ai/dsh-tool-subagent-control'
-              - id: tool-subagent-list-agents
-                name: '@deepseek-ai/dsh-tool-subagent-control/list-agents'
               # 子 agent 可以挂两个独立 preset：`expert`（默认，只读知识专家）与
               # `auditor`（版本管理，跑创建/同步/差异/提交/图谱刷新这些分钟级任务）。
               # `allowedAgentPresets` 同时给出模型可选的枚举，所以默认值必须在其中。
@@ -418,7 +428,8 @@
                 config:
                   provider: spawn
                   toolName: subagent
-                  modelSelectionSettings: true
+                  modelSelection: true
+                  modelDiscovery: true
                   agentPreset: expert
                   allowedAgentPresets:
                     - expert

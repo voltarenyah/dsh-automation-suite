@@ -6,6 +6,18 @@
 格式参考 [Keep a Changelog](https://keepachangelog.com/)；日期为本地日期；版本从
 GitHub Releases 与 git tag `v<version>` 对齐（发布流程见 [`docs/releases.md`](docs/releases.md)）。
 
+## [Unreleased]
+
+### Fixed
+
+- **新会话创建失败（`agent-preset/invalid`）**：DSH `0.2.2-rc.1` 起
+  `@deepseek-ai/dsh-tool-subagent-control` 只剩默认导出（`list_agents` 并回默认导出），
+  `preset-leader` 里按 0.2.1 写的 `tool-subagent-list-agents`
+  （`…/dsh-tool-subagent-control/list-agents`）行导致整个 preset 校验失败，
+  点「New Session」报 `agent-preset/invalid: … never started`。已删除该行，
+  并把 `tool-subagent` 的 `modelSelectionSettings: true` 换成 0.2.2 的
+  `modelSelection: true` + `modelDiscovery: true`。
+
 ## [0.2.4] - 2026-11-10
 
 桌面壳交互修正与问题反馈入口；插件与 profile 与 0.2.3 相同，安装流程不变。
