@@ -6,7 +6,9 @@
 格式参考 [Keep a Changelog](https://keepachangelog.com/)；日期为本地日期；版本从
 GitHub Releases 与 git tag `v<version>` 对齐（发布流程见 [`docs/releases.md`](docs/releases.md)）。
 
-## [Unreleased]
+## [0.2.4] - 2026-11-10
+
+桌面壳交互修正与问题反馈入口；插件与 profile 与 0.2.3 相同，安装流程不变。
 
 ### Added
 
