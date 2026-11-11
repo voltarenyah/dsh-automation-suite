@@ -100,7 +100,7 @@ button { font: inherit; color: inherit; background: none; border: 0; cursor: poi
   -webkit-backdrop-filter: blur(16px) saturate(140%);
 }
 .brand { display: inline-flex; align-items: center; gap: 8px; font-weight: 600; letter-spacing: -0.02em; white-space: nowrap; }
-.brand svg { width: 20px; height: 20px; }
+.brand svg, .brand img { width: 20px; height: 20px; display: block; }
 .brand span { font-size: 14.5px; }
 
 .nav { display: flex; align-items: center; gap: 4px; margin-left: 8px; }
@@ -356,6 +356,24 @@ code { font-family: var(--mono); font-size: 0.9em; }
 .kv dt { font-family: var(--mono); font-size: 10.5px; letter-spacing: 0.11em; text-transform: uppercase; color: var(--muted); padding-top: 2px; }
 .kv dd { font-size: 14.5px; color: var(--ink-2); text-wrap: pretty; }
 
+/* key column with a product icon tile: the row is identifiable at a glance */
+.kv--icons > div { padding-block: 16px; }
+.kv--icons dt {
+  display: flex; align-items: center; gap: 12px;
+  font-family: var(--sans); font-size: 14.5px; font-weight: 600;
+  letter-spacing: -0.005em; text-transform: none; color: var(--ink); padding-top: 0;
+}
+.kv--icons .kv-icon {
+  flex: none; width: 36px; height: 36px; border-radius: 10px;
+  display: grid; place-items: center;
+  border: 1px solid var(--line);
+  background: color-mix(in srgb, var(--ink) 4%, var(--panel));
+  color: var(--ink);
+}
+.kv--icons .kv-icon svg { width: 19px; height: 19px; display: block; }
+.kv--icons .kv-name { line-height: 1.3; }
+.kv--icons dd { padding-top: 7px; }
+
 /* ---------- steps ---------- */
 .steps { display: grid; gap: 14px; }
 .steps li {
@@ -434,6 +452,26 @@ html:not(.dark) .copy.is-done { color: var(--ok); }
 .linkrow { margin-top: 18px; display: flex; align-items: center; gap: 8px; }
 .link { font-size: 14px; border-bottom: 1px solid var(--line-2); padding-bottom: 2px; transition: color 0.2s, border-color 0.2s; }
 .link:hover { color: var(--accent); border-color: var(--accent); }
+
+/* download pointer above the walkthrough: the link has to look clickable */
+.dl-cta .prose a {
+  color: var(--accent); font-weight: 600;
+  border-bottom: 1px solid color-mix(in srgb, var(--accent) 45%, transparent);
+  padding-bottom: 1px; transition: border-color 0.2s, color 0.2s;
+}
+.dl-cta .prose a:hover { border-bottom-color: var(--accent); }
+html.dark .dl-cta .prose a { color: #a78bfa; border-bottom-color: color-mix(in srgb, #a78bfa 45%, transparent); }
+html.dark .dl-cta .prose a:hover { border-bottom-color: #a78bfa; }
+
+/* links that carry a real URL inside a key/value row (e.g. the Git download) */
+.kv dd a {
+  color: var(--accent); font-weight: 500;
+  border-bottom: 1px solid color-mix(in srgb, var(--accent) 40%, transparent);
+  padding-bottom: 0.5px; transition: border-color 0.2s;
+}
+.kv dd a:hover { border-bottom-color: var(--accent); }
+html.dark .kv dd a { color: #a78bfa; border-bottom-color: color-mix(in srgb, #a78bfa 40%, transparent); }
+html.dark .kv dd a:hover { border-bottom-color: #a78bfa; }
 
 /* ---------- footer ---------- */
 .foot { border-top: 1px solid var(--line); padding-block: 36px 44px; margin-top: clamp(48px, 7vw, 80px); }
@@ -604,6 +642,8 @@ html[lang="zh-CN"] .page-head h1 { letter-spacing: 0; }
   .cta-band { grid-template-columns: 1fr; }
   .cta-band .actions { justify-content: flex-start; }
   .kv > div { grid-template-columns: 1fr; gap: 4px; }
+  .kv--icons > div { gap: 10px; }
+  .kv--icons dd { padding-top: 0; }
   .assembly__note { margin-left: 0; }
 }
 

@@ -410,9 +410,16 @@ hr{
 .site-brand {
     display: flex;
     align-items: center;
+    gap: 8px;
     flex-shrink: 0;
     white-space: nowrap;
     padding: 4px;
+}
+.site-brand img {
+    width: 20px;
+    height: 20px;
+    display: block;
+    flex: none;
 }
 .site-brand span {
     font-size: 15px;
