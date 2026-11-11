@@ -6,10 +6,30 @@
 格式参考 [Keep a Changelog](https://keepachangelog.com/)；日期为本地日期；版本从
 GitHub Releases 与 git tag `v<version>` 对齐（发布流程见 [`docs/releases.md`](docs/releases.md)）。
 
-## [Unreleased]
+## [0.2.5] - 2026-11-11
+
+修复桌面安装包「Plugins 页无法安装插件」，并更新 PLCSIM 与 TIA 插件；安装流程不变（仍为
+per-user setup），但 profile 现在随安装包保留自带的 tarball 与 lockfile。
 
 ### Fixed
 
+- **桌面版无法从 Plugins 页安装任何插件**（0.2.0–0.2.5）：两个独立阻塞。(1) app layer 在
+  staging 目录里物化后把 pnpm 的 `node_modules/.modules.yaml`（`storeDir` / `virtualStoreDir`
+  指向构建机路径）原样复制出去，pnpm 在解析依赖前就报 `ERR_PNPM_UNEXPECTED_VIRTUAL_STORE`
+  （换用户名时是 `ERR_PNPM_UNEXPECTED_STORE`）。(2) build 又删掉 `tarballs/` 与 `pnpm-lock.yaml`，
+  把 15 个私有插件改写成裸版本号 —— 它们不在任何 registry 上，`pnpm add` 重新解析直接
+  `ERR_PNPM_FETCH_404`。现在 app layer 保留 `tarballs/`、`pnpm-lock.yaml` 与 `file:` 规格；安装器
+  复制后用 `scripts/normalize-profile-pnpm.mjs` 按本机 pnpm 实际使用的 store 重写
+  `.modules.yaml` 与 workspace state（写后校验，失败回滚），Inno 脚本一并携带该脚本；doctor 新增
+  插件安装检查，元数据与本机不符时 **fail** 而不是 warn。
+- **只在安全程序里改动时无法进入同步闸门**：PLC checksum 只覆盖编译后的标准程序，仅改 F 程序时
+  `project_sync` 的 checksum 快路径回 `unchanged`，`project_commit` 报 "Nothing to commit"。现在
+  `project_sync` 接受 `force`（传给控制器 `force_scan`，跳过快路径）；快路径被跳过时结果会明确
+  标注，`project_status` 用 `checksum-matches` 与 "Safety program: NOT compared" 取代误导性的
+  `in-sync`。
+- **导出清单丢失被跳过对象**：一次全部跳过的导出不再把 `_manifest.json` 写成空块表，被跳过的
+  对象保留原有行并按盘上文件核对；`overwrite=true` 改为写同目录临时文件后 `File.Replace`，
+  Openness 拒绝覆盖时原文件保持不变，而不是被替换成失败记录。
 - **新会话创建失败（`agent-preset/invalid`）**：DSH `0.2.2-rc.1` 起
   `@deepseek-ai/dsh-tool-subagent-control` 只剩默认导出（`list_agents` 并回默认导出），
   `preset-leader` 里按 0.2.1 写的 `tool-subagent-list-agents`
@@ -17,6 +37,40 @@ GitHub Releases 与 git tag `v<version>` 对齐（发布流程见 [`docs/release
   点「New Session」报 `agent-preset/invalid: … never started`。已删除该行，
   并把 `tool-subagent` 的 `modelSelectionSettings: true` 换成 0.2.2 的
   `modelSelection: true` + `modelDiscovery: true`。
+
+### Added
+
+- **PLCSIM Advanced 快照按工作区保存**：快照根目录由会话工作区推导
+  （`<workspace>/.dsh/simulation/`），并以 `snapshot_root` 随每次请求传给控制器；
+  `snapshotRoot` 留空即按工作区，显式赋值仍固定共享目录。`simulation_instance(action="snapshots")`
+  与 `simulation_status` 列出工作区快照和 Runtime Manager 里仍活着的实例；存在快照时 `create`
+  以 `snapshots_available` 拒绝，除非 `confirm_new=true`，让用户先选「resume 旧快照还是新建」。
+  工具说明明确证书规则：新虚拟设备（新 MAC）首次连接需在 TIA Portal UI 点一次 Connect，
+  resume/restore 沿用原身份则跳过。结果始终带 `Key facts:` 行（name/state/cpuType/ip/snapshots）。
+- **F-CPU 仿真型号**：`cpu_type` 增加 `1511F`…`1518F`，`cpu_model` 接受订货号/型号名
+  （A = 标准，F = 故障安全）；`unspecified` 仍可用。PLCSIM Advanced V7 不能把 F 工程数据下到
+  标准 CPU 实例（手册 §7.4），V17 Openness 对 F 激活 PLC 一律 `download_unavailable`，因此这一步
+  必须由用户在 TIA Portal UI 完成。
+- **TIA 接口族多成员路线（D36）**：新增 `docs/tia-version-members.md`，冻结 V17/V18 的共存与替换
+  路线：一族多包、插件页 bundle 开关激活、同一时刻只激活一个、切换后重启客户端。本版无代码变化。
+
+### Changed
+
+- 站点统一使用桌面壳的品牌图标作为 favicon 与页头 mark；安装页增加 Releases 下载指引；Git CLI 行
+  链接到 Git for Windows 官方下载页；首页文案改为 "Free, Open source, customizable by yourself."。
+- 仓库忽略 `.scratch/` 与仓库内的 `.pnpm-store/` 等机器本地产物。
+
+### Verified
+
+- `build-app-layer --version 0.2.5`：15 个 tarball（33.8 MiB）、16 个依赖、离线 `--dump-config`
+  2205 行 / 47 个插件行、doctor 11 ok / 2 warn / 0 fail、图谱引擎 self-test OK。
+- 壳 `build-shell.ps1 -SmokeTest` 与安装后的 `DshSuite.Shell.exe --smoke-test`：
+  `{"ok": true, "navigation": "completed"}`。
+- 0.2.5 静默安装（隔离目录与 DSH_HOME）：exit 0，`install.json` / `current.txt` / profile 物化，
+  `normalize` 重写 virtual store，doctor 11 ok / 2 warn / 0 fail；0.2.4 → 0.2.5 升级：备份旧
+  profile、三方合并、doctor 通过。
+- 安装后的 profile 里 `dsh plugin add` 连续两次成功，自带 `file:` 依赖未丢，`--dump-config`
+  仍能组合（2207 行 / 48 行，含新增插件）；`scripts/test-plugin-add.mjs` 13 项全通过。
 
 ## [0.2.4] - 2026-11-10
 

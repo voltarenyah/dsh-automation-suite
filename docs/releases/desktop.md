@@ -51,8 +51,20 @@ dist\desktop\<version>\dsh-automation-suite-setup-<version>.exe
 
 ## 3. 安装 smoke（每次）
 
+> **先把 setup 复制到工作区外再运行。** 在本仓库的 DSH 会话里，`dist/` 下的文件会被沙箱标成
+> Low integrity；从那里直接启动时 Inno 的 SetupLdr 也以 Low IL 运行，创建 `%TEMP%\is-*.tmp`
+> 会报 `Setup was unable to create the directory ... Error 5: Access is denied`（0.2.4 / 0.2.5
+> 实测，与安装器内容无关）。把同一个 exe 复制到 `C:\temp` 后 exit 0 —— 发布到 GitHub 的资产
+> 不带这个标签，用户下载后不受影响。所以 smoke 一律从复制品跑：
+>
+> ```powershell
+> Copy-Item "dist\desktop\$version\dsh-automation-suite-setup-$version.exe" "C:\temp\setup-$version.exe"
+> ```
+>
+> 并且复制品与 `dist/` 原件的 SHA-256 必须一致；`desktop-manifest.json` 记录的是原件的哈希。
+
 ```powershell
-$setup = "dist\desktop\$version\dsh-automation-suite-setup-$version.exe"
+$setup = "C:\temp\setup-$version.exe"
 $dir   = "C:\temp\dsh-release-install-$version"
 $home  = "C:\temp\dsh-release-home-$version"
 
