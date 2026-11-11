@@ -67,7 +67,16 @@ knowledge/**/*.db*
 # Ad-hoc scratch work (derived scripts, intermediate dumps) that agents create
 # while investigating a workspace. Never a deliverable: disposable by definition,
 # so it stays out of git. Deliverable reports go to the workspace root instead.
+# `.scratch/` is the directory agents actually use (the old `/temp/` rule never
+# matched it, so months of dumps sat untracked in `git status`); both names are
+# covered so either convention works.
+/.scratch/
 /temp/
+
+# Local pnpm content-addressable store created when a script runs pnpm with
+# `--store-dir` inside the repo (e.g. the desktop app-layer build). Machine-local
+# package cache: regenerable, never source.
+/.pnpm-store/
 # Electrical drawings ingested by the drawing plugin (packages/dsh-drawing):
 #   drawing/<name>.pdf   the copy made at ingest — a large binary whose source of
 #                        truth is wherever the user keeps it
