@@ -805,6 +805,13 @@ scripts/knowledge/build-skills.mjs  知识库同步（联网重取上游）与�
   控制器逐块报告（`data.failures[]`）并继续；**导入必须指定块原来所在的组**（`target_group`），
   且"导入后重新导出"要放在编译之后。三条约束见
   [`docs/FUNCTIONAL-TEST.md`](docs/FUNCTIONAL-TEST.md) §8.5。
+- **F-CPU（安全型）工程的仿真/下载**：项目数据不能下到标准 CPU 的 PLCSIM Advanced 实例
+  （PLCSIM Advanced V7 手册 §7.4 "Loading project data of an F-CPU to a standard CPU is not
+  possible"；TIA 报"虚拟 PLC 型号与项目 PLC 型号不符"）。实例必须用 `unspecified` 或同型号 F；
+  且 V17 Openness 对 F 激活 PLC 一律 `download_unavailable`（限制 R16），只能从 **TIA Portal UI**
+  下载。模型在用户要求仿真安全型 PLC 时必须先说明"套件无法自动完成下载/仿真"，不要报运行缺失。
+  详见 [`docs/HANDOFF-PLCSIM-DOWNLOAD.md`](docs/HANDOFF-PLCSIM-DOWNLOAD.md) §10.4 与本包
+  `skills/tia-openness/SKILL.md`。
 - **块、PLC 类型与标签表仍是核心，但已不止于此**：`export_blocks` / `import_blocks` 用 `categories` 选择
   `blocks`（默认）/`types`（PLC 数据类型 UDT）/`tag_tables`，三族对象互不冲突；
   v0.2 又补上工程生命周期与工程数据（`create_project`/`save_project`/`archive_project`/`project_info`/

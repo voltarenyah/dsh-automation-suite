@@ -2582,7 +2582,10 @@ export function registerTools(ctx, dependencies) {
             'a fixed safe policy (stop modules, consistent download, passwords from password / block_binding_password, ' +
             'never lower protection, never reset modules) and every configuration TIA asked about is returned in ' +
             'data.configurations. V17 cannot download to an F-activated PLC at all — the controller refuses with ' +
-            'download_unavailable. Maps to the Download operation. Fails with download_target_required, ' +
+            'download_unavailable. For an F-CPU (fail-safe) project, download from the TIA Portal UI instead, and note ' +
+            'that the PLCSIM Advanced instance must be created as an F-CPU or an unspecified CPU (a standard family ' +
+            'instance is rejected as "virtual PLC model does not match the project PLC model"; PLCSIM Advanced V7 ' +
+            'manual §7.4). Maps to the Download operation. Fails with download_target_required, ' +
             'download_target_mismatch, online_session_device_mismatch, download_unavailable, confirmation_required, ' +
             'real_device_confirmation_required, download_failed.',
         parameters: {
