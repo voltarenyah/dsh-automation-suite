@@ -77,6 +77,12 @@ A18–A20 与 B18 是为**参考项目**（TIA 的 reference project）新加的
 **答复**：
 A，现在先做V17,后续增加第二个版本需要考虑抽包。
 
+**补充（2026-11-11，D36）**："后续增加第二个版本需要考虑抽包"这一步的**形态已经定下来了**：
+每版本一包（包名带版本，V18 起为 `@voltarenyah/dsh-tia-openness-v18`）、同一时刻只激活一个、
+插件页 bundle 开关激活、切换后重启客户端、互斥用先到先占 + 报错日志、内部缝用同服务名 + `version` 比对。
+抽 core 包仍留到 V18 真正开始时做。完整方案与 V18 落地清单见
+[`tia-version-members.md`](tia-version-members.md) 与 [`decisions.md`](decisions.md) D36。
+
 ---
 
 ### A4 · 接口插件族："附带文档"以什么形态交付？怎么保证不过期？

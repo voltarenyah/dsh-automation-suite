@@ -15,7 +15,7 @@
 
 | 名称 | 对应层 | 一句话职责 | 现状 |
 |---|---|---|---|
-| **工控软件接口插件族**<br>（以 TIA 为例即 `tia-openness`；**按软件版本**分成员：V17/V18…；能力不拆包、由 preset 装配，见 D31） | ① 接入层 | 与工控软件对接，**读写工程对象**；为后续分析提供**素材**与**验证工具**；并**附带文档**说清何时调用、怎么调用、数据怎么用 | 🟡 已有第一个成员：`@voltarenyah/dsh-tia-openness-v17-min`（V17，定位是**验证基础功能**） |
+| **工控软件接口插件族**<br>（以 TIA 为例即 `tia-openness`；**按软件版本**分成员：V17/V18…；能力不拆包、由 preset 装配，见 D31；**一族多包、同一时刻只激活一个**，见 D36） | ① 接入层 | 与工控软件对接，**读写工程对象**；为后续分析提供**素材**与**验证工具**；并**附带文档**说清何时调用、怎么调用、数据怎么用 | 🟡 已有第一个成员：`@voltarenyah/dsh-tia-openness-v17-min`（V17，定位是**验证基础功能**）；第二个成员 `…-v18` 的形态与落地清单见 [`tia-version-members.md`](tia-version-members.md) |
 | **工程上下文插件** | 横向（作用域） | 面对用户的**多个 TIA 项目 × 多个分支 × 多个历史版本**，管理工程上下文，在会话中就某个工程问题**暴露出恰当的工程上下文**；对**工程对象做优化适配**并用「待办清单」式载体承接工程变更上下文 | 🟡 部分实现：`@voltarenyah/dsh-engineering-context`（6 个工具：`create_engineering_project` / `project_status` / `project_sync` / `project_commit`，以及只读的 `workspace_describe`（跨 workspace 描述，不打开 TIA）与 `import_preflight`（导入前预检），分三个 Loader 入口，见 D30；DRAFT/REMOTE 与变更台账未做） |
 | **工程知识图谱插件** | ② 语义层 | **准确翻译 XML 中的 PLC 语法**（兼容性强），把工程源文件解析成 LLM 便于处理的信息：**解析 XML → 建立图数据库 → 暴露接口**提供所需工程细节 | 🟡 部分实现：`@voltarenyah/dsh-engineering-graph`（引擎 + 8 个工具 + `knowledgeGraph` 服务；库发现与下钻见 D24；新鲜度/增量未做） |
 | **Web GUI 视图插件**<br>（`dsh-ui-plc-source` / `dsh-ui-tia-console` / `dsh-ui-versions`） | 跨层（不占三层编号） | 把上面两层已经落盘的事实**显示在人眼前**：右侧栏 **PLC Blocks**（读 `source/<device>/_manifest.json`）、输入框上方 **TIA 控制台**（折叠会话的 `command/*`、`tool/*` 事件）、右侧栏 **Versions**（读 `<workspace>/.dsh/versions-view.json`）。**不新增子进程、不新增 HTTP 路由、不注册模型工具** | ✅ 三个都已实现并登记进蓝图 |
@@ -23,6 +23,12 @@
 > **只有接口插件族是"一族多成员"**（成员 = 软件版本；能力不拆包，见 D31）；工程上下文插件与工程知识图谱插件
 > 都是**单一插件**，不存在同族成员。插件本身不再编号 —— 编号只保留给 [`vision.md`](vision.md) §3 的
 > **层**（① 接入层 / ② 语义层 / ③ 管理与协作层），两者不再混用。依赖关系见 [§7](#7-依赖与推进顺序)。
+>
+> **族成员的替换形态见 D36 与 [`tia-version-members.md`](tia-version-members.md)**：一族多包（包名带版本），
+> 同一时刻只激活一个成员，激活单位是插件页的 **bundle 开关**（不是逐行开关，因为 `/tools` 与 `/commands`
+> 两行在 preset 平面、不可寻址），切换后重启客户端；互斥用「先到先占 + 报错日志」。跨版本必须逐字一致的是
+> **服务名**（`engineeringAccess` / `projectTextAccess`）、**磁盘工件与 schemaVersion:1**、**39 个工具名**、
+> **7 个 `/tia-*` 命令名** 与 **`tia-openness` 路由 skill 名**。
 
 ### 1.1 Web GUI 视图插件：同一批数据的第二消费者
 
@@ -346,7 +352,7 @@
 
 | 规划中的插件 | 仓库里的对应物 |
 |---|---|
-| 接口插件族 | `packages/dsh-tia-openness-v17-min`（V17；能力不拆包，更多能力写在同一包里由 preset 装配，见 D31；族内后续成员按 TIA 版本增加） |
+| 接口插件族 | `packages/dsh-tia-openness-v17-min`（V17；能力不拆包，更多能力写在同一包里由 preset 装配，见 D31；族内后续成员按 TIA 版本增加 —— V18 起包名为 `@voltarenyah/dsh-tia-openness-v18`（**不带 `-min`**），形态与落地清单见 [`tia-version-members.md`](tia-version-members.md) / D36） |
 | 工程上下文插件 | `packages/dsh-engineering-context`；`packages/dsh-tool-git`（12 个结构化 git 工具）是可能被复用的**通用底座** |
 | 工程知识图谱插件 | `packages/dsh-engineering-graph` |
 
@@ -360,7 +366,8 @@
   文档与工具必须同步演进。
 - **准确优先于覆盖**：PLC 语法的翻译要忠实，宁可少支持一种写法，不要猜。
 - **兼容性靠设计而非运气**：对不同版本 / 不同来源的导出物要能识别差异并按能力降级，
-  而不是只认手边那一个样本。
+  而不是只认手边那一个样本。族内换成员时，**跨版本契约**（服务名、磁盘工件与 `schemaVersion`、
+  工具/命令/skill 名）不得漂移，见 D36 与 [`tia-version-members.md`](tia-version-members.md) §6。
 - **写入只有一个通道**：图数据库与上下文管理永远不直接改工程，改动一律经接口插件写回并验证。
 - **不向模型暴露任意代码执行**：能力面始终是数据化操作与查询。
 - **默认安全**：破坏性操作 fail-closed。

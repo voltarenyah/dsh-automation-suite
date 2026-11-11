@@ -13,7 +13,7 @@ profile/*    profile 蓝图。物化成 ~/.dsh/profiles/<name>/ 后使用
 scripts/     Monorepo 级工具脚本
 docs/        发行版层面的文档：vision.md（愿景与分层方案）、architecture.md（接口插件族与两个工程插件的目标架构）、
              decisions.md（已定的取舍）、open-questions.md（待决策问题，用户直接在里面填答复）、
-             roadmap.md（路线图与现状）
+             roadmap.md（路线图与现状）、tia-version-members.md（接口插件族的多成员形态：V17/V18 如何共存与替换，D36）
 site/        产品介绍页（GitHub Pages 发布物，纯静态；pages.yml 只上传这一目录）
 tools/       仓库级本地工具，不进发布物：site-editor = 站点文案可视化编辑（见 §10）
 ```

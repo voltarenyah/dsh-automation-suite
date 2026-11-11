@@ -169,7 +169,7 @@ PLC 对象增删改、监视表与软件单元、F 相关服务、编译与关�
 
 | 插件 | 目标 | 状态 |
 |---|---|---|
-| **工控软件接口插件族** | 把工控软件暴露的能力整体变成 LLM 的能力范围（含配套文档） | 🟡 **V17**（块·UDT·标签表）；在线/硬件组态等更多能力与 V18+ 待补（不拆包，由 preset 装配，D31） |
+| **工控软件接口插件族** | 把工控软件暴露的能力整体变成 LLM 的能力范围（含配套文档） | 🟡 **V17**（块·UDT·标签表）；在线/硬件组态等更多能力与 V18+ 待补（不拆包，由 preset 装配，D31）。**多成员形态已定**：一族多包、插件页 bundle 开关激活、同一时刻只激活一个、切换后重启客户端（**D36**，落地清单见 [`docs/tia-version-members.md`](docs/tia-version-members.md)） |
 | **工程上下文插件** | 管住"现在谈的是哪个工程、它在 workspace 的哪里、它和 TIA 是否一致" | 🟡 **部分实现**：6 个工具（151 项单测）—— `create_engineering_project` 把 TIA 工程接进 workspace（按 `source_project` 的类型打开 `.ap17` 或取回 `.zap17`，解包到 `tia/`）、读源文件树、经【缝 B】逐设备触发知识图谱建库；`project_status` 只读账本/清单/git/锁并给出下一步；`project_sync` 用 PLC checksum 快路径 + 逐对象指纹/归一化哈希慢路径，只把差异提升进 SOURCE，**不再提交**；`project_commit` 用调用方给的信息把这次同步提交成历史（`message` 必填、默认只给计划、插件补 trailer，可选 `reference` 记跨项目出处）；`workspace_describe` 不打开 TIA 就能描述任意 workspace（索引/清单/证据/图谱/git）；`import_preflight` 在导入前报告语言 culture、依赖顺序、同名对象。**同步与提交分两步**是为了让"变了什么"先被读到、提交信息由人确认（D30）；`project_diff` 走独立入口。图谱缺席/引擎未构建只报"图谱未建成"，不让流程失败。DRAFT/REMOTE 与变更台账未做。P0 的工程注册表与 P1 的内部 git 版本层**已删除**（该包 D22；现行版本管理见 D26）。**已登记进蓝图**（`--dump-config` 行数见根 `AGENTS.md` §4，DSH 0.2.1-rc.2） |
 | **工程知识图谱插件** | 准确翻译 XML 中的 PLC 语法，XML → 图数据库 → 按需给出工程细节 | 🟡 **部分实现**：Simatic ML → 图 → SQLite 已通（7 个真实 fixture 出 72 节点 / 153 边，覆盖 15 种节点种类），引擎协议 + 8 个工具 + `knowledgeGraph` 服务（111 项单测，含经真实引擎的端到端）；**被族 2 的 `create_engineering_project` 调用**（该包 D25）。`knowledge_workspace` 让模型自己读到库路径、`knowledge_query` 的 `db_path` 因此可省略，四个下钻工具（search / block / network / variable usage，TS 侧固定 SQL，零 C# 改动）把程序逻辑读成有界答复（**D24** 两阶段）。**新鲜度/增量、兼容层未做**。**已登记进蓝图** |
 | **TIA 操作可见性（Todo）** | 让输入框上方的 Todo 面板在 TIA/版本操作期间总有内容、结束后不残留转圈 | ✅ 2026-11-07：leader/auditor persona 写死 `TIA · <tool> · <object>` 协议 + `dsh-tia-todo-bridge` 兜底（模型没写清单时补项并自动结束）；见 [D34](docs/decisions.md) 与 profile README「TIA 操作的 Todo 清单」 |
@@ -351,8 +351,8 @@ Openness 不能直接从 Node 调用，所以插件分成两层，中间是**一
 | 操作系统 | Windows（TIA 插件仅限；在其它平台能加载，但工具调用返回 `controller_not_found`）。Git 插件跨平台 |
 | Node.js | **≥ 22.19**（两个包 `engines` 都这么写）；`pnpm` 与 `dsh` 本机可不在 PATH 上 |
 | DSH | 任何能加载 bundle 的版本 |
-| TIA Portal | **V17**（严格绑定，不兼容 V16/V18）——仅 TIA 插件需要 |
-| Openness DLL | `C:\Program Files\Siemens\Automation\Portal V17\PublicAPI\V17\Siemens.Engineering.dll` |
+| TIA Portal | 当前成员绑定 **V17**（`dsh-tia-openness-v17-min` 严格绑定，不兼容 V16/V18）。V18 是**另一个族成员**（`@voltarenyah/dsh-tia-openness-v18`，尚未实现）——两个成员同一时刻只能激活一个，在插件页拨 bundle 开关并重启客户端，见 [`docs/tia-version-members.md`](docs/tia-version-members.md) / D36 |
+| Openness DLL | `C:\Program Files\Siemens\Automation\Portal V17\PublicAPI\V17\Siemens.Engineering.dll`（V18 成员对应 `Portal V18\PublicAPI\V18`） |
 | .NET Framework | 4.6.1+（控制器以 **4.8** 为目标框架构建）；进程位数必须 **x64** |
 | Windows 用户组 | 当前用户必须属于本地组 **`Siemens TIA Openness`**（`net localgroup "Siemens TIA Openness"`） |
 | 只有重建 C# 控制器才需要 | .NET SDK + .NET Framework 4.8 targeting pack + 能访问 NuGet 源 |
@@ -1033,6 +1033,7 @@ TIA 排障第一步永远是让模型调：
 | [`docs/decisions.md`](docs/decisions.md) | **决策记录（发行版级）**：已定的 12 条取舍（能力分层、workspace 模型、指纹变更识别、对象身份、图底座、工程上下文插件的状态落点…）与 5 项待验证 |
 | [`docs/open-questions.md`](docs/open-questions.md) | **开放问题（38 条）**：A 部分 20 条会阻塞动手（含 A14–A20 工具面与参考项目问题），B 部分 18 条影响细节与验收口径；已答 20 条 |
 | [`docs/roadmap.md`](docs/roadmap.md) | **路线图与现状**：按插件逐项记录进度、缺口、验收口径 |
+| [`docs/tia-version-members.md`](docs/tia-version-members.md) | **接口插件族的多成员形态（V17 / V18 如何共存与替换）**：为什么同一时刻只能激活一个、为什么激活单位是 bundle 开关而不是逐行开关、先到先占互斥、内部缝的 `version` 比对、工具行「认错就空转」、跨版本契约清单、重启原因、`doctor` 三条检查、V18 落地清单与待实测项（D36） |
 | [`docs/tool-surface.md`](docs/tool-surface.md) | **工具面重设计（调研 + 提案）**：现状体检（26 工具 1:1、20 行渲染上限、~14k tokens 常驻目录）、用户工作流清单、目标工具面与返回契约、从哪一步开始 |
 | [`docs/ui-plugins.md`](docs/ui-plugins.md) | **Web GUI UI 插件**：客户端插件加载机制（含端到端实测）、基座模块表、座位目录、`source/` 数据面、以「工程块树」为例的落地设计与客户端打包配方 |
 | [`docs/ui-plugins-plc-blocks-plan.md`](docs/ui-plugins-plc-blocks-plan.md) | **`dsh-ui-plc-source` 的实施计划与验收记录**：规格、数据面（清单平铺 + device/类型筛选）、降级、构建、接线、实测结果 |

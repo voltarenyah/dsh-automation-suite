@@ -1307,3 +1307,76 @@ WebView2 与终端里起的 `dsh web`，两者都是回环，"本地有人"这�
   若已被应用回写，也要一并关掉）。
 - **回退**：删掉这三行 patch（恢复 `directory-picker` 为 `auto`）即可；上游若把包名改掉，
   症状是 boot 时模块解析失败而不是静默降级。
+
+---
+
+## D36 · 接口插件族的多成员形态：一族多包、bundle 开关激活、先到先占互斥 ✅
+
+**背景**：D3 早已预留"第二个 TIA 版本到来时抽公共 core 包"，A3 也答了"每版本一包 + 公共部分后抽"。
+现在要把它落成可执行的形态，因为**用户需要按自己装的 TIA 版本选择接口插件**（V17 与 V18 共存于同一台机器），
+而当前四个核心插件互相引用较多、版本事实又散落各处。评估结论与完整方案见
+[`tia-version-members.md`](tia-version-members.md)（本文只记决定）。
+
+**已核对的机制（DSH 0.2.2-rc.1 的安装产物，读实现而非推测）**：
+
+1. `cordis` 的 `reflect.provide`：同名服务已注册即 `throw service "X" has been registered at …`；
+2. `dsh-tools` / `dsh-commands` 的 `NamedEntries`：同作用域同名工具/命令再次注册即 `throw`；
+3. `dsh-plugin-manager` 的 `setPluginEnabled` 只作用于 **`include` 平面**的行
+   （`listPlugins()` 里 `fiber.entry?.id !== 'include'` ⇒ `readOnlyReason: 'unaddressable'`），
+   而本发行版的 TIA `/tools`、`/commands` 两行在 **preset 平面**（D23/D31 的形态）⇒ 插件页没有逐行开关；
+4. `dsh-agent-preset-registry` 的 `diagnostic()` 把 `pending`（等服务的行）与 `failed` **一并判为坏行**，
+   `retain()` 随即抛 `agent-preset/invalid` ⇒ 新建会话被拒（与 `profile/…/cordis.patch.yml:59-63` 记的事故同类）。
+
+**决定**：
+
+1. **一族多包，包名带版本**：V17 保持 `@voltarenyah/dsh-tia-openness-v17-min`（历史 tarball、已装 profile、
+   归档仓库都引用它，改名属独立破坏性操作，不做）；V18 起为 `@voltarenyah/dsh-tia-openness-v18`
+   —— **`-min` 后缀不再出现在新成员上**（它是 D2 三档时代的残留，D31 后档位已不成立）。
+2. **同一时刻只激活一个成员**，且**激活单位是插件页的 bundle 开关**（不是逐行开关——preset 行不可寻址）：
+   关一个 bundle 保留其依赖但使其整层退出组合。切换后**必须重启客户端**（工具行只在 preset 挂载时跑一次；
+   旧控制器 disposer 不停 TIA Portal 本体；配置按行读取）。
+3. **互斥用「先到先占 + 报错日志」**，不用抛错：族位是中立服务 `tiaOpennessFamilyMember`
+   （继承 `Service`，因为本仓手写的 `dsh-runtime.d.ts` 的 `Context` 没有 `reflect`）。
+   宿主行 `apply()` 最先尝试占领；失败时**什么都不提供、不起控制器、不注册 skill**，只打一条 error 日志后返回。
+   后到者**不重试**（占领者卸载后不自动接管）——热接管只会制造半个组合。
+4. **内部缝用「同一服务名 + `version` 字段比对」**：`tiaOpennessRuntime` 保持原名，对象上加
+   `member: { version, packageName }`。**`engineeringAccess` / `projectTextAccess` 等族契约服务名不带版本。**
+5. **工具行 / 命令行「认错就空转」**：**模块级** `inject` 去掉 `TIA_RUNTIME_SERVICE`（只留 `['tools']` / `['commands']`），
+   在 `apply()` 里主动取 runtime 并比对 `member.version`；缺席或版本不符 ⇒ **注册 0 个工具/命令 + 一行 info 日志**，
+   不抛错。两条理由：(a) 模块级 `inject` 会让"永远不会来的服务"把**该行本身**卡在 `pending`，而 preset 的
+   `auditRows()` 扫 Loader entry、`pending` 会让 preset 变 `invalid` ——"这个成员没激活"是**正常状态**；
+   (b) 服务名是版本中立的，V17 的工具行 `inject` 它照样会拿到 **V18 的** runtime（静默接错控制器），
+   所以无论如何都要做一次 `version` 比对。（`ctx.inject` 的**子 fiber** 不在 Loader 树里、确实不会触发
+   `invalid`，但它只是把"接错"从同步变异步，见 `tia-version-members.md` §5.2 的对照表。）
+6. **族契约（跨版本必须逐字一致）**：`engineeringAccess`（4 必选 + 5 可选方法）、`projectTextAccess`（7 必选）、
+   `source/` `knowledge/` `_manifest.json` `_evidence.json`（`schemaVersion` 恒为 1，加字段只能加**可选**字段）、
+   39 个工具名、7 个 `/tia-*` 命令名、`tia-openness` 路由 skill 名、`./tools` / `./commands` 子路径。
+   **能力集合不随版本变**——版本差异只允许来自 Openness API；例外是 V21+ 的 `ObjectIdentifierProvider`
+   这类**新增可选字段**。
+7. **`doctor.ps1` 补三条检查**：启用的族成员行数必须恰为 1（`≥2` → `fail`，这是本方案唯一的自动互斥可见性）；
+   TIA 探测改为多版本并与当前成员对照；残留旧版控制器进程告警。
+
+**与既有决策的关系**：
+
+- **不推翻 D10**：仍是各自独立、不抽共享包；§5.3 的 `family-claim.ts` 在**每个成员包里各有一份**同款实现。
+- **D3 的"抽 core 包"据此推迟**：现在只有 V17，抽 core 是给不存在的成员付双份维护成本；
+  真正的动作留给 V18（届时抽的是 NDJSON 帧协议、控制器子进程管理、服务形状归一化、skill provider 骨架；
+  **不抽** C# 控制器、`OPERATIONS` 白名单、`opennessDir` 默认值、覆盖矩阵、skill 语料）。
+- **D31 完全兼容**：成员内仍是一个包、能力仍由 preset 装配；族的"版本轴"与"能力轴"正交。
+- **A3 的答复一致**（每版本一包 + 后抽 core）。
+
+**后果**：
+
+- 用户视角：装两个 bundle → 插件页拨开关 → 重启客户端。**不能**在一个会话里同时操作 V17 与 V18 工程；
+  要并行就开两个 profile（与 `docs/distribution.md` §4 的并存先例一致）。
+- 切换后"另一个成员的工具行"会合法地注册 0 个工具；会话仍可用（消费侧对缺席的 `engineeringAccess`
+  本就降级），只是没有 TIA 工具。
+- 收尾工作（做 V18 时一并做）：清掉 `dsh-engineering-context` 里 7 处"版本知识泄漏"
+  （`.zap17` 判定、升级到 V17 的文案、点名 V17 包名的错误信息、工具描述里的 `.ap17`/`.zap17`），
+  给 `engineeringAccess` 加**可选**的 `family()` 让成员自报版本；清单见 `tia-version-members.md` §9。
+
+**验证**：本轮只落文档，不改代码。本文引用的四条宿主机制是读 `app.asar` 实现得出的，
+**未在插件页面上实点验证**（本会话对验收 home 的 profile 目录无写权限，`--dump-config` 以
+`EPERM … cordis.yml` 失败）；做 V18 前要补的 6 条实测见 `tia-version-members.md` §10，
+其中**第 5 条（preset 子树会不会跟着 profile 重组重挂）与第 6 条（`disabled` 的宿主行会不会仍被 import）**
+决定"切换是否真必须重启"与"空转是否足够"，是最关键的两条。
