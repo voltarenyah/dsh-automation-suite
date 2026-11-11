@@ -49,6 +49,15 @@ const PARAMETERS = {
       'is a warning and never fails or rolls back the sync. This is the slow part of a sync on a large project — delegate the whole ' +
       'sync to the auditor instead of running it in the main conversation.',
   },
+  force: {
+    type: 'boolean',
+    description:
+      'Default false. The sync normally trusts the PLC checksum: when it matches the ledger, the scan is skipped (a couple of seconds). ' +
+      'That checksum covers the compiled standard program only — a change confined to the safety program (F blocks) does not move it, so ' +
+      'a skipped scan cannot see one. Pass force=true to enumerate the PLC and compare every block, including the F-signatures, at the ' +
+      'cost of the full scan (tens of seconds on a large project). It is safe to use: scanning an unchanged project rewrites no file and ' +
+      'produces the same ledger, so the commit stays empty.',
+  },
 } as const
 
 /**
@@ -61,6 +70,8 @@ export function syncTool(dependencies: ToolDependencies): ToolDefinition {
     description:
       'Synchronize the workspace source tree with the project TIA has open. It compares the PLC checksum and, when it differs, scans the ' +
       'whole PLC (blocks, PLC types, tag tables), exports only the changed objects and updates the evidence ledger and the manifest. ' +
+      'Trusting the checksum skips the scan, and the checksum does NOT move for a change confined to the safety program (F blocks): pass ' +
+      'force=true to enumerate the PLC and compare the F-signatures too. ' +
       'It does NOT commit: the result carries `pending.paths` and `pending.suggestedMessage` for `project_commit`. Defaults to a plan: ' +
       'pass dry_run=false to write. Requires an open project and a compiled PLC (a missing checksum means "compile first"). One workspace ' +
       'syncs one PLC; it never opens TIA, never creates a git repository and never modifies the project.',
@@ -134,9 +145,14 @@ export function syncTool(dependencies: ToolDependencies): ToolDefinition {
           }
 
           const manifest = await describePath(scope.workspace.path, manifestFile)
-          const wouldSync = evidence === null || evidence.plcChecksum !== checksum || manifest.kind !== 'file'
-          const reason =
-            evidenceInvalid
+          // A forced plan cannot be answered from the checksum: the whole point is
+          // that the checksum may be blind to the change. Say "a scan will run"
+          // instead of pretending the comparison is what a dry run cannot afford.
+          const forced = args.force === true
+          const wouldSync = forced || evidence === null || evidence.plcChecksum !== checksum || manifest.kind !== 'file'
+          const reason = forced
+            ? 'force=true always scans'
+            : evidenceInvalid
               ? 'the evidence ledger is unreadable'
               : evidence === null
                 ? 'no evidence ledger'
@@ -162,6 +178,7 @@ export function syncTool(dependencies: ToolDependencies): ToolDefinition {
               },
               manifest: { path: manifestFile, present: manifest.kind === 'file' },
               wouldSync,
+              force: forced,
               wouldRefreshKnowledge: args.refresh_knowledge === true,
             },
             {
@@ -169,6 +186,12 @@ export function syncTool(dependencies: ToolDependencies): ToolDefinition {
               details: [
                 `PLC: ${device.device} / ${device.software} → ${device.directory}`,
                 `Checksum: ${checksum ?? 'unavailable'}${checksumCached ? ' (reused from the checksum cache)' : ''}`,
+                forced
+                  ? 'Force: true — the scan enumerates the PLC even if the checksum matches, so F-block changes are compared.'
+                  : checksum !== null && evidence !== null && evidence.plcChecksum === checksum
+                    ? 'Checksum check: equal — a real run would SKIP the scan, so a safety-program-only change would not be seen ' +
+                      '(pass force=true to compare F-signatures).'
+                    : 'Force: false — the checksum decides whether the scan runs.',
                 evidenceInvalid
                   ? 'Evidence: unreadable (a full scan will rewrite it).'
                   : evidence === null
@@ -181,7 +204,7 @@ export function syncTool(dependencies: ToolDependencies): ToolDefinition {
           )
         }
 
-        const result = await runSync(scope, service, device, exec)
+        const result = await runSync(scope, service, device, exec, { forceScan: args.force === true })
         // A real sync always scanned; its own checksum is the freshest fact, so
         // refresh the cache with it (never the other way around).
         if (result.checksum !== null) writeCachedChecksum(cacheKey, result.checksum)
@@ -203,7 +226,10 @@ export function syncTool(dependencies: ToolDependencies): ToolDefinition {
         const details = [
           `PLC: ${result.device.device} / ${result.device.software} → ${result.device.directory}`,
           result.unchanged
-            ? 'Nothing changed: the checksum matches the ledger.'
+            ? result.scanSkipped
+              ? 'Nothing changed as far as the PLC checksum can tell — the scan was SKIPPED, so a change confined to the safety ' +
+                'program (F blocks) would not have been seen. Compile and pass force=true when F blocks were edited.'
+              : 'Nothing changed: the scan enumerated the PLC, everything matched the ledger (F-signatures included).'
             : `Scan: ${result.counts.changed} changed, ${result.counts.added} added, ${result.counts.removed} removed, ${result.counts.unexportable} unexportable.`,
           `Files: ${result.copied} copied, ${result.removedFiles} removed.`,
           result.manifestRebuilt ? 'Manifest: rebuilt from this scan.' : 'Manifest: updated.',
@@ -217,7 +243,10 @@ export function syncTool(dependencies: ToolDependencies): ToolDefinition {
           PROJECT_SYNC_TOOL,
           scope.view,
           result.unchanged
-            ? 'Already in sync: the PLC checksum matches the evidence ledger.'
+            ? result.scanSkipped
+              ? 'Already in sync as far as the checksum can tell: the scan was skipped. A safety-program-only change would not be ' +
+                'seen this way — pass force=true (after compiling) to compare the F-signatures.'
+              : 'Already in sync: the scan enumerated the PLC and everything matched the evidence ledger.'
             : `Synchronized ${device.device}: ${result.counts.changed} changed, ${result.counts.added} added, ${result.counts.removed} removed.` +
                 (result.pending.paths.length === 0
                   ? ''
@@ -225,6 +254,8 @@ export function syncTool(dependencies: ToolDependencies): ToolDefinition {
           {
             device: result.device,
             unchanged: result.unchanged,
+            scanSkipped: result.scanSkipped,
+            forced: args.force === true,
             manifestRebuilt: result.manifestRebuilt,
             counts: result.counts,
             copied: result.copied,

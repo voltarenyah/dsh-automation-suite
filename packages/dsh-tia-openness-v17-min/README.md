@@ -434,7 +434,7 @@ commit `b5c7041`）**逐字**打进包里，并注册成模型可见的**一个*
 | `readTiaSession()` | `ProjectInfo` | 控制器在不在 + TIA 开着哪个项目 + 设备清单；**从不启动控制器** |
 | `rebuildSource(root, opts)` | `ProjectInfo` + 每 device 两次 `ExportBlocks` | **`<root>/<device>/{blocks,types,tag_tables}/…` 的布局由它定死**；被 TIA 拒绝的对象逐条回报 |
 | `readPlcChecksum()` | `PlcChecksum` | 读 `PlcChecksumProvider.Software`；空值以 `checksum_unavailable` 回报（未编译/改动后未再编译） |
-| `syncScan(query)` | `SyncScan` | 用上一版 evidence 账本逐对象比对指纹/标签表哈希，并记录 F 块的 `SafetySignatureProvider` 签名（只对 `F_*` 语言或 OB 预筛后问 provider；F-OB 也能跟踪），只把差异导出到 STAGE，**同一调用**写下 `_evidence.json` 与 `_manifest.json`；checksum 一致时直接返回 `unchanged`。旧账本没有 F 签名时会先补扫一次且不误报变更。`adoptExisting: true` 是首次建账本的捷径：无上一版账本、清单可用时，逐条校验清单里的文件（相对路径在 `sourceRoot` 内、`verified`、sha256 一致），能对上的**直接采信为证据而不重导出**，数量回在 `adopted` |
+| `syncScan(query)` | `SyncScan` | 用上一版 evidence 账本逐对象比对指纹/标签表哈希，并记录 F 块的 `SafetySignatureProvider` 签名（只对 `F_*` 语言或 OB 预筛后问 provider；F-OB 也能跟踪），只把差异导出到 STAGE，**同一调用**写下 `_evidence.json` 与 `_manifest.json`；checksum 一致时直接返回 `unchanged`（并回报 `scanSkipped: true`）。**只改安全程序（F 块）不会移动 checksum**，所以这条快速路径看不见它——`forceScan: true` 绕过快速路径强制枚举（工程没变时幂等，账本字节不变）；见 §10「已知边界」。旧账本没有 F 签名时会先补扫一次且不误报变更。`adoptExisting: true` 是首次建账本的捷径：无上一版账本、清单可用时，逐条校验清单里的文件（相对路径在 `sourceRoot` 内、`verified`、sha256 一致），能对上的**直接采信为证据而不重导出**，数量回在 `adopted` |
 
 - **与工具走同一条路径**：每个方法都构造与对应工具**相同**的操作与参数、复用 `runOperation`，
   所以模型面与服务面不会在默认值或错误形状上互相漂移。
@@ -852,6 +852,15 @@ scripts/knowledge/build-skills.mjs  知识库同步（联网重取上游）与�
   或 `library_master_copy_instantiate_unsupported`，不会猜一个目标去创建。
 - **一次一个宿主进程一个 TIA Portal 会话**：不同 DSH 会话共用同一个控制器并排队。
 - **超时即丢失会话**：Openness 不可取消，超时的唯一可靠处理是终止控制器。
+- **F 块改动不会移动 PLC checksum（同步盲区，`force_scan` 绕过）**：`PlcChecksumProvider.Software`
+  覆盖编译后的**标准程序**；只改安全程序时它保持不变，`SyncScan` 的 checksum 快速路径因此会
+  **不枚举、不问 `SafetySignatureProvider`** 就回答 `unchanged`。表现是版本管理工作流里"只改了
+  F 块 → `project_sync` 说没有变化 → `project_commit` 提交不了"。解法是 `syncScan({ forceScan: true })`
+  （工具面 `project_sync({ force: true })`）：强制枚举并按 F 签名比对，工程真没变时**幂等**
+  （不写 XML、账本字节不变，提交仍为空）。V17 公开 API 里没有"整个安全程序一个签名"，逐块
+  `SafetySignatureProvider` 是唯一权威口径（反射实证：`SafetySignatureType` 只有
+  `BlockOfflineSignature` 一个成员）。`data.scanSkipped` 明确区分"checksum 相同所以跳过"与
+  "真的比过"。
 
 ---
 

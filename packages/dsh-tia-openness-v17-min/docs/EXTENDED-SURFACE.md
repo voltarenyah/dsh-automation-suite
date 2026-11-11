@@ -414,6 +414,7 @@ import → `{action, imported:[{file, name}], committed, dryRun}`
 | `evidence_path` | string | —（不存在 = 全量扫描） |
 | `manifest_path` | string | —（不存在或不可读 = 用本次导出重建） |
 | `adopt_existing` | bool | `false`（首次建账本的捷径，见下） |
+| `force_scan` | bool | `false`（checksum 相同也枚举：**F 块改动不会移动 checksum**，见下） |
 | `device_name` / `software_name` | string | 自动 |
 | `export_options` | `none` \| `with_defaults` \| `with_read_only` | `with_defaults` |
 
@@ -444,10 +445,25 @@ import → `{action, imported:[{file, name}], committed, dryRun}`
 `schemaVersion` 仍为 1。旧账本没有 `safetyRecorded`，因此升级后的第一次同步会强制走一次扫描把签名补上，
 但**不会**把 55 个 F 块报成变更——这一次只用指纹判定，之后的同步才比较 F 签名。
 
-`data`：`{ device, software, checksum, unchanged, counts{blocks,types,tagTables,changed,added,removed,unexportable}, safety{signatureType,fBlockCount,zeroSignatureCount,changed[]}, changed[], added[], removed[], unexportable[], stage{root,evidence,manifest,files}, manifestRebuilt, adopted, stateId }`。
+`data`：`{ device, software, checksum, unchanged, scanSkipped, counts{blocks,types,tagTables,changed,added,removed,unexportable}, safety{signatureType,fBlockCount,zeroSignatureCount,changed[]}, changed[], added[], removed[], unexportable[], stage{root,evidence,manifest,files}, manifestRebuilt, adopted, stateId }`。
 `safety.changed[]` 是两版账本之间 F 签名变化的块（`{key,name,group,before,after}`），与文件是否变化无关，
 所以落在 `unexportable` 里的 F 块也会出现在这里。
 `checksum` 与账本一致时直接返回 `unchanged:true`、`stage:null`，**不枚举、不导出**。
+
+### 已知盲区：只改安全程序不动 checksum（`force_scan`）
+
+`PlcChecksumProvider.Software` 覆盖的是**编译后的标准程序**。改动只落在安全程序（F 块）上时它
+**不移动**，于是快速路径会在**从未询问 `SafetySignatureProvider`** 的情况下回答 `unchanged`——这是
+0.2.5 之前 `project_sync` 无法提交 F-only 改动的根因（2026-11-11 实测暴露）。
+
+`force_scan: true` 绕过快速路径、照常枚举并比对 F 签名。**过度使用是安全的**：工程没变时全量枚举
+不写任何 XML、账本字节不变，所以 `project_commit` 仍然是空的。跳过与否在 `data.scanSkipped` 里
+明确回报（跳过 `true` / 真比对过 `false`），调用方据此决定要不要提示用户"这不算核对过 F 签名"。
+
+V17 公开 API 里**没有**"整个安全程序一个签名"这种东西（反射实证）：`SafetySignatureType` 枚举只有
+`BlockOfflineSignature = 0` 一个成员，`SafetyAdministration`/`SafetySettings`/`RuntimeGroup` 全是配置
+（版本、块号范围、主安全块名、周期时间），没有签名或计数。所以逐块 F 签名是唯一权威口径，代价就是
+一次枚举。
 同一调用会在 `stage_dir` 写 `_evidence.json`（账本）与 `_manifest.json`（清单）：
 未变化对象从上一版清单原样带过来，只有归一化内容真的变了的标签表才进入 STAGE；
 清单不含时间戳、不含绝对路径（`file` 相对设备根）。

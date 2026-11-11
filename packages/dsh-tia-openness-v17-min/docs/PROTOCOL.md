@@ -363,16 +363,20 @@ the changed objects (plus every tag table, which has no fingerprint) into
 | `evidence_path` | string | — | previous ledger, normally `<source_root>/<device>/_evidence.json`; missing means a full scan |
 | `manifest_path` | string | — | previous inventory, normally `<source_root>/<device>/_manifest.json`; missing or unreadable means it is rebuilt from the same export run |
 | `adopt_existing` | bool | `false` | bootstrap the ledger from the existing tree: with **no** previous ledger and a usable manifest, a manifest row is adopted instead of exported when it names a relative `file` inside `source_root`, has `verified: true` and a `sha256` that still matches the file (tag tables also have to be readable, to hash their normalized XML). Anything unproven is exported. No-op with a previous ledger or an unusable manifest |
+| `force_scan` | bool | `false` | enumerate the PLC even when the checksum matches the ledger. The checksum covers the compiled standard program only; **a change confined to the safety program (F blocks) does not move it**, so the fast path cannot see one. Forcing is safe: scanning an unchanged project writes no XML and produces a byte-identical ledger |
 | `device_name` / `software_name` | string | auto | PLC selection |
 | `export_options` | enum | `with_defaults` | `none` \| `with_defaults` \| `with_read_only` |
 
-`data`: `device`, `software`, `checksum`, `unchanged`, `counts{blocks,types,
+`data`: `device`, `software`, `checksum`, `unchanged`, `scanSkipped`, `counts{blocks,types,
 tagTables,changed,added,removed,unexportable}`, `safety{signatureType,
 fBlockCount,zeroSignatureCount,changed[]{key,name,group,before,after}}`,
 `changed[]`, `added[]`, `removed[]`, `unexportable[]{key,category,name,group,
 reason}`, `stage{root,evidence,manifest,files}`, `manifestRebuilt`, `adopted`,
 `stateId`. When the checksum matches the ledger the operation returns
-`unchanged: true` with `stage: null` and enumerates nothing.
+`unchanged: true` with `stage: null` and enumerates nothing, and says so with
+`scanSkipped: true`; a scan that enumerated the PLC reports `scanSkipped: false`.
+The field exists because `unchanged` alone cannot be read as "nothing changed" on
+a CPU with a safety program.
 
 Safety blocks carry an F-signature (`SafetySignatureProvider`,
 `BlockOfflineSignature`) in the ledger and in the comparison. A ledger written

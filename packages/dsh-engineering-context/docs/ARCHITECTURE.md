@@ -475,9 +475,12 @@ TIA（权威，二进制，不进 git）
   `declaredNumber` / `programmingLanguage`，相对 `file` 路径，无时间戳、无绝对路径。它**只描述磁盘上
   有什么**，从不参与相等性判断。同一次 `SyncScan` 调用内增量合并：未变对象沿用旧条目，只有真正变化的
   标签表才被提升/重写。
-- **两条路径**：checksum 与账本一致、账本与清单都可用 → `unchanged`（不枚举、不导出）；
-  否则慢路径枚举全部对象、只导出差异，并重写两份文档。**清单缺失/损坏会强制一次全量导出**，
-  但账本仍然决定"哪些对象变了"，所以不会误删文件。
+- **两条路径**：checksum 与账本一致、账本与清单都可用 → `unchanged`（不枚举、不导出），并标
+  `scanSkipped: true`；否则慢路径枚举全部对象、只导出差异，并重写两份文档。**清单缺失/损坏会强制
+  一次全量导出**，但账本仍然决定"哪些对象变了"，所以不会误删文件。
+- **checksum 的盲区**：它只覆盖编译后的**标准程序**。只改安全程序（F 块）时它不动，快路径会在
+  从未询问 `SafetySignatureProvider` 的情况下回答 `unchanged` —— 这正是"只改 F 块提交不了"的根因。
+  `project_sync(force: true)` 透传 `forceScan` 强制枚举；工程真没变时幂等（不写 XML、账本字节不变）。
 - **计划默认**：`project_sync` 默认只读 checksum（约 3 s）并报告 `wouldSync`，写盘必须显式
   `dry_run: false`。`project_status(verify: true)` 读到 checksum 后写一份 TTL 30 s 的进程内缓存
   （workspace + device + software 键控），计划命中即复用并标 `checksumCached: true`；真实同步

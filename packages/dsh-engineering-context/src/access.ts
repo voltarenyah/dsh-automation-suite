@@ -214,6 +214,15 @@ export interface SyncScanReport {
   ok: boolean
   checksum: string | null
   unchanged: boolean
+  /**
+   * True when `unchanged` came from the checksum without enumerating the PLC.
+   *
+   * The checksum only covers the compiled standard program: **a change confined
+   * to the safety program (F blocks) does not move it**, so a skipped scan is
+   * not proof that nothing changed. An older interface plugin does not report
+   * the field; a missing value is treated as `false` (the scan ran).
+   */
+  scanSkipped: boolean
   manifestRebuilt: boolean
   counts: SyncScanCounts
   changed: SyncScanObject[]
@@ -260,6 +269,21 @@ export interface SyncScanQuery {
    * without a second export; `project_sync` leaves it unset.
    */
   adoptExisting?: boolean
+  /**
+   * Enumerate the PLC even when the checksum matches the ledger (wire name
+   * `force_scan`).
+   *
+   * This is the only way to see a change the checksum cannot see. The checksum
+   * covers the compiled standard program; **a change confined to the safety
+   * program leaves it untouched**, so the fast path reports "unchanged" without
+   * ever comparing the F-signatures. Paying for the enumeration is safe: an
+   * unchanged project produces a byte-identical ledger and rewrites no XML.
+   *
+   * An interface plugin that predates the flag ignores it (there is no way to
+   * detect that from here), which is why `project_sync` reports whether the
+   * scan was actually skipped rather than pretending the flag always took.
+   */
+  forceScan?: boolean
   signal?: AbortSignal
 }
 
@@ -735,6 +759,7 @@ export function normalizeSyncScan(raw: unknown): SyncScanReport {
     ok: boolOr(source['ok'], false),
     checksum: text(data['checksum']) ?? null,
     unchanged: data['unchanged'] === true,
+    scanSkipped: data['scanSkipped'] === true,
     manifestRebuilt: data['manifestRebuilt'] === true,
     counts: {
       blocks: numberOf(counts['blocks']),

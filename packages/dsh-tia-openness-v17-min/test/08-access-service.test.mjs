@@ -353,6 +353,9 @@ test('syncScan sends the three paths and normalizes the evidence summary', async
     // Always on the wire: the first-run mode must be an explicit false, not an
     // omission the controller has to interpret.
     adopt_existing: false,
+    // Same reason: a skipped fast path must be an explicit false, because the
+    // flag is the only way to see a safety-program-only change.
+    force_scan: false,
   })
   assert.equal(result.ok, true)
   assert.equal(result.checksum, 'CHK-1')
@@ -411,6 +414,52 @@ test('syncScan forwards adoptExisting and normalizes the adopted count', async (
   })
   assert.equal(omitted.calls[0].params.adopt_existing, false, 'omitting the flag must not enable it')
   assert.equal(zero.adopted, 0, 'a controller that does not report adopted normalizes to zero')
+})
+
+test('syncScan forwards forceScan and normalizes scanSkipped', async () => {
+  // A forced scan is the only way to see a change the PLC checksum cannot see
+  // (a safety-program-only edit), so the flag has to reach the controller and
+  // the answer has to say whether the scan actually ran.
+  const { service, calls } = serviceWith((operation, params) =>
+    frame(operation, params, { data: { unchanged: true, scanSkipped: true, stage: null } }),
+  )
+
+  const skipped = await service.syncScan({
+    sourceRoot: 'C:\\source',
+    stageDir: 'C:\\stage',
+    evidencePath: 'C:\\source\\_evidence.json',
+  })
+  assert.equal(calls[0].params.force_scan, false, 'omitting forceScan must not force anything')
+  assert.equal(skipped.unchanged, true)
+  assert.equal(skipped.scanSkipped, true, 'the answer distinguishes "checksum matched" from "the PLC was compared"')
+
+  const forced = await service.syncScan({
+    sourceRoot: 'C:\\source',
+    stageDir: 'C:\\stage',
+    evidencePath: 'C:\\source\\_evidence.json',
+    forceScan: true,
+  })
+  assert.equal(calls[1].params.force_scan, true, 'forceScan reaches the controller as force_scan')
+  assert.equal(forced.scanSkipped, true)
+
+  const ran = serviceWith((operation, params) =>
+    frame(operation, params, { data: { unchanged: true, scanSkipped: false } }),
+  )
+  const compared = await ran.service.syncScan({
+    sourceRoot: 'C:\\source',
+    stageDir: 'C:\\stage',
+    evidencePath: 'C:\\source\\_evidence.json',
+    forceScan: true,
+  })
+  assert.equal(compared.scanSkipped, false, 'a scan that enumerated the PLC says so')
+
+  const older = serviceWith((operation, params) => frame(operation, params, { data: { unchanged: true } }))
+  const legacy = await older.service.syncScan({
+    sourceRoot: 'C:\\source',
+    stageDir: 'C:\\stage',
+    evidencePath: 'C:\\source\\_evidence.json',
+  })
+  assert.equal(legacy.scanSkipped, false, 'a controller that never reports the field is not assumed to have skipped')
 })
 
 test('syncScan defaults to zero counts on an empty envelope and rejects missing paths', async () => {

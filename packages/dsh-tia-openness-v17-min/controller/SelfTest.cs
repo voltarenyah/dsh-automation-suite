@@ -39,6 +39,7 @@ namespace TiaOpennessV17Min.Controller
                 Check(checks, ref ok, "evidence_safety_signature", EvidenceSafetySignature);
                 Check(checks, ref ok, "evidence_unexportable_retained", EvidenceUnexportableRetained);
                 Check(checks, ref ok, "evidence_xml_normalization", EvidenceXmlNormalization);
+                Check(checks, ref ok, "sync_scan_force_flag", SyncScanForceFlag);
                 Check(checks, ref ok, "manifest_adoption", delegate { ManifestAdoptionCheck(workDirectory); });
                 Check(checks, ref ok, "result_frame_shape", ResultFrameShape);
                 Check(checks, ref ok, "simatic_ml_header", delegate { SimaticMlHeaderCheck(workDirectory); });
@@ -394,6 +395,40 @@ namespace TiaOpennessV17Min.Controller
 
             EvidenceDelta changed = EvidenceDocument.Compare(signed, current);
             RequireEqual("1", changed.Changed.Count.ToString(), "a different F-signature is a change");
+        }
+
+        /// <summary>
+        /// The checksum fast path must never be taken when the caller asked for a
+        /// forced scan: the checksum does not move for a change confined to the
+        /// safety program, so skipping the enumeration would hide it (the 0.2.5
+        /// "F-only change cannot be committed" gap).
+        /// </summary>
+        private static void SyncScanForceFlag()
+        {
+            EvidenceDocument ledger = new EvidenceDocument();
+            ledger.SafetyRecorded = true;
+            ledger.PlcChecksum = "AA BB CC DD EE FF 00 11";
+            ledger.Software = "PLC_1";
+
+            Require(OpennessOperations.CanUseChecksumFastPath(false, ledger, false, ledger.PlcChecksum, "PLC_1"),
+                "a matching, F-recorded ledger on an unchanged manifest takes the fast path");
+            Require(!OpennessOperations.CanUseChecksumFastPath(true, ledger, false, ledger.PlcChecksum, "PLC_1"),
+                "force_scan must skip the fast path even when the checksum matches");
+            Require(!OpennessOperations.CanUseChecksumFastPath(false, null, false, ledger.PlcChecksum, "PLC_1"),
+                "no previous ledger means a full scan");
+            Require(!OpennessOperations.CanUseChecksumFastPath(false, ledger, true, ledger.PlcChecksum, "PLC_1"),
+                "a manifest that has to be rebuilt means a full scan");
+            Require(!OpennessOperations.CanUseChecksumFastPath(false, ledger, false, "11 22 33 44 55 66 77 88", "PLC_1"),
+                "a different checksum means a scan");
+
+            EvidenceDocument legacy = new EvidenceDocument();
+            legacy.PlcChecksum = ledger.PlcChecksum;
+            legacy.Software = "PLC_1";
+            Require(!OpennessOperations.CanUseChecksumFastPath(false, legacy, false, ledger.PlcChecksum, "PLC_1"),
+                "a ledger written before F-signatures are recorded is backfilled by one scan");
+
+            Require(!OpennessOperations.CanUseChecksumFastPath(false, ledger, false, ledger.PlcChecksum, "PLC_2"),
+                "a different software name means a scan");
         }
 
         /// <summary>

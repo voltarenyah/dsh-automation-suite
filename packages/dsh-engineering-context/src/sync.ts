@@ -30,6 +30,12 @@ import type { ResolvedScope } from './scope.js'
 export interface SyncRunResult {
   device: DeviceInfo
   unchanged: boolean
+  /**
+   * True when the controller answered "unchanged" from the checksum without
+   * enumerating the PLC. The checksum does not move for a change confined to
+   * the safety program, so this result is **not** proof that nothing changed.
+   */
+  scanSkipped: boolean
   manifestRebuilt: boolean
   counts: SyncScanCounts
   /** Files copied into SOURCE (promoted by the scan). */
@@ -101,7 +107,10 @@ function suggestedCommitMessage(result: {
  * @param access - the interface plugin's service.
  * @param device - the PLC and its source directory.
  * @param exec - the per-call execution context.
- * @returns what was written and committed.
+ * @param options - `forceScan` asks the controller to enumerate even when the
+ *   PLC checksum matches the ledger; the only way to see a change confined to
+ *   the safety program, which does not move that checksum.
+ * @returns what was written and left dirty for `project_commit`.
  * @throws {EngineeringContextError} when the scan fails, the repository is
  *   missing, or the lock is held. Nothing is committed in those cases.
  */
@@ -110,6 +119,7 @@ export async function runSync(
   access: EngineeringAccessLike,
   device: DeviceInfo,
   exec: ToolRunContext,
+  options: { forceScan?: boolean } = {},
 ): Promise<SyncRunResult> {
   if (typeof access.syncScan !== 'function') {
     throw new EngineeringContextError(
@@ -149,6 +159,7 @@ export async function runSync(
         manifestPath: manifestFile,
         deviceName: device.device,
         softwareName: device.software,
+        forceScan: options.forceScan === true,
         signal: exec.signal,
       })
     } catch (error) {
@@ -185,6 +196,7 @@ export async function runSync(
         return {
           device,
           unchanged: true,
+          scanSkipped: report.scanSkipped,
           manifestRebuilt: false,
           counts: report.counts,
           copied: 0,
@@ -288,6 +300,7 @@ export async function runSync(
       return {
         device,
         unchanged: false,
+        scanSkipped: false,
         manifestRebuilt: report.manifestRebuilt,
         counts: report.counts,
         copied,

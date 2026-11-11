@@ -43,7 +43,10 @@ export const PROJECT_STATUS_TOOL = 'project_status'
  * Why a sync is (or is not) needed, as a value rather than prose.
  *
  * `not-checked` and `unavailable` are the two honest refusals: without a fresh
- * checksum this tool must not answer `wouldSync: false`.
+ * checksum this tool must not answer `wouldSync: false`. `checksum-matches` is
+ * the third kind of honesty: the checksum agreeing is a statement about the
+ * **compiled standard program**, not about the safety program (F blocks), whose
+ * changes do not move it — so it never means "verified clean".
  */
 export type SyncReason =
   | 'not-checked'
@@ -51,7 +54,7 @@ export type SyncReason =
   | 'no-evidence'
   | 'no-manifest'
   | 'checksum-differs'
-  | 'in-sync'
+  | 'checksum-matches'
 
 /** One line explaining {@link SyncReason} in the details block. */
 function syncReasonText(reason: SyncReason): string {
@@ -66,8 +69,12 @@ function syncReasonText(reason: SyncReason): string {
       return 'needed — no manifest'
     case 'checksum-differs':
       return 'needed — checksum differs from the ledger'
-    case 'in-sync':
-      return 'not needed — the source tree matches the compiled PLC'
+    case 'checksum-matches':
+      return (
+        'not needed as far as the checksum goes — it matches the ledger, so a sync would skip the scan. ' +
+        'The checksum does not move for a change confined to the safety program, so F-signatures were NOT ' +
+        'compared; run project_sync(force=true) to check them.'
+      )
   }
 }
 
@@ -377,7 +384,7 @@ export function statusTool(dependencies: ToolDependencies): ToolDefinition {
           syncReason = 'checksum-differs'
         } else {
           wouldSync = false
-          syncReason = 'in-sync'
+          syncReason = 'checksum-matches'
         }
 
         // A workspace with no source tree at all has no project to open: the next
@@ -423,6 +430,13 @@ export function statusTool(dependencies: ToolDependencies): ToolDefinition {
             : knowledgeLine(knowledge),
           `Checksum: ${checksumState}${checksumValue === null ? '' : ` (${checksumValue})`}${drift === null ? '' : drift ? ' — DIFFERS from the ledger' : ' — matches the ledger'}.`,
           `Sync: ${syncReasonText(syncReason)}.`,
+          ...(syncReason === 'checksum-matches'
+            ? [
+                'Safety program: NOT compared. The PLC checksum covers the compiled standard program; a change confined to the ' +
+                  'safety program (F blocks) leaves it untouched, so this tool cannot rule one out. project_sync(force=true) ' +
+                  'enumerates the PLC and compares the per-block F-signatures.',
+              ]
+            : []),
           device === null
             ? 'Git: not checked (no open project).'
             : `Git: ${repository ? `${dirty.length} change(s) in the device directory` : 'not a repository'}.`,

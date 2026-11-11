@@ -374,8 +374,13 @@ test('status verifies the checksum on request and reports drift, never "clean" b
   const equal = assertEnvelope(await executeTool(tools(matching.service).status, { verify: true }, fakeExec(root)))
   assert.equal(equal.data.checksum.drift, false)
   assert.equal(equal.data.wouldSync, false)
-  assert.equal(equal.data.syncReason, 'in-sync')
-  assert.match(equal.details.join('\n'), /Sync: not needed/u)
+  assert.equal(
+    equal.data.syncReason,
+    'checksum-matches',
+    'a matching checksum must never be reported as "in sync": it cannot see a safety-program-only change',
+  )
+  assert.match(equal.details.join('\n'), /Sync: not needed as far as the checksum goes/u)
+  assert.match(equal.details.join('\n'), /Safety program: NOT compared/u, 'the blind spot is stated, not implied')
   assert.equal(equal.data.nextAction, 'git_init', 'no repository yet')
 
   await git(root, ['init', '-q'])
@@ -703,19 +708,84 @@ test('an unchanged scan is a no-op: no copy, nothing pending, STAGE removed', as
   const head = (await git(root, ['rev-parse', 'HEAD'])).stdout.trim()
 
   const { service, calls } = fakeAccess({
-    scan: { ok: true, summary: 'unchanged', data: { checksum: 'AA', unchanged: true, manifestRebuilt: false, stateId: 'state-1' } },
+    scan: {
+      ok: true,
+      summary: 'unchanged',
+      data: { checksum: 'AA', unchanged: true, scanSkipped: true, manifestRebuilt: false, stateId: 'state-1' },
+    },
   })
   const outcome = assertEnvelope(await executeTool(tools(service).sync, { dry_run: false }, fakeExec(root)))
 
   assert.equal(outcome.ok, true)
   assert.equal(outcome.data.unchanged, true)
+  assert.equal(outcome.data.scanSkipped, true, 'the result must not read as "the PLC was compared"')
   assert.equal(outcome.data.copied, 0)
   assert.equal(outcome.data.removedFiles, 0)
   assert.deepEqual(outcome.data.pending, { paths: [], suggestedMessage: '' }, 'nothing may be left for the commit')
   assert.equal((await git(root, ['rev-parse', 'HEAD'])).stdout.trim(), head, 'an unchanged scan must not create a commit')
   assert.equal(await readFile(join(device, 'blocks', '010', 'FB1.xml'), 'utf8'), '<xml>old</xml>')
   assert.deepEqual(operations(calls), ['readTiaSession', 'syncScan'])
+  assert.match(
+    outcome.summary,
+    /scan was skipped/u,
+    'a skipped scan says so instead of claiming the tree matches',
+  )
+  assert.match(
+    (outcome.details ?? []).join('\n'),
+    /safety program/u,
+    'the details name the blind spot and how to check it (force=true)',
+  )
   assert.equal((await readdir(join(root, '.dsh', 'local', 'stage'))).length, 0)
+})
+
+test('force=true reaches the controller and a scan that compared the PLC is reported as such', async (t) => {
+  const root = await gitWorkspace(t)
+  const device = deviceDirectory(root)
+  await writeEvidence(device, { plcChecksum: 'AA' })
+  await writeManifest(device)
+  await makeFile(join(device, 'blocks', '010', 'FB1.xml'), '<xml>old</xml>')
+  await git(root, ['add', '--', 'source/PLC1'])
+  await git(root, ['commit', '-q', '-m', 'import'])
+
+  const { service, calls } = fakeAccess({
+    scan: {
+      ok: true,
+      summary: 'unchanged',
+      data: { checksum: 'AA', unchanged: true, scanSkipped: false, manifestRebuilt: false, stateId: 'state-1' },
+    },
+  })
+
+  const outcome = assertEnvelope(await executeTool(tools(service).sync, { dry_run: false, force: true }, fakeExec(root)))
+
+  assert.equal(outcome.ok, true)
+  assert.equal(outcome.data.forced, true)
+  assert.equal(outcome.data.unchanged, true)
+  assert.equal(outcome.data.scanSkipped, false)
+  assert.equal(calls[1].query.forceScan, true, 'the flag reaches the interface service as forceScan')
+  assert.match(outcome.summary, /enumerated the PLC/u, 'a real comparison is not hedged')
+  assert.doesNotMatch(outcome.summary, /scan was skipped/u)
+})
+
+test('the dry-run plan says a matching checksum would SKIP the scan, and force always scans', async (t) => {
+  const root = await tempWorkspace(t)
+  await writeEvidence(deviceDirectory(root), { plcChecksum: 'AA' })
+  await writeManifest(deviceDirectory(root))
+  const { service } = fakeAccess({ checksum: checksumReport('AA') })
+  const { sync } = tools(service)
+
+  const plan = assertEnvelope(await executeTool(sync, {}, fakeExec(root)))
+  assert.equal(plan.data.wouldSync, false)
+  assert.equal(plan.data.force, false)
+  assert.match(plan.details.join('\n'), /would SKIP the scan/u)
+  assert.match(plan.details.join('\n'), /force=true to compare F-signatures/u)
+
+  // With force the plan cannot answer "nothing to do": the point of the flag is
+  // that the checksum may be blind, so a scan WILL run.
+  const forced = assertEnvelope(await executeTool(sync, { force: true }, fakeExec(root)))
+  assert.equal(forced.data.wouldSync, true)
+  assert.equal(forced.data.force, true)
+  assert.match(forced.summary, /force=true always scans/u)
+  assert.match(forced.details.join('\n'), /F-block changes are compared/u)
 })
 
 test('a disappeared object deletes its file; an unexportable one keeps its previous file', async (t) => {

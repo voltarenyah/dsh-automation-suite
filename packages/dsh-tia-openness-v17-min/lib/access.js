@@ -441,6 +441,7 @@ export class EngineeringAccess extends Service {
         // Sent even when false: the caller's intent stays visible on the wire, and the
         // controller then does not have to guess a default for a mode that skips exports.
         params['adopt_existing'] = query.adoptExisting ?? false;
+        params['force_scan'] = query.forceScan ?? false;
         if (query.deviceName !== undefined)
             params['device_name'] = query.deviceName;
         if (query.softwareName !== undefined)
@@ -454,6 +455,7 @@ export class EngineeringAccess extends Service {
             software: text(data?.['software']) ?? null,
             checksum: text(data?.['checksum']) ?? null,
             unchanged: data?.['unchanged'] === true,
+            scanSkipped: data?.['scanSkipped'] === true,
             counts: syncCounts(data?.['counts']),
             changed: syncObjects(data?.['changed']),
             added: syncObjects(data?.['added']),

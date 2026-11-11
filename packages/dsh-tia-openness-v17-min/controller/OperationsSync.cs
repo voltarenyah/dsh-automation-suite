@@ -91,6 +91,7 @@ namespace TiaOpennessV17Min.Controller
             string exportOptionName = p.Enum("export_options", ExportOptionNames, "with_defaults");
             ExportOptions exportOptions = ParseExportOptions(exportOptionName);
             bool adoptExisting = p.Bool("adopt_existing", false);
+            bool forceScan = p.Bool("force_scan", false);
 
             PlcSoftwareRef software = _host.FindPlcSoftware(p.String("device_name", null), p.String("software_name", null));
             string checksum = OpennessHost.ChecksumOf(software.Software);
@@ -123,13 +124,13 @@ namespace TiaOpennessV17Min.Controller
             // even when the engineering state is unchanged. A ledger written before
             // F-signatures were recorded also forces one scan, so the signatures are
             // backfilled instead of being reported as "unchanged but absent".
-            if (previous != null
-                && previous.SafetyRecorded
-                && !rebuildManifest
-                && string.Equals(previous.PlcChecksum, checksum, StringComparison.Ordinal)
-                && string.Equals(previous.Software, software.SoftwareName, StringComparison.OrdinalIgnoreCase))
+            //
+            // The decision itself lives in CanUseChecksumFastPath (with the safety
+            // blind spot documented there), so the self test can exercise it without
+            // a TIA project.
+            if (CanUseChecksumFastPath(forceScan, previous, rebuildManifest, checksum, software.SoftwareName))
             {
-                return UnchangedResult(previous, checksum, software);
+                return UnchangedResult(previous, checksum, software, true);
             }
 
             Directory.CreateDirectory(stageDir);
@@ -348,6 +349,7 @@ namespace TiaOpennessV17Min.Controller
             data.Add("software", software.SoftwareName);
             data.Add("checksum", checksum);
             data.Add("unchanged", false);
+            data.Add("scanSkipped", false);
             data.Add("counts", counts);
             data.Add("safety", SafetySummary(next, previous));
             data.Add("changed", ObjectRows(delta.Changed, previous, current, true));
@@ -692,7 +694,35 @@ namespace TiaOpennessV17Min.Controller
             }
         }
 
-        private JsonObject UnchangedResult(EvidenceDocument previous, string checksum, PlcSoftwareRef software)
+        /// <summary>
+        /// Decide whether the checksum fast path may answer "unchanged" without
+        /// enumerating the PLC.
+        ///
+        /// **KNOWLEDGE BOUNDARY (the reason `force_scan` exists)**: the checksum only
+        /// covers the compiled standard program. A change confined to the safety
+        /// program leaves it untouched, so this path would answer "unchanged" without
+        /// ever asking <c>SafetySignatureProvider</c>. That is the 0.2.5 gap where a
+        /// safety-only edit could never be synced. `force_scan` is the caller's way
+        /// to pay for the enumeration anyway; it is safe to overuse, because a scan
+        /// of an unchanged project rewrites nothing and produces the same ledger
+        /// bytes.
+        ///
+        /// Kept static and free of TIA types so <see cref="SelfTest"/> can exercise
+        /// every condition without a project.
+        /// </summary>
+        internal static bool CanUseChecksumFastPath(bool forceScan, EvidenceDocument previous,
+            bool rebuildManifest, string checksum, string softwareName)
+        {
+            if (forceScan) return false;
+            if (previous == null) return false;
+            if (!previous.SafetyRecorded) return false;
+            if (rebuildManifest) return false;
+            if (!string.Equals(previous.PlcChecksum, checksum, StringComparison.Ordinal)) return false;
+            return string.Equals(previous.Software, softwareName, StringComparison.OrdinalIgnoreCase);
+        }
+
+        private JsonObject UnchangedResult(EvidenceDocument previous, string checksum, PlcSoftwareRef software,
+            bool scanSkipped)
         {
             JsonObject counts = CountEvidence(previous);
             counts.Add("changed", 0);
@@ -704,6 +734,12 @@ namespace TiaOpennessV17Min.Controller
             data.Add("software", software.SoftwareName);
             data.Add("checksum", checksum);
             data.Add("unchanged", true);
+            // Whether the comparison actually enumerated the PLC. A skipped scan is
+            // "nothing changed as far as the checksum can tell", which on a CPU with
+            // a safety program is NOT the same as "nothing changed": a change
+            // confined to the safety program leaves the checksum alone. The caller
+            // has to be able to say that out loud, so it is a field, not a nuance.
+            data.Add("scanSkipped", scanSkipped);
             data.Add("counts", counts);
             data.Add("safety", SafetySummary(previous, null));
             data.Add("changed", new List<JsonObject>());

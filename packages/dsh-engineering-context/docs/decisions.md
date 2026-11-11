@@ -884,3 +884,61 @@ status→计划共用一次 checksum 读、真实同步刷新缓存、缓存 TTL
 **验证**：本包 **135 → 151 项全通过**（新增 `16-workspace-describe` 7 项、`17-import-preflight` 7 项、
 commit 的 `Reference` 2 项、入口/工具数 7 项）；接口插件 112 项（111 通过 / 1 跳过，控制器不在时跳过）；
 `matrix:check` / `skills:check` 通过。
+
+---
+
+## D29. checksum 看不见安全程序：`force_scan` + "跳过扫描≠核对过"（0.2.5 的 F-only 缺口）
+
+**背景**（使用者 2026-11-11 在真实 F-CPU 工程上暴露）：只改 F 块（安全程序）时
+`PlcChecksumProvider.Software` **不变**，于是 `SyncScan` 的 checksum 快速路径（D26 第 4 条）
+直接返回 `unchanged: true`、`stage: null`，**从不枚举、也从不问 `SafetySignatureProvider`**。
+后果是版本管理闭环断掉：`project_sync` 报告"已同步"→ `pending.paths` 为空 →
+`project_commit` 返回 `committed: false`（Nothing to commit）→ F-only 改动**永远提交不了**，
+而 `project_sync` 当时只有 `dry_run` / `refresh_knowledge` 两个参数，没有逃生口。
+
+**事实边界（反射实证，2026-11-11，`Siemens.Engineering.dll` 1700.7.501.6）**：
+
+- `SafetySignatureType` 枚举**只有一个成员** `BlockOfflineSignature = 0`。V17 公开 API 里没有
+  "整个安全程序一个签名"这种东西。
+- `SafetyAdministration` 只有 `Settings` / `RuntimeGroups` / `IsLoggedOnToSafetyOfflineProgram` /
+  `IsSafetyOfflineProgramPasswordSet` + 密码方法；`SafetySettings` 只有 `SafetySystemVersion` /
+  `AssignmentOfBlockNumbers` / `SafetyModeCanBeDisabled` / `ActivationOfFChangeHistory` /
+  `CreateDriverInstanceDataBlocksWithoutPrefix`；`RuntimeGroup` 是 `MainSafetyBlockName` / `FOBName` /
+  周期时间。**全是配置，没有签名、没有计数、没有版本号。**
+- 所以逐块 `SafetySignatureProvider` 是唯一权威口径，代价必然是一次枚举。
+  （`docs/MANIFEST-GAP-ANALYSIS.md:99` 那条"`fSignature` 可由 `SafetySignatureProvider` 得到"的
+  可行性判断**不准确**：那是另一款工具的 `device` 块字段，V17 类型化 API 没有对应成员。）
+
+**决定**：
+
+1. **控制器加 `SyncScan.force_scan`（默认 false）**：置 true 时跳过 checksum 快速路径，照常枚举、
+   照常比对指纹与 F 签名。**过度使用是安全的**——工程没变时枚举不写任何 XML，账本字节相同
+   （`ToJson` 固定排序、无时间戳），所以 `pending.paths` 仍为空，不会制造噪音提交。
+2. **`data.scanSkipped` 明确回报"这次到底比没比"**：跳过 `true`，真枚举过 `false`。理由：
+   `unchanged: true` 在 F-CPU 上**不能**读成"什么都没变"，调用方必须能说出这句话，
+   所以它是字段而不是措辞。旧控制器不报该字段，归一化按 `false`（"扫描跑过了"）——
+   诚实的方向是"不假设自己跳过过"。
+3. **工具面 `project_sync.force`（默认 false）**，透传为 `forceScan`。计划（`dry_run` 默认）里
+   `force: true` 直接回答 `wouldSync: true`（`force=true always scans`），因为计划的整个意义就是
+   "checksum 可能瞎了"；`force: false` 且 checksum 命中时，计划**明确写出**"真实运行会跳过扫描，
+   所以只改安全程序不会被发现（传 force=true 才比对 F 签名）"。
+4. **`project_status` 的 `syncReason` 从 `in-sync` 改名 `checksum-matches`**，并额外打印一行
+   "Safety program: NOT compared"。名字本身就是结论：`in-sync` 在 F-CPU 上是**假话**。
+5. **不做"廉价 F 闸门"（自动每 sync 探一次候选块签名）**：候选集是 `F_*` 语言 + 全部 OB
+   （参考工程 1155 块里约 83 个，`OpennessHost.MayBeSafetyBlock`），每次 sync 都要付这笔钱且
+   没人量过真实耗时；先给逃生口，等真机计时再决定要不要把它变成默认。
+
+**代价（必须承认）**：① `force: true` 付一次慢路径（实测 30 s 枚举起，旧账本补签名 91 s）；
+② 默认行为不变，所以**不传 force 的用户仍然看不见 F-only 改动**——这是刻意保留的性能取舍，
+不再假装它不存在；③ 探"动态属性里是否有 F 签名"（`DeviceItem.GetAttributeInfos()`）没做，
+若有就能把闸门做成常数开销，这条留给后续。
+
+**验证**：接口插件 `npm test` **120 项（119 通过 / 1 跳过）**，新增 1 项守 `force_scan` 上线
+（默认 false 不上线、true 照传、`scanSkipped` 三种来源归一化）；控制器自测 **21 项**全过（新增
+`sync_scan_force_flag`：`CanUseChecksumFastPath` 的七种组合，`force_scan` 必须让快速路径让路）；
+`matrix:build` + `matrix:check`、`skills:check` 通过。本包 **156 → 158 项全通过**：
+`status` 的 `checksum-matches` 与"Safety program: NOT compared"、unchanged 结果带
+`scanSkipped: true` 且摘要/细节点名盲区、`force` 透传与"真比过"的摘要、计划两种（跳过提示 /
+force 必扫）。**真机（F-CPU 工程）未复测**：下一步要用 `SWT2_PEI_FJib_Hold` 或同类工程
+实测"只改一个 F 块 → `project_sync(force=true)` → `changed≥1` / 账本变化 → `project_commit` 成功"，
+并记录 force 的真实耗时。

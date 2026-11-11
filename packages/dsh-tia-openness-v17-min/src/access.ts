@@ -193,6 +193,13 @@ export interface AccessSyncResult extends AccessCallResult {
   checksum: string | null
   /** True when the PLC checksum matched the ledger: nothing was listed or written. */
   unchanged: boolean
+  /**
+   * True when `unchanged` was decided by the checksum **without enumerating**
+   * the PLC. A skipped scan cannot see a change confined to the safety program
+   * (the checksum does not move for it), so a caller must not read it as proof
+   * that nothing changed — see {@link SyncScanQuery.forceScan}.
+   */
+  scanSkipped: boolean
   counts: AccessSyncCounts
   changed: AccessSyncObject[]
   added: AccessSyncObject[]
@@ -240,6 +247,19 @@ export interface SyncScanQuery {
    * adopted count comes back as {@link AccessSyncResult.adopted}.
    */
   adoptExisting?: boolean
+  /**
+   * Enumerate the PLC even when the checksum matches the ledger.
+   *
+   * The checksum fast path is what makes a sync of a big project cheap, but the
+   * checksum only covers the compiled standard program: **a change confined to
+   * the safety program does not move it**, so the fast path would report
+   * "unchanged" without ever asking `SafetySignatureProvider`. Set this to pay
+   * for the full enumeration when the caller has a reason to doubt the checksum
+   * (an F-CPU project, an operator who just edited the F blocks). Overusing it
+   * is harmless: a scan of an unchanged project writes no XML and produces a
+   * byte-identical ledger.
+   */
+  forceScan?: boolean
   deviceName?: string
   softwareName?: string
   exportOptions?: 'none' | 'with_defaults' | 'with_read_only'
@@ -834,6 +854,7 @@ export class EngineeringAccess extends Service {
     // Sent even when false: the caller's intent stays visible on the wire, and the
     // controller then does not have to guess a default for a mode that skips exports.
     params['adopt_existing'] = query.adoptExisting ?? false
+    params['force_scan'] = query.forceScan ?? false
     if (query.deviceName !== undefined) params['device_name'] = query.deviceName
     if (query.softwareName !== undefined) params['software_name'] = query.softwareName
 
@@ -846,6 +867,7 @@ export class EngineeringAccess extends Service {
       software: text(data?.['software']) ?? null,
       checksum: text(data?.['checksum']) ?? null,
       unchanged: data?.['unchanged'] === true,
+      scanSkipped: data?.['scanSkipped'] === true,
       counts: syncCounts(data?.['counts']),
       changed: syncObjects(data?.['changed']),
       added: syncObjects(data?.['added']),
