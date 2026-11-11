@@ -25,14 +25,14 @@
 // Requirements: pnpm (DSH's copy is auto-discovered), .NET 10 SDK for the graph
 // engine (build-distribution finds it), and the current workspace built.
 
-import { execFileSync } from 'node:child_process'
+import { execFileSync, spawnSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
-import { existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, cpSync, writeFileSync } from 'node:fs'
+import { closeSync, existsSync, lstatSync, mkdirSync, mkdtempSync, openSync, readFileSync, readdirSync, rmSync, statSync, cpSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-import { runDshSync } from './dsh-launch.mjs'
+import { findDshCommand } from './dsh-launch.mjs'
 
 const root = resolve(fileURLToPath(new URL('..', import.meta.url)))
 
@@ -87,6 +87,18 @@ function runPnpm(cwd, argv, options = {}) {
   })
 }
 
+/**
+ * Run the DSH CLI the way the desktop app launches it, capturing output through
+ * temp files (a confined shell cannot give a child process a pipe).
+ */
+function runDshCaptured(argv, options = {}) {
+  const launch = findDshCommand()
+  return runCaptured(launch.command, [...launch.prefix, ...argv], {
+    cwd: options.cwd,
+    env: { ...launch.env, ...(options.env ?? {}) },
+  })
+}
+
 function dirSize(dir) {
   let total = 0
   for (const entry of readdirSync(dir, { withFileTypes: true })) {
@@ -95,6 +107,70 @@ function dirSize(dir) {
     total += entry.isDirectory() ? dirSize(path) : statSync(path).size
   }
   return total
+}
+
+/**
+ * Create a scratch directory for capturing a child process's output.
+ * %TEMP% is the normal place; a confined shell can deny directory creation
+ * there, so fall back to a directory inside the build output.
+ */
+function makeScratchDir(prefix) {
+  try {
+    return mkdtempSync(join(tmpdir(), prefix))
+  } catch {
+    mkdirSync(outDir, { recursive: true })
+    return mkdtempSync(join(outDir, prefix))
+  }
+}
+
+/**
+ * Run a native command and capture its output through temp files.
+ * Pipes are not usable here: a confined DSH shell denies a child process its
+ * pipe (EPERM), and this script runs under both shells.
+ */
+function runCaptured(command, argv, options = {}) {
+  const scratch = makeScratchDir('dsh-app-layer-run-')
+  const outFile = join(scratch, 'stdout.txt')
+  const errFile = join(scratch, 'stderr.txt')
+  const fdOut = openSync(outFile, 'w')
+  const fdErr = openSync(errFile, 'w')
+  let result
+  try {
+    result = spawnSync(command, argv, {
+      cwd: options.cwd,
+      env: { ...process.env, ...(options.env ?? {}) },
+      stdio: ['ignore', fdOut, fdErr],
+      windowsHide: true,
+    })
+  } finally {
+    closeSync(fdOut)
+    closeSync(fdErr)
+  }
+  const output = `${readFileSync(outFile, 'utf8')}\n${readFileSync(errFile, 'utf8')}`
+  rmSync(scratch, { recursive: true, force: true })
+  if (result.error) return { status: result.status, output: `${output}\nspawn error: ${result.error.message}` }
+  return { status: result.status, output }
+}
+
+/** pnpm state files that must not name the build machine's directories. */
+function findBuildMachinePaths(profileDir) {
+  const markers = ['app-layer-build', 'dist\\\\desktop', 'dist/desktop']
+  const hits = []
+  for (const relative of [
+    join('node_modules', '.modules.yaml'),
+    join('node_modules', '.pnpm-workspace-state-v1.json'),
+  ]) {
+    const file = join(profileDir, relative)
+    if (!existsSync(file)) continue
+    const text = readFileSync(file, 'utf8')
+    for (const marker of markers) {
+      if (text.includes(marker)) {
+        hits.push(`${file} (${marker})`)
+        break
+      }
+    }
+  }
+  return hits
 }
 
 function findReparsePoints(dir, found = []) {
@@ -201,31 +277,42 @@ function installStaging() {
 function rewriteFinalProfile(releaseManifest, locals) {
   rmSync(appDir, { recursive: true, force: true })
   mkdirSync(appDir, { recursive: true })
-  // The staging profile still has tarballs/ and a lockfile that references them;
-  // neither belongs in the installed app layer.
-  for (const extra of ['tarballs', 'pnpm-lock.yaml']) {
-    rmSync(join(stagingProfile, extra), { recursive: true, force: true })
-  }
-  const deps = {}
-  for (const [name, recorded] of Object.entries(releaseManifest.dependencies ?? {})) {
-    deps[name] = locals.has(name) ? locals.get(name).manifest.version : recorded
-  }
+  // tarballs/ and pnpm-lock.yaml stay in the installed app layer on purpose.
+  //
+  // The suite's 15 plugins are not on any registry, so the installed profile
+  // must carry their tarballs and resolve them as file:./tarballs/*.tgz. The
+  // Plugins page installs plugins with `dsh plugin --profile <p> add <pkg>`,
+  // i.e. `pnpm add`, which re-resolves every direct dependency of the profile:
+  // with bare version specs and no tarballs that fails with FETCH_404 for the
+  // suite's own plugins, so no user could install anything (0.2.0–0.2.5).
+  //
+  // The dependency specs therefore stay as written for staging; only the
+  // machine-specific pnpm metadata (node_modules/.modules.yaml store paths) is
+  // rewritten, and the installer does that after copying (see
+  // scripts/normalize-profile-pnpm.mjs).
   const finalManifest = {
     ...releaseManifest,
-    dependencies: deps,
-    // The app layer is copied to DSH_HOME/profiles/dsh-automation-suite; the
-    // package name stays the blueprint's.
+    dependencies: Object.fromEntries(
+      Object.entries(releaseManifest.dependencies ?? {}).map(([name, recorded]) => [
+        name,
+        locals.has(name) ? `file:./tarballs/${tarballFor(name, locals.get(name).manifest)}` : recorded,
+      ]),
+    ),
   }
   writeFileSync(join(stagingProfile, 'package.json'), `${JSON.stringify(finalManifest, undefined, 2)}\n`)
+  if (!existsSync(join(stagingProfile, 'pnpm-lock.yaml'))) {
+    throw new Error(`staging profile has no pnpm-lock.yaml; the Plugins page needs it: ${stagingProfile}`)
+  }
   cpSync(stagingProfile, appProfile, { recursive: true, dereference: false })
   cpSync(join(root, 'scripts', 'doctor.ps1'), join(appDir, 'doctor.ps1'))
   cpSync(join(root, 'scripts', 'test-doctor-json.ps1'), join(appDir, 'test-doctor-json.ps1'))
   cpSync(join(root, 'scripts', 'merge-profile.mjs'), join(appDir, 'merge-profile.mjs'))
+  cpSync(join(root, 'scripts', 'normalize-profile-pnpm.mjs'), join(appDir, 'normalize-profile-pnpm.mjs'))
   cpSync(join(releaseDir, 'manifest.json'), join(appDir, 'manifest.json'))
   return finalManifest
 }
 
-function verifyLayer(finalManifest) {
+function verifyLayer(finalManifest, locals) {
   const nodeModules = join(appProfile, 'node_modules')
   if (!existsSync(nodeModules)) throw new Error(`no node_modules at ${nodeModules}`)
   const links = findReparsePoints(nodeModules)
@@ -248,42 +335,92 @@ function verifyLayer(finalManifest) {
   for (const name of Object.keys(finalManifest.dependencies ?? {})) {
     if (!existsSync(join(nodeModules, name))) throw new Error(`dependency not installed: ${name}`)
   }
+  // The Plugins page runs `pnpm add` in this profile, which re-resolves every
+  // direct dependency. The suite's plugins only exist as file: tarballs, so the
+  // layer must ship them together with the lockfile (see rewriteFinalProfile).
+  if (!existsSync(join(appProfile, 'pnpm-lock.yaml'))) {
+    throw new Error(`app layer has no pnpm-lock.yaml: ${appProfile}`)
+  }
+  const bareSpecs = Object.entries(finalManifest.dependencies ?? {})
+    .filter(([name, spec]) => locals.has(name) && !String(spec).startsWith('file:'))
+    .map(([name]) => name)
+  if (bareSpecs.length > 0) {
+    throw new Error(`local plugin(s) must keep file: tarball specs: ${bareSpecs.join(', ')}`)
+  }
+  for (const [name, spec] of Object.entries(finalManifest.dependencies ?? {})) {
+    if (!String(spec).startsWith('file:')) continue
+    const tarball = join(appProfile, String(spec).replace(/^file:\.\//u, ''))
+    if (!existsSync(tarball)) throw new Error(`tarball for ${name} is missing from the app layer: ${tarball}`)
+  }
+  // node_modules/.modules.yaml still names this build machine's staging
+  // directories; that is expected (the installer rewrites it after copying), and
+  // the runtime check below proves the rewrite yields a profile pnpm accepts.
 
   const engine = join(nodeModules, '@voltarenyah', 'dsh-engineering-graph', 'engine', 'bin', 'EngineeringGraph.Engine.exe')
   if (!existsSync(engine)) throw new Error(`graph engine missing: ${engine}`)
-  const selfTest = execFileSync(engine, ['--self-test'], { encoding: 'utf8' })
-  if (!/self-test: OK/u.test(selfTest)) throw new Error(`graph engine self-test failed:\n${selfTest}`)
+  // The published engine is a self-contained single file: it unpacks native
+  // libraries into %TEMP% and opens its self-test database there. Point both at
+  // the build output so a restricted %TEMP% cannot break the check.
+  const bundleExtract = join(outDir, '.dotnet-bundle')
+  mkdirSync(bundleExtract, { recursive: true })
+  const selfTest = runCaptured(engine, ['--self-test'], {
+    env: { DOTNET_BUNDLE_EXTRACT_BASE_DIR: bundleExtract, TMP: bundleExtract, TEMP: bundleExtract },
+  })
+  if (selfTest.status !== 0 || !/self-test: OK/u.test(selfTest.output)) {
+    throw new Error(`graph engine self-test failed:\n${selfTest.output}`)
+  }
 
   if (args['no-verify']) {
     process.stdout.write('app layer structure OK; runtime verification skipped (--no-verify)\n')
-    return { selfTest: selfTest.trim() }
+    return { selfTest: selfTest.output.trim().split('\n').at(-1) }
   }
 
-  const verifyHome = join(tmpdir(), `dsh-app-layer-verify-${Date.now()}`)
+  const verifyHome = makeScratchDir('dsh-app-layer-verify-')
   const profileDir = join(verifyHome, 'profiles', 'dsh-automation-suite')
   mkdirSync(profileDir, { recursive: true })
   cpSync(appProfile, profileDir, { recursive: true, dereference: false })
   const env = { ...process.env, DSH_HOME: verifyHome }
   try {
-    const dump = runDshSync(['--profile', 'dsh-automation-suite', '--dump-config'], { env })
+    // The installer normalizes the copied profile (store paths from this build
+    // machine are wrong everywhere else). Verify the shape the user ends up
+    // with, not the build-machine one.
+    const pnpmBinary = pnpm.prefix[0]
+    if (pnpmBinary) {
+      const normalized = runCaptured(process.execPath, [
+        join(appDir, 'normalize-profile-pnpm.mjs'),
+        '--profile', profileDir,
+        '--pnpm', pnpmBinary,
+      ], { env })
+      if (normalized.status !== 0 || !/"ok": true/u.test(normalized.output)) {
+        throw new Error(`normalizer did not succeed:\n${normalized.output}`)
+      }
+    }
+    else {
+      process.stdout.write('warning: pnpm was found on PATH, not as pnpm.mjs; skipping the normalization check\n')
+    }
+
+    const dumpRun = runDshCaptured(['--profile', 'dsh-automation-suite', '--dump-config'], { env })
+    const dump = dumpRun.output
+    if (dumpRun.status !== 0) throw new Error(`dsh --dump-config exited ${dumpRun.status}:\n${dump}`)
     const rows = (dump.match(/^# == /gmu) ?? []).length
     if (rows < 5) throw new Error(`dump-config has too few bundle rows: ${rows}`)
     for (const name of finalManifest.dsh?.profile?.bundles ?? []) {
       if (!dump.includes(`# == ${name}`)) throw new Error(`dump-config is missing bundle ${name}`)
     }
 
-    const doctorJson = execFileSync('pwsh', [
+    const doctorRun = runCaptured('pwsh', [
       '-NoProfile', '-File', join(appDir, 'doctor.ps1'),
       '-DshHome', verifyHome,
       '-Profile', 'dsh-automation-suite',
       '-Json',
       '-NoFail',
-    ], { encoding: 'utf8', env })
+    ], { env })
+    const doctorJson = doctorRun.output
     let doctor
     try {
       doctor = JSON.parse(doctorJson)
     } catch {
-      throw new Error(`doctor did not emit JSON:\n${doctorJson}`)
+      throw new Error(`doctor did not emit JSON (exit ${doctorRun.status}):\n${doctorJson}`)
     }
     if (doctor.schemaVersion !== 1) throw new Error(`doctor schemaVersion is ${doctor.schemaVersion}`)
     if (doctor.summary.fail > 0) {
@@ -294,7 +431,7 @@ function verifyLayer(finalManifest) {
         `${rows} '# ==' rows; doctor ${doctor.summary.ok} ok / ${doctor.summary.warn} warn / ${doctor.summary.fail} fail\n`,
     )
     return {
-      selfTest: selfTest.trim(),
+      selfTest: selfTest.output.trim().split('\n').at(-1),
       dumpLines: dump.split(/\r?\n/u).length,
       rows,
       doctor: { ok: doctor.summary.ok, warn: doctor.summary.warn, fail: doctor.summary.fail },
@@ -317,7 +454,7 @@ function writeAppManifest(releaseManifest, finalManifest, locals) {
   manifest.distributionVersion = version
   manifest.appLayerVersion = version
   manifest.fixedProfile = 'dsh-automation-suite'
-  manifest.sourceCommit = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8' }).trim()
+  manifest.sourceCommit = runCaptured('git', ['rev-parse', 'HEAD'], { cwd: root }).output.trim()
   manifest.packages = packageVersions(locals)
   manifest.appLayer = {
     profile: 'profile',
@@ -340,7 +477,7 @@ function main() {
   const { releaseManifest, locals } = writeStagingProfile()
   installStaging()
   const finalManifest = rewriteFinalProfile(releaseManifest, locals)
-  const verification = verifyLayer(finalManifest)
+  const verification = verifyLayer(finalManifest, locals)
   writeAppManifest(releaseManifest, finalManifest, locals)
   // The staging profile is a duplicate of app/profile (including its 100 MiB
   // node_modules). Keep it only when verification failed, where it is useful for

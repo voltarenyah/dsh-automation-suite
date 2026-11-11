@@ -136,14 +136,14 @@ releaseDate: '...'
 
 | 产物 | 内容 | 估算大小 | 更新频率 |
 |---|---|---|---|
-| `dsh-automation-suite-setup-<ver>.exe` | Inno Setup 安装器：壳 + 应用层 + 安装逻辑（**不含 DSH 运行时**） | 约 120–170 MB | 壳/安装器变化时 |
-| `dsh-automation-suite-app-<ver>.zip` | 物化 profile（含 node_modules）、doctor、`manifest.json`（壳除外） | 约 50–70 MB（解压后约 103 MiB） | 每次应用层迭代 |
+| `dsh-automation-suite-setup-<ver>.exe` | Inno Setup 安装器：壳 + 应用层 + 安装逻辑（**不含 DSH 运行时**） | 约 140–190 MB | 壳/安装器变化时 |
+| `dsh-automation-suite-app-<ver>.zip` | 物化 profile（含 node_modules、tarballs）、doctor、`manifest.json`（壳除外） | 约 65–90 MB（解压后约 137 MiB） | 每次应用层迭代 |
 | `manifest.json` / `SHA256SUMS` | 版本、依赖、sha256（无自动更新，仍用于校验） | < 10 KB | 每次发布 |
 | DSH 运行时 | 官方 feed 的安装包 | 约 293 MB（2026-11-07 实测 0.2.2-rc.1） | 安装时按需下载 |
 
 > 自包含 .NET 10 的壳实测约 **111 MiB**（WinForms + WebView2 + 运行时）；如果改为依赖系统
 > .NET Desktop Runtime，可把壳降到约 5–15 MB，但需要额外的运行时检测/引导。**第一版建议自包含**，
-> 减少环境变量。壳 + app layer 未压缩约 214 MiB，Inno 压缩后预计 120–170 MB。
+> 减少环境变量。壳 + app layer 未压缩约 248 MiB，Inno 压缩后预计 140–190 MB。
 
 ### 4.2 安装目录
 
@@ -152,7 +152,8 @@ releaseDate: '...'
   app\
     <version>\
       shell\                 DshSuite.exe（自包含）、WebView2Loader.dll、图标
-      profile\               package.json / cordis.patch.yml / node_modules\（真实文件）
+      profile\               package.json / cordis.patch.yml / node_modules\（真实文件）/
+                             tarballs\（套件插件的 file: 依赖）/ pnpm-lock.yaml
       doctor.ps1
       manifest.json          doctor 契约（testedDshVersion 等）
       app-manifest.json      构建来源（commit、包版本、大小）
@@ -481,20 +482,77 @@ node scripts/build-app-layer.mjs --version 0.2.0
 它做这些事：
 
 1. 用 `scripts/build-distribution.mjs` 打包当前工作树（图谱引擎是 .NET 10 self-contained 单文件）；
-2. 建 staging profile，把 tarball 写成 `file:` 依赖，跑
+2. 建 staging profile，把 tarball 写成 `file:./tarballs/*.tgz` 依赖，跑
    `pnpm install --prod --node-linker=hoisted`，**物化 node_modules**；
-3. 删除 tarball/lockfile，把依赖改回版本号，复制成
-   `dist/desktop/<ver>/app/profile`；
+3. 把 staging profile 连同 `tarballs/` 和 `pnpm-lock.yaml` 一起复制成
+   `dist/desktop/<ver>/app/profile`（依赖**保持** `file:` 规格，见下面「为什么不能把 tarball 删掉」）；
 4. 递归检查 `node_modules` 无 symlink/junction，`@deepseek-ai` 下只允许
-   `cosmokit` / `dsh-brand` / `schemastery` 三个工具包（其余是宿主运行时，D19）；
+   `cosmokit` / `dsh-brand` / `schemastery` 三个工具包（其余是宿主运行时，D19）；并检查
+   每个 `file:` 依赖的 tarball 真的在 layer 里、`pnpm-lock.yaml` 存在；
 5. 跑图谱引擎 `--self-test`；
-6. 把 app layer 复制到临时 `DSH_HOME/profiles/dsh-automation-suite`，**不跑 pnpm**，
-   跑 `dsh --dump-config`、逐 bundle 行检查与 `doctor.ps1 -Json`，要求
-   `summary.fail = 0`；
+6. 把 app layer 复制到临时 `DSH_HOME/profiles/dsh-automation-suite`，**先跑
+   `normalize-profile-pnpm.mjs`**（模拟安装器的重写），再跑 `dsh --dump-config`、逐 bundle 行
+   检查与 `doctor.ps1 -Json`，要求 `summary.fail = 0`；
 7. 写出 `manifest.json`（doctor 契约）与 `app-manifest.json`（commit、包版本、大小）。
 
-当前基线：**15 个依赖、app layer 约 103 MiB、`--dump-config` 2149 行**（2026-11-07，
-DSH 0.2.1-rc.2）。安装器只需把 `app/profile` 复制到固定 profile，不需要 pnpm。
+当前基线（0.2.6 实测，DSH 0.2.2-rc.1）：**16 个依赖、app layer 136.6 MiB（node_modules 102.7 MiB +
+tarballs 33.8 MiB）、`--dump-config` 2172 行 / 47 个 `# ==` 行、doctor 10 ok / 3 warn / 0 fail**。
+安装器仍**不需要 pnpm 去装 profile**（node_modules 已物化），只在重写元数据时调一次
+`pnpm store path` 来问「这台机器的 store 在哪」——因为 pnpm 可能因为硬链接不可用而从全局
+store 回落到项目内 `<cwd>/.pnpm-store/v11`，写死全局路径照样会撞 `ERR_PNPM_UNEXPECTED_STORE`。
+
+#### 为什么不能把 tarball 和 lockfile 删掉（0.2.0–0.2.5 的回归）
+
+旧流程在第 3 步把 `tarballs/`、`pnpm-lock.yaml` 删掉、依赖改回裸版本号。桌面版左上角
+**Plugins 页面**装插件时执行的是 `dsh plugin --profile <p> add <pkg>` → 在 profile 里跑
+`pnpm add`，而 `pnpm add` 会**重新解析该 importer 的全部直接依赖**，不是只处理新装的那个。
+于是用户第一次装插件必然失败，两种报错按顺序出现：
+
+1. `ERR_PNPM_UNEXPECTED_VIRTUAL_STORE` / `ERR_PNPM_UNEXPECTED_STORE` —— pnpm 在解析依赖**之前**
+   先比对 `node_modules/.modules.yaml` 里记的 `storeDir` / `virtualStoreDir`。这两个值是
+   物化时**构建机**的绝对路径（staging 目录 + 构建用户的 pnpm store），换台机器必然对不上。
+   报错里建议的 `pnpm install` 在这里也救不了，因为第 2 条。
+2. `ERR_PNPM_FETCH_404` —— 本套件的 15 个插件**不在任何 registry 上**，依赖写成裸版本号后
+   pnpm 只能去 registry 找，404。
+
+所以两件事都必须做：
+
+| 谁 | 做什么 |
+|---|---|
+| `scripts/build-app-layer.mjs` | 保留 `tarballs/` + `pnpm-lock.yaml`，依赖保持 `file:./tarballs/*.tgz` |
+| `desktop/installer/install-profile.ps1` | 复制到最终 profile 后跑 `scripts/normalize-profile-pnpm.mjs`，把 `.modules.yaml`（以及 `.pnpm-workspace-state-v1.json`）里的两个路径改写成**这台机器**的实际值；失败则回滚旧 profile |
+| `scripts/doctor.ps1` | 新增 `plugin-install` 检查项：`normalize-profile-pnpm.mjs --check` 失败即 **fail**（这是 Plugins 页面的核心能力，不是警告） |
+| `scripts/test-plugin-add.mjs` | 验收：先复现旧 bug，再走安装器的重写，最后跑真实 `dsh plugin add` |
+
+代价是 app layer 多带约 34 MiB 的 tarball（其中图谱引擎的 self-contained tarball 33.5 MiB，
+它在 `node_modules` 里还有一份解包副本）。换来的是：**离线可解析**（不依赖 registry）、
+`pnpm add` 不会因为找不到既有依赖而失败、升版时 lockfile 的解析结果稳定。
+
+安装器仍然**不需要 pnpm 去装 profile**（node_modules 已物化），只在重写元数据时调一次
+`pnpm store path` 来问「这台机器的 store 在哪」——因为 pnpm 可能因为硬链接不可用而从全局
+store 回落到项目内 `<cwd>/.pnpm-store/v11`，写死全局路径照样会撞 `ERR_PNPM_UNEXPECTED_STORE`。
+
+#### 验收：干净环境、不同用户名与安装路径
+
+```powershell
+node scripts/test-plugin-add.mjs                       # 合成 app layer，全流程
+node scripts/test-plugin-add.mjs --scratch .scratch\acceptance   # %TEMP% 不可写时
+```
+
+它不说"应该能装"，而是复现并证明：
+
+1. 按 `build-app-layer.mjs` 同样的方式（staging 目录 + `pnpm install` + 复制）造一个
+   "构建机上的 app layer"，`.modules.yaml` 里必然带着构建路径；
+2. 复制到用户位置（`users\another-user\...`，`DSH_HOME` / `USERPROFILE` / `LOCALAPPDATA` /
+   store 全部换掉），先证明**未经重写时 pnpm 拒绝它**（`ERR_PNPM_UNEXPECTED_*STORE`）——
+   这条保证测试真能抓住回归；
+3. 走安装器同一套重写（`normalize-profile-pnpm.mjs`），再断言元数据与本机一致、构建路径消失；
+4. 跑**真实**的 `dsh plugin --profile <p> add <本地插件目录>`，断言插件进了
+   `package.json` + `node_modules`、原有依赖没被丢掉、`--dump-config` 仍能组合；
+5. 再装第二个插件（用户装第二个插件时状态已被第一次改过）。
+
+Windows Sandbox 里的 `desktop/sandbox/clean-install-test.ps1` 在同一套验收链路上多跑一次
+`plugin-add` / `plugin-capability` / `plugin-remove` 三步（安装器 → doctor → 装插件 → 卸载）。
 
 安装器打包（Phase 2）再把 app layer + 壳产物交给 Inno Setup，生成
 `dsh-automation-suite-setup-<ver>.exe`、`app.zip`、`manifest.json`、`SHA256SUMS`。
@@ -701,7 +759,8 @@ WebView2 缺失（沙箱自带 Edge/WebView2）和 TIA/PLCSIM（商业软件，�
 | 官方安装器 `/S` | 未实测；可能按机器/版本不同 | Phase 2b 在干净 VM 实测；失败回退交互 |
 | DSH 运行时更新 | 自动更新到未验证版本 | 启动时版本检测 + 警告横幅；回归清单 |
 | 未签名 | SmartScreen/杀软误报 | 发布 SHA-256；文档指引；不做静默提权 |
-| node_modules 物化 | pnpm junction 进 zip 会失效 | 已由 `build-app-layer.mjs` 递归检查 ReparsePoint；app layer 约 103 MiB |
+| node_modules 物化 | pnpm junction 进 zip 会失效 | 已由 `build-app-layer.mjs` 递归检查 ReparsePoint；app layer 约 137 MiB（node_modules 103 + tarballs 34） |
+| pnpm 元数据带构建机路径 | 用户装插件必失败（`ERR_PNPM_UNEXPECTED_*STORE`，0.2.0–0.2.5 实际发生） | 安装器复制后跑 `normalize-profile-pnpm.mjs` 重写；doctor 的 `plugin-install` 检查项 + `test-plugin-add.mjs` 回归 |
 | 官方 feed 版本漂移 | 2026-11-07 feed 已是 0.2.2-rc.1，高于 tested 0.2.1-rc.2 | 安装器只警告不阻止；升级发行版前重跑回归 |
 | WebView2 企业策略 | 被组策略禁用 | 检测并提示；不绕过 |
 | 壳自更新 | 运行中 exe 无法替换 | 第一版用 setup 覆盖；后续再做 stub/版本目录 |

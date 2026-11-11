@@ -91,6 +91,7 @@ function Find-Node {
     param([string]$DshCmd)
     $dshRoot = [System.IO.Path]::GetFullPath((Join-Path (Split-Path -Parent $DshCmd) '..\..\..\..'))
     $candidates = @(
+        $env:DSH_DESKTOP_NODE_EXECUTABLE,
         (Join-Path $dshRoot 'resources\runtime\primary-runtime\dependencies\node\bin\node.exe'),
         (Join-Path $dshRoot 'resources\runtime\node\bin\node.exe'),
         (Get-Command node.exe -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Source)
@@ -230,6 +231,33 @@ if ($hadProfile) {
 }
 Move-Item -LiteralPath $tempProfile -Destination $profileDir
 Write-Log "profile installed at $profileDir"
+
+# pnpm records the store paths of the machine that built the app layer in
+# node_modules\.modules.yaml, and its checkCompatibility() rejects them on any
+# other machine before dependency resolution runs. The Plugins page is exactly
+# `pnpm add` in this profile, so without this step the first plugin install
+# fails with ERR_PNPM_UNEXPECTED_VIRTUAL_STORE / ERR_PNPM_UNEXPECTED_STORE.
+$normalizer = Join-Path $appDir 'normalize-profile-pnpm.mjs'
+if (Test-Path -LiteralPath $normalizer) {
+    $node = Find-Node -DshCmd $dsh
+    if (-not $node) {
+        Remove-Tree $profileDir
+        if ($hadProfile -and (Test-Path -LiteralPath $backupProfile)) { Move-Item -LiteralPath $backupProfile -Destination $profileDir }
+        throw 'node.exe was not found; cannot normalize the profile for plugin installs.'
+    }
+    Write-Log 'normalizing pnpm metadata for this machine'
+    $normalizeOut = & $node $normalizer --profile $profileDir --dsh $dsh 2>&1
+    $normalizeExit = $LASTEXITCODE
+    foreach ($line in @($normalizeOut)) { if ($line) { Write-Log "normalize: $line" } }
+    if ($normalizeExit -ne 0) {
+        Remove-Tree $profileDir
+        if ($hadProfile -and (Test-Path -LiteralPath $backupProfile)) { Move-Item -LiteralPath $backupProfile -Destination $profileDir }
+        throw "profile normalization failed with exit code $normalizeExit; the Plugins page would not be able to install anything."
+    }
+}
+else {
+    Write-Log 'WARNING: normalize-profile-pnpm.mjs not found; plugin installs will fail with ERR_PNPM_UNEXPECTED_VIRTUAL_STORE'
+}
 
 if (-not $NoDoctor -and (Test-Path -LiteralPath $doctor)) {
     Write-Log 'running doctor'

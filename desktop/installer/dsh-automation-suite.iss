@@ -64,6 +64,7 @@ Source: "{#SourceApp}\manifest.json"; DestDir: "{app}\app\{#AppVersion}"; Flags:
 Source: "{#SourceApp}\doctor.ps1"; DestDir: "{app}\app\{#AppVersion}"; Flags: ignoreversion
 Source: "{#SourceApp}\test-doctor-json.ps1"; DestDir: "{app}\app\{#AppVersion}"; Flags: ignoreversion
 Source: "{#SourceApp}\merge-profile.mjs"; DestDir: "{app}\app\{#AppVersion}"; Flags: ignoreversion
+Source: "{#SourceApp}\normalize-profile-pnpm.mjs"; DestDir: "{app}\app\{#AppVersion}"; Flags: ignoreversion
 Source: "install-profile.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion
 Source: "bootstrap-webview2.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion
 Source: "bootstrap-dsh.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion

@@ -61,6 +61,22 @@ function Find-DshExe {
     return ($candidates | Where-Object { $_ -and (Test-Path -LiteralPath $_) } | Select-Object -First 1)
 }
 
+function Find-NodeExe {
+    param([string]$Dsh)
+    # DSH ships its own Node; a user machine usually has no node.exe on PATH.
+    # Mirror the candidate order install-profile.ps1 uses.
+    $candidates = @()
+    if ($env:DSH_DESKTOP_NODE_EXECUTABLE) { $candidates += $env:DSH_DESKTOP_NODE_EXECUTABLE }
+    if ($Dsh) {
+        $dshRoot = [System.IO.Path]::GetFullPath((Join-Path (Split-Path -Parent $Dsh) '..\..\..\..'))
+        $candidates += (Join-Path $dshRoot 'resources\runtime\primary-runtime\dependencies\node\bin\node.exe')
+        $candidates += (Join-Path $dshRoot 'resources\runtime\bin\node.exe')
+    }
+    $onPath = Get-Command node.exe -ErrorAction SilentlyContinue
+    if ($onPath) { $candidates += $onPath.Source }
+    return ($candidates | Where-Object { $_ -and (Test-Path -LiteralPath $_) } | Select-Object -First 1)
+}
+
 # ---------------------------------------------------------------------------
 # Resolve install.json next to this script (written by install.ps1).
 # ---------------------------------------------------------------------------
@@ -136,6 +152,45 @@ if ($dependencies.Count -gt 0) {
     }
     else {
         Add-Result 'plugins' 'Plugin packages' 'fail' ("missing from node_modules: $($missing -join ', ')") 'Re-run install.ps1 (or dsh plugin install) for this profile.'
+    }
+}
+
+# The Plugins page runs `pnpm add` in the profile. pnpm compares the store paths
+# recorded in node_modules\.modules.yaml with the ones it would use here before
+# resolving anything, so metadata copied from a build machine makes every plugin
+# install fail (ERR_PNPM_UNEXPECTED_VIRTUAL_STORE / ERR_PNPM_UNEXPECTED_STORE).
+# This is a fail, not a warning: it is exactly the capability the Plugins page
+# offers, and no plugin can be installed until it is fixed.
+$normalizer = Join-Path $here 'normalize-profile-pnpm.mjs'
+if ($profileDir -and (Test-Path -LiteralPath (Join-Path $profileDir 'package.json'))) {
+    if (-not $resolvedDsh) {
+        Add-Result 'plugin-install' 'Plugin installation' 'warn' 'cannot check pnpm metadata without dsh.' 'Fix the DSH runtime check first.'
+    }
+    elseif (Test-Path -LiteralPath $normalizer) {
+        $node = Find-NodeExe -Dsh $resolvedDsh
+        if (-not $node) {
+            Add-Result 'plugin-install' 'Plugin installation' 'warn' 'node.exe was not found to inspect pnpm metadata.' 'Install Node.js, or run install.ps1 again so the profile is normalized.'
+        }
+        else {
+            $checkOut = @(& $node $normalizer --profile $profileDir --dsh $resolvedDsh --check 2>&1)
+            $checkText = ($checkOut | Out-String)
+            if ($LASTEXITCODE -eq 0) {
+                Add-Result 'plugin-install' 'Plugin installation' 'ok' 'pnpm metadata matches this machine'
+            }
+            else {
+                $detail = 'pnpm metadata does not match this machine'
+                try {
+                    $parsed = $checkText | ConvertFrom-Json
+                    if ($parsed.mismatches) { $detail += ': ' + ($parsed.mismatches -join ', ') }
+                    if ($parsed.leaksBuildPath) { $detail += ' (build-machine path recorded)' }
+                }
+                catch { }
+                Add-Result 'plugin-install' 'Plugin installation' 'fail' $detail 'Run normalize-profile-pnpm.mjs in this profile, or reinstall so install-profile.ps1 can normalize it.'
+            }
+        }
+    }
+    else {
+        Add-Result 'plugin-install' 'Plugin installation' 'warn' 'normalize-profile-pnpm.mjs is not next to doctor.ps1.' 'Reinstall; without it plugin installation cannot be verified.'
     }
 }
 

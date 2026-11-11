@@ -4,7 +4,12 @@
 #   2. official DSH install (manual, because the suite installer does not bootstrap it yet);
 #   3. suite installer with DSH present: profile + doctor + install.json;
 #   4. installed shell --smoke-test (WebView2);
-#   5. uninstall removes the install dir but keeps DSH_HOME.
+#   5. plugin installation the way the Plugins page does it (`dsh plugin add`),
+#      which is the capability 0.2.0–0.2.5 shipped broken: pnpm metadata copied
+#      from the build machine made the first install fail with
+#      ERR_PNPM_UNEXPECTED_VIRTUAL_STORE. This runs on a *different* user name and
+#      install path than the build, so it is the cross-machine check;
+#   6. uninstall removes the install dir but keeps DSH_HOME.
 #
 # Results are written to C:\out\sandbox-result.json and C:\out\sandbox.log.
 $ErrorActionPreference = 'Continue'
@@ -186,7 +191,60 @@ try {
         Add-Step 'shell-smoke' 'FAIL' 'installed shell missing'
     }
 
-    # 5. Uninstall: install dir gone, DSH_HOME retained.
+    # 5. Plugin installation: the capability the Plugins page offers. Run the
+    #    exact command the page runs, in the installed profile, with the store
+    #    this machine uses. A local cordis.patch.yml plugin keeps it independent
+    #    of any registry publish; what it proves is that pnpm can install into
+    #    this profile at all (that is what broke in 0.2.0-0.2.5).
+    if (Test-Path -LiteralPath (Join-Path $profileDir 'package.json')) {
+        $pluginSource = Join-Path $out 'acceptance-plugin'
+        New-Item -ItemType Directory -Force -Path $pluginSource | Out-Null
+        @'
+{
+  "name": "dsh-suite-acceptance-plugin",
+  "version": "1.0.0",
+  "private": true,
+  "main": "index.js",
+  "dsh": { "bundle": { "patch": "./cordis.patch.yml" } }
+}
+'@ | Set-Content -LiteralPath (Join-Path $pluginSource 'package.json') -Encoding utf8
+        'export const acceptance = true;' | Set-Content -LiteralPath (Join-Path $pluginSource 'index.js') -Encoding utf8
+        @'
+- insert:
+    - id: acceptance-plugin
+      name: dsh-suite-acceptance-plugin
+'@ | Set-Content -LiteralPath (Join-Path $pluginSource 'cordis.patch.yml') -Encoding utf8
+
+        $env:DSH_HOME = $homeDir
+        $addOut = & $dshCmd plugin --profile dsh-automation-suite add $pluginSource 2>&1 | Out-String
+        $addExit = $LASTEXITCODE
+        $manifestAfter = Get-Content -LiteralPath (Join-Path $profileDir 'package.json') -Raw | ConvertFrom-Json
+        $declared = $null -ne $manifestAfter.dependencies.'dsh-suite-acceptance-plugin'
+        $installed = Test-Path -LiteralPath (Join-Path $profileDir 'node_modules\dsh-suite-acceptance-plugin\package.json')
+        Add-Step 'plugin-add' $(if ($addExit -eq 0 -and $declared -and $installed) { 'OK' } else { 'FAIL' }) `
+            ("exit=$addExit; declared=$declared; installed=$installed")
+        Set-Content -LiteralPath (Join-Path $out 'plugin-add.log') -Value $addOut -Encoding utf8
+
+        # The profile must still compose after the install.
+        $dumpAfter = & $dshCmd --profile dsh-automation-suite --dump-config 2>&1 | Out-String
+        $dumpExit = $LASTEXITCODE
+        $hasRow = $dumpAfter -match '# == dsh-suite-acceptance-plugin'
+        Add-Step 'plugin-capability' $(if ($dumpExit -eq 0 -and $hasRow) { 'OK' } else { 'FAIL' }) `
+            ("dumpExit=$dumpExit; bundleRow=$hasRow")
+        Set-Content -LiteralPath (Join-Path $out 'plugin-capability.log') -Value $dumpAfter -Encoding utf8
+
+        # Remove the acceptance plugin again so the uninstall check sees a
+        # profile that matches the release.
+        $removeOut = & $dshCmd plugin --profile dsh-automation-suite remove dsh-suite-acceptance-plugin 2>&1 | Out-String
+        Add-Step 'plugin-remove' $(if ($LASTEXITCODE -eq 0) { 'OK' } else { 'FAIL' }) ("exit=" + $LASTEXITCODE)
+        Set-Content -LiteralPath (Join-Path $out 'plugin-remove.log') -Value $removeOut -Encoding utf8
+        Remove-Item Env:DSH_HOME -ErrorAction SilentlyContinue
+    }
+    else {
+        Add-Step 'plugin-add' 'FAIL' 'installed profile is missing; plugin installation not checked'
+    }
+
+    # 6. Uninstall: install dir gone, DSH_HOME retained.
     $uninstaller = Join-Path $dir 'unins000.exe'
     if (Test-Path -LiteralPath $uninstaller) {
         $u = Start-Process -FilePath $uninstaller `
