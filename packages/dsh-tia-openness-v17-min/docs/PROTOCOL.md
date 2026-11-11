@@ -194,7 +194,7 @@ Preconditions and semantics that the wire contract carries:
 | `tag_table_names` | string[] | all | optional name filter for tag tables |
 | `device_name` / `software_name` | string | auto | PLC selection when the project has several |
 | `recursive` | bool | `true` | include user groups |
-| `overwrite` | bool | `false` | replace existing files |
+| `overwrite` | bool | `false` | replace existing files (each one is exported to a temporary sibling first and swapped in on success; a refusal leaves the old file untouched) |
 | `export_options` | enum | `with_defaults` | `none` \| `with_defaults` \| `with_read_only` |
 | `write_manifest` | bool | `true` | write `_manifest.json` |
 

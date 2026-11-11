@@ -77,7 +77,7 @@
 | `block_names` / `type_names` / `tag_table_names` | 全部 | 各自类别的对象名过滤；点名的对象不存在 → 报错并列出可用名 |
 | `device_name` / `software_name` | 自动 | 项目里有多个 PLC 时选择 |
 | `recursive` | `true` | 是否含用户组 |
-| `overwrite` | `false` | 已存在的文件默认**跳过**并告警（不覆盖别人的文件） |
+| `overwrite` | `false` | 已存在的文件默认**跳过**并告警；`true` 时先导出到同目录的临时文件，成功后再原子替换目标（Openness 不接受覆盖已存在路径；失败时保留原文件） |
 | `write_manifest` | `true` | 写清单（见 §3） |
 | `export_options` | `with_defaults` | TIA 的 `ExportOptions`：`none` / `with_defaults` / `with_read_only` |
 | `dry_run` | `false` | 只列计划、不写文件 |
@@ -140,7 +140,7 @@ tag_tables/     7 个 XML   （如 tag_tables/Table de variables standard.xml、
   "exportOptions": "with_defaults",
   "categories": ["blocks"],              // 本次请求的类别
   "failureCount": 1,                     // Openness 拒绝的数量
-  "blocks": [                            // 成功写出的每个对象（含 types / tag_tables）
+  "blocks": [                            // 本次调用覆盖的每个对象（写出的 + 已存在而跳过的；含 types / tag_tables）
     {
       "category": "blocks",              // blocks | types | tag_tables
       "name": "FB_Array_Handling",
@@ -170,6 +170,10 @@ tag_tables/     7 个 XML   （如 tag_tables/Table de variables standard.xml、
 **校验语义**：每个文件写出后立刻读回并解析——非空、能解析、`<Name>` 与预期对象名一致，
 再算 SHA-256 写进清单。任何一项不过 → `summary.verificationFailed > 0`，整个调用以
 `verification_failed` 失败（`data` 里仍带全部已写文件与失败项），**不会**"没抛异常就算成功"。
+
+**已存在而跳过的对象也在清单里**：它们走同一套读回校验（bytes / sha256 / `verified` 取自现有
+文件），所以"文件都在、0 写入"的重跑不会把清单清空。`data.files` 仍然只列本次**真正写出**的
+文件，`summary.skipped` 是跳过数。
 
 用清单独立复核（可直接跑）：
 

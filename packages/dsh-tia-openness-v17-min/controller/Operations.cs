@@ -330,7 +330,7 @@ namespace TiaOpennessV17Min.Controller
             if (writeManifest)
             {
                 string manifestPath = Path.Combine(outputDir, "_manifest.json");
-                WriteManifest(manifestPath, software, outputDir, exportOptionName, categories, categoryCounts, files, exportFailures, log);
+                WriteManifest(manifestPath, software, outputDir, exportOptionName, categories, categoryCounts, run.ManifestFiles, exportFailures, log);
                 data.Add("manifest", manifestPath);
                 changes.Add("file", manifestPath, File.Exists(manifestPath) ? "written" : "created", "export manifest");
             }
@@ -359,7 +359,7 @@ namespace TiaOpennessV17Min.Controller
 
             if (verificationFailures.Count > 0)
             {
-                string message = "The export ran, but reading the written files back failed for "
+                string message = "The export ran, but reading the files back failed for "
                     + verificationFailures.Count + " file(s): " + string.Join(" | ", verificationFailures);
                 JsonObject details = JsonObject.Of("failureCount", verificationFailures.Count, "failures", verificationFailures);
                 throw new ControllerException("verification_failed", message, details, data);
@@ -379,7 +379,14 @@ namespace TiaOpennessV17Min.Controller
         {
             public int Exported;
             public int Skipped;
+            /// <summary>Files this run wrote (and verified).</summary>
             public readonly List<JsonObject> Files = new List<JsonObject>();
+            /// <summary>
+            /// Every file the plan covers — written <em>or</em> skipped because it was
+            /// already there — in plan order. The manifest describes the tree, not only
+            /// the writes of this call.
+            /// </summary>
+            public readonly List<JsonObject> ManifestFiles = new List<JsonObject>();
             public readonly List<JsonObject> Failures = new List<JsonObject>();
             public readonly List<string> FailureNames = new List<string>();
             public readonly List<string> VerificationFailures = new List<string>();
@@ -399,33 +406,52 @@ namespace TiaOpennessV17Min.Controller
             ExportRun run = new ExportRun();
             foreach (ExportPlanItem item in plan)
             {
-                if (File.Exists(item.File) && !overwrite)
+                bool existed = File.Exists(item.File);
+                if (existed && !overwrite)
                 {
                     run.Skipped++;
                     changes.Add("file", item.File, "skipped", "The file exists and overwrite is off.");
                     log.Warning("Skipped " + Text.Quote(item.Name) + ": " + item.File + " already exists (pass overwrite to replace it).");
+                    // A skipped file is still part of the tree, so it keeps its manifest
+                    // row. Without this, a re-run that skipped every file rewrote
+                    // _manifest.json with "blocks": [] and a complete source tree looked
+                    // empty to the graph and to the next reader.
+                    run.ManifestFiles.Add(VerifyExportedFile(item, run.VerificationFailures, true));
                     continue;
                 }
 
-                bool existed = File.Exists(item.File);
+                // overwrite=true cannot be handed to Openness as-is: Export refuses an
+                // existing path, so the previous code reported every replacement as a
+                // refusal and then rewrote the manifest from those refusals. Export
+                // beside the target and swap it in only after TIA succeeded, so a
+                // refusal leaves the previous file untouched instead of destroying it.
+                string temporaryPath = null;
+                string exportPath = item.File;
+                if (existed && overwrite)
+                {
+                    temporaryPath = item.File + "." + Guid.NewGuid().ToString("N") + ".tmp.xml";
+                    exportPath = temporaryPath;
+                }
+
                 progress.Report("export", "Exporting " + item.Name + " to " + item.File);
                 try
                 {
                     if (string.Equals(item.Category, CategoryTypes, StringComparison.Ordinal))
                     {
-                        _host.ExportType(item.Type, item.File, exportOptions);
+                        _host.ExportType(item.Type, exportPath, exportOptions);
                     }
                     else if (string.Equals(item.Category, CategoryTagTables, StringComparison.Ordinal))
                     {
-                        _host.ExportTagTable(item.TagTable, item.File, exportOptions);
+                        _host.ExportTagTable(item.TagTable, exportPath, exportOptions);
                     }
                     else
                     {
-                        _host.ExportBlock(item.Block, item.File, exportOptions);
+                        _host.ExportBlock(item.Block, exportPath, exportOptions);
                     }
                 }
                 catch (ControllerException ex)
                 {
+                    DeleteQuietly(temporaryPath);
                     // Openness refuses some objects outright: a real V17 project with
                     // ProDiag blocks fails with "The programming language 'ProDiag_OB'
                     // is not supported during import and export", and Safety F-OBs with
@@ -444,13 +470,63 @@ namespace TiaOpennessV17Min.Controller
                     log.Warning("Openness could not export " + Text.Quote(item.Name) + ": " + ex.Message);
                     continue;
                 }
+                catch (Exception)
+                {
+                    DeleteQuietly(temporaryPath);
+                    throw;
+                }
+
+                if (temporaryPath != null)
+                {
+                    try
+                    {
+                        File.Replace(temporaryPath, item.File, null);
+                    }
+                    catch (Exception ex)
+                    {
+                        DeleteQuietly(temporaryPath);
+                        string message = "TIA exported " + Text.Quote(item.Name)
+                            + " but the existing file could not be replaced: " + ex.Message;
+                        run.Failures.Add(JsonObject.Of(
+                            "category", item.Category,
+                            "name", item.Name,
+                            "group", item.GroupPath,
+                            "file", item.File,
+                            "code", "export_failed",
+                            "message", message));
+                        run.FailureNames.Add(item.Name);
+                        changes.Add(item.Category, item.Name, "export_failed", message);
+                        log.Warning(message);
+                        continue;
+                    }
+                }
+
                 run.Exported++;
 
-                JsonObject verification = VerifyExportedFile(item, run.VerificationFailures);
+                JsonObject verification = VerifyExportedFile(item, run.VerificationFailures, false);
                 run.Files.Add(verification);
+                run.ManifestFiles.Add(verification);
                 changes.Add("file", item.File, existed ? "overwritten" : "created", item.Name);
             }
             return run;
+        }
+
+        /// <summary>
+        /// Delete a temporary export file without masking the real failure. A leftover
+        /// <c>*.tmp.xml</c> is harmless (the next run overwrites it), so its cleanup
+        /// must never replace the export error in the report.
+        /// </summary>
+        private static void DeleteQuietly(string path)
+        {
+            if (string.IsNullOrEmpty(path)) return;
+            try
+            {
+                if (File.Exists(path)) File.Delete(path);
+            }
+            catch (Exception)
+            {
+                // See the summary: the export error is the one worth reporting.
+            }
         }
 
         private sealed class ExportPlanItem
@@ -590,8 +666,9 @@ namespace TiaOpennessV17Min.Controller
             return sanitized.Length == 0 ? "unnamed" : sanitized;
         }
 
-        private JsonObject VerifyExportedFile(ExportPlanItem item, List<string> failures)
+        private JsonObject VerifyExportedFile(ExportPlanItem item, List<string> failures, bool skipped = false)
         {
+            string subject = skipped ? "the existing file" : "the written file";
             JsonObject file = new JsonObject();
             file.Add("name", item.Name);
             file.AddIfPresent("group", item.GroupPath);
@@ -604,7 +681,7 @@ namespace TiaOpennessV17Min.Controller
                 FileInfo info = new FileInfo(item.File);
                 if (!info.Exists)
                 {
-                    failures.Add(item.Name + ": the file was not written");
+                    failures.Add(item.Name + (skipped ? ": the existing file is gone" : ": the file was not written"));
                     file.Add("verified", false);
                     return file;
                 }
@@ -623,7 +700,7 @@ namespace TiaOpennessV17Min.Controller
 
             if (bytes == 0)
             {
-                failures.Add(item.Name + ": the written file is empty");
+                failures.Add(item.Name + ": " + subject + " is empty");
                 file.Add("verified", false);
                 return file;
             }
@@ -641,14 +718,14 @@ namespace TiaOpennessV17Min.Controller
                 // file cannot be trusted (and, before, silently disabled this check).
                 if (string.Equals(header.Kind, "unknown", StringComparison.Ordinal))
                 {
-                    failures.Add(item.Name + ": the written file has no recognizable Simatic ML object element (found <"
+                    failures.Add(item.Name + ": " + subject + " has no recognizable Simatic ML object element (found <"
                         + header.ElementName + ">)");
                     file.Add("verified", false);
                     return file;
                 }
                 if (string.IsNullOrEmpty(header.Name))
                 {
-                    failures.Add(item.Name + ": the written file declares no object name");
+                    failures.Add(item.Name + ": " + subject + " declares no object name");
                     file.Add("verified", false);
                     return file;
                 }
@@ -657,7 +734,7 @@ namespace TiaOpennessV17Min.Controller
                 file.Add("verified", nameMatches);
                 if (!nameMatches)
                 {
-                    failures.Add(item.Name + ": the exported file declares the object name " + Text.Quote(header.Name));
+                    failures.Add(item.Name + ": " + subject + " declares the object name " + Text.Quote(header.Name));
                 }
             }
             catch (ControllerException ex)

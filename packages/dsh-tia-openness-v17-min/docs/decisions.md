@@ -605,9 +605,9 @@ The block name 'FB_Array_Handling' is invalid. An object with this name or this 
 
 | # | 缺口 | 证据（当前工作树行号） | 后果 | 状态 |
 |---|---|---|---|---|
-| 1 | `exported == 0 && plan.Count > 0` 不区分"全被跳过"与"全被拒绝" | [`controller/Operations.cs:346-353`](../controller/Operations.cs#L346-L353)（跳过见 `:273-279`） | 对**已建好**的树重跑（`overwrite=false`）返回 `export_failed`，消息却写着 "Openness refused all N object(s)"，真实原因是"文件都已在"；文件和 manifest 其实都写好了（manifest 在抛错**之前**的 `:335-341` 写出） | 🟡 消费方已兜住（工程上下文插件把它读成"什么都没写"并提示 `overwrite=true`）；**根因待修**：条件应为 `exported == 0 && skipped == 0 && plan.Count > 0` |
+| 1 | `exported == 0 && plan.Count > 0` 不区分"全被跳过"与"全被拒绝" | [`controller/Operations.cs:346-353`](../controller/Operations.cs#L346-L353)（跳过见 `:273-279`） | 对**已建好**的树重跑（`overwrite=false`）返回 `export_failed`，消息却写着 "Openness refused all N object(s)"，真实原因是"文件都已在"；文件和 manifest 其实都写好了（manifest 在抛错**之前**的 `:335-341` 写出） | 🟡 消费方已兜住（工程上下文插件把它读成"什么都没写"并提示 `overwrite=true`）；**manifest 部分已由 D32 修**（跳过行保留），但全跳过仍抛 `export_failed`，错误帧条件未改 |
 | 2 | **Software Units 不被遍历** | `CollectBlocks` 只从 `software.BlockGroup` 递归（[`OpennessHost.cs:572-576`](../controller/OpennessHost.cs#L572-L576)、`:610`）；单元是另一棵树 `PlcUnit.BlockGroup`（[`OpennessHost.Plc.cs:1250`](../controller/OpennessHost.Plc.cs#L1250)）；`CollectTypes` / `CollectTagTables` 同理 | 用了软件单元的工程，源文件树**整整少一批对象而没有任何提示**（不报错、不 warning）—— 五条里唯一的**静默**错误 | ⬜ 待修（优先级最高） |
-| 3 | **从不清理陈旧文件** | 导出路径里没有任何 `Delete`（全仓只有 [`SelfTest.cs:55`](../controller/SelfTest.cs#L55) 删临时目录） | 在 TIA 里删掉的块，XML 永远留在磁盘；`overwrite=true` 也只替换同名文件 → 树是**增量堆积**而非快照，P2 的变更检测与图谱 ingest 会把"已删除"看成"还在" | ⬜ 待修（导到临时目录再整体换 / 按 manifest 的文件列表 prune） |
+| 3 | **从不清理陈旧文件** | 导出路径里没有任何 `Delete`（全仓只有 [`SelfTest.cs:55`](../controller/SelfTest.cs#L55) 删临时目录） | 在 TIA 里删掉的块，XML 永远留在磁盘；`overwrite=true` 也只替换同名文件 → 树是**增量堆积**而非快照，P2 的变更检测与图谱 ingest 会把"已删除"看成"还在" | 🟡 D32 让 `overwrite=true` 真正原子替换同名文件；**陈旧文件 prune 仍待修**（删掉的块 XML 仍会留在树里） |
 | 4 | 一个文件读不回来 → **整次调用**失败 | [`Operations.cs:365-371`](../controller/Operations.cs#L365-L371)（`verificationFailures > 0` 即抛） | 文件全写完了，只要有一个读不回来（被其它进程锁住等），这个 device 的调用就是失败 | ⬜ 待定（也可能就是刻意的严格） |
 | 5 | 空集合被当成错误 | [`Operations.cs:243-249`](../controller/Operations.cs#L243-L249) | "这台设备没有块"或"没有类型也没有标签表"是**正常状态**，却报 `object_not_found`，还会中断后面的 device（本方法第一次失败就 return，见 `src/access.ts` 的两处 early return） | ⬜ 待定 |
 
@@ -1012,3 +1012,33 @@ Openness 是唯一受支持的入口。把 `.ap17` 当文件改既没有格式�
 
 **副作用**：重建 exe 后哈希变化，V17 会弹 `Openness access`；非管理员选 Yes 只对当次会话有效，
 要持久化得用管理员选 Yes to all（写 HKLM 白名单）。这一点已写进 README §0。
+
+---
+
+## D32. 导出清单与 overwrite：跳过不丢行、替换走临时文件（2026-11-11）
+
+**背景**：0.2.5 验收里 `create_engineering_project` 的一次"无操作重试"（文件都在、0 写入）
+把 `_manifest.json` 重写成 `"blocks": []`，并把它提交成基线；随后的 `overwrite=true` 修复尝试
+又被 Openness 以 "file already exists" 拒绝全部 10 个对象，manifest 变成 `failureCount: 10`。
+根因是 D23 #1/#3。
+
+**改动**（`controller/Operations.cs`）：
+
+1. `RunExportPlan` 对"文件已存在且 `overwrite=false`"的对象不再只计数后 `continue`：按导出
+   同样的读回路径校验现有文件，并把这一行放进 `ExportRun.ManifestFiles`；`_manifest.json`
+   改用它写。清单描述的是**树**，不是本次调用写出的文件；全跳过时保持 10 行 / `failureCount: 0`。
+   `data.files` 仍只列本次真正写出的文件，跳过数在 `summary.skipped`。
+2. `overwrite=true` 先导出到同目录 `<name>.<guid>.tmp.xml`，成功后 `File.Replace` 原子换入；
+   TIA 拒绝或替换失败时删临时文件、保留原文件。旧实现把已存在路径直接交给 Openness，必然被拒。
+3. 校验失败信息按 `skipped` 区分 "the existing file" / "the written file"；异常路径清理临时文件。
+
+**未改**：全跳过仍抛 `export_failed`（消息 "Openness refused all N object(s)"）。工程上下文插件
+靠 `written=0 && skipped>0 && refused=0` 识别这个状态，改错误帧条件要两边一起改，单独改会让
+消费方的 `nothingWritten` 分支失效。陈旧文件 prune 也未做（见 D23 #3）。
+
+**验证**：`dotnet build`（net48/x64）0 warning / 0 error；`--self-test` 全绿；
+`npm run matrix:build` 已重生成。真机功能回归（fresh → 全跳过重跑 → overwrite 重跑）因本机
+Openness 无法启动 TIA（`Connection to TiaPortal failed`）暂未执行，环境恢复后补测。
+
+**回退**：`git checkout -- packages/dsh-tia-openness-v17-min`（本条与代码、重建的 exe 同一提交）。
+
