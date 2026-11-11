@@ -52,10 +52,12 @@ export function apply(ctx, config) {
         status: () => controller.status(),
         verbose: settings.verboseResults,
         log,
+        configuredSnapshotRoot: settings.snapshotRoot,
     };
     new PlcsimRuntime(ctx, dependencies);
     ctx.effect(() => {
-        log.info(`PLCSIM controller: ${resolved.path} (${resolved.source}); api dir ${settings.apiDir}.`);
+        log.info(`PLCSIM controller: ${resolved.path} (${resolved.source}); api dir ${settings.apiDir}; snapshots ` +
+            `${settings.snapshotRoot.trim().length > 0 ? settings.snapshotRoot : '<session workspace>/.dsh/simulation'}.`);
         return async () => {
             await controller.dispose();
         };

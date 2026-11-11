@@ -330,9 +330,26 @@ declare module '@deepseek-ai/dsh-tools' {
     text: string
   }
 
-  /** Execution identity handed to a tool body. */
+  /**
+   * Execution identity handed to a tool body.
+   *
+   * `agent` is optional because a rendered/test harness may omit it, but on the
+   * live path it is always present and carries the session whose working
+   * directory defines this plugin's scope (`header.cwd`). That cwd is the
+   * workspace root every engineering path is derived from, including the
+   * snapshot root (`<workspace>/.dsh/simulation`). Only the members this plugin
+   * reads are declared.
+   */
   export interface ToolRunContext {
     readonly signal?: AbortSignal
+    readonly callId?: string
+    readonly agent?: {
+      readonly session?: {
+        readonly header?: {
+          readonly cwd?: string
+        }
+      }
+    }
   }
 
   /** A registry-ready tool definition. */

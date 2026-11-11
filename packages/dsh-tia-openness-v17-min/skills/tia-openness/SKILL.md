@@ -111,6 +111,22 @@ V17 的行为也不能从 V21 文本直接推。判不准时以本机 V17 实测
 
 设备/模块的**修改**（`PlugNew`、`ChangeType`、建子网）本插件没有，那时才去读上游那两个 skill。
 
+## 仿真（PLCSIM Advanced）与 F-CPU
+
+- **安全型（F）CPU 工程不能下到标准 CPU 的虚拟实例**：PLCSIM Advanced V7 手册 §7.4
+  "Loading project data of an F-CPU to a standard CPU is not possible"；TIA 会报
+  "虚拟 PLC 型号与项目 PLC 型号不符"。实例用**匹配的 F 型号**（`cpu_type="1515F"`，
+  或 `cpu_model` 直接传订货号/型号名，控制器会按 `A`=标准 / `F`=故障安全映射）或
+  **unspecified**（首次下载由 TIA 初始化型号），绝不要用标准型号。
+- **V17 Openness 对 F 激活 PLC 一律 `download_unavailable`**（限制 R16）：这类工程只能从
+  **TIA Portal UI** 下载（首次连接接受证书）。所以用户要仿真安全型 PLC 时，先说明
+  "套件无法自动完成下载/仿真"，不要报"运行缺失"，也不要先建标准型号实例。
+- **证书是每台新虚拟设备一次，不是每个工程一次**。"启动仿真"时先
+  `simulation_instance(action="snapshots")` 扫描工作区 `.dsh/simulation` 里已有的存档并问用户
+  "用旧快照还是新建"：`resume` 同一快照沿用原实例身份，程序已在，**不需要 TIA 下载、不需要人工
+  点证书**；`create` 是全新设备（新 MAC、新自签名证书），首次 CONNECT 必须用户在 TIA UI 点一次
+  **Connect**（`create` 在有存档时也会以 `snapshots_available` 拒绝，直到 `confirm_new=true`）。
+
 ## 跨工程取用（另一个 workspace / 另一个项目）
 
 - 读另一个**受管 workspace** 的源树、清单或知识库不需要打开它的工程：绝对路径可用

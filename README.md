@@ -789,7 +789,7 @@ pnpm run clean:build      # 清构建产物（只碰 lib/ dist/）
 | `@voltarenyah/dsh-engineering-context` | `node:test`（`node scripts/run-tests.mjs`，先构建再跑） | 151 项全通过（含经假 `engineeringAccess` / 假 `knowledgeGraph` 服务的契约用例） |
 | `@voltarenyah/dsh-engineering-graph` | `node:test`（`node scripts/run-tests.mjs`，先构建再跑） | 128 项全通过（含经真实引擎的端到端；引擎没构建时该项 skip 并打印构建命令） |
 | `@voltarenyah/dsh-drawing` | `node:test`（`node scripts/run-tests.mjs`，先构建再跑） | 23 项全通过（PDF 索引/检索模型 + 字典；浏览器半侧靠真实图纸验收） |
-| `@voltarenyah/dsh-plcsim-advanced` | `node:test`（`node --test --test-reporter=spec`） | 10 项全通过（纯协议与工具面） |
+| `@voltarenyah/dsh-plcsim-advanced` | `node:test`（`node --test --test-reporter=spec`） | 18 项全通过（纯协议与工具面：转发、工作区存档根、证书规则、渲染事实行） |
 | `dsh-ui-plc-source` | `node:test`（`node scripts/run-tests.mjs`，先构建再跑；浏览器半侧 `.jsx` 不进 `tsc`） | 47 项全通过（纯模型 33 + 宿主 9 + 字典 5） |
 | `dsh-ui-tia-console` | `node:test`（`node scripts/run-tests.mjs`，先构建再跑） | 22 项全通过（纯事件折叠 + 字典） |
 | `@voltarenyah/dsh-tia-todo-bridge` | `node:test`（`node --test test/*.test.mjs`） | 18 项全通过（纯状态机 16 + manifest 2；不依赖真实 TIA） |

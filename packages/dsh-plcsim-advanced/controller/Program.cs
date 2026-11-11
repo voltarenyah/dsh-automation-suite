@@ -73,19 +73,29 @@ namespace PlcsimAdvanced.Controller
             return result;
         }
 
-        public object Status()
+        public object Status(IDictionary<string, object> p)
         {
+            p = p ?? new Dictionary<string, object>();
             var data = new Dictionary<string, object>();
-            data["available"] = SimulationRuntimeManager.IsRuntimeManagerAvailable;
+            string root = RootFor(p);
+            data["snapshotRoot"] = root;
+            bool snapshotTruncated;
+            List<object> snapshots = SnapshotList(root, 25, out snapshotTruncated);
+            data["snapshotCount"] = snapshots.Count;
+            data["snapshots"] = snapshots;
+            data["snapshotTruncated"] = snapshotTruncated;
             try
             {
+                data["available"] = SimulationRuntimeManager.IsRuntimeManagerAvailable;
                 data["runtimeVersion"] = SimulationRuntimeManager.Version;
                 data["apiVersion"] = typeof(SimulationRuntimeManager).Assembly.GetName().Version.ToString();
             }
             catch (Exception ex)
             {
+                // The snapshot listing above stays valid without a Runtime Manager:
+                // it is disk state, and the user needs it exactly when nothing runs.
                 data["available"] = false;
-                data["error"] = ex.Message;
+                data["error"] = ex.GetType().Name + ": " + ex.Message;
             }
 
             var list = new List<object>();
@@ -94,6 +104,9 @@ namespace PlcsimAdvanced.Controller
                 list.Add(Describe(pair.Value));
             }
             data["instances"] = list;
+            // Instances this controller did not register (the plugin was restarted
+            // while keepInstancesOnUnload kept them alive) are still resumable.
+            data["registeredInstances"] = RegisteredInstances();
             data["networkMode"] = _defaultCommunication;
             return data;
         }
@@ -101,7 +114,8 @@ namespace PlcsimAdvanced.Controller
         public object Instance(IDictionary<string, object> p)
         {
             string action = Text(p, "action") ?? "list";
-            if (action == "list") return Status();
+            if (action == "list") return Status(p);
+            if (action == "snapshots") return SnapshotListing(p);
 
             string name = RequireName(p);
             if (action == "create")
@@ -110,7 +124,20 @@ namespace PlcsimAdvanced.Controller
                 {
                     throw new ControllerException("instance_exists", "A PLCSIM instance named '" + name + "' already exists.");
                 }
-                ECPUType cpu = ParseCpuType(Text(p, "cpu_type"));
+                string root = RootFor(p);
+                bool truncated;
+                List<object> candidates = SnapshotList(root, 25, out truncated);
+                if (candidates.Count > 0 && !Bool(p, "confirm_new", false))
+                {
+                    throw new ControllerException("snapshots_available",
+                        "This workspace already has " + candidates.Count + " PLCSIM snapshot(s) under " + root + ": "
+                        + SnapshotNames(candidates) + ". Ask the user first: resume one of them (action=\"resume\", "
+                        + "snapshot=\"<name>\" - the snapshot keeps the original device identity, so TIA does not ask for a "
+                        + "certificate again), or create a brand-new instance (a new virtual device, so the first CONNECT/"
+                        + "download needs the user to accept its self-signed certificate once in the TIA Portal UI). Then call "
+                        + "create again with confirm_new=true, or call resume instead.");
+                }
+                ECPUType cpu = ResolveCpu(Text(p, "cpu_type"), Text(p, "cpu_model"));
                 IInstance instance = cpu == ECPUType.CPU1500_Unspecified
                     ? SimulationRuntimeManager.RegisterInstance(name)
                     : SimulationRuntimeManager.RegisterInstance(cpu, name);
@@ -172,7 +199,8 @@ namespace PlcsimAdvanced.Controller
         {
             string snapshotName = Text(p, "snapshot") ?? Text(p, "label") ?? instance.Name;
             bool overwrite = Bool(p, "overwrite", false);
-            string directory = Path.Combine(_snapshotRoot, SafeName(snapshotName));
+            string root = RootFor(p);
+            string directory = Path.Combine(root, SafeName(snapshotName));
             string zip = Path.Combine(directory, "instance.zip");
             string manifestPath = Path.Combine(directory, "manifest.json");
             string storageDirectory = Path.Combine(directory, "storage");
@@ -181,7 +209,7 @@ namespace PlcsimAdvanced.Controller
                 throw new ControllerException("snapshot_exists",
                     "A snapshot already exists at " + directory + "; pass overwrite=true to replace it.");
             }
-            if (overwrite && Directory.Exists(storageDirectory)) DeleteDirectory(storageDirectory);
+            if (overwrite && Directory.Exists(storageDirectory)) DeleteDirectory(storageDirectory, root);
             Directory.CreateDirectory(directory);
             if (overwrite)
             {
@@ -251,6 +279,7 @@ namespace PlcsimAdvanced.Controller
             {
                 { "name", instance.Name },
                 { "snapshotPath", directory },
+                { "snapshotRoot", root },
                 { "archive", zip },
                 { "manifest", manifestPath },
                 { "fastStorage", hasStorage ? storageDirectory : null },
@@ -266,26 +295,35 @@ namespace PlcsimAdvanced.Controller
             {
                 throw new ControllerException("instance_exists", "A PLCSIM instance named '" + name + "' already exists.");
             }
+            string root = RootFor(p);
             string snapshotArg = Text(p, "snapshot") ?? name;
-            string directory = ResolveSnapshotDirectory(snapshotArg);
+            string directory = ResolveSnapshotDirectory(snapshotArg, root);
             string zip = Path.Combine(directory, "instance.zip");
             string fastStorage = Path.Combine(directory, "storage");
             bool useFast = Bool(p, "fast", true) && Directory.Exists(fastStorage);
             if (!useFast && !File.Exists(zip))
             {
+                bool listingTruncated;
+                List<object> available = SnapshotList(root, 25, out listingTruncated);
                 throw new ControllerException("snapshot_not_found",
-                    "No snapshot at " + directory + ". Use action=snapshot first, or pass an absolute zip path.");
+                    "No snapshot at " + directory + ". Snapshots currently under " + root + ": "
+                    + (available.Count == 0 ? "(none)" : SnapshotNames(available))
+                    + ". Use action=snapshot first (or action=snapshots to see the list), or pass an absolute zip path. "
+                    + "A snapshot recorded by an older plugin build may sit outside this workspace; re-create it here.");
             }
 
             Dictionary<string, object> manifest = ReadManifest(zip);
-            string cpuName = Text(p, "cpu_type") ?? Text(manifest, "cpuType") ?? "unspecified";
+            string cpuTypeArg = Text(p, "cpu_type");
+            string cpuModelArg = Text(p, "cpu_model");
             string communication = NormalizeCommunication(
                 Text(p, "communication") ?? Text(manifest, "communication") ?? _defaultCommunication);
             string ip = Text(p, "ip") ?? Text(manifest, "ip");
             string subnetMask = Text(p, "subnet_mask") ?? Text(manifest, "subnetMask") ?? "255.255.255.0";
             string gateway = Text(p, "gateway") ?? Text(manifest, "gateway") ?? "0.0.0.0";
 
-            ECPUType cpu = ParseCpuType(cpuName);
+            ECPUType cpu = cpuTypeArg != null || cpuModelArg != null
+                ? ResolveCpu(cpuTypeArg, cpuModelArg)
+                : CpuTypes.Parse(Text(manifest, "cpuType") ?? "unspecified");
             IInstance instance = cpu == ECPUType.CPU1500_Unspecified
                 ? SimulationRuntimeManager.RegisterInstance(name)
                 : SimulationRuntimeManager.RegisterInstance(cpu, name);
@@ -370,7 +408,7 @@ namespace PlcsimAdvanced.Controller
             return row;
         }
 
-        private string ResolveSnapshotDirectory(string value)
+        private string ResolveSnapshotDirectory(string value, string root)
         {
             if (Path.IsPathRooted(value))
             {
@@ -381,7 +419,124 @@ namespace PlcsimAdvanced.Controller
             {
                 return Path.GetFullPath(Path.GetDirectoryName(value) ?? value);
             }
-            return Path.Combine(_snapshotRoot, SafeName(value));
+            return Path.Combine(root, SafeName(value));
+        }
+
+        /// <summary>
+        /// The snapshot root for one request: the one the caller named (the
+        /// session workspace, `<workspace>/.dsh/simulation`, which the plugin
+        /// passes on every call) or this controller's launch default.
+        /// </summary>
+        private string RootFor(IDictionary<string, object> p)
+        {
+            return ResolveSnapshotRoot(Text(p, "snapshot_root"), _snapshotRoot);
+        }
+
+        private static string ResolveSnapshotRoot(string requested, string fallback)
+        {
+            string value = requested;
+            if (string.IsNullOrEmpty(value)) value = fallback;
+            if (string.IsNullOrEmpty(value)) return null;
+            try { return Path.GetFullPath(value); }
+            catch (Exception) { return value; }
+        }
+
+        private object SnapshotListing(IDictionary<string, object> p)
+        {
+            string root = RootFor(p);
+            bool truncated;
+            List<object> rows = SnapshotList(root, Int(p, "max", 100), out truncated);
+            return new Dictionary<string, object>
+            {
+                { "snapshotRoot", root },
+                { "snapshotRootExists", root != null && Directory.Exists(root) },
+                { "count", rows.Count },
+                { "truncated", truncated },
+                { "snapshots", rows },
+                { "registeredInstances", RegisteredInstances() },
+            };
+        }
+
+        /// <summary>
+        /// Every snapshot directory under <paramref name="root"/>, newest first.
+        /// A directory counts as a snapshot when it holds `instance.zip` and/or a
+        /// `storage/` copy, which are what resume/restore need; broken leftovers
+        /// are listed too so the model can report them instead of guessing.
+        /// </summary>
+        internal static List<object> SnapshotList(string root, int max, out bool truncated)
+        {
+            var rows = new List<object>();
+            truncated = false;
+            if (string.IsNullOrEmpty(root) || !Directory.Exists(root)) return rows;
+            string[] directories;
+            try { directories = Directory.GetDirectories(root); }
+            catch (Exception) { return rows; }
+            var ordered = new List<string>(directories);
+            ordered.Sort(delegate (string left, string right)
+            {
+                return Directory.GetLastWriteTimeUtc(right).CompareTo(Directory.GetLastWriteTimeUtc(left));
+            });
+            foreach (string directory in ordered)
+            {
+                string zip = Path.Combine(directory, "instance.zip");
+                string storage = Path.Combine(directory, "storage");
+                bool hasZip = File.Exists(zip);
+                bool hasStorage = Directory.Exists(storage);
+                if (!hasZip && !hasStorage) continue;
+                if (rows.Count >= max)
+                {
+                    truncated = true;
+                    break;
+                }
+                var row = new Dictionary<string, object>
+                {
+                    { "snapshot", Path.GetFileName(directory) },
+                    { "path", directory },
+                    { "hasArchive", hasZip },
+                    { "hasStorage", hasStorage },
+                    { "updatedAt", File.GetLastWriteTimeUtc(hasZip ? zip : storage).ToString("o") },
+                };
+                foreach (var pair in ReadManifest(zip))
+                {
+                    string key = pair.Key;
+                    if (key == "schemaVersion" || key == "sourceStoragePath" || key == "storageError") continue;
+                    row[key] = pair.Value;
+                }
+                rows.Add(row);
+            }
+            return rows;
+        }
+
+        private static List<object> RegisteredInstances()
+        {
+            var rows = new List<object>();
+            try
+            {
+                SInstanceInfo[] info = SimulationRuntimeManager.RegisteredInstanceInfo;
+                if (info == null) return rows;
+                foreach (SInstanceInfo item in info)
+                {
+                    rows.Add(new Dictionary<string, object> { { "name", item.Name }, { "id", item.ID } });
+                }
+            }
+            catch (Exception)
+            {
+                // No Runtime Manager: an empty list is the truthful answer.
+            }
+            return rows;
+        }
+
+        private static string SnapshotNames(List<object> rows)
+        {
+            var names = new List<string>();
+            foreach (object row in rows)
+            {
+                var dictionary = row as Dictionary<string, object>;
+                if (dictionary == null) continue;
+                object value;
+                if (dictionary.TryGetValue("snapshot", out value) && value != null) names.Add(Convert.ToString(value));
+            }
+            return string.Join(", ", names);
         }
 
         private static Dictionary<string, object> ReadManifest(string zip)
@@ -508,31 +663,21 @@ namespace PlcsimAdvanced.Controller
             return settings;
         }
 
-        private static ECPUType ParseCpuType(string value)
+        private static ECPUType ResolveCpu(string cpuType, string cpuModel)
         {
-            string normalized = (value ?? string.Empty).Trim();
-            if (normalized.StartsWith("CPU", StringComparison.OrdinalIgnoreCase))
+            ECPUType fromType = cpuType == null ? ECPUType.CPU1500_Unspecified : CpuTypes.Parse(cpuType);
+            ECPUType fromModel = cpuModel == null ? ECPUType.CPU1500_Unspecified : CpuTypes.Parse(cpuModel);
+            if (cpuType != null && cpuModel != null
+                && fromType != ECPUType.CPU1500_Unspecified
+                && fromModel != ECPUType.CPU1500_Unspecified
+                && fromType != fromModel)
             {
-                normalized = normalized.Substring(3);
+                throw new ControllerException(
+                    "cpu_type_mismatch",
+                    "cpu_type '" + cpuType + "' resolves to " + fromType
+                    + " but cpu_model '" + cpuModel + "' resolves to " + fromModel + ".");
             }
-            if (normalized.Length == 0 || string.Equals(normalized, "unspecified", StringComparison.OrdinalIgnoreCase)
-                || string.Equals(normalized, "1500", StringComparison.OrdinalIgnoreCase)
-                || normalized.StartsWith("1500_", StringComparison.OrdinalIgnoreCase))
-            {
-                return ECPUType.CPU1500_Unspecified;
-            }
-            switch (normalized.ToLowerInvariant())
-            {
-                case "1511": return ECPUType.CPU1511;
-                case "1513": return ECPUType.CPU1513;
-                case "1515": return ECPUType.CPU1515;
-                case "1516": return ECPUType.CPU1516;
-                case "1517": return ECPUType.CPU1517;
-                case "1518": return ECPUType.CPU1518;
-                default:
-                    throw new ControllerException("invalid_cpu_type", "Unknown CPU type '" + value
-                        + "'. Use 1511/1513/1515/1516/1517/1518/unspecified.");
-            }
+            return fromType != ECPUType.CPU1500_Unspecified ? fromType : fromModel;
         }
 
         private static string NormalizeCommunication(string value)
@@ -748,11 +893,11 @@ namespace PlcsimAdvanced.Controller
             catch (Exception) { return fallback; }
         }
 
-        private void DeleteDirectory(string path)
+        private void DeleteDirectory(string path, string root)
         {
             string full = Path.GetFullPath(path);
-            string root = Path.GetFullPath(_snapshotRoot);
-            if (!full.StartsWith(root, StringComparison.OrdinalIgnoreCase))
+            string boundary = Path.GetFullPath(string.IsNullOrEmpty(root) ? _snapshotRoot : root);
+            if (!full.StartsWith(boundary, StringComparison.OrdinalIgnoreCase))
             {
                 throw new ControllerException("invalid_snapshot_path", "Refusing to delete outside snapshotRoot: " + full);
             }
@@ -873,7 +1018,7 @@ namespace PlcsimAdvanced.Controller
                         : new Dictionary<string, object>();
 
                     object data;
-                    if (operation == "Status") data = runtime.Status();
+                    if (operation == "Status") data = runtime.Status(p);
                     else if (operation == "Instance") data = runtime.Instance(p);
                     else if (operation == "Run") data = runtime.Run(p);
                     else data = runtime.Tags(p);
@@ -914,6 +1059,22 @@ namespace PlcsimAdvanced.Controller
             check("json_roundtrip", Convert.ToInt32(roundtrip["value"]) == 42);
             check("whitelist_exact", Operations.Length == 4 && Array.IndexOf(Operations, "Tags") == 3);
             check("unknown_operation_rejected", Array.IndexOf(Operations, "Download") < 0);
+            check("cpu_type_mapping",
+                CpuTypes.Parse("1515") == ECPUType.CPU1515
+                && CpuTypes.Parse("1515F") == ECPUType.CPU1515F
+                && CpuTypes.Parse("CPU 1515F-2 PN") == ECPUType.CPU1515F
+                && CpuTypes.Parse("6ES7 515-2FM01-0AB0") == ECPUType.CPU1515F
+                && CpuTypes.Parse("6ES7 515-2AN03-0AB0") == ECPUType.CPU1515
+                && CpuTypes.Parse("CPU1511F") == ECPUType.CPU1511F
+                && CpuTypes.Parse("unspecified") == ECPUType.CPU1500_Unspecified);
+            bool unsupportedRejected = false;
+            try { CpuTypes.Parse("1515TF"); } catch (ControllerException) { unsupportedRejected = true; }
+            check("unsupported_cpu_rejected", unsupportedRejected);
+            string sampleRoot = Path.Combine(Path.GetTempPath(), "dsh-plcsim-selftest-snapshots");
+            bool truncatedListing;
+            var emptyListing = PlcsimRuntime.SnapshotList(
+                Path.Combine(sampleRoot, "missing"), 10, out truncatedListing);
+            check("snapshot_list_empty_when_root_missing", emptyListing.Count == 0 && !truncatedListing);
             var probe = PlcsimRuntime.Probe() as Dictionary<string, object>;
             check("api_probe_completed", probe != null && probe.ContainsKey("available"));
 

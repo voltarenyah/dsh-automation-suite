@@ -24,6 +24,7 @@ export function apply(ctx: Context, _config?: unknown): void {
     status: runtime.status,
     verbose: runtime.verbose,
     log,
+    configuredSnapshotRoot: runtime.configuredSnapshotRoot,
   })
   log.info(`Registered ${registered.length} PLCSIM Advanced tools (${registered.join(', ')}).`)
 }

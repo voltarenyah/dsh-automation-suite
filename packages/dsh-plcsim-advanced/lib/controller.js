@@ -186,8 +186,11 @@ export class ControllerProcess {
             this.#options.apiDir,
             '--storage-root',
             this.#options.storageRoot,
-            '--snapshot-root',
-            this.#options.snapshotRoot,
+            // An empty snapshot root means "per call, from the session workspace";
+            // omitting the flag keeps the controller's own default out of the way.
+            ...(this.#options.snapshotRoot.trim().length > 0
+                ? ['--snapshot-root', this.#options.snapshotRoot]
+                : []),
             '--network-mode',
             this.#options.networkMode,
             '--show-control-panel',

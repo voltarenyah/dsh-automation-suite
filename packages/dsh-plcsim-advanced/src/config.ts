@@ -27,7 +27,10 @@ export interface PluginConfig {
   apiDir: string
   /** Root under which instance storage directories are created. */
   storageRoot: string
-  /** Root under which snapshot ZIPs and manifests are stored. */
+  /**
+   * Root under which snapshot ZIPs and manifests are stored. Empty means
+   * "derive from the session workspace": `<workspace>/.dsh/simulation`.
+   */
   snapshotRoot: string
   /** Default communication interface when an instance does not pass one. */
   networkMode: NetworkMode
@@ -49,7 +52,9 @@ export const configDefaults: PluginConfig = {
   controllerPath: '',
   apiDir: defaultApiDir(),
   storageRoot: defaultStorageRoot(),
-  snapshotRoot: join(process.cwd(), '.dsh', 'simulation'),
+  // Empty means "derive per session": `<session workspace>/.dsh/simulation`.
+  // A non-empty value pins one root for every workspace (shared folder, tests).
+  snapshotRoot: '',
   networkMode: 'softbus',
   showControlPanel: true,
   controlPanelPath: defaultControlPanelPath(),

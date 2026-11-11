@@ -30,11 +30,17 @@
 ### 0.2 人工介入次数
 
 - **项目级一次性**：给要下载的 PLC **分配子网 + 唯一 IP**（实测：不配则连 TIA UI 都下不了）。
-- **设备级一次性**：首次连接时在 TIA UI 接受自签名证书（Openness 无该委托，headless 必败）。
+- **设备级一次性（每台新虚拟设备各一次）**：首次连接时在 TIA UI 接受自签名证书（Openness 无该委托，
+  headless 必败）。证书与**虚拟设备身份**绑定，不是与工程绑定：再 `create` 一台全新实例（新 MAC）
+  仍要在 TIA UI 里点一次 **Connect**；而 `resume`/`restore` 同一快照沿用原身份，**完全跳过**这一步。
+  所以"启动仿真"时的标准动作是**先 `simulation_instance(action="snapshots")` 扫描工作区存档**，
+  有存档先问用户"用旧快照还是新建"（见 §11.4）；`create` 在有存档时还会以 `snapshots_available`
+  拒绝一次，强制这个选择。
 - **每次下载**：不需要人工；`download(confirm=true)` 是 agent 参数，只有**真实 PLC** 才额外要
   `confirm_real_device=true`（防止误下到产线）。
 
-所以虚拟 PLC 的常态是 **2 次人工**（都只发生一次：配子网、接受证书）；项目已具备时是 **0 次**。
+所以虚拟 PLC 的常态是 **2 次人工**（都只发生一次：配子网、接受证书）；项目已具备、且用快照
+resume 时是 **0 次**。
 
 ### 0.3 终态
 
@@ -286,6 +292,7 @@ Security error. The operation has timed out.`），重试即通过。矩阵里
 | `EngineeringSecurityException: Security error. The operation has timed out.` | V17 Openness 白名单里没有当前 exe 的哈希（重建后哈希变了） | 首次 attach 重试一次；仍失败则管理员更新 `HKLM\…\Openness\17.0\Whitelist` |
 | `online_mode_conflict` | TIA 还被 UI 占在线 | 先 `online_disconnect(force=true)` |
 | 实例不可 ping / 状态 `Off` | 实例没启动或已 PowerOff | PLCSIM 侧重启实例后重试第 2–4 步 |
+| TIA 报"虚拟 PLC 型号与项目 PLC 型号不符" | 实例建成了标准 CPU，而工程是 **F-CPU**；PLCSIM Advanced V7 手册 §7.4："Loading project data of an F-CPU to a standard CPU is not possible" | 用 `cpu_type="unspecified"`（首次下载由 TIA 初始化型号）或同型号 F 重建实例；另外 F 激活 PLC 只能从 **TIA Portal UI** 下载（Openness `download_unavailable`，R16） |
 
 ## 11. 非初次仿真：快速复用上次实例（2026-10-24 定稿）
 
@@ -315,7 +322,8 @@ simulation_instance({ "action": "resume", "name": "PLC_1", "snapshot": "cylinder
 
 ### 11.2 存档内容
 
-默认 `<workspace>/.dsh/simulation/<snapshot>/`：
+默认 `<workspace>/.dsh/simulation/<snapshot>/`（**会话工作区**，每次调用从
+`exec.agent.session.header.cwd` 推导并作为 `snapshot_root` 传给控制器；不是宿主进程的 cwd）：
 
 ```text
 instance.zip      # ArchiveStorage(): 程序 + 硬件配置 + retentive 数据
@@ -328,16 +336,40 @@ manifest.json     # name / cpuType / communication / ip / subnetMask / gateway /
 - 快照与创建它的 PLCSIM Advanced 大版本绑定，跨大版本不要直接复用；
 - `.dsh/simulation/` 已加入 `.gitignore`，是本地运行产物，不是工程源文件。
 
-### 11.3 Softbus / TCP/IP 选择（定稿）
+> 历史坑（0.2.4）：`snapshotRoot` 曾取 `<workspace>/.dsh/simulation` 但其中 `<workspace>`
+> 解析成**宿主进程 cwd**，于是存档落在工作区之外：同一宿主进程里 resume 找得到，换个工作区/
+> 重启后按工作区找就找不着，也不在工程备份范围内。现在根目录一律按会话工作区推导，
+> `config.snapshotRoot` 留空即"按工作区"，显式赋值才固定成一个共享目录（改这项配置需重启宿主）。
+
+### 11.4 启动仿真前先扫描（**每次**）
+
+用户说"启动仿真"时，**先扫描再决定**，不要直接 `create`：
+
+```jsonc
+simulation_instance({ "action": "snapshots" })   // 工作区存档 + Runtime Manager 里仍活着的实例
+// 或 simulation_status({})：root / snapshots / registeredInstances 一起给
+```
+
+- 有存档就**先问用户**："启动以前的 `<名字>` 快照，还是新建一个实例？"
+- 选快照 → `simulation_instance(action="resume", name="PLC_1", snapshot="<名字>", run=true)`：
+  程序已在快照里，**不需要 TIA 下载、不需要人工点证书**（同一快照沿用原实例身份）。
+- 选新建 → `create(confirm_new=true)`：新虚拟设备 = 新 MAC = **新自签名证书**，首次
+  CONNECT/下载必须由用户在 TIA Portal UI 点一次 **Connect**；证书是**每台新虚拟设备一次**，
+  下次再 create 全新实例仍要再点一次。
+- 这道闸门在控制器里：只要工作区有存档，`create` 不带 `confirm_new=true` 就以
+  `snapshots_available` 拒绝并列出存档名，模型必须先把选择摆给用户。
+
+### 11.5 Softbus / TCP/IP 选择（定稿）
 
 - **V17**：Openness 只枚举 TCP/IP（`Siemens PLCSIM Virtual Ethernet Adapter`）；Softbus 接口不出现。V17 首次下载必须用 `communication="tcpip"` + 工程 IP。
 - **V20**：TCP/IP 与 Softbus（`PLCSIM`）都可用，Softbus 下载实测 `state=Success`、0 error。
 - `resume` 用 snapshot 里记录的 `communication`；不要求重新读 TIA。若换网络模式，显式传 `communication`/`ip` 覆盖。
 
-### 11.4 工具面
+### 11.6 工具面
 
 | 工具 action | 用途 |
 |---|---|
+| `simulation_instance(snapshots)` | 启动前扫描：工作区存档 + Runtime Manager 里仍活着的实例 |
 | `simulation_instance(snapshot)` | 首次成功后保存 |
 | `simulation_instance(resume)` | **后续默认入口**：attach 或快速恢复并启动 |
 | `simulation_instance(restore)` | 显式从某个 snapshot 新建；`fast=false` 强制走 ZIP |

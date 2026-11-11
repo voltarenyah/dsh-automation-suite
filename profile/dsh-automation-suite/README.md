@@ -151,6 +151,29 @@ TIA 操作**总有可见进度、且结束后不残留转圈**，这里做成两
 [`packages/dsh-tia-todo-bridge/README.md`](../../packages/dsh-tia-todo-bridge/README.md)。
 
 
+### 仿真（PLCSIM Advanced）的政策：先扫描、再问、证书每台设备一次
+
+PLCSIM 工具（`simulation_*`，挂在 `leader` 的 `/tools` 行）同时受**工具描述**与 **persona** 约束，
+两层说的是同一件事，都是 2026-11-11 0.2.5 验收的直接结论：
+
+1. **证书是每台新虚拟设备一次，不是每个工程一次。** 新建实例 = 新 MAC = 新自签名证书，
+   它的第一次 CONNECT/下载必须由用户在 TIA Portal UI 点一次 **Connect**（Openness 答不了这个
+   弹窗）；用同一快照 `resume`/`restore` 沿用原实例身份，**不需要**再点。
+2. **启动仿真前先扫描、再问用户。** `simulation_instance(action="snapshots")`（或
+   `simulation_status`）会给出本工作区 `<workspace>/.dsh/simulation/` 下的存档与 Runtime Manager
+   里仍活着的实例；有存档就先问"用旧快照还是新建"，选旧快照走 `resume`（快、无证书、无下载）。
+3. **闸门在控制器里**：工作区有存档时，`create` 不带 `confirm_new=true` 会以 `snapshots_available`
+   拒绝并列出存档名。这不是故障，是强制模型把选择摆给用户；不要重试绕过它。
+4. **存档根按会话工作区**：`<workspace>/.dsh/simulation/`，每次调用从
+   `exec.agent.session.header.cwd` 推导并经 `snapshot_root` 传给控制器；不再是宿主进程 cwd。
+   `config.snapshotRoot` 留空即"按工作区"，显式赋值才固定成一个共享目录。
+5. **结果总带 `Key facts:` 行**（`name` / `state` / `cpuType` / `ip` / `snapshots`），与
+   `verboseResults` 无关：0.2.4 验收里 `create` 只回"succeeded"，模型不信空回答、花 20 分钟
+   去查一个健康的 runtime。
+
+改 persona 在 `cordis.patch.yml` 的 `preset-leader` 里（"Simulation (PLCSIM Advanced)" 一节）；
+工具描述由插件自己的 `src/tools.ts` 产出，两边都要保留，别只改一处。
+
 ### 子 agent 的"只读"靠什么保证
 
 只有工具面这一层，**不要指望沙箱**：子 agent 继承父会话的**显式**沙箱覆盖

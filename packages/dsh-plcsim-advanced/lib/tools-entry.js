@@ -18,6 +18,7 @@ export function apply(ctx, _config) {
         status: runtime.status,
         verbose: runtime.verbose,
         log,
+        configuredSnapshotRoot: runtime.configuredSnapshotRoot,
     });
     log.info(`Registered ${registered.length} PLCSIM Advanced tools (${registered.join(', ')}).`);
 }

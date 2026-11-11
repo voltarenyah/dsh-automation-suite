@@ -152,7 +152,7 @@ pnpm run clean:build      # 清构建产物（只碰 lib/ dist/）
 ## 4. 测试与验收
 
 ```powershell
-pnpm test          # 全仓：TIA 112 项（111 通过 / 1 跳过）+ dsh-tool-git 51 项 + engineering-context 151 项 + engineering-graph 128 项 + drawing 23 项 + plcsim-advanced 10 项 + ui-plc-source 47 项 + ui-tia-console 22 项 + ui-versions 15 项 + ui-hardware 9 项 + ui-prompt-guide 25 项 + ui-brandmark 5 项 + tia-todo-bridge 18 项
+pnpm test          # 全仓：TIA 112 项（111 通过 / 1 跳过）+ dsh-tool-git 51 项 + engineering-context 151 项 + engineering-graph 128 项 + drawing 23 项 + plcsim-advanced 18 项 + ui-plc-source 47 项 + ui-tia-console 22 项 + ui-versions 15 项 + ui-hardware 9 项 + ui-prompt-guide 25 项 + ui-brandmark 5 项 + tia-todo-bridge 18 项
 pnpm -r build
 pnpm -r typecheck
 ```
@@ -512,6 +512,59 @@ create_engineering_project({
   `packages/dsh-engineering-graph/engine/bin/EngineeringGraph.Engine.exe` 存在 —— 它缺席时
   `create_engineering_project` 只报"图谱未建成"，其余照常。`Get-Process TiaOpennessV17Min.Controller`
   有进程即说明接口插件已加载（见 §6「怎么判断启动成功」）。
+
+### 7.1 仿真（PLCSIM Advanced）与 F-CPU（强制）
+
+安全型（F）CPU 工程**不能**把项目数据下到标准 CPU 的虚拟实例：PLCSIM Advanced V7 手册 §7.4 原文
+"Loading project data of an F-CPU to a standard CPU is not possible"；TIA 的报错就是
+"虚拟 PLC 型号与项目 PLC 型号不符"。实例必须二选一：**匹配的 F 型号**（`cpu_type="1515F"`，
+枚举含 `1511F`…`1518F`；或更好用 `cpu_model` 传 `hardware_inventory` 的订货号/型号名，
+如 `6ES7 515-2FM01-0AB0`、`CPU 1515F-2 PN`，控制器会按 `A`=标准 / `F`=故障安全映射）
+或 **unspecified**（generic，首次下载时由 TIA 初始化型号）。另外 V17 Openness 对 **F 激活** PLC
+一律 `download_unavailable`（限制 R16），下载只能从 **TIA Portal UI** 做。
+
+因此当用户要"仿真安全型 PLC / F-CPU"时，模型的标准动作是：
+
+1. 先用硬件组态（`hardware_inventory` 的订货号/型号名，如 `6ES7 515-2FM01-0AB0`、
+   `CPU 1515F-2 PN`）判断是否 F-CPU；`safety_status` 的 `NOT AVAILABLE` **不能**当成"非 F"的证据
+   （措辞问题见 `packages/dsh-tia-openness-v17-min/docs/HARDWARE-CONFIG-SCOPE.md`）。
+2. **先告知用户**：套件**无法自动完成下载/仿真**——不是"运行缺失"，也不是实例没起；Openness
+   下不了 F 激活 PLC，最后一步必须由用户在 TIA Portal UI 手动下载（首次连接还要接受证书）。
+3. 实例用匹配的 F 型号（`cpu_type="1515F"`）或更好用 `cpu_model` 传 `hardware_inventory` 的
+   订货号/型号名；`unspecified` 也可行（首次下载由 TIA 初始化型号）。**绝不要**用标准型号
+   （1515 等）给 F 工程建实例——那必然报"虚拟 PLC 型号与项目 PLC 型号不符"。
+4. 用户不接受手动下载时，明确说这个工程的仿真无法完成，不要绕路重试。
+
+### 7.2 启动仿真：先扫描工作区，再问用户（强制）
+
+**证书信任是每台新虚拟设备一次，不是每个工程一次。** 新建实例 = 新 MAC = 新自签名证书，
+它的第一次 CONNECT/下载必须由用户在 TIA Portal UI 点一次 **Connect**（Openness 答不了这个弹窗，
+套件里没有任何工具能预先接受）；用同一快照 `resume`/`restore` 沿用原实例身份，**完全跳过**这一步，
+也不必重新下载。
+
+所以用户说"启动仿真 / 起仿真环境 / 下载到虚拟 PLC"时，**先扫描再决定**：
+
+1. `simulation_instance(action="snapshots")`（或 `simulation_status`）——给出本工作区
+   `<workspace>/.dsh/simulation/` 下的存档（名字、CPU、IP、通信方式、时间）与 Runtime Manager
+   里仍活着的实例。
+2. **有存档就先问用户**："用以前的 `<名字>` 快照启动，还是新建一个实例？" 不要替用户选。
+3. 选旧快照 → `simulation_instance(action="resume", name="PLC_1", snapshot="<名字>", run=true)`：
+   程序已在存档里，不需要 TIA 下载、不需要点证书。
+4. 选新建 → `simulation_instance(action="create", ..., confirm_new=true)`：**先告诉用户**
+   "这是新虚拟设备，第一次连接要在 TIA UI 点一次 Connect 接受证书"，再走 §7.1 的
+   `power_on` → `adopt_open_project` → `online_disconnect(force)` → `download` 流程。
+
+这道闸门在控制器里：只要工作区有存档，`create` 不带 `confirm_new=true` 就以
+`snapshots_available` 拒绝并列出存档名——模型必须先把选择摆给用户，而不是硬建一台新设备。
+
+存档路径**按会话工作区**推导（`<workspace>/.dsh/simulation/`，每次调用从
+`exec.agent.session.header.cwd` 取，再作为 `snapshot_root` 传给控制器），不再取宿主进程 cwd；
+插件配置的 `snapshotRoot` 留空即"按工作区"，显式赋值才固定成一个共享目录（改配置需重启宿主）。
+`.dsh/simulation/` 已在 `.gitignore` 里，属本地运行产物。
+
+另外，工具渲染现在**始终**带一行 `Key facts:`（`name` / `state` / `cpuType` / `ip` / `snapshots`），
+与 `verboseResults` 无关：0.2.4 验收里 `create` 只回"succeeded"，模型因此不信空回答、
+花了 20 分钟去查一个健康的 runtime。别把这一行删掉。
 
 ---
 

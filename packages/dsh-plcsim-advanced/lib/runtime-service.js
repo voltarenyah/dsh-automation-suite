@@ -11,12 +11,15 @@ export const PLCSIM_RUNTIME_SERVICE = 'plcsimRuntime';
 export class PlcsimRuntime extends Service {
     dependencies;
     verbose;
+    /** Configured snapshot root; empty means "derive from the session workspace". */
+    configuredSnapshotRoot;
     request = async (operation, params, options) => await this.dependencies.request(operation, params, options);
     status = () => this.dependencies.status();
     constructor(ctx, dependencies) {
         super(ctx, PLCSIM_RUNTIME_SERVICE);
         this.dependencies = dependencies;
         this.verbose = dependencies.verbose;
+        this.configuredSnapshotRoot = dependencies.configuredSnapshotRoot ?? '';
     }
 }
 export function plcsimRuntimeOf(ctx) {

@@ -339,6 +339,30 @@
                   network I meant to change" — do the latter.
                 - After an import, ask the auditor for a `project_diff` on the WORKTREE (or the last
                   commit) and read its object list back to the user before anything is committed.
+
+                Simulation (PLCSIM Advanced). The simulated PLC is a separate virtual device with its
+                own identity, and that identity is what the TIA certificate dialog is about:
+
+                - The self-signed certificate is trusted per NEW virtual device, not per project. A
+                  brand-new instance is a new MAC with a new certificate, so its first CONNECT/download
+                  needs the user to click Connect ONCE in the TIA Portal UI; Openness cannot answer that
+                  dialog and no tool here pre-accepts it. Say this before you create an instance — do not
+                  let the user discover it at a failed download.
+                - A snapshot resumed/restored keeps the original device identity, so it needs no
+                  certificate click and no TIA download at all: the program is already inside it.
+                - So when the user asks to start a simulation, scan first and ask before creating:
+                  `simulation_instance(action="snapshots")` (or `simulation_status`) lists this
+                  workspace's `<workspace>/.dsh/simulation/` snapshots plus the instances still registered,
+                  then ask "resume <name> or create a new instance?". Resuming is the fast path
+                  (`action="resume", name=..., snapshot=..., run=true`); creating is the slow path and, once
+                  snapshots exist, a `create` without `confirm_new=true` is refused with
+                  `snapshots_available` on purpose — report the choice to the user instead of retrying.
+                - Snapshot storage follows the session workspace, not the host process: snapshots at
+                  `<workspace>/.dsh/simulation/` survive a restart and belong to the workspace the user
+                  backs up. Do not move the root without the user asking for that.
+                - Read the `Key facts:` line each result carries (name/state/cpuType/ip/snapshots). It is
+                  never empty on success, so a terse "succeeded" is never a reason to go probing the
+                  runtime with shell commands.
           - id: agent-instructions
             name: '@deepseek-ai/dsh-agent-instructions'
             config:

@@ -19,6 +19,9 @@ export class PlcsimRuntime extends Service {
 
   readonly verbose: boolean
 
+  /** Configured snapshot root; empty means "derive from the session workspace". */
+  readonly configuredSnapshotRoot: string
+
   readonly request: ToolDependencies['request'] = async (operation, params, options) =>
     await this.dependencies.request(operation, params, options)
 
@@ -28,6 +31,7 @@ export class PlcsimRuntime extends Service {
     super(ctx, PLCSIM_RUNTIME_SERVICE)
     this.dependencies = dependencies
     this.verbose = dependencies.verbose
+    this.configuredSnapshotRoot = dependencies.configuredSnapshotRoot ?? ''
   }
 }
 

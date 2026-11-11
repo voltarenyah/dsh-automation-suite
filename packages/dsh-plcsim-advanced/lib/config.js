@@ -17,7 +17,9 @@ export const configDefaults = {
     controllerPath: '',
     apiDir: defaultApiDir(),
     storageRoot: defaultStorageRoot(),
-    snapshotRoot: join(process.cwd(), '.dsh', 'simulation'),
+    // Empty means "derive per session": `<session workspace>/.dsh/simulation`.
+    // A non-empty value pins one root for every workspace (shared folder, tests).
+    snapshotRoot: '',
     networkMode: 'softbus',
     showControlPanel: true,
     controlPanelPath: defaultControlPanelPath(),
