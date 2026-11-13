@@ -289,9 +289,18 @@ namespace TiaOpennessV17Min.Controller
             }
         }
 
-        /// <summary>Drops the current portal handle, disposing it first when possible.</summary>
+        /// <summary>
+        /// Drops the current portal handle, disposing it first when possible.
+        ///
+        /// The held project is a child of the portal and dies with it, so the
+        /// project handle is dropped here too. Keeping it used to turn the next
+        /// <c>OpenProject</c> into "A project is already open" for a project whose
+        /// instance had already exited, even after the dead portal was detected.
+        /// </summary>
         private void ResetPortal()
         {
+            _project = null;
+            _adoptedProject = false;
             if (_portal == null) return;
             try
             {
@@ -333,7 +342,7 @@ namespace TiaOpennessV17Min.Controller
         }
 
         /// <summary>Whether a failure is Openness reporting a dead object handle.</summary>
-        private static bool IsDisposedObject(Exception exception)
+        internal static bool IsDisposedObject(Exception exception)
         {
             for (Exception current = exception; current != null; current = current.InnerException)
             {
@@ -343,11 +352,124 @@ namespace TiaOpennessV17Min.Controller
             return false;
         }
 
+        /// <summary>
+        /// Whether a structured failure was produced by an Openness
+        /// disposed-object exception. <see cref="OpennessFailure"/> keeps the
+        /// original exception type in the details, so a failure that was already
+        /// wrapped into an operation-specific code can still be recognised as
+        /// "the session behind it is gone".
+        /// </summary>
+        internal static bool IsDisposedSessionFailure(ControllerException failure)
+        {
+            if (failure == null || failure.Details == null) return false;
+            string type = JsonObject.ReadString(failure.Details, "exceptionType", null);
+            if (type == null) return false;
+            return string.Equals(type, "System.ObjectDisposedException", StringComparison.Ordinal)
+                || type.EndsWith("EngineeringObjectDisposedException", StringComparison.Ordinal);
+        }
+
+        // -------------------------------------------------------- session health
+
+        /// <summary>What the cached session handle is worth right now.</summary>
+        internal enum SessionHealth
+        {
+            /// <summary>No project was held, so there was nothing to check.</summary>
+            NoProject,
+            /// <summary>The held project is still the project TIA has open.</summary>
+            Open,
+            /// <summary>The handle is dead; the session state was dropped.</summary>
+            Lost
+        }
+
+        /// <summary>
+        /// Reconciles the cached session with what TIA actually has open, and
+        /// drops it when it is gone.
+        ///
+        /// The controller keeps the <see cref="Project"/> handle across requests,
+        /// while an operator may close the TIA window (or the project) in the UI at
+        /// any time — both dispose every child handle without telling the
+        /// controller. Two cheap reads prove the truth: the portal's project
+        /// composition (a dead portal or an instance with no project) and one
+        /// server-backed member of the held project (a disposed handle). Dropping
+        /// the handle here is what lets a refresh clear the memory and the next
+        /// <c>OpenProject</c> proceed instead of reporting a project that no longer
+        /// exists.
+        ///
+        /// A live TIA Portal instance is kept: only the project handle is dropped,
+        /// so the next open reuses the window. An unrelated read failure keeps the
+        /// session (a transient refusal must not destroy it).
+        /// </summary>
+        internal SessionHealth ReconcileSession(string cause)
+        {
+            if (_project == null) return SessionHealth.NoProject;
+            if (_portal == null) return DropLostProject(cause, "the portal handle is gone");
+
+            int count;
+            try
+            {
+                count = _portal.Projects.Count;
+            }
+            catch (Exception ex)
+            {
+                // The instance is gone; disposing the handle is best effort.
+                ResetPortal();
+                return DropLostProject(cause, "the TIA Portal instance no longer answers (" + ex.GetType().Name + ")");
+            }
+            if (count == 0) return DropLostProject(cause, "the TIA Portal instance holds no project");
+
+            try
+            {
+                // A live project answers a server round trip; a disposed handle
+                // throws EngineeringObjectDisposedException here.
+                bool unused = _project.IsModified;
+                return SessionHealth.Open;
+            }
+            catch (Exception ex) when (IsDisposedObject(ex))
+            {
+                return DropLostProject(cause, "the project handle is disposed");
+            }
+            catch (Exception ex)
+            {
+                _log.Warning("The TIA session could not be verified (" + ex.GetType().Name + ": " + ex.Message + ").");
+                return SessionHealth.Open;
+            }
+        }
+
+        /// <summary>Drops a dead project handle, keeping a live TIA Portal window.</summary>
+        private SessionHealth DropLostProject(string cause, string evidence)
+        {
+            string name = SafeProjectName();
+            _project = null;
+            _adoptedProject = false;
+            _log.Info("Dropped the TIA session state (" + cause + "): " + evidence
+                + (string.IsNullOrEmpty(name) ? "." : " (project " + Text.Quote(name) + ")."));
+            return SessionHealth.Lost;
+        }
+
+        /// <summary>
+        /// Drops the session after an Openness call proved a handle disposed.
+        /// Keeps the TIA Portal instance when it still answers (the operator closed
+        /// the project, not the window), because the next open reuses it.
+        /// </summary>
+        internal void ForgetDisposedSession(string cause)
+        {
+            string name = SafeProjectName();
+            bool keepPortal = _portal != null && PortalResponsive();
+            _project = null;
+            _adoptedProject = false;
+            if (!keepPortal) ResetPortal();
+            _log.Info("Dropped the TIA session state (" + cause + ")"
+                + (string.IsNullOrEmpty(name) ? "." : " (project " + Text.Quote(name) + ")."));
+        }
+
         // --------------------------------------------------------------- project
 
         public JsonObject OpenProject(string projectPath, bool withWindow, bool allowUpgrade, IProgressSink progress)
         {
-            if (_project != null)
+            // A handle that survived an operator closing the TIA window must not
+            // block the open: reconcile first, and only report "already open" when
+            // TIA really still has the project.
+            if (_project != null && ReconcileSession("OpenProject") == SessionHealth.Open)
             {
                 throw new ControllerException(
                     "project_already_open",
@@ -432,6 +554,7 @@ namespace TiaOpennessV17Min.Controller
                 }
             }
             _project = opened;
+            _adoptedProject = false;
 
             JsonObject data = new JsonObject();
             data.Add("projectName", SafeProjectName());
@@ -458,6 +581,12 @@ namespace TiaOpennessV17Min.Controller
         /// </summary>
         public JsonObject AdoptOpenProject(IProgressSink progress)
         {
+            if (_project != null && ReconcileSession("AdoptOpenProject") == SessionHealth.Lost)
+            {
+                // The kept handle died (the UI closed that project); adopt what the
+                // instance has now instead of reporting the dead handle.
+                _log.Info("The adopted project is gone; adopting the project the attached instance has open now.");
+            }
             if (_project == null)
             {
                 EnsurePortal(true, progress, null, VisiblePortalNeed.OpenProject);
@@ -568,6 +697,7 @@ namespace TiaOpennessV17Min.Controller
             }
 
             _project = null;
+            _adoptedProject = false;
             data.Add("closed", true);
 
             if (closePortal && _portal != null)
@@ -1578,6 +1708,12 @@ namespace TiaOpennessV17Min.Controller
 
         public JsonObject DescribeSession()
         {
+            // A status read is the session's refresh point: it must report what
+            // TIA actually has open, not a handle the operator already closed.
+            // Reconciling here is what clears the memory before the next open,
+            // and it never throws (a lost session is a state, not an error).
+            ReconcileSession("the status read");
+
             JsonObject session = new JsonObject();
             session.Add("portalOpen", _portal != null);
             if (_portal != null)
@@ -1606,6 +1742,20 @@ namespace TiaOpennessV17Min.Controller
                     "project_not_open",
                     operation + " requires an open project. Call OpenProject first.");
             }
+
+            if (ReconcileSession("the " + operation + " request") == SessionHealth.Open) return;
+
+            // The handle was dropped by the reconcile above: the operator closed
+            // the TIA window or the project outside the controller. This is a
+            // state the caller can answer by opening the project again, not an
+            // internal error the caller cannot act on.
+            throw new ControllerException(
+                "project_not_open",
+                operation + " cannot run: the TIA Portal instance that held the project was closed outside the "
+                    + "controller, so its session state was dropped. Open the project again with OpenProject.",
+                JsonObject.Of("reason", "project_closed_externally", "recovered", true,
+                    "hint", "The TIA window (or the open project) was closed outside the controller. Nothing was "
+                        + "changed in the project; the next OpenProject starts from a clean session state."));
         }
 
         private string SafeProjectName()

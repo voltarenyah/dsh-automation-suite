@@ -1042,3 +1042,55 @@ Openness 无法启动 TIA（`Connection to TiaPortal failed`）暂未执行，�
 
 **回退**：`git checkout -- packages/dsh-tia-openness-v17-min`（本条与代码、重建的 exe 同一提交）。
 
+## D33. refresh 就是会话对账：外部关掉 TIA 后清空记忆，且不阻碍下一次 open（2026-11-13）
+
+**背景**：0.2.5 现场，两个工作区（`0.2.5\pilot` 与 `0.2.5\reference`）共用一个控制器。09:37 在
+pilot 会话 `/tia-open` 打开的可见 TIA 实例，11:44:43 被使用者直接从 TIA 关掉；随后 reference 会话
+`/tia-open` 报 `A project is already open ('pilot')`，`/tia-info`、`/tia-close` 报
+`EngineeringObjectDisposedException: … 'Siemens.Engineering.Project'`；只有杀掉控制器进程才能恢复。
+12:53（重启控制器、打开并再次关掉 reference 之后）pilot 会话的 `/tia-save` 又报同一异常。
+
+**根因**：控制器把 `_project` 当长期句柄，只判断 `!= null`（`DescribeSession`/`EnsureProjectOpen`），
+从不验证它是否已被 TIA 释放；`ResetPortal()` 只清 `_portal`、不清 `_project`；`ProjectInfo`/`Save`/
+`Close` 先撞上 disposed，`Program.MapFailure` 统一映射成 `internal_error`，调用方无法据此恢复。
+使用者关可见窗口是正常操作，必须由"refresh/状态读"来对账。
+
+**决定**（`controller/OpennessHost.cs`、`Operations.cs`、`OperationsProject.cs`）：
+
+1. **对账函数 `ReconcileSession()`**：`_project != null` 时做两次廉价读——`_portal.Projects.Count`
+   （实例没了 / 实例里没有工程）与 `_project.IsModified`（句柄本身已 dispose）。失败即丢掉
+   `_project` + `_adoptedProject`；**活着的 TIA 窗口保留**（使用者只关了工程时，下一次 open 复用窗口，
+   而不是顺手把窗口也关掉）。无关的读失败不销毁会话。
+2. **对账点是 refresh / 状态读**：`DescribeSession()` 与 `EnsureProjectOpen()` 先对账。
+   `/tia-info`（TIA 控制条上的"刷新"）走 `ProjectInfo`，因此任意工作区的刷新都会清掉共享控制器的
+   陈旧记忆；清空后返回 `project_not_open`（状态，不是 `internal_error`），控制台 `model.js` 本来
+   就把 `tia-info + project_not_open` 折叠成 idle，Open 按钮恢复可用，无需改面板。
+3. **open 自愈**：`OpenProject` 的 `project_already_open` 守卫先对账——即使没人点刷新，死句柄也不
+   再挡路。`AdoptOpenProject`、`OpenProject` 的 dry-run 计划、`CreateProject`/取回（`EnsureNoProject`）、
+   `CloseProject` 同样先对账。
+4. **兜底**：`Invoke()` 把任何 Openness disposed（包括已被 `OpennessFailure` 包成 operation 专有 code
+   的，靠它写进 details 的 `exceptionType` 识别）统一转成 `project_not_open` +
+   `details.reason=project_closed_externally` / `recovered=true`，并调用 `ForgetDisposedSession()`
+   清空记忆。以后任何操作撞到 disposed 都不会再出现不可恢复的 `internal_error`。
+5. **相关缺陷一并修**：`ResetPortal()` 同时清 `_project`/`_adoptedProject`；`_adoptedProject` 在
+   `open`/`create`/`retrieve`/`close` 之后复位（此前一旦 adopt 过，之后正常打开的工程在控制器退出时
+   不会被关闭）。
+6. **不自动 adopt**：refresh 只对账控制器自己持有的那个实例，不接管别的可见窗口里的工程；接管仍是
+   显式的 `adopt_open_project`。
+
+**未做**：没有新增公开操作或工具，没有自动重启控制器，也没有改 `readTiaSession` 的契约（它仍以
+`ProjectInfo` 为准，只是不再被 disposed 卡住）；控制器进程仍是"每次请求串行、一个宿主一个"。
+
+**验证**：`dotnet build`（net48/x64）0 warning / 0 error；`--self-test` **22 项全过**（新增
+`disposed_session_is_classified`：包装前后的 disposed 都被识别，无关异常不误判）；`npm test`
+**121 项全过**（新增 `/tia-info` 对"外部关闭"返回状态文案、不再渲染 `ProjectInfo FAILED.` 的断言）；
+`dsh-ui-tia-console` **23 项全过**（新增 refresh 清空旧工程、Open 恢复的折叠断言）；
+`npm run matrix:build` 后 `matrix:check`、`skills:check` 通过。真机未复测：需要再走一次
+"开可见窗口 → 直接关 TIA → 在另一个工作区点刷新 → 打开工程"，环境恢复后补。
+
+**环境备注**：本机 `.NET Framework 4.8` 控制器进程在默认 `%TEMP%`
+（`C:\Users\Ansel\AppData\Local\Temp`）下创建自检目录被拒（`UnauthorizedAccessException`，与本次
+改动无关）。跑 `npm test` 前把 `TEMP`/`TMP` 指到工作区内目录即可复现全绿；不要为此改自检逻辑。
+
+**回退**：`git checkout -- packages/dsh-tia-openness-v17-min packages/dsh-ui-tia-console`。
+

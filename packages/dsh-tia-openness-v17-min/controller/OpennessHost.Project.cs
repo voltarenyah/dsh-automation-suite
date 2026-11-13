@@ -37,6 +37,7 @@ namespace TiaOpennessV17Min.Controller
 
         public void EnsureNoProject(string operation)
         {
+            if (_project != null) ReconcileSession(operation);
             if (_project == null) return;
             throw new ControllerException(
                 "project_already_open",
@@ -127,10 +128,13 @@ namespace TiaOpennessV17Min.Controller
             catch (Exception ex)
             {
                 _project = null;
+                _adoptedProject = false;
                 throw OpennessFailure("project_create_failed",
                     "Creating the project " + Text.Quote(projectName) + " in " + Text.Quote(fullDirectory)
                         + " failed: " + ex.Message, ex);
             }
+
+            _adoptedProject = false;
 
             JsonObject data = new JsonObject();
             data.Add("projectName", SafeProjectName());
@@ -227,9 +231,12 @@ namespace TiaOpennessV17Min.Controller
             catch (Exception ex)
             {
                 _project = null;
+                _adoptedProject = false;
                 throw OpennessFailure("retrieve_failed",
                     "Retrieving " + Text.Quote(fullArchive) + " into " + Text.Quote(fullDirectory) + " failed: " + ex.Message, ex);
             }
+
+            _adoptedProject = false;
 
             JsonObject data = new JsonObject();
             data.Add("archivePath", fullArchive);
