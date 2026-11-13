@@ -48,6 +48,7 @@ namespace TiaOpennessV17Min.Controller
                 Check(checks, ref ok, "sha256_matches_known_vector", delegate { Sha256Check(workDirectory); });
                 Check(checks, ref ok, "openness_not_loaded_by_startup", OpennessNotLoaded);
                 Check(checks, ref ok, "siemens_resolver_package_present", SiemensResolverPresent);
+                Check(checks, ref ok, "disposed_session_is_classified", DisposedSessionClassification);
             }
             catch (Exception ex)
             {
@@ -189,6 +190,29 @@ namespace TiaOpennessV17Min.Controller
             {
                 Require(!OperationCatalog.IsAllowed(name), "the whitelist accepted " + Text.Quote(name));
             }
+        }
+
+        /// <summary>
+        /// A failure caused by a closed TIA window must be recognised from the
+        /// details <c>OpennessFailure</c> keeps, so the dispatcher can drop the
+        /// dead session and answer project_not_open instead of internal_error.
+        /// </summary>
+        private static void DisposedSessionClassification()
+        {
+            ControllerException wrapped = new ControllerException(
+                "project_save_failed",
+                "Saving the project failed: Access to a disposed object of type 'Siemens.Engineering.Project' is not possible.",
+                JsonObject.Of("exceptionType", "Siemens.Engineering.EngineeringObjectDisposedException"));
+            Require(OpennessHost.IsDisposedSessionFailure(wrapped), "a wrapped disposed-project failure is recognised");
+
+            ControllerException unrelated = new ControllerException(
+                "project_save_failed", "Saving failed.", JsonObject.Of("exceptionType", "System.IO.IOException"));
+            Require(!OpennessHost.IsDisposedSessionFailure(unrelated), "an unrelated failure is not treated as a lost session");
+
+            Require(OpennessHost.IsDisposedObject(new ObjectDisposedException("project")),
+                "a raw ObjectDisposedException is recognised");
+            Require(!OpennessHost.IsDisposedObject(new InvalidOperationException("no")),
+                "an unrelated exception is not treated as disposed");
         }
 
         private static void JsonRoundTrip()

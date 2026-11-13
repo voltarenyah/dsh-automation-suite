@@ -272,6 +272,34 @@ test('/tia-info defaults to a compact section set and rejects unknown sections',
   assert.equal(controller.calls.length, 2)
 })
 
+test('/tia-info reports a session lost outside the controller as a state, not a failure', async () => {
+  // The exact answer a refresh gets after the operator closed the TIA window:
+  // the controller dropped its dead project handle and reports the state.
+  const controller = recordingController(() => ({
+    ok: false,
+    dryRun: false,
+    durationMs: 6,
+    error: {
+      code: 'project_not_open',
+      message:
+        'ProjectInfo cannot run: the TIA Portal instance that held the project was closed outside the controller, so ' +
+        'its session state was dropped. Open the project again with OpenProject.',
+      details: { reason: 'project_closed_externally', recovered: true },
+    },
+  }))
+  const { find } = register(controller.dependencies)
+  const result = await find('tia-info').handler(invocation('C:\\work'))
+
+  assert.equal(result.kind, 'error')
+  const headline = result.text.split('\n')[0]
+  assert.match(headline, /^No project is open — /u)
+  assert.match(headline, /closed outside the controller/u)
+  assert.match(headline, /session state was reset/u)
+  assert.match(result.text, /Error code: project_not_open/u)
+  assert.ok(!result.text.includes('FAILED.'), 'a refresh state is not rendered as a failed operation')
+  assert.equal(controller.calls.length, 1)
+})
+
 test('/tia-find maps flags to categories and folds the filter into one name_filter', async () => {
   const controller = recordingController(() => ({
     ok: true,

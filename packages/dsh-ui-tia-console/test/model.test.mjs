@@ -207,6 +207,29 @@ test('/tia-info refreshing a controller with no project is not an error', () => 
   assert.equal(state.lastResult.kind, 'error')
 })
 
+test('a refresh clears a project whose TIA window was closed outside the controller', () => {
+  // The controller dropped the dead handle and reported the state; the bar must
+  // stop showing the old project so Open is available again.
+  const state = foldTiaState(
+    windowOf(
+      commandRun('c1', 'tia-open', 1000),
+      commandDone('c1', 'success', OPENED, 2000),
+      commandRun('c2', 'tia-info', 3000),
+      commandDone(
+        'c2',
+        'error',
+        'No project is open — the TIA Portal instance that held it was closed outside the controller, so the session ' +
+          'state was reset. Open a project to continue.\nError code: project_not_open\nReason: closed outside the controller.',
+        4000,
+      ),
+    ),
+  )
+  assert.equal(state.project, null)
+  assert.equal(state.phase, 'idle')
+  assert.equal(state.lastError, null)
+  assert.equal(state.lastResult.kind, 'error')
+})
+
 test('a model project_info that failed is not read as an open project', () => {
   // The exact reader the bug produced: the tool returned its canonical value,
   // so `tool/result.isError` is false while the text says FAILED/project_not_open.

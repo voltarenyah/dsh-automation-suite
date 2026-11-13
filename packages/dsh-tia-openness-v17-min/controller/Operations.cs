@@ -88,6 +88,65 @@ namespace TiaOpennessV17Min.Controller
 
         public JsonObject Invoke(string operation, JsonArgs parameters, DiagnosticLog log, ChangeLog changes, IProgressSink progress)
         {
+            try
+            {
+                return InvokeCore(operation, parameters, log, changes, progress);
+            }
+            catch (ControllerException ex) when (OpennessHost.IsDisposedSessionFailure(ex))
+            {
+                // The failure was an Openness disposed handle wrapped into an
+                // operation-specific code. The session behind it is gone, so drop
+                // it and report the state instead of an error nobody can act on.
+                _host.ForgetDisposedSession("the " + operation + " request lost its session");
+                throw LostSession(operation, ex);
+            }
+            catch (Exception ex) when (OpennessHost.IsDisposedObject(ex))
+            {
+                _host.ForgetDisposedSession("the " + operation + " request lost its session");
+                throw LostSession(operation, ex);
+            }
+        }
+
+        /// <summary>
+        /// The structured answer for "an Openness handle was disposed under us".
+        /// A closed TIA window is a state, not an internal error: the caller fixes
+        /// it by opening the project again, and the session memory is already gone
+        /// when this is thrown.
+        /// </summary>
+        private static ControllerException LostSession(string operation, Exception cause)
+        {
+            // Keep what the original failure said: for a wrapped failure the
+            // interesting type (EngineeringObjectDisposedException) is in its
+            // details, not on the wrapper.
+            string type = cause.GetType().FullName;
+            string originalCode = null;
+            ControllerException wrapped = cause as ControllerException;
+            if (wrapped != null)
+            {
+                originalCode = wrapped.Code;
+                string inner = wrapped.Details == null
+                    ? null
+                    : JsonObject.ReadString(wrapped.Details, "exceptionType", null);
+                if (inner != null) type = inner;
+            }
+
+            JsonObject details = JsonObject.Of(
+                "reason", "project_closed_externally",
+                "recovered", true,
+                "exceptionType", type);
+            if (originalCode != null) details.Add("originalCode", originalCode);
+            details.Add("hint",
+                "The TIA Portal window (or the open project) was closed outside the controller. Its session state was "
+                + "dropped; open the project again with OpenProject. Nothing in the project was changed by this call.");
+            return new ControllerException(
+                "project_not_open",
+                "The TIA Portal session was lost during " + operation + ": the TIA window (or the open project) was closed "
+                    + "outside the controller, so its session state was dropped. Open the project again with OpenProject.",
+                details);
+        }
+
+        private JsonObject InvokeCore(string operation, JsonArgs parameters, DiagnosticLog log, ChangeLog changes, IProgressSink progress)
+        {
             if (!OperationCatalog.IsAllowed(operation))
             {
                 throw new ControllerException(
@@ -225,6 +284,9 @@ namespace TiaOpennessV17Min.Controller
 
             if (dryRun)
             {
+                // The plan reports what TIA really has open, so a dead handle from
+                // a closed window is not announced as an open project.
+                if (_host.HasProject) _host.ReconcileSession("OpenProject");
                 JsonObject plan = new JsonObject();
                 plan.Add("projectPath", fullPath);
                 plan.Add("withUserInterface", withWindow);
@@ -1849,6 +1911,10 @@ List<string> categoryFilter = p.EnumList("categories", CategoryNames);
             bool save = p.Bool("save", false);
             bool closePortal = p.Bool("close_portal", false);
             bool dryRun = p.Bool("dry_run", true);
+
+            // Closing a project whose window the operator already closed is a
+            // no-op with a clean state answer, not a disposed-handle failure.
+            if (_host.HasProject) _host.ReconcileSession("CloseProject");
 
             if (!_host.HasProject)
             {

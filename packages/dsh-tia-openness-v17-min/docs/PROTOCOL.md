@@ -693,7 +693,7 @@ it, so compile first.
 | `openness_unavailable` | `Siemens.Engineering.dll` was not found | install TIA Portal V17 or set `opennessDir` |
 | `openness_load_failed` | the assembly exists but cannot be used | check x64 and the installation |
 | `project_not_found` | the project file does not exist | check `project_path` |
-| `project_not_open` | an operation needs an open project | call `OpenProject` first |
+| `project_not_open` | an operation needs an open project, or the session was dropped because the TIA window/project was closed outside the controller | call `OpenProject` first; the stale handle is already gone |
 | `project_already_open` | a project is already open | call `CloseProject` first |
 | `project_open_failed` | TIA refused to open the project | for an older project pass `allow_upgrade` |
 | `project_save_failed`, `project_close_failed` | save/close failed | see `error.details` |
@@ -730,6 +730,17 @@ it, so compile first.
 | `cax_export_failed` | `CaxProvider.Export` returned false or threw | inspect `details.logExcerpt` (TIA's own log) |
 | `output_exists` | the AML path exists and `overwrite` is false | pass `overwrite: true` or another `file_name` |
 | `internal_error` | unexpected exception | `error.details.exceptionType` |
+
+A TIA Portal instance (or the project it holds) can be closed in the TIA UI at any
+time. The controller detects it on the next project operation, and a status read
+(`ProjectInfo`, `DescribeSession`) is enough: the handle is reconciled against the
+portal's project composition and one server-backed project member. A dead handle
+is dropped — a live TIA window is kept, so the next `OpenProject` reuses it — and
+the operation answers `project_not_open` with `details.reason =
+"project_closed_externally"` and `details.recovered = true` instead of
+`internal_error`. `OpenProject` reconciles before its `project_already_open`
+guard, so a closed window never blocks opening the next project. Nothing about
+the project was changed by the failed call.
 
 Transport failures are raised by the plugin, not by the controller, and are
 thrown as errors rather than returned as an `ok: false` outcome:

@@ -41,6 +41,10 @@ namespace TiaOpennessV17Min.Controller
             string comment = p.String("comment", null);
             bool withWindow = p.Bool("with_window", true);
 
+            // A project handle whose instance the operator closed must not refuse
+            // the creation: reconcile first so "already open" only means a live
+            // project.
+            if (_host.HasProject) _host.ReconcileSession("CreateProject");
             if (_host.HasProject)
             {
                 throw new ControllerException("project_already_open",

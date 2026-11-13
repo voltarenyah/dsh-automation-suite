@@ -407,7 +407,26 @@ async function handleInfo(dependencies: ToolDependencies, invocation: DshCommand
     { sections, history_limit: 10, max_objects: 50, include_attribute_infos: false },
     invocation.signal,
   )
-  if (!outcome.ok) return refused(outcome, dependencies.verbose)
+  if (!outcome.ok) {
+    // A refresh on a session whose TIA window was closed outside the controller
+    // answers with project_not_open: that is the state ("no project"), not a
+    // failure to show as an error. The controller has already dropped its
+    // handle, so the next /tia-open starts from a clean session.
+    if (outcome.error?.code === 'project_not_open') {
+      const lost = /closed outside the controller/iu.test(outcome.error.message)
+      return {
+        kind: 'error',
+        text:
+          (lost
+            ? 'No project is open — the TIA Portal instance that held it was closed outside the controller, so the ' +
+              'session state was reset.'
+            : 'No project is open in the TIA Portal session.') +
+          ' Open a project to continue.\nError code: project_not_open\nReason: ' +
+          outcome.error.message,
+      }
+    }
+    return refused(outcome, dependencies.verbose)
+  }
 
   const data = outcome.data ?? {}
   const attributes = record(data['attributes'])
