@@ -34,14 +34,18 @@ export function normalizeTagInput(raw) {
   return parts.join('/')
 }
 
+/** Pseudo-filter for workspaces without any tag. */
+export const UNTAGGED = '__untagged'
+
 /**
  * Whether one workspace's tags satisfy one selected filter.
  *
  * @param {readonly string[]} tags - the workspace's tags.
- * @param {string} filter - a tag path; descendants count as a match.
+ * @param {string} filter - a tag path, or {@link UNTAGGED}; descendants count as a match.
  * @returns {boolean} true when the workspace matches.
  */
 export function tagMatches(tags, filter) {
+  if (filter === UNTAGGED) return tags.length === 0
   return tags.some((tag) => tag === filter || tag.startsWith(`${filter}/`))
 }
 
@@ -82,9 +86,11 @@ export function buildRows(workspaces, sessions, statuses, archivedSessionIds) {
     let blankCount = 0
     let running = 0
     let pending = 0
+    const sessionTimes = []
     for (const id of sessionIds) {
       const session = byId[id]
       const updatedAt = toEpoch(session?.updatedAt)
+      if (updatedAt > 0) sessionTimes.push(updatedAt)
       if (updatedAt > lastAt) lastAt = updatedAt
       if (archived.has(id)) archivedCount += 1
       if (session?.blank === true) blankCount += 1
@@ -99,6 +105,7 @@ export function buildRows(workspaces, sessions, statuses, archivedSessionIds) {
       path: typeof workspace.path === 'string' ? workspace.path : '',
       createdAt,
       sessions: sessionIds.length,
+      sessionTimes,
       archived: archivedCount,
       blank: blankCount,
       running,
