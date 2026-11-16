@@ -15,7 +15,6 @@ import { defineTool, type ContentBlock, type ToolDefinition } from '@deepseek-ai
 import type { Logger } from '@deepseek-ai/cordis'
 
 import { openDrawing, type Index, type Occurrence, type Sheet, type Xref } from '../indexer/build.js'
-import { renderPage } from '../indexer/render.js'
 import { documentDir, ingest } from '../indexer/store.js'
 import {
   listDocuments,
@@ -635,10 +634,11 @@ export function registerTools(
   const show = defineTool({
     name: 'drawing_show',
     description:
-      'Show a sheet in the right-sidebar Drawing tab: it opens the tab, turns to the page and highlights the ' +
-      'given element box. Use it once you know which page answers the question, so the user can verify it. ' +
-      'x/y/w/h are display points: copy the box from a drawing_search hit or a drawing_sheet element instead ' +
-      'of deriving coordinates from the PDF. Returns one line of confirmation, never an image.',
+      'Show a sheet in the right-sidebar Drawing tab: it opens the tab, turns the PDF viewer to the page and ' +
+      'leaves the caption plus the element box as a one-line note under the viewer. Use it once you know which ' +
+      'page answers the question, so the user can verify it. x/y/w/h are display points: copy the box from a ' +
+      "drawing_search hit or a drawing_sheet element instead of deriving coordinates from the PDF. The viewer " +
+      'cannot draw the box itself, so the note is text. Returns one line of confirmation, never an image.',
     parameters: {
       cabinet: { type: 'integer', description: 'Cabinet id (1-based).' },
       sheet: { type: 'integer', description: 'Sheet number as printed.' },
@@ -701,22 +701,11 @@ export function registerTools(
           ? { x: args.x, y: args.y, w: args.w ?? 0, h: args.h ?? 0 }
           : null
 
-      // Rasterise the sheet so the tab can show the page with the hit marked.
-      // A render failure must never fail the lookup: the panel falls back to the
-      // browser's own PDF viewer (no highlight) when `image` is null.
-      let image: DrawingView['image'] = null
-      try {
-        const rendered = await renderPage(entry.dir, entry.path, target.page, 2)
-        image = {
-          path: rendered.path,
-          width: rendered.width,
-          height: rendered.height,
-          displayWidth: rendered.displayWidth,
-          displayHeight: rendered.displayHeight,
-        }
-      } catch (error) {
-        log.warn?.(`drawing_show: rendering page ${target.page} failed: ${String(error)}`)
-      }
+      // No page raster: the tab's surface is the browser's PDF viewer, which
+      // cannot be drawn over. The box still travels in the view state so a
+      // future in-panel renderer can use it, but rendering a PNG per show would
+      // only add latency for something nothing displays.
+      const image: DrawingView['image'] = null
 
       const viewPath = join(scope.cwd, '.dsh', 'drawing-view.json')
       const view: DrawingView = {

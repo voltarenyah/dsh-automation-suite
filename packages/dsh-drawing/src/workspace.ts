@@ -172,7 +172,7 @@ export type DrawingView = {
   caption: string | null
   /** Highlight box in display points (842x595 for landscape sheets). */
   highlight: { x: number; y: number; w: number; h: number } | null
-  /** Rendered page image, when the host could rasterise it. */
+  /** Reserved for a future in-panel renderer; currently always null. */
   image: { path: string; width: number; height: number; displayWidth: number; displayHeight: number } | null
   /** Monotonic stamp so a reader can tell a new request from the previous one. */
   ts: string

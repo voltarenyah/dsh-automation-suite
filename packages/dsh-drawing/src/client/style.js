@@ -97,24 +97,19 @@ const CSS = `
   flex: 1;
   min-height: 180px;
   display: flex;
-  align-items: center;
+  align-items: stretch;
   justify-content: center;
   border: 1px solid var(--dsh-border, #d0d7de);
   border-radius: 6px;
-  overflow: auto;
+  overflow: hidden;
   background: rgba(128, 128, 128, 0.04);
 }
-.dsh-drawing__paper { position: relative; line-height: 0; }
-.dsh-drawing__page { max-width: 100%; height: auto; display: block; }
-.dsh-drawing__hit {
-  position: absolute;
-  border: 2px solid var(--dsh-accent, #0969da);
-  background: color-mix(in srgb, var(--dsh-accent, #0969da) 22%, transparent);
-  border-radius: 2px;
-  pointer-events: none;
-  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.6) inset;
+.dsh-drawing__viewer > .dsh-drawing__muted {
+  margin: auto;
+  padding: 12px;
+  text-align: center;
 }
-.dsh-drawing__frame { width: 100%; height: 100%; min-height: 320px; border: 0; }
+.dsh-drawing__frame { flex: 1; width: 100%; height: 100%; border: 0; }
 `
 
 /** Inject the stylesheet once. */

@@ -1,13 +1,18 @@
 /**
  * The Drawing tab body.
  *
- * Two ways to look at a sheet:
+ * **One surface only: the PDF viewer.** The sheet list above it sets the page,
+ * and `drawing_show` does the same plus leaves a one-line caption. The browser's
+ * own viewer is used for scrolling through the whole set, zoom and search; it
+ * cannot be drawn over, so the hit box stays in `.dsh/drawing-view.json` and the
+ * panel only reports it as text.
  *
- *  - **agent view** — `drawing_show` rendered the page to a PNG and left a view
- *    state behind; the panel draws that image and overlays the hit box (both use
- *    the same display-space points, so the box lands on the element);
- *  - **browse view** — the user picks a sheet from the list and the panel hands
- *    the PDF to the browser's own viewer at `#page=N`.
+ * Jumping to a page means **re-mounting** the iframe: changing only the
+ * `#page=` fragment of an already loaded PDF is a same-document navigation that
+ * the viewer ignores. The blob URL is kept, so a jump re-parses the document but
+ * never re-reads the file from disk. The URL also carries an explicit numeric
+ * zoom (page width / pane width): the embedded viewer otherwise sometimes opens
+ * a document at its minimum zoom instead of fitting the pane.
  *
  * All data is read from the workspace through `readTextFile` / `readBytes`; the
  * panel fetches nothing over the network and knows no routes.
@@ -18,6 +23,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 
 import { getView, setView, subscribeView } from './store.js'
+import { fitZoom, pickDocument, pdfSrc, resolvePage, viewDocument } from './view-state.js'
 
 const MANIFEST = '.dsh/drawing-manifest.json'
 const VIEW_FILE = '.dsh/drawing-view.json'
@@ -44,13 +50,16 @@ export function Panel(props) {
   const [sheets, setSheets] = useState([])
   const [filter, setFilter] = useState('')
   const [cabinet, setCabinet] = useState(null)
-  const [browsePage, setBrowsePage] = useState(null)
-  const [imageUrl, setImageUrl] = useState(null)
+  /** A page the user (or the agent) asked for; `null` means "derive it". */
+  const [targetPage, setTargetPage] = useState(null)
   const [pdfUrl, setPdfUrl] = useState(null)
+  const [pdfState, setPdfState] = useState('idle')
   const [error, setError] = useState(null)
   const [lookedIn, setLookedIn] = useState(null)
-  const imageUrlRef = useRef(null)
   const pdfUrlRef = useRef(null)
+  const viewerRef = useRef(null)
+  /** Pane width in CSS pixels, measured once when the viewer is laid out. */
+  const [viewerWidth, setViewerWidth] = useState(0)
 
   const view = useSyncExternalStore(
     useCallback((listener) => subscribeView(sessionId, listener), [sessionId]),
@@ -94,14 +103,15 @@ export function Panel(props) {
       }
       setManifest(value)
       const documents = Array.isArray(value.documents) ? value.documents : []
-      const first = documents.find((entry) => entry.indexed === true) ?? documents[0] ?? null
-      setSelectedFile(first === null ? null : first.file)
+      // Prefer whatever the agent last showed, then the first indexed drawing.
+      const first = pickDocument(documents, getView(sessionId))
+      setSelectedFile(first?.file ?? null)
       setPhase(documents.length === 0 ? 'empty' : 'ready')
     })()
     return () => {
       cancelled = true
     }
-  }, [cwd, readJsonFile])
+  }, [cwd, readJsonFile, sessionId])
 
   const document = useMemo(() => {
     const documents = Array.isArray(manifest?.documents) ? manifest.documents : []
@@ -127,6 +137,19 @@ export function Panel(props) {
     }
   }, [cwd, readJsonFile, sessionId])
 
+  // ---- follow the agent ----------------------------------------------------
+  // A new `drawing_show` selects its document and turns the viewer to its page.
+  // Only a new view (new `ts`, hence new object identity) triggers this, so a
+  // reader who browses away is not pulled back by a re-render.
+  useEffect(() => {
+    if (view === null || typeof view !== 'object') return
+    const documents = Array.isArray(manifest?.documents) ? manifest.documents : []
+    const file = viewDocument(view, documents)
+    if (file === undefined) return
+    setSelectedFile(file)
+    setTargetPage(Number.isInteger(view.page) ? view.page : null)
+  }, [view, manifest])
+
   // ---- profile + sheet list ------------------------------------------------
   useEffect(() => {
     if (document === undefined || typeof document?.dir !== 'string') return undefined
@@ -144,53 +167,77 @@ export function Panel(props) {
     }
   }, [document, readJsonFile, t])
 
-  // ---- rendered page image (agent view) ------------------------------------
-  useEffect(() => {
-    const path = view?.image?.path
-    if (typeof path !== 'string') {
-      setImageUrl(null)
-      return undefined
-    }
-    let cancelled = false
-    void (async () => {
-      const bytes = await props.readBytes(path)
-      if (cancelled || bytes === undefined) return
-      const url = URL.createObjectURL(new Blob([bytes], { type: 'image/png' }))
-      if (imageUrlRef.current !== null) URL.revokeObjectURL(imageUrlRef.current)
-      imageUrlRef.current = url
-      setImageUrl(url)
-    })()
-    return () => {
-      cancelled = true
-    }
-  }, [view?.image?.path, props.readBytes])
-
-  // ---- PDF blob for the browse view ---------------------------------------
+  // ---- the PDF blob for the one viewer -------------------------------------
+  // One blob URL per document. Switching documents must replace it: the old
+  // guard (`if (pdfUrlRef.current === null)`) kept showing the previous PDF.
   useEffect(() => {
     const path = document?.pdf
-    if (browsePage === null || typeof path !== 'string') return undefined
+    if (typeof path !== 'string' || path === '') {
+      if (pdfUrlRef.current !== null) {
+        URL.revokeObjectURL(pdfUrlRef.current)
+        pdfUrlRef.current = null
+      }
+      setPdfUrl(null)
+      setPdfState('idle')
+      return undefined
+    }
+    if (pdfUrlRef.current !== null) {
+      URL.revokeObjectURL(pdfUrlRef.current)
+      pdfUrlRef.current = null
+    }
+    setPdfUrl(null)
+    setPdfState('loading')
     let cancelled = false
     void (async () => {
       const bytes = await props.readBytes(path)
-      if (cancelled || bytes === undefined) return
-      if (pdfUrlRef.current === null) {
-        const url = URL.createObjectURL(new Blob([bytes], { type: 'application/pdf' }))
-        pdfUrlRef.current = url
-        setPdfUrl(url)
+      if (cancelled) return
+      if (bytes === undefined) {
+        setPdfState('error')
+        return
       }
+      const url = URL.createObjectURL(new Blob([bytes], { type: 'application/pdf' }))
+      pdfUrlRef.current = url
+      setPdfUrl(url)
+      setPdfState('ready')
     })()
     return () => {
       cancelled = true
     }
-  }, [browsePage, document?.pdf, props.readBytes])
+  }, [document?.pdf, props.readBytes])
 
   useEffect(
     () => () => {
-      if (imageUrlRef.current !== null) URL.revokeObjectURL(imageUrlRef.current)
       if (pdfUrlRef.current !== null) URL.revokeObjectURL(pdfUrlRef.current)
     },
     [],
   )
+
+  // ---- measure the pane once ----------------------------------------------
+  // Used to turn a page of known width into an explicit PDF zoom: the embedded
+  // viewer can otherwise open a document at its minimum zoom (25%).
+  useEffect(() => {
+    if (viewerWidth > 0) return undefined
+    const element = viewerRef.current
+    if (element === null) return undefined
+    let timer
+    let observer
+    const measure = () => {
+      const width = element.clientWidth
+      if (width < 120) return
+      setViewerWidth(width)
+      observer?.disconnect()
+    }
+    observer = new ResizeObserver(() => {
+      clearTimeout(timer)
+      timer = setTimeout(measure, 150)
+    })
+    observer.observe(element)
+    timer = setTimeout(measure, 150)
+    return () => {
+      clearTimeout(timer)
+      observer?.disconnect()
+    }
+  }, [profile, viewerWidth])
 
   const cabinets = useMemo(() => {
     const rows = profile?.cabinets
@@ -208,6 +255,18 @@ export function Panel(props) {
       })
       .slice(0, 400)
   }, [sheets, filter, cabinet])
+
+  const pages = document?.pages ?? profile?.pages ?? null
+  const currentPage = resolvePage({
+    targetPage,
+    view,
+    documentFile: selectedFile,
+    sheets,
+    pages,
+  })
+  const pageSheet = sheets.find((entry) => entry.page === currentPage)
+  const frameWidth = typeof pageSheet?.frame?.width === 'number' ? pageSheet.frame.width : 842
+  const zoom = fitZoom(frameWidth, viewerWidth) ?? 100
 
   if (typeof cwd !== 'string' || cwd === '') {
     return <div className="dsh-drawing">{t('error')}</div>
@@ -233,12 +292,17 @@ export function Panel(props) {
 
   const documents = Array.isArray(manifest?.documents) ? manifest.documents : []
   const caveats = Array.isArray(profile?.caveats) ? profile.caveats : []
-  const highlight = view?.highlight
-  const displayWidth = view?.image?.displayWidth ?? 842
-  const displayHeight = view?.image?.displayHeight ?? 595
-  const onImageClick = () => {
-    /* reserved: hit-testing inside the rendered sheet */
-  }
+  const located =
+    view !== null &&
+    typeof view === 'object' &&
+    selectedFile !== null &&
+    view.document === selectedFile &&
+    // Only while the viewer is on the page the agent located: once the reader
+    // browses elsewhere the note would describe something no longer on screen.
+    currentPage === view.page
+  const locatedWhere =
+    view?.sheet === null || view?.sheet === undefined ? (view?.title ?? '') : `${t('sheet')} ${view.sheet}`
+  const caption = located && typeof view?.caption === 'string' && view.caption !== '' ? ` · ${view.caption}` : ''
 
   return (
     <div className="dsh-drawing">
@@ -250,7 +314,8 @@ export function Panel(props) {
             className={`dsh-drawing__doc${entry.file === selectedFile ? ' dsh-drawing__doc--active' : ''}`}
             onClick={() => {
               setSelectedFile(entry.file)
-              setBrowsePage(null)
+              // Re-derive from that document's own agent view / first sheet.
+              setTargetPage(null)
             }}
           >
             {entry.file}
@@ -265,7 +330,7 @@ export function Panel(props) {
           <div className="dsh-drawing__title">
             {profile.project?.name ?? profile.document}
             <span className="dsh-drawing__muted">
-              {profile.pages} {t('pages')} · {sheets.length} {t('sheets')}
+              {profile.pages} {t('pages')} · {sheets.length} {t('sheets')} · p{currentPage}
             </span>
           </div>
 
@@ -302,10 +367,10 @@ export function Panel(props) {
                 <div
                   key={`${sheet.cabinet}:${sheet.page}`}
                   className={`dsh-drawing__row${
-                    (browsePage === sheet.page || view?.page === sheet.page) ? ' dsh-drawing__row--active' : ''
+                    currentPage === sheet.page ? ' dsh-drawing__row--active' : ''
                   }`}
                   title={`${sheet.template} · p${sheet.page}`}
-                  onClick={() => setBrowsePage(sheet.page)}
+                  onClick={() => setTargetPage(sheet.page)}
                 >
                   <span className="dsh-drawing__no">{sheet.sheet ?? '—'}</span>
                   <span className="dsh-drawing__name">{sheet.title ?? ''}</span>
@@ -313,45 +378,31 @@ export function Panel(props) {
               ))}
             </div>
 
-            <div className="dsh-drawing__viewer">
-              {imageUrl !== null && browsePage === null ? (
-                <div className="dsh-drawing__paper" onClick={onImageClick}>
-                  <img className="dsh-drawing__page" src={imageUrl} alt={view?.title ?? 'drawing page'} />
-                  {highlight !== null && highlight !== undefined && (
-                    <span
-                      className="dsh-drawing__hit"
-                      title={view?.caption ?? ''}
-                      style={{
-                        left: `${(highlight.x / displayWidth) * 100}%`,
-                        top: `${(highlight.y / displayHeight) * 100}%`,
-                        width: `${(highlight.w / displayWidth) * 100}%`,
-                        height: `${(highlight.h / displayHeight) * 100}%`,
-                      }}
-                    />
-                  )}
-                </div>
-              ) : browsePage !== null && pdfUrl !== null ? (
+            <div className="dsh-drawing__viewer" ref={viewerRef}>
+              {pdfUrl !== null ? (
                 <iframe
+                  // A page jump is a navigation the viewer only honours on load;
+                  // a fresh key is what makes `#page=N` take effect every time.
+                  key={`${selectedFile}:${currentPage}:${zoom}`}
                   className="dsh-drawing__frame"
-                  src={`${pdfUrl}#page=${browsePage}`}
-                  title={`page ${browsePage}`}
+                  src={pdfSrc(pdfUrl, currentPage, zoom)}
+                  title={`${selectedFile ?? 'drawing'} page ${currentPage}`}
                 />
               ) : (
                 <div className="dsh-drawing__muted">
-                  {browsePage !== null ? t('loading') : t('preview')}
+                  {pdfState === 'error' ? t('pdfError') : pdfState === 'loading' ? t('loadingPdf') : t('hint')}
                 </div>
               )}
             </div>
           </div>
 
           <div className="dsh-drawing__foot dsh-drawing__muted">
-            {view === undefined
-              ? t('preview')
-              : `${t('agentView')}: ${view.title ?? ''} · p${view.page}${view.caption === null ? '' : ` · ${view.caption}`}`}
+            {located
+              ? `${t('agentView')}：${locatedWhere} · p${view.page}${caption}`
+              : t('hint')}
           </div>
         </>
       )}
     </div>
   )
 }
-

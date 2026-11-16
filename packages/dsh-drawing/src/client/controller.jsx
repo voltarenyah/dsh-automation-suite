@@ -10,7 +10,7 @@
  *
  * Why the file and not the result text: the tool result the browser sees is the
  * *rendered* line (a sentence for humans), while the file carries the page, the
- * highlight box and the image path without any parsing.
+ * caption and the highlight box without any parsing.
  *
  * @module dsh-drawing/client/controller
  */
