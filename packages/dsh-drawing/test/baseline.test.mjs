@@ -37,9 +37,11 @@ test(
     await copyFile(pdf, local)
 
     const first = await openDrawing(drawingDir, local)
-    const { profile, sheets, xrefs, names } = first.index
+    const { profile, sheets, xrefs, names, text } = first.index
 
     assert.equal(profile.pages, 353)
+    assert.equal(Object.keys(text).length, 353, 'one full-text entry per page')
+    assert.ok(Object.values(text).some((page) => page.includes('SUMMARY')), 'printed text is searchable')
     assert.equal(sheets.filter((sheet) => sheet.sheet !== null).length, 350, 'sheet numbers found')
     assert.equal(profile.cabinets.length, 3, 'three print jobs / cabinets')
     assert.deepEqual(

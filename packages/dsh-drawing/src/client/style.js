@@ -20,7 +20,9 @@ const CSS = `
   min-height: 0;
   padding: 10px 12px;
   font-size: 12px;
-  color: var(--dsh-text-primary, #1f2328);
+  /* Inherit the host's theme colour: a hard-coded fallback is unreadable in
+     dark mode, where the shell's variables are the only reliable source. */
+  color: inherit;
 }
 .dsh-drawing__title {
   font-size: 13px;
@@ -29,10 +31,10 @@ const CSS = `
   align-items: baseline;
   gap: 8px;
 }
-.dsh-drawing__muted { color: var(--dsh-text-secondary, #656d76); }
+.dsh-drawing__muted { color: inherit; opacity: 0.64; }
 .dsh-drawing__docs { display: flex; flex-wrap: wrap; gap: 6px; }
 .dsh-drawing__doc {
-  border: 1px solid var(--dsh-border, #d0d7de);
+  border: 1px solid var(--dsh-border, color-mix(in srgb, currentColor 28%, transparent));
   background: transparent;
   border-radius: 999px;
   padding: 2px 10px;
@@ -47,7 +49,7 @@ const CSS = `
 }
 .dsh-drawing__caveat {
   border-left: 3px solid var(--dsh-warning, #d4a72c);
-  background: color-mix(in srgb, var(--dsh-warning, #d4a72c) 8%, transparent);
+  background: color-mix(in srgb, var(--dsh-warning, #d4a72c) 10%, transparent);
   padding: 6px 8px;
   border-radius: 4px;
   line-height: 1.5;
@@ -57,18 +59,27 @@ const CSS = `
 .dsh-drawing__input {
   flex: 1;
   min-width: 0;
-  border: 1px solid var(--dsh-border, #d0d7de);
+  border: 1px solid var(--dsh-border, color-mix(in srgb, currentColor 28%, transparent));
   border-radius: 6px;
   padding: 4px 8px;
   font-size: 12px;
-  background: var(--dsh-surface, transparent);
+  background: var(--dsh-surface, color-mix(in srgb, currentColor 5%, transparent));
   color: inherit;
+}
+.dsh-drawing__input::placeholder { color: inherit; opacity: 0.55; }
+.dsh-drawing__hint {
+  font-size: 11px;
+  line-height: 1.5;
+  padding: 4px 6px;
+  border-radius: 4px;
+  background: color-mix(in srgb, currentColor 6%, transparent);
+  opacity: 0.8;
 }
 .dsh-drawing__list {
   flex: 1;
   min-height: 0;
   overflow: auto;
-  border: 1px solid var(--dsh-border, #d0d7de);
+  border: 1px solid var(--dsh-border, color-mix(in srgb, currentColor 28%, transparent));
   border-radius: 6px;
 }
 .dsh-drawing__row {
@@ -81,9 +92,19 @@ const CSS = `
   align-items: baseline;
 }
 .dsh-drawing__row:hover { background: rgba(128,128,128,.08); }
-.dsh-drawing__row--active { background: color-mix(in srgb, var(--dsh-accent, #0969da) 12%, transparent); }
+.dsh-drawing__row--active { background: color-mix(in srgb, var(--dsh-accent, #0969da) 14%, transparent); }
 .dsh-drawing__no { font-variant-numeric: tabular-nums; font-weight: 600; }
 .dsh-drawing__name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dsh-drawing__snippet {
+  grid-column: 1 / -1;
+  font-size: 11px;
+  line-height: 1.4;
+  opacity: 0.72;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.dsh-drawing__empty { padding: 12px; text-align: center; }
 .dsh-drawing__foot { font-size: 11px; line-height: 1.5; }
 .dsh-drawing__stage {
   display: flex;
@@ -99,10 +120,10 @@ const CSS = `
   display: flex;
   align-items: stretch;
   justify-content: center;
-  border: 1px solid var(--dsh-border, #d0d7de);
+  border: 1px solid var(--dsh-border, color-mix(in srgb, currentColor 28%, transparent));
   border-radius: 6px;
   overflow: hidden;
-  background: rgba(128, 128, 128, 0.04);
+  background: color-mix(in srgb, currentColor 4%, transparent);
 }
 .dsh-drawing__viewer > .dsh-drawing__muted {
   margin: auto;

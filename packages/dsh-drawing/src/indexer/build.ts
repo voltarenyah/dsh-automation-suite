@@ -87,6 +87,9 @@ export type Occurrence = {
 /** `index/names.json`: every tracked element and where it is drawn. */
 export type NameIndex = Record<string, { kind: EntityKind; occurrences: Occurrence[] }>
 
+/** `index/text.json`: per-page full printed text, keyed by physical page. */
+export type PageTextIndex = Record<string, string>
+
 /** The drawing's identity card (`profile.json`), also the model's map of it. */
 export type Profile = {
   document: string
@@ -115,6 +118,7 @@ export type Index = {
   sheets: Sheet[]
   xrefs: Xref[]
   names: NameIndex
+  text: PageTextIndex
 }
 
 /** Outcome of `openDrawing()`. */
@@ -174,6 +178,7 @@ export async function openDrawing(
   await writeJson(join(dir, 'index', 'sheets.json'), index.sheets)
   await writeJson(join(dir, 'index', 'xrefs.json'), index.xrefs)
   await writeJson(join(dir, 'index', 'names.json'), index.names)
+  await writeJson(join(dir, 'index', 'text.json'), index.text)
   await writeJson(join(dir, 'profile.json'), index.profile, true)
 
   const checks: Record<string, string | number | boolean> = {
@@ -202,7 +207,23 @@ export async function loadIndex(dir: string): Promise<Index | undefined> {
   if (profile === undefined || sheets === undefined) return undefined
   const xrefs = (await readJson<Xref[]>(join(dir, 'index', 'xrefs.json'))) ?? []
   const names = (await readJson<NameIndex>(join(dir, 'index', 'names.json'))) ?? {}
-  return { profile, sheets, xrefs, names }
+  const text = (await readJson<PageTextIndex>(join(dir, 'index', 'text.json'))) ?? {}
+  return { profile, sheets, xrefs, names, text }
+}
+
+/**
+ * Join a page's placed runs into one searchable string.
+ *
+ * Whitespace is collapsed because the filter works on substrings: a query like
+ * "rear door" has to match runs whose spacing the PDF does not preserve.
+ */
+export function pageTextOf(runs: readonly Run[]): string {
+  const parts: string[] = []
+  for (const run of runs) {
+    const text = run.text.trim()
+    if (text !== '') parts.push(text)
+  }
+  return parts.join(' ').replace(/\s+/g, ' ').trim()
 }
 
 /** Pure build: placed pages in, index out. */
@@ -316,6 +337,12 @@ export function buildIndex(document: string, sha256: string, pages: PageText[]):
     resolved += 1
   }
 
+  // ---- full text ----------------------------------------------------------
+  // Kept per page so the tab's filter can search every printed word (tags,
+  // cables, notes) without re-parsing the PDF in the browser.
+  const text: PageTextIndex = {}
+  for (const page of pages) text[String(page.page)] = pageTextOf(page.runs)
+
   // ---- profile ------------------------------------------------------------
   const templates: Record<string, number> = {}
   for (const sheet of sheets) templates[sheet.template] = (templates[sheet.template] ?? 0) + 1
@@ -339,7 +366,7 @@ export function buildIndex(document: string, sha256: string, pages: PageText[]):
     cabinets,
     templates,
     numbering: NUMBERING,
-    indexes: ['sheets', 'xrefs', 'names'],
+    indexes: ['sheets', 'xrefs', 'names', 'text'],
     quality: {
       runs: runCount,
       boxesInsidePage: runCount === 0 ? 0 : Math.round(((runCount - outOfPage) / runCount) * 1000) / 1000,
@@ -353,7 +380,7 @@ export function buildIndex(document: string, sha256: string, pages: PageText[]):
     caveats,
   }
 
-  return { profile, sheets, xrefs, names }
+  return { profile, sheets, xrefs, names, text }
 }
 
 function sheetOf(sheets: readonly Sheet[], page: number): Sheet | undefined {

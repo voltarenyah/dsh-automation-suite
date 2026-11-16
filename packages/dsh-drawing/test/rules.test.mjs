@@ -19,6 +19,7 @@ import {
   placeItem,
   readTitleBlock,
 } from '../lib/indexer/rules.js'
+import { pageTextOf } from '../lib/indexer/build.js'
 
 test('placeItem maps a +90 run onto the display frame', () => {
   const run = placeItem(
@@ -124,4 +125,15 @@ test('groupCabinets splits on cover sheets and names by locality', () => {
   assert.equal(cabinets.length, 2)
   assert.deepEqual(cabinets[0], { id: 1, name: 'AG', pages: [1, 4], sheets: 3 })
   assert.deepEqual(cabinets[1], { id: 2, name: 'COF-BASE-A', pages: [5, 6], sheets: 1 })
+})
+
+test('pageTextOf joins runs into one whitespace-normalised string', () => {
+  const text = pageTextOf([
+    { text: '  Option-VOC ' },
+    { text: 'REAR   DOOR' },
+    { text: '   ' },
+    { text: 'SERVO\nSTOP' },
+  ])
+  assert.equal(text, 'Option-VOC REAR DOOR SERVO STOP')
+  assert.equal(pageTextOf([]), '')
 })

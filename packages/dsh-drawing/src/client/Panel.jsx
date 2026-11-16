@@ -23,7 +23,16 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 
 import { getView, setView, subscribeView } from './store.js'
-import { fitZoom, pickDocument, pdfSrc, resolvePage, viewDocument } from './view-state.js'
+import {
+  fitZoom,
+  pageMatches,
+  pdfSrc,
+  pickDocument,
+  resolvePage,
+  searchSnippet,
+  searchTokens,
+  viewDocument,
+} from './view-state.js'
 
 const MANIFEST = '.dsh/drawing-manifest.json'
 const VIEW_FILE = '.dsh/drawing-view.json'
@@ -31,6 +40,11 @@ const VIEW_FILE = '.dsh/drawing-view.json'
 /** Join an absolute base with a forward-slash relative path. */
 function joinPath(base, rel) {
   return `${String(base).replace(/[\\/]+$/, '').replace(/\\/g, '/')}/${rel}`
+}
+
+/** Plain-object check for index files (an array is not an index). */
+function isRecord(value) {
+  return value !== null && typeof value === 'object' && !Array.isArray(value)
 }
 
 /**
@@ -48,6 +62,10 @@ export function Panel(props) {
   const [selectedFile, setSelectedFile] = useState(null)
   const [profile, setProfile] = useState(null)
   const [sheets, setSheets] = useState([])
+  /** `index/text.json`: page number -> full printed text (parser v3+). */
+  const [pageText, setPageText] = useState(null)
+  /** `index/names.json`, loaded only when the text index is missing. */
+  const [fallbackNames, setFallbackNames] = useState(null)
   const [filter, setFilter] = useState('')
   const [cabinet, setCabinet] = useState(null)
   /** A page the user (or the agent) asked for; `null` means "derive it". */
@@ -150,16 +168,25 @@ export function Panel(props) {
     setTargetPage(Number.isInteger(view.page) ? view.page : null)
   }, [view, manifest])
 
-  // ---- profile + sheet list ------------------------------------------------
+  // ---- profile + sheet list + search text ----------------------------------
   useEffect(() => {
     if (document === undefined || typeof document?.dir !== 'string') return undefined
     let cancelled = false
     void (async () => {
+      setPageText(null)
+      setFallbackNames(null)
       const nextProfile = await readJsonFile(joinPath(document.dir, 'profile.json'))
       const nextSheets = await readJsonFile(joinPath(document.dir, 'index/sheets.json'))
+      const nextText = await readJsonFile(joinPath(document.dir, 'index/text.json'))
+      // Parser v3 writes text.json. An index built by v2 has only names.json;
+      // searching by tag/wire then still beats titles alone.
+      const nextNames =
+        nextText === undefined ? await readJsonFile(joinPath(document.dir, 'index/names.json')) : undefined
       if (cancelled) return
       setProfile(nextProfile ?? null)
       setSheets(Array.isArray(nextSheets) ? nextSheets : [])
+      setPageText(isRecord(nextText) ? nextText : null)
+      setFallbackNames(isRecord(nextNames) ? nextNames : null)
       setError(nextProfile === undefined ? t('noIndex') : null)
     })()
     return () => {
@@ -244,17 +271,53 @@ export function Panel(props) {
     return Array.isArray(rows) ? rows.filter((row) => typeof row?.id === 'number') : []
   }, [profile])
 
-  const visible = useMemo(() => {
-    const needle = filter.trim().toLowerCase()
-    return sheets
-      .filter((sheet) => (cabinet === null ? true : sheet.cabinet === cabinet))
-      .filter((sheet) => {
-        if (needle === '') return true
-        const number = sheet.sheet === null ? '' : String(sheet.sheet)
-        return number.includes(needle) || String(sheet.title ?? '').toLowerCase().includes(needle)
-      })
-      .slice(0, 400)
-  }, [sheets, filter, cabinet])
+  // ---- full-text search over the index -------------------------------------
+  // The filter searches every printed word, not just the sheet title: an
+  // engineer looks for `I40.2` or `VOC` and expects the pages that carry them.
+  // The haystack is lower-cased once per document; v2 indexes have no text.json
+  // and fall back to names.json, so tags/wires still match until a rebuild.
+  const searchIndex = useMemo(() => {
+    const map = new Map()
+    for (const sheet of sheets) {
+      const parts = [
+        String(sheet.sheet ?? ''),
+        sheet.title ?? '',
+        sheet.loc ?? '',
+        pageText?.[String(sheet.page)] ?? '',
+      ]
+      map.set(sheet.page, parts.join(' ').toLowerCase())
+    }
+    if (pageText === null && fallbackNames !== null) {
+      for (const [name, entry] of Object.entries(fallbackNames)) {
+        for (const occurrence of entry?.occurrences ?? []) {
+          const page = occurrence?.page
+          const previous = map.get(page)
+          if (previous === undefined) continue
+          map.set(page, `${previous} ${name.toLowerCase()}`)
+        }
+      }
+    }
+    return map
+  }, [sheets, pageText, fallbackNames])
+
+  const tokens = useMemo(() => searchTokens(filter), [filter])
+
+  const matched = useMemo(() => {
+    const rows = sheets.filter((sheet) => (cabinet === null ? true : sheet.cabinet === cabinet))
+    if (tokens.length === 0) return rows
+    return rows.filter((sheet) => pageMatches(searchIndex.get(sheet.page), tokens))
+  }, [sheets, cabinet, tokens, searchIndex])
+
+  const visible = matched.slice(0, 400)
+
+  const snippets = useMemo(() => {
+    const map = new Map()
+    if (pageText === null || tokens.length === 0) return map
+    for (const sheet of visible) {
+      map.set(sheet.page, searchSnippet(pageText[String(sheet.page)], tokens))
+    }
+    return map
+  }, [visible, tokens, pageText])
 
   const pages = document?.pages ?? profile?.pages ?? null
   const currentPage = resolvePage({
@@ -331,6 +394,7 @@ export function Panel(props) {
             {profile.project?.name ?? profile.document}
             <span className="dsh-drawing__muted">
               {profile.pages} {t('pages')} · {sheets.length} {t('sheets')} · p{currentPage}
+              {tokens.length > 0 ? ` · ${matched.length} ${t('matches')}` : ''}
             </span>
           </div>
 
@@ -361,21 +425,32 @@ export function Panel(props) {
             />
           </div>
 
+          {tokens.length > 0 && pageText === null ? (
+            <div className="dsh-drawing__hint">{t('textIndexMissing')}</div>
+          ) : null}
+
           <div className="dsh-drawing__stage">
             <div className="dsh-drawing__list">
-              {visible.map((sheet) => (
-                <div
-                  key={`${sheet.cabinet}:${sheet.page}`}
-                  className={`dsh-drawing__row${
-                    currentPage === sheet.page ? ' dsh-drawing__row--active' : ''
-                  }`}
-                  title={`${sheet.template} · p${sheet.page}`}
-                  onClick={() => setTargetPage(sheet.page)}
-                >
-                  <span className="dsh-drawing__no">{sheet.sheet ?? '—'}</span>
-                  <span className="dsh-drawing__name">{sheet.title ?? ''}</span>
-                </div>
-              ))}
+              {visible.map((sheet) => {
+                const snippet = snippets.get(sheet.page) ?? ''
+                return (
+                  <div
+                    key={`${sheet.cabinet}:${sheet.page}`}
+                    className={`dsh-drawing__row${
+                      currentPage === sheet.page ? ' dsh-drawing__row--active' : ''
+                    }`}
+                    title={`${sheet.template} · p${sheet.page}`}
+                    onClick={() => setTargetPage(sheet.page)}
+                  >
+                    <span className="dsh-drawing__no">{sheet.sheet ?? '—'}</span>
+                    <span className="dsh-drawing__name">{sheet.title ?? ''}</span>
+                    {snippet === '' ? null : <span className="dsh-drawing__snippet">{snippet}</span>}
+                  </div>
+                )
+              })}
+              {visible.length === 0 ? (
+                <div className="dsh-drawing__muted dsh-drawing__empty">{t('noMatches')}</div>
+              ) : null}
             </div>
 
             <div className="dsh-drawing__viewer" ref={viewerRef}>

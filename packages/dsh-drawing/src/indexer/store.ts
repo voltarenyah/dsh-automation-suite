@@ -7,7 +7,7 @@
  *   <workspace>/drawing/<pdf basename>/         derived, rebuilt from scratch
  *       profile.json    the drawing's identity card (also the model's map)
  *       build.json      sha256 / parser version / timings / checks
- *       index/sheets.json  index/xrefs.json  index/names.json
+ *       index/sheets.json  index/xrefs.json  index/names.json  index/text.json
  *
  * The directory name follows the **source file**, so a reader can pair a PDF
  * with its index by eye. A second file with the same basename but a different
@@ -21,8 +21,13 @@ import { existsSync } from 'node:fs'
 import { copyFile, mkdir, readFile, rename, writeFile } from 'node:fs/promises'
 import { basename, extname, join, relative, resolve } from 'node:path'
 
-/** Bumped whenever the index shape or the rules change; invalidates caches. */
-export const PARSER_VERSION = 2
+/**
+ * Bumped whenever the index shape or the rules change; invalidates caches.
+ *
+ * v3 adds `index/text.json` (per-page full text) so the tab's filter can search
+ * every printed word, not just sheet titles.
+ */
+export const PARSER_VERSION = 3
 
 /** The artifact directory name for a PDF path. */
 export function documentDirName(pdfPath: string): string {

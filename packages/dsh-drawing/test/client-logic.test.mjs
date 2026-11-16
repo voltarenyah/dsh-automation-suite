@@ -13,7 +13,17 @@ import { test } from 'node:test'
 
 import { getView, setView, subscribeView } from '../src/client/store.js'
 import { openDrawingTab, rightFace } from '../src/client/open-tab.js'
-import { clampPage, fitZoom, pdfSrc, pickDocument, resolvePage, viewDocument } from '../src/client/view-state.js'
+import {
+  clampPage,
+  fitZoom,
+  pageMatches,
+  pdfSrc,
+  pickDocument,
+  resolvePage,
+  searchSnippet,
+  searchTokens,
+  viewDocument,
+} from '../src/client/view-state.js'
 
 /** A `sidebarRight` face that records the calls it receives. */
 function fakeSidebar(options = {}) {
@@ -148,4 +158,35 @@ test('fitZoom turns the page width into a readable pane zoom', () => {
   assert.equal(fitZoom(842, 0), undefined, 'not measured yet')
   assert.equal(fitZoom(undefined, 604), undefined)
   assert.equal(fitZoom(0, 604), undefined)
+})
+
+test('searchTokens lower-cases and splits a query', () => {
+  assert.deepEqual(searchTokens('  VOC   Door '), ['voc', 'door'])
+  assert.deepEqual(searchTokens(''), [])
+  assert.deepEqual(searchTokens('I40.2'), ['i40.2'])
+  assert.deepEqual(searchTokens(undefined), [])
+})
+
+test('pageMatches requires every token, on a pre-lowered haystack', () => {
+  const haystack = 'sheet 218 option-voc rear door servo sto'
+  assert.equal(pageMatches(haystack, searchTokens('VOC')), true)
+  assert.equal(pageMatches(haystack, searchTokens('voc door')), true)
+  assert.equal(pageMatches(haystack, searchTokens('voc pump')), false)
+  assert.equal(pageMatches(haystack, []), true, 'empty query matches everything')
+  assert.equal(pageMatches(undefined, ['voc']), false)
+  assert.equal(pageMatches(haystack, searchTokens('i40.2')), false)
+})
+
+test('searchSnippet shows context around the first matching token', () => {
+  const text = 'HEADER BLOCK DIAGRAM Option-VOC REAR DOOR SERVO STOP FOOTER'
+  assert.match(searchSnippet(text, ['voc']), /Option-VOC REAR DOOR/)
+  assert.match(searchSnippet(text, ['servo']), /REAR DOOR SERVO STOP/)
+  assert.equal(searchSnippet(text, ['pump']), '')
+  assert.equal(searchSnippet(undefined, ['voc']), '')
+  assert.equal(searchSnippet(text, []), '')
+  const long = `${'x'.repeat(200)} voc ${'y'.repeat(200)}`
+  const snippet = searchSnippet(long, ['voc'], 20)
+  assert.ok(snippet.startsWith('…'))
+  assert.ok(snippet.endsWith('…'))
+  assert.match(snippet, /voc/)
 })
