@@ -15,13 +15,12 @@ import { getView, setView, subscribeView } from '../src/client/store.js'
 import { openDrawingTab, rightFace } from '../src/client/open-tab.js'
 import {
   clampPage,
-  fitZoom,
   pageMatches,
-  pdfSrc,
   pickDocument,
   resolvePage,
   searchSnippet,
   searchTokens,
+  viewerSrc,
   viewDocument,
 } from '../src/client/view-state.js'
 
@@ -141,23 +140,17 @@ test('viewDocument only accepts a document still in the manifest', () => {
   assert.equal(viewDocument({}, documents), undefined)
 })
 
-test('pdfSrc builds the page fragment the viewer honours on mount', () => {
-  assert.equal(pdfSrc('blob:http://host/abc', 30), 'blob:http://host/abc#page=30')
-  assert.equal(pdfSrc('blob:http://host/abc', 30, 71), 'blob:http://host/abc#page=30&zoom=71,0,0')
-  assert.equal(pdfSrc('blob:http://host/abc', 0), 'blob:http://host/abc#page=1')
-  assert.equal(pdfSrc('', 3), undefined)
-  assert.equal(pdfSrc(undefined, 3), undefined)
-})
-
-test('fitZoom turns the page width into a readable pane zoom', () => {
-  assert.equal(fitZoom(842, 604), 71, 'landscape sheet fills a 604px pane')
-  assert.equal(fitZoom(595, 604), 101, 'portrait sheet fit')
-  assert.equal(fitZoom(1000, 604), 60)
-  assert.equal(fitZoom(5000, 604), 25, 'floor at the viewer minimum')
-  assert.equal(fitZoom(100, 604), 200, 'ceiling for tiny pages')
-  assert.equal(fitZoom(842, 0), undefined, 'not measured yet')
-  assert.equal(fitZoom(undefined, 604), undefined)
-  assert.equal(fitZoom(0, 604), undefined)
+test('viewerSrc points the viewer at the blob and an optional page', () => {
+  assert.equal(
+    viewerSrc('blob:http://host/abc'),
+    '/drawing-viewer/viewer.html?file=blob%3Ahttp%3A%2F%2Fhost%2Fabc',
+  )
+  assert.equal(
+    viewerSrc('blob:http://host/abc', 30),
+    '/drawing-viewer/viewer.html?file=blob%3Ahttp%3A%2F%2Fhost%2Fabc&page=30',
+  )
+  assert.equal(viewerSrc('', 3), undefined)
+  assert.equal(viewerSrc(undefined, 3), undefined)
 })
 
 test('searchTokens lower-cases and splits a query', () => {

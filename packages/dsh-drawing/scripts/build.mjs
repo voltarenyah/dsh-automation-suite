@@ -23,7 +23,7 @@
  * @module dsh-drawing/scripts/build
  */
 
-import { existsSync, mkdirSync, readdirSync, readFileSync } from 'node:fs'
+import { cpSync, copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import { join, resolve } from 'node:path'
 
@@ -112,6 +112,34 @@ await esbuild.build({
 })
 
 const bundleText = readFileSync(join(root, 'lib', 'client.js'), 'utf8')
+
+// ---- the in-panel PDF viewer ------------------------------------------------
+// The viewer page and pdf.js live next to `lib/`, not inside the client bundle:
+// the host serves them as static assets (`/drawing-viewer/…`) and the browser
+// loads the document from the panel's blob URL. Copying them here keeps
+// `pnpm pack` self-contained (the package ships `lib/`).
+const viewerOut = join(root, 'lib', 'viewer')
+const viewerSrc = join(root, 'src', 'client', 'viewer')
+const pdfjsRoot = join(root, 'node_modules', 'pdfjs-dist')
+if (!existsSync(join(pdfjsRoot, 'build', 'pdf.min.mjs'))) {
+  console.error('pdfjs-dist is missing; run "pnpm install" at the repository root.')
+  process.exit(1)
+}
+mkdirSync(viewerOut, { recursive: true })
+for (const name of ['viewer.html', 'viewer.css', 'viewer.js']) {
+  copyFileSync(join(viewerSrc, name), join(viewerOut, name))
+}
+copyFileSync(join(pdfjsRoot, 'build', 'pdf.min.mjs'), join(viewerOut, 'pdf.min.mjs'))
+copyFileSync(join(pdfjsRoot, 'build', 'pdf.worker.min.mjs'), join(viewerOut, 'pdf.worker.min.mjs'))
+cpSync(join(pdfjsRoot, 'standard_fonts'), join(viewerOut, 'standard_fonts'), { recursive: true })
+
+const viewerFiles = ['viewer.html', 'viewer.css', 'viewer.js', 'pdf.min.mjs', 'pdf.worker.min.mjs']
+const viewerMissing = viewerFiles.filter((name) => !existsSync(join(viewerOut, name)))
+if (viewerMissing.length > 0) {
+  console.error(`lib/viewer is missing: ${viewerMissing.join(', ')}`)
+  process.exit(1)
+}
+
 const check = {
   wrapper: bundleText.startsWith('window.__ModuleLoader__.load({'),
   id: bundleText.includes(`id: ${JSON.stringify(id)}`),
@@ -119,10 +147,13 @@ const check = {
   map: existsSync(join(root, 'lib', 'client.js.map')),
   // The Node-side parser must never be pulled into the browser bundle.
   noPdfEngine: !bundleText.includes('pdfjs'),
+  viewer: existsSync(join(viewerOut, 'standard_fonts')),
 }
 const missing = Object.entries(check).filter(([, ok]) => !ok).map(([name]) => name)
 if (missing.length > 0) {
   console.error(`lib/client.js is missing: ${missing.join(', ')}`)
   process.exit(1)
 }
-console.log(`built lib/ (host) and lib/client.js (${bundleText.length} bytes)`)
+console.log(
+  `built lib/ (host), lib/client.js (${bundleText.length} bytes) and lib/viewer/ (${viewerFiles.length} files + fonts)`,
+)

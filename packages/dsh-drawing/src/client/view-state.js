@@ -82,35 +82,20 @@ export function viewDocument(view, documents) {
 }
 
 /**
- * Viewer URL for a page. The fragment is honoured on load; the caller must
- * remount the iframe for it to take effect on an already open viewer. A numeric
- * zoom is passed because the embedded viewer otherwise sometimes opens at its
- * minimum zoom (25%) instead of fitting the pane.
+ * URL of the in-panel viewer page for a PDF blob. The page is served by the
+ * plugin's own static route and loads the document once; page changes arrive
+ * by `postMessage`, not by re-navigating this URL.
  *
  * @param {string | null | undefined} url - the PDF blob URL.
- * @param {number} page
- * @param {number | undefined} zoomPercent - percent, e.g. 71 for "fit width".
+ * @param {number} [page] - optional initial page.
  * @returns {string | undefined}
  */
-export function pdfSrc(url, page, zoomPercent) {
+export function viewerSrc(url, page) {
   if (typeof url !== 'string' || url === '') return undefined
-  const zoom = Number.isFinite(zoomPercent) ? `&zoom=${Math.round(zoomPercent)},0,0` : ''
-  return `${url}#page=${clampPage(page, undefined)}${zoom}`
+  const initial = Number.isInteger(page) && page > 0 ? `&page=${page}` : ''
+  return `/drawing-viewer/viewer.html?file=${encodeURIComponent(url)}${initial}`
 }
 
-/**
- * The zoom percentage that makes a page of `frameWidth` points span the viewer.
- *
- * @param {number | undefined} frameWidth - page width in display points.
- * @param {number | undefined} viewerWidth - the pane's CSS pixel width.
- * @returns {number | undefined} percent, or undefined when it cannot be computed.
- */
-export function fitZoom(frameWidth, viewerWidth) {
-  if (!Number.isFinite(frameWidth) || frameWidth <= 0) return undefined
-  if (!Number.isFinite(viewerWidth) || viewerWidth < 120) return undefined
-  const percent = Math.round(((viewerWidth - 6) / frameWidth) * 100)
-  return Math.min(200, Math.max(25, percent))
-}
 
 /**
  * Split a filter query into lower-case tokens. Every token has to appear on a

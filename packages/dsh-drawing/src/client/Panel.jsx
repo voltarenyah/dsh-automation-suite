@@ -7,12 +7,9 @@
  * cannot be drawn over, so the hit box stays in `.dsh/drawing-view.json` and the
  * panel only reports it as text.
  *
- * Jumping to a page means **re-mounting** the iframe: changing only the
- * `#page=` fragment of an already loaded PDF is a same-document navigation that
- * the viewer ignores. The blob URL is kept, so a jump re-parses the document but
- * never re-reads the file from disk. The URL also carries an explicit numeric
- * zoom (page width / pane width): the embedded viewer otherwise sometimes opens
- * a document at its minimum zoom instead of fitting the pane.
+ * Jumping to a page is a message to the viewer, not a navigation: the viewer
+ * page loads the document once and scrolls to the requested page, so a sheet
+ * click is instant even on a 300-page set.
  *
  * All data is read from the workspace through `readTextFile` / `readBytes`; the
  * panel fetches nothing over the network and knows no routes.
@@ -24,18 +21,19 @@ import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore
 
 import { getView, setView, subscribeView } from './store.js'
 import {
-  fitZoom,
   pageMatches,
-  pdfSrc,
   pickDocument,
   resolvePage,
   searchSnippet,
   searchTokens,
+  viewerSrc,
   viewDocument,
 } from './view-state.js'
 
 const MANIFEST = '.dsh/drawing-manifest.json'
 const VIEW_FILE = '.dsh/drawing-view.json'
+/** Display frame of a landscape SEE sheet, used when an index omits it. */
+const DEFAULT_FRAME = { width: 842, height: 595 }
 
 /** Join an absolute base with a forward-slash relative path. */
 function joinPath(base, rel) {
@@ -75,9 +73,9 @@ export function Panel(props) {
   const [error, setError] = useState(null)
   const [lookedIn, setLookedIn] = useState(null)
   const pdfUrlRef = useRef(null)
-  const viewerRef = useRef(null)
-  /** Pane width in CSS pixels, measured once when the viewer is laid out. */
-  const [viewerWidth, setViewerWidth] = useState(0)
+  const iframeRef = useRef(null)
+  /** True once the viewer page has finished loading its document. */
+  const [frameReady, setFrameReady] = useState(false)
 
   const view = useSyncExternalStore(
     useCallback((listener) => subscribeView(sessionId, listener), [sessionId]),
@@ -239,32 +237,25 @@ export function Panel(props) {
     [],
   )
 
-  // ---- measure the pane once ----------------------------------------------
-  // Used to turn a page of known width into an explicit PDF zoom: the embedded
-  // viewer can otherwise open a document at its minimum zoom (25%).
+  // ---- the viewer page and its messages ------------------------------------
+  // The viewer loads the PDF once and owns page rendering; the panel only tells
+  // it where to look. A new blob (document switch) means a fresh viewer.
   useEffect(() => {
-    if (viewerWidth > 0) return undefined
-    const element = viewerRef.current
-    if (element === null) return undefined
-    let timer
-    let observer
-    const measure = () => {
-      const width = element.clientWidth
-      if (width < 120) return
-      setViewerWidth(width)
-      observer?.disconnect()
+    setFrameReady(false)
+  }, [pdfUrl])
+
+  useEffect(() => {
+    const onMessage = (event) => {
+      const element = iframeRef.current
+      if (element === null || event.source !== element.contentWindow) return
+      if (event.origin !== window.location.origin) return
+      if (event.data !== null && typeof event.data === 'object' && event.data.type === 'drawing:ready') {
+        setFrameReady(true)
+      }
     }
-    observer = new ResizeObserver(() => {
-      clearTimeout(timer)
-      timer = setTimeout(measure, 150)
-    })
-    observer.observe(element)
-    timer = setTimeout(measure, 150)
-    return () => {
-      clearTimeout(timer)
-      observer?.disconnect()
-    }
-  }, [profile, viewerWidth])
+    window.addEventListener('message', onMessage)
+    return () => window.removeEventListener('message', onMessage)
+  }, [])
 
   const cabinets = useMemo(() => {
     const rows = profile?.cabinets
@@ -328,8 +319,28 @@ export function Panel(props) {
     pages,
   })
   const pageSheet = sheets.find((entry) => entry.page === currentPage)
-  const frameWidth = typeof pageSheet?.frame?.width === 'number' ? pageSheet.frame.width : 842
-  const zoom = fitZoom(frameWidth, viewerWidth) ?? 100
+  /** Display frame of the current sheet, for the hit box; 842x595 is the common sheet. */
+  const displayFrame = pageSheet?.frame ?? DEFAULT_FRAME
+  const hit =
+    view !== null &&
+    typeof view === 'object' &&
+    view.document === selectedFile &&
+    view.page === currentPage &&
+    view.highlight !== null &&
+    typeof view.highlight === 'object'
+      ? view.highlight
+      : null
+
+  // ---- parent -> viewer -----------------------------------------------------
+  useEffect(() => {
+    if (!frameReady) return
+    const element = iframeRef.current
+    if (element === null || element.contentWindow === null) return
+    element.contentWindow.postMessage(
+      { type: 'drawing:page', page: currentPage, highlight: hit, frame: displayFrame },
+      window.location.origin,
+    )
+  }, [frameReady, currentPage, hit, displayFrame, selectedFile])
 
   if (typeof cwd !== 'string' || cwd === '') {
     return <div className="dsh-drawing">{t('error')}</div>
@@ -453,15 +464,16 @@ export function Panel(props) {
               ) : null}
             </div>
 
-            <div className="dsh-drawing__viewer" ref={viewerRef}>
+            <div className="dsh-drawing__viewer">
               {pdfUrl !== null ? (
                 <iframe
-                  // A page jump is a navigation the viewer only honours on load;
-                  // a fresh key is what makes `#page=N` take effect every time.
-                  key={`${selectedFile}:${currentPage}:${zoom}`}
+                  // One viewer per document: page changes are messages, not
+                  // navigations, so the PDF is parsed only once.
+                  key={selectedFile ?? 'drawing'}
+                  ref={iframeRef}
                   className="dsh-drawing__frame"
-                  src={pdfSrc(pdfUrl, currentPage, zoom)}
-                  title={`${selectedFile ?? 'drawing'} page ${currentPage}`}
+                  src={viewerSrc(pdfUrl)}
+                  title={`${selectedFile ?? 'drawing'} viewer`}
                 />
               ) : (
                 <div className="dsh-drawing__muted">

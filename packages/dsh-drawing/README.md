@@ -44,8 +44,8 @@ DSH 插件：**电气图纸**。把一份 PDF 图纸集吃进工作区，建成�
 
 ## 当前范围
 
-- **已实现（P0 + P1）**：五个工具、PDF 入库与解析、页/交叉引用/实体三类索引、档案卡、右侧栏 Drawing tab（内嵌 PDF 阅读器 + 图纸列表 + 档案摘要 + **按图号/标题/页面任意文字筛选**；点目录跳页，整份图纸可自由滚动）。
-- **未实现（后续）**：电缆/端子/通道表格（P2）、页面内高亮叠加（P3；渲染引擎已在 `indexer/render.ts`，等自建页面查看器）、SEE `Project Data extraction` XML 通道（P2.5）。
+- **已实现（P0 + P1）**：五个工具、PDF 入库与解析、页/交叉引用/实体三类索引、档案卡、右侧栏 Drawing tab（**自带极简 pdf.js 查看器**：PDF 加载一次、连续滚动、目录点击瞬间定位、命中框自绘；按图号/标题/页面任意文字筛选）。
+- **未实现（后续）**：电缆/端子/通道表格（P2）、SEE `Project Data extraction` XML 通道（P2.5）。
 
 > 全文筛选依赖 `index/text.json`（`PARSER_VERSION = 3` 起）。升级后旧索引不会自动重建：面板会提示"全文索引尚未建立"，让 agent 再跑一次 `drawing_open` 即可（同 sha256 但解析器版本变化会重解析）。
 
@@ -53,7 +53,7 @@ DSH 插件：**电气图纸**。把一份 PDF 图纸集吃进工作区，建成�
 
 - PDF 引擎是 [`unpdf`](https://www.npmjs.com/package/unpdf)（MIT，3.1 MB，内含 pdf.js）。它给每个文本 run 的 `transform` + `width`，坐标与 PDFium 逐位一致；`@hyzyla/pdfium` 没有文本几何，`mupdf` 是 AGPL 不能随插件分发。
 - 打印件把每张图旋转 90°（只有 24 页针脚图是 180°），所以 `src/indexer/rules.ts` 的 `placeItem()` 负责把文本矩阵合成到显示坐标系——这是全部几何能力的入口。
-- 底栏只用浏览器自带的 PDF 阅读器（iframe）：跳页必须**重挂 iframe**，因为对已加载的 PDF 只改 `#page=` 片段属于同文档导航，查看器不会翻页（Edge/Chromium 实测）。URL 里同时带 `zoom=<百分比>,0,0`（按页宽 ÷ 面板宽算），因为内嵌查看器有时会把文档开在最小缩放（25%）而不是适应面板。
+- 底栏是**自带的极简查看器**，不是浏览器内嵌 PDF：宿主用 `/drawing-viewer` 静态路由提供 pdf.js 与一个小 viewer 页（只发代码和字体，不发图纸），面板把 workspace 的 PDF 以 `blob:` 交给它。文档只解析一次，跳页走 `postMessage` 滚动定位；命中框由查看器按索引坐标叠画。
 - 索引按 `sha256 + PARSER_VERSION` 缓存，从不由查询触发重新解析。
 
 ## 开发

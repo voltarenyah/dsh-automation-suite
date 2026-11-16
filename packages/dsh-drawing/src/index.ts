@@ -27,12 +27,13 @@ import type { Context } from '@deepseek-ai/cordis'
 
 import { Config, resolveConfig, type PluginConfig } from './config.js'
 import { registerTools } from './tools/index.js'
+import { registerViewer, type WebServerLike } from './viewer-route.js'
 
 /** Plugin identity; the loader uses it as the entry id in the profile tree. */
 export const name = 'drawing'
 
-/** The plugin registers tools, so the tool registry must exist before `apply`. */
-export const inject = ['tools']
+/** The plugin registers tools, and its viewer page needs the web server. */
+export const inject = ['tools', 'webServer']
 
 export { Config }
 
@@ -48,4 +49,17 @@ export function apply(ctx: Context, config?: Partial<PluginConfig>): void {
     },
     'drawing: tools',
   )
+
+  // The panel's viewer page (pdf.js + a few static assets) is served from the
+  // package. Optional: a host without a web server can still use the tools.
+  const webServer = ctx.get('webServer')
+  if (webServer === undefined || webServer === null) {
+    log.warn?.('webServer is unavailable; the in-panel PDF viewer will not load')
+    return
+  }
+  try {
+    ctx.effect(() => registerViewer(webServer as WebServerLike), 'drawing: viewer route')
+  } catch (error) {
+    log.warn?.(`registering the viewer route failed: ${String(error)}`)
+  }
 }
