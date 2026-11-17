@@ -95,15 +95,6 @@ const CSS = `
 .dsh-drawing__row--active { background: color-mix(in srgb, var(--dsh-accent, #0969da) 14%, transparent); }
 .dsh-drawing__no { font-variant-numeric: tabular-nums; font-weight: 600; }
 .dsh-drawing__name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.dsh-drawing__snippet {
-  grid-column: 1 / -1;
-  font-size: 11px;
-  line-height: 1.4;
-  opacity: 0.72;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
 .dsh-drawing__empty { padding: 12px; text-align: center; }
 .dsh-drawing__foot { font-size: 11px; line-height: 1.5; }
 .dsh-drawing__stage {

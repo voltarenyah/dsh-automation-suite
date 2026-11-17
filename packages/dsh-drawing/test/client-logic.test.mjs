@@ -18,7 +18,6 @@ import {
   pageMatches,
   pickDocument,
   resolvePage,
-  searchSnippet,
   searchTokens,
   viewerSrc,
   viewDocument,
@@ -168,18 +167,4 @@ test('pageMatches requires every token, on a pre-lowered haystack', () => {
   assert.equal(pageMatches(haystack, []), true, 'empty query matches everything')
   assert.equal(pageMatches(undefined, ['voc']), false)
   assert.equal(pageMatches(haystack, searchTokens('i40.2')), false)
-})
-
-test('searchSnippet shows context around the first matching token', () => {
-  const text = 'HEADER BLOCK DIAGRAM Option-VOC REAR DOOR SERVO STOP FOOTER'
-  assert.match(searchSnippet(text, ['voc']), /Option-VOC REAR DOOR/)
-  assert.match(searchSnippet(text, ['servo']), /REAR DOOR SERVO STOP/)
-  assert.equal(searchSnippet(text, ['pump']), '')
-  assert.equal(searchSnippet(undefined, ['voc']), '')
-  assert.equal(searchSnippet(text, []), '')
-  const long = `${'x'.repeat(200)} voc ${'y'.repeat(200)}`
-  const snippet = searchSnippet(long, ['voc'], 20)
-  assert.ok(snippet.startsWith('…'))
-  assert.ok(snippet.endsWith('…'))
-  assert.match(snippet, /voc/)
 })

@@ -24,7 +24,6 @@ import {
   pageMatches,
   pickDocument,
   resolvePage,
-  searchSnippet,
   searchTokens,
   viewerSrc,
   viewDocument,
@@ -301,15 +300,6 @@ export function Panel(props) {
 
   const visible = matched.slice(0, 400)
 
-  const snippets = useMemo(() => {
-    const map = new Map()
-    if (pageText === null || tokens.length === 0) return map
-    for (const sheet of visible) {
-      map.set(sheet.page, searchSnippet(pageText[String(sheet.page)], tokens))
-    }
-    return map
-  }, [visible, tokens, pageText])
-
   const pages = document?.pages ?? profile?.pages ?? null
   const currentPage = resolvePage({
     targetPage,
@@ -442,23 +432,19 @@ export function Panel(props) {
 
           <div className="dsh-drawing__stage">
             <div className="dsh-drawing__list">
-              {visible.map((sheet) => {
-                const snippet = snippets.get(sheet.page) ?? ''
-                return (
-                  <div
-                    key={`${sheet.cabinet}:${sheet.page}`}
-                    className={`dsh-drawing__row${
-                      currentPage === sheet.page ? ' dsh-drawing__row--active' : ''
-                    }`}
-                    title={`${sheet.template} · p${sheet.page}`}
-                    onClick={() => setTargetPage(sheet.page)}
-                  >
-                    <span className="dsh-drawing__no">{sheet.sheet ?? '—'}</span>
-                    <span className="dsh-drawing__name">{sheet.title ?? ''}</span>
-                    {snippet === '' ? null : <span className="dsh-drawing__snippet">{snippet}</span>}
-                  </div>
-                )
-              })}
+              {visible.map((sheet) => (
+                <div
+                  key={`${sheet.cabinet}:${sheet.page}`}
+                  className={`dsh-drawing__row${
+                    currentPage === sheet.page ? ' dsh-drawing__row--active' : ''
+                  }`}
+                  title={`${sheet.template} · p${sheet.page}`}
+                  onClick={() => setTargetPage(sheet.page)}
+                >
+                  <span className="dsh-drawing__no">{sheet.sheet ?? '—'}</span>
+                  <span className="dsh-drawing__name">{sheet.title ?? ''}</span>
+                </div>
+              ))}
               {visible.length === 0 ? (
                 <div className="dsh-drawing__muted dsh-drawing__empty">{t('noMatches')}</div>
               ) : null}

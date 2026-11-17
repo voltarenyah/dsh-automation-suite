@@ -29,6 +29,12 @@ const source = params.get('file')
 
 const container = document.getElementById('pages')
 const notice = document.getElementById('notice')
+const zoomOut = document.getElementById('zoom-out')
+const zoomIn = document.getElementById('zoom-in')
+
+/** Zoom steps relative to fit-width (1). */
+const ZOOM_LEVELS = [0.5, 0.67, 0.8, 1, 1.25, 1.5, 2, 2.5, 3]
+let zoomIndex = ZOOM_LEVELS.indexOf(1)
 
 /** @type {import('./pdf.min.mjs').PDFDocumentProxy | null} */
 let document_ = null
@@ -136,6 +142,64 @@ function observePages() {
   )
   for (const entry of entries) observer.observe(entry.el)
 }
+
+/** The page currently at the top of the viewport, if any. */
+function topEntry() {
+  for (const entry of entries) {
+    if (entry.el.getBoundingClientRect().bottom > 0) return entry
+  }
+  return null
+}
+
+/** Paint every page that is near the viewport (after a zoom change). */
+function renderVisible() {
+  for (const entry of entries) {
+    const rect = entry.el.getBoundingClientRect()
+    if (rect.bottom < -window.innerHeight || rect.top > window.innerHeight * 2) continue
+    void renderPage(entry)
+  }
+}
+
+function updateZoomButtons() {
+  if (zoomOut !== null) zoomOut.disabled = zoomIndex === 0
+  if (zoomIn !== null) zoomIn.disabled = zoomIndex === ZOOM_LEVELS.length - 1
+}
+
+/**
+ * Zoom one step, keeping the page at the top anchored (and the relative
+ * position inside it) so the sheet does not jump away.
+ */
+function changeZoom(direction) {
+  const next = Math.min(ZOOM_LEVELS.length - 1, Math.max(0, zoomIndex + direction))
+  if (next === zoomIndex) return
+  const anchor = topEntry()
+  let ratio = 0
+  if (anchor !== null) {
+    const rect = anchor.el.getBoundingClientRect()
+    if (rect.height > 0) ratio = Math.min(1, Math.max(0, -rect.top / rect.height))
+  }
+  zoomIndex = next
+  document.documentElement.style.setProperty('--zoom', String(ZOOM_LEVELS[zoomIndex]))
+  for (const entry of entries) {
+    if (!entry.rendered) continue
+    entry.rendered = false
+    entry.el.querySelector('canvas')?.remove()
+  }
+  window.requestAnimationFrame(() => {
+    if (anchor !== null) {
+      anchor.el.scrollIntoView({ block: 'start' })
+      const height = anchor.el.getBoundingClientRect().height
+      if (height > 0) window.scrollBy(0, Math.round(height * ratio))
+    }
+    renderVisible()
+    applyHighlight()
+    updateZoomButtons()
+  })
+}
+
+zoomOut?.addEventListener('click', () => changeZoom(-1))
+zoomIn?.addEventListener('click', () => changeZoom(1))
+updateZoomButtons()
 
 async function start(url) {
   notify('Loading drawing…')

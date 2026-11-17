@@ -125,22 +125,3 @@ export function pageMatches(haystack, tokens) {
   if (typeof haystack !== 'string') return false
   return tokens.every((token) => haystack.includes(token))
 }
-
-/**
- * A short excerpt around the first matching token, for the sheet list.
- *
- * @param {string | undefined} text - the page's case-preserving text.
- * @param { readonly string[] } tokens
- * @param {number} radius - characters of context on each side.
- * @returns {string} empty when there is nothing to show.
- */
-export function searchSnippet(text, tokens, radius = 70) {
-  if (typeof text !== 'string' || text === '' || !Array.isArray(tokens) || tokens.length === 0) return ''
-  const lower = text.toLowerCase()
-  const at = lower.indexOf(tokens[0])
-  if (at < 0) return ''
-  const start = Math.max(0, at - radius)
-  const end = Math.min(text.length, at + tokens[0].length + radius)
-  const body = text.slice(start, end).replace(/\s+/g, ' ').trim()
-  return `${start > 0 ? '…' : ''}${body}${end < text.length ? '…' : ''}`
-}

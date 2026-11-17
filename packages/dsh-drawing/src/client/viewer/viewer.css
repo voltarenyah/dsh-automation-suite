@@ -14,15 +14,22 @@ body {
   color-scheme: light dark;
 }
 
+:root {
+  --zoom: 1;
+}
+
 body {
   overflow-anchor: none;
 }
 
 .pages {
+  box-sizing: border-box;
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 10px;
+  width: calc(100% * var(--zoom, 1));
+  margin: 0 auto;
   padding: 8px;
 }
 
@@ -69,6 +76,38 @@ body {
 
 .notice--error {
   color: #cf222e;
+}
+
+/* The only chrome: two buttons, fixed over the page area. */
+.zoom {
+  position: fixed;
+  right: 12px;
+  bottom: 12px;
+  display: flex;
+  gap: 4px;
+  z-index: 5;
+}
+
+.zoom button {
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 1px solid rgba(0, 0, 0, 0.32);
+  border-radius: 6px;
+  background: #ffffff;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
+  color: #1f2328;
+  font: 16px/1 system-ui, sans-serif;
+  cursor: pointer;
+}
+
+.zoom button:hover {
+  background: #f3f4f6;
+}
+
+.zoom button:disabled {
+  opacity: 0.4;
+  cursor: default;
 }
 
 @media (prefers-color-scheme: dark) {
