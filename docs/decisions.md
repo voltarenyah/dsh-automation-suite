@@ -1380,3 +1380,38 @@ WebView2 与终端里起的 `dsh web`，两者都是回环，"本地有人"这�
 `EPERM … cordis.yml` 失败）；做 V18 前要补的 6 条实测见 `tia-version-members.md` §10，
 其中**第 5 条（preset 子树会不会跟着 profile 重组重挂）与第 6 条（`disabled` 的宿主行会不会仍被 import）**
 决定"切换是否真必须重启"与"空转是否足够"，是最关键的两条。
+
+## D37 · 仿真只做「受管工程 + 工作区快照」：专项仿真项目暂缓，快照记录来源与校验和 ✅
+
+**背景**：用户需要 PLCSIM Advanced 仿真脚手架。最初评估了两种 case：①把受管工程整体下到虚拟 PLC；
+②按测试任务另建只含所需块的 TIA 工程（可多个）。2026-11-17 复盘认为 ② 时机不成熟：
+
+- 一个 `TiaPortal` 实例同时只有一个可编辑工程（secondary 工程只读、不能下载），多工程切换与
+  现有「一个 workspace 一个受管工程」的作用域模型冲突（D5/D22）；
+- 仿真工程的来源（复制裁剪 / 用户自建收编 / 源树导入）与生命周期（测试结束删除、归档还是并入
+  受管工程）没有稳定答案；V17 工具面又不能创建/导入硬件组态，只能整份复制；
+- 同一受管工程配多个命名快照已能覆盖"基线 / 改动前 / 故障注入后"的复用需求，且纯增量、可回退。
+
+**决定**：
+
+1. **只做 Case ①**：受管工程直接下载、运行、快照；**Case ② 暂缓**，重启条件写在
+   [`simulation-workspaces.md`](simulation-workspaces.md) §2。
+2. **快照位置不变**：`<workspace>/.dsh/simulation/<snapshot>/`（`instance.zip` + `storage/` +
+   `manifest.json`），随工作区走、已 gitignore；不新增插件、不新增工具、不改 preset。
+3. **快照记录来源与版本（manifest schemaVersion 2）**：`source` 记录受管工程路径/名称、设备/软件、
+   编译校验和/stateId/采集时间；`runtime` 记录 PLCSIM 版本/API 版本。TS 侧从
+   `source/_dsh-engineering-context.json` 与 `source/<device>/_evidence.json` 只读获取（失败降级为
+   空；显式 `source_project` / `source_checksum` 可覆盖），控制器只透传。
+4. **`stale` 是警告不是拦截**：`snapshots` / `restore` / `resume` 将记录校验和与当前账本比较，
+   不同则标 `stale=true`（无法判定为 `unknown`），仍允许恢复旧程序。
+5. **新增 `snapshot_remove` 动作**（`confirm=true`）：只删快照根的直接子目录、不跟随 reparse point、
+   不碰已注册实例；`remove` 仍是实例动作。
+6. **快照列表以文本渲染**（`Snapshots:` 行）：模型在 `verboseResults=false` 时拿不到 `data`，
+   身份/`stale` 必须进渲染文本。
+
+**后果**：
+
+- 既有 v1 快照仍可列出与 `resume`，只显示 `checksum unknown`。
+- 快照仍绑定当前机器与 PLCSIM Advanced 大版本；跨环境按"重新下载 + 重新快照"处理。
+- 专项仿真项目若重启，按 `simulation-workspaces.md` §8 的形态与四个前置问题重新评估。
+

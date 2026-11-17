@@ -116,6 +116,10 @@ namespace PlcsimAdvanced.Controller
             string action = Text(p, "action") ?? "list";
             if (action == "list") return Status(p);
             if (action == "snapshots") return SnapshotListing(p);
+            // snapshot_remove is about the snapshot directory, not a registered
+            // instance, so it is dispatched before RequireName: the caller names
+            // the snapshot, and the instance may not exist any more.
+            if (action == "snapshot_remove") return RemoveSnapshot(p);
 
             string name = RequireName(p);
             if (action == "create")
@@ -258,9 +262,24 @@ namespace PlcsimAdvanced.Controller
             }
 
             InstanceSettings settings = SettingsFor(instance.Name);
+            var source = new Dictionary<string, object>();
+            AddSourceField(source, "projectPath", Text(p, "source_project"));
+            AddSourceField(source, "projectName", Text(p, "source_project_name"));
+            AddSourceField(source, "checksum", Text(p, "source_checksum"));
+            AddSourceField(source, "stateId", Text(p, "source_state_id"));
+            AddSourceField(source, "device", Text(p, "source_device"));
+            AddSourceField(source, "software", Text(p, "source_software"));
+            AddSourceField(source, "capturedAt", Text(p, "source_captured_at"));
+            var runtime = new Dictionary<string, object>();
+            try { runtime["plcsimVersion"] = SimulationRuntimeManager.Version; } catch (Exception) { }
+            try
+            {
+                runtime["apiVersion"] = typeof(SimulationRuntimeManager).Assembly.GetName().Version.ToString();
+            }
+            catch (Exception) { }
             var manifest = new Dictionary<string, object>
             {
-                { "schemaVersion", 1 },
+                { "schemaVersion", 2 },
                 { "name", instance.Name },
                 { "cpuType", instance.CPUType.ToString() },
                 { "communication", settings.Communication },
@@ -270,7 +289,9 @@ namespace PlcsimAdvanced.Controller
                 { "createdAt", DateTime.UtcNow.ToString("o") },
                 { "sourceStoragePath", instance.StoragePath },
                 { "sourceState", instance.OperatingState.ToString() },
-                { "hasStorage", hasStorage }
+                { "hasStorage", hasStorage },
+                { "source", source },
+                { "runtime", runtime }
             };
             if (storageError != null) manifest["storageError"] = storageError;
             File.WriteAllText(manifestPath, new JavaScriptSerializer().Serialize(manifest));
@@ -360,6 +381,8 @@ namespace PlcsimAdvanced.Controller
             Dictionary<string, object> row = Describe(instance);
             row["restoredFrom"] = useFast ? fastStorage : zip;
             row["fast"] = useFast;
+            row["snapshot"] = snapshotArg;
+            if (manifest.ContainsKey("source")) row["source"] = manifest["source"];
             return row;
         }
 
@@ -454,6 +477,48 @@ namespace PlcsimAdvanced.Controller
                 { "truncated", truncated },
                 { "snapshots", rows },
                 { "registeredInstances", RegisteredInstances() },
+            };
+        }
+
+        /// <summary>
+        /// Delete one saved snapshot directory. The snapshot name is resolved
+        /// under the caller's snapshot root and the directory must be a DIRECT
+        /// child of that root: an absolute path elsewhere is refused rather than
+        /// trusted, and reparse points are never followed (DeleteDirectory handles
+        /// the reparse-point case by unlinking the link itself).
+        /// </summary>
+        private object RemoveSnapshot(IDictionary<string, object> p)
+        {
+            string root = RootFor(p);
+            string value = Text(p, "snapshot");
+            if (string.IsNullOrEmpty(root))
+            {
+                throw new ControllerException("snapshot_root_unavailable",
+                    "No snapshot root is available, so there is nothing to remove.");
+            }
+            if (string.IsNullOrEmpty(value))
+            {
+                throw new ControllerException("invalid_params", "snapshot_remove needs 'snapshot'.");
+            }
+            string fullRoot = Path.GetFullPath(root);
+            string directory = ResolveSnapshotDirectory(value, fullRoot);
+            string fullDirectory = Path.GetFullPath(directory);
+            string parent = Path.GetDirectoryName(fullDirectory);
+            if (!string.Equals(parent, fullRoot, StringComparison.OrdinalIgnoreCase))
+            {
+                throw new ControllerException("invalid_snapshot_path",
+                    "Refusing to remove a snapshot that is not a direct child of " + fullRoot + ": " + fullDirectory);
+            }
+            if (!Directory.Exists(fullDirectory))
+            {
+                throw new ControllerException("snapshot_not_found", "No snapshot at " + fullDirectory + ".");
+            }
+            DeleteDirectory(fullDirectory, fullRoot);
+            return new Dictionary<string, object>
+            {
+                { "snapshot", Path.GetFileName(fullDirectory) },
+                { "path", fullDirectory },
+                { "removed", true },
             };
         }
 
@@ -891,6 +956,17 @@ namespace PlcsimAdvanced.Controller
             if (!p.TryGetValue(key, out value) || value == null) return fallback;
             try { return Convert.ToBoolean(value, CultureInfo.InvariantCulture); }
             catch (Exception) { return fallback; }
+        }
+
+        /// <summary>
+        /// Add a snapshot provenance field when the caller supplied one. The
+        /// source block is written by the plugin from the workspace's engineering
+        /// index/evidence ledger; the controller only relays it, so a missing
+        /// value stays absent rather than being invented here.
+        /// </summary>
+        private static void AddSourceField(Dictionary<string, object> source, string key, string value)
+        {
+            if (!string.IsNullOrEmpty(value)) source[key] = value;
         }
 
         private void DeleteDirectory(string path, string root)

@@ -32,7 +32,7 @@ the suite's simulation capability.
 | Tool | Actions | Notes |
 |---|---|---|
 | `simulation_status` | read-only | API/Runtime version, licence, instances with name/comm/IP/state, this workspace's snapshot root and the snapshots found there |
-| `simulation_instance` | `list` / `snapshots` / `create` / `power_on` / `power_off` / `remove` / `snapshot` / `restore` / `resume` | `create` takes `name`, `cpu_type` or `cpu_model`, `communication`, `ip`; `snapshots` lists saved snapshots + live instances without starting anything; `power_on` applies the IP suite; `snapshot` saves a ZIP + fast storage; `resume` reuses it; `power_off`/`remove` need `confirm=true`; `create` needs `confirm_new=true` once snapshots exist |
+| `simulation_instance` | `list` / `snapshots` / `create` / `power_on` / `power_off` / `remove` / `snapshot` / `snapshot_remove` / `restore` / `resume` | `create` takes `name`, `cpu_type` or `cpu_model`, `communication`, `ip`; `snapshots` lists saved snapshots + live instances without starting anything; `power_on` applies the IP suite; `snapshot` saves a ZIP + fast storage and records the source project/checksum; `snapshot_remove` deletes one saved snapshot; `resume` reuses it; `power_off`/`remove`/`snapshot_remove` need `confirm=true`; `create` needs `confirm_new=true` once snapshots exist |
 | `simulation_run` | `state` / `run` / `stop` / `reset` | write actions need `confirm=true` |
 | `simulation_tags` | `list` / `read` / `write` | `list` capped (default 200); `write` needs `confirm=true` |
 
@@ -153,7 +153,7 @@ where `<workspace>` is the session working directory of the call:
 <workspace>/.dsh/simulation/cylinder-baseline/
   instance.zip      # ArchiveStorage(): program + hardware + retentive data
   storage/          # fast copy of the Virtual SIMATIC Memory Card
-  manifest.json     # name, cpuType, communication, ip, subnetMask, gateway, createdAt
+  manifest.json     # name, cpuType, communication, ip, source { project/checksum }, runtime
 ```
 
 The root is derived per call from the session workspace (`exec.agent.session.header.cwd`),
@@ -187,6 +187,31 @@ simulation_instance({
 
 `restore` remains available when you want an explicit new instance from a
 snapshot; `fast=false` forces the ZIP path.
+
+### Snapshot provenance and cleanup
+
+Every snapshot records **which managed project it came from** and the compiled
+PLC checksum, read from the workspace files the engineering-context plugin
+already writes:
+
+```text
+source/_dsh-engineering-context.json   -> project name/path + device/software
+source/<device>/_evidence.json         -> plcChecksum + stateId
+```
+
+The controller stores that as `source` in `manifest.json` (schemaVersion 2) and
+also records `runtime.plcsimVersion` / `runtime.apiVersion`. `snapshots`,
+`restore` and `resume` compare the recorded checksum with the current ledger and
+report `stale=true` when the program has changed since the snapshot — a warning,
+not a refusal, because resuming the old program may be exactly the point.
+
+```jsonc
+simulation_instance({ "action": "snapshots" })          // each row: checksum, stale
+simulation_instance({ "action": "snapshot_remove", "snapshot": "old-baseline", "confirm": true })
+```
+
+`snapshot_remove` deletes one snapshot directory and never touches a registered
+instance; `remove` remains the instance action.
 
 > Snapshots are local artifacts: keep the snapshot root out of git (the default
 > `.dsh/simulation/` is ignored by the repository). A snapshot is tied to the

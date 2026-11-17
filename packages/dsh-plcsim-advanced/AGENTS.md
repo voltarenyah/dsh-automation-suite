@@ -114,5 +114,17 @@ instance.
   `process.cwd()` (the host process directory): snapshots then land outside the
   workspace, are missing from its backups, and are invisible after a restart.
   `config.snapshotRoot` (default `''` = derive) remains the explicit override.
+- **Manifest v2 records provenance.** `snapshot` reads the managed project from
+  `<workspace>/source/_dsh-engineering-context.json` and the compiled checksum
+  from `<workspace>/source/<device>/_evidence.json` (both fail soft; explicit
+  `source_project` / `source_checksum` override), so `manifest.json` carries
+  `source.projectPath/projectName/device/software/checksum/stateId/capturedAt`
+  and `runtime.plcsimVersion/apiVersion`. `snapshots`, `restore` and `resume`
+  flag `stale` by comparing that checksum with the current ledger — a warning,
+  never a refusal. Render the snapshot list as text: the model does not receive
+  `data` when `verboseResults` is off.
+- **`snapshot_remove`** (confirm=true) deletes one snapshot directory; it only
+  accepts a direct child of the snapshot root and never follows a reparse point.
+  It never touches a registered instance (`remove` is the instance action).
 - Keep snapshots out of git and do not copy one across incompatible PLCSIM
   Advanced versions.

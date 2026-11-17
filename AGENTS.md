@@ -152,7 +152,7 @@ pnpm run clean:build      # 清构建产物（只碰 lib/ dist/）
 ## 4. 测试与验收
 
 ```powershell
-pnpm test          # 全仓：TIA 112 项（111 通过 / 1 跳过）+ dsh-tool-git 51 项 + engineering-context 151 项 + engineering-graph 128 项 + drawing 23 项 + plcsim-advanced 18 项 + ui-plc-source 47 项 + ui-tia-console 22 项 + ui-versions 15 项 + ui-hardware 9 项 + ui-prompt-guide 25 项 + ui-brandmark 5 项 + tia-todo-bridge 18 项
+pnpm test          # 全仓：TIA 112 项（111 通过 / 1 跳过）+ dsh-tool-git 51 项 + engineering-context 151 项 + engineering-graph 128 项 + drawing 23 项 + plcsim-advanced 24 项 + ui-plc-source 47 项 + ui-tia-console 22 项 + ui-versions 15 项 + ui-hardware 9 项 + ui-prompt-guide 25 项 + ui-brandmark 5 项 + tia-todo-bridge 18 项
 pnpm -r build
 pnpm -r typecheck
 ```
@@ -561,6 +561,14 @@ create_engineering_project({
 `exec.agent.session.header.cwd` 取，再作为 `snapshot_root` 传给控制器），不再取宿主进程 cwd；
 插件配置的 `snapshotRoot` 留空即"按工作区"，显式赋值才固定成一个共享目录（改配置需重启宿主）。
 `.dsh/simulation/` 已在 `.gitignore` 里，属本地运行产物。
+
+**快照要说得清"是哪一版程序"**：`snapshot` 会从
+`source/_dsh-engineering-context.json` 与 `source/<device>/_evidence.json` 读取受管工程与编译
+校验和，写进 `manifest.json`（schemaVersion 2，含 `source` / `runtime`）。`snapshots`、`restore`、
+`resume` 会把记录值与当前账本比较，程序已变时标 `stale=true`——**只是警告**，用户可能就是要回旧程序。
+删快照用 `simulation_instance(action="snapshot_remove", snapshot="<名字>", confirm=true)`，
+它只删快照目录，不碰已注册实例；这也意味着 `snapshots` 的结果会以文本行渲染（`Snapshots:`），
+不要只依赖 `data`。
 
 另外，工具渲染现在**始终**带一行 `Key facts:`（`name` / `state` / `cpuType` / `ip` / `snapshots`），
 与 `verboseResults` 无关：0.2.4 验收里 `create` 只回"succeeded"，模型因此不信空回答、

@@ -14,6 +14,9 @@
  * @module dsh-plcsim-advanced/tools
  */
 
+import { readFile } from 'node:fs/promises'
+import { isAbsolute, join, relative, sep } from 'node:path'
+
 import type { Context } from '@deepseek-ai/cordis'
 import { defineTool, type InferValue, type JsonValue } from '@deepseek-ai/dsh-tools'
 
@@ -152,6 +155,165 @@ function snapshotScope(
   return { root, params: root === undefined ? {} : { snapshot_root: root } }
 }
 
+// ---------------------------------------------------------------------------
+// Snapshot provenance: bind a saved image to the managed project it came from
+// ---------------------------------------------------------------------------
+
+/**
+ * Read one JSON object, treating every failure (missing file, bad JSON, an
+ * unexpected shape) as "no answer". Snapshot provenance is a convenience, never
+ * a reason to fail the snapshot itself.
+ */
+async function readJsonObject(file: string): Promise<JsonRecord | null> {
+  try {
+    return record(JSON.parse(await readFile(file, 'utf8')))
+  } catch {
+    return null
+  }
+}
+
+/** A path stored relative to the workspace, with forward slashes. */
+function portablePath(workspace: string, value: string): string {
+  if (!isAbsolute(value)) return value.replace(/\\/gu, '/')
+  return relative(workspace, value).split(sep).join('/')
+}
+
+/**
+ * The provenance block of a snapshot, read from the engineering-context files
+ * that this workspace already keeps:
+ *
+ *   source/_dsh-engineering-context.json   which project/device this tree is
+ *   <device dir>/_evidence.json            the last compiled checksum/state
+ *
+ * Both are ordinary files; when they are absent or in an unexpected shape the
+ * result is simply sparse. This is a read-only convention, not a service
+ * dependency (the PLCSIM plugin must keep working in a composition without the
+ * engineering-context plugin).
+ */
+async function managedSourceFacts(
+  workspace: string | undefined,
+  instanceName: string | undefined,
+): Promise<JsonRecord> {
+  const facts: JsonRecord = {}
+  if (workspace === undefined) return facts
+  const index = await readJsonObject(join(workspace, 'source', '_dsh-engineering-context.json'))
+  if (index === null) return facts
+
+  const project = record(index['project'])
+  if (project !== null) {
+    if (typeof project['name'] === 'string' && project['name'].length > 0) {
+      facts['source_project_name'] = project['name']
+    }
+    const projectPath =
+      typeof project['savedAs'] === 'string' && project['savedAs'].length > 0
+        ? project['savedAs']
+        : typeof project['path'] === 'string' && project['path'].length > 0
+          ? project['path']
+          : undefined
+    if (projectPath !== undefined) facts['source_project'] = portablePath(workspace, projectPath)
+  }
+
+  const devices = Array.isArray(index['devices'])
+    ? index['devices'].map((entry) => record(entry)).filter((entry): entry is JsonRecord => entry !== null)
+    : []
+  const chosen = devices.find((entry) => entry['device'] === instanceName) ?? devices[0]
+  if (chosen !== undefined) {
+    const device = typeof chosen['device'] === 'string' ? chosen['device'] : undefined
+    const software = typeof chosen['software'] === 'string' ? chosen['software'] : undefined
+    const directory = typeof chosen['directory'] === 'string' ? chosen['directory'] : undefined
+    if (device !== undefined) facts['source_device'] = device
+    if (software !== undefined) facts['source_software'] = software
+    const evidenceFile =
+      directory !== undefined
+        ? join(directory, '_evidence.json')
+        : device !== undefined
+          ? join(workspace, 'source', device, '_evidence.json')
+          : undefined
+    if (evidenceFile !== undefined) {
+      const evidence = await readJsonObject(evidenceFile)
+      if (evidence !== null) {
+        if (typeof evidence['plcChecksum'] === 'string') facts['source_checksum'] = evidence['plcChecksum']
+        if (typeof evidence['stateId'] === 'string') facts['source_state_id'] = evidence['stateId']
+      }
+    }
+  }
+
+  if (Object.keys(facts).length > 0) facts['source_captured_at'] = new Date().toISOString()
+  return facts
+}
+
+/**
+ * Compare each listed snapshot's recorded checksum with the workspace's current
+ * evidence ledger and add `stale` (true / false / 'unknown') to the row. A stale
+ * snapshot is a WARNING, never a refusal: the user may deliberately want the old
+ * program back.
+ */
+async function annotateSnapshots(data: JsonRecord | null, workspace: string | undefined): Promise<void> {
+  if (data === null || workspace === undefined) return
+
+  const current = new Map<string, string>()
+  const index = await readJsonObject(join(workspace, 'source', '_dsh-engineering-context.json'))
+  const devices = index !== null && Array.isArray(index['devices']) ? index['devices'] : []
+  for (const entry of devices) {
+    const device = record(entry)
+    if (device === null) continue
+    const name = device['device']
+    if (typeof name !== 'string') continue
+    const directory = typeof device['directory'] === 'string' ? device['directory'] : undefined
+    const evidenceFile =
+      directory !== undefined ? join(directory, '_evidence.json') : join(workspace, 'source', name, '_evidence.json')
+    const evidence = await readJsonObject(evidenceFile)
+    if (evidence !== null && typeof evidence['plcChecksum'] === 'string') {
+      current.set(name, evidence['plcChecksum'])
+    }
+  }
+
+  const staleFor = (source: JsonRecord | null): boolean | 'unknown' => {
+    const recorded = source !== null && typeof source['checksum'] === 'string' ? source['checksum'] : undefined
+    if (recorded === undefined) return 'unknown'
+    const deviceName = source !== null && typeof source['device'] === 'string' ? source['device'] : undefined
+    const currentChecksum =
+      (deviceName !== undefined ? current.get(deviceName) : undefined) ??
+      (current.size === 1 ? [...current.values()][0] : undefined)
+    return currentChecksum === undefined ? 'unknown' : currentChecksum !== recorded
+  }
+
+  const rows = Array.isArray(data['snapshots']) ? data['snapshots'] : []
+  for (const entry of rows) {
+    const row = record(entry)
+    if (row === null) continue
+    row['stale'] = staleFor(record(row['source']))
+  }
+  // restore/resume return one instance row rather than a listing.
+  if (rows.length === 0 && record(data['source']) !== null) {
+    data['stale'] = staleFor(record(data['source']))
+  }
+}
+
+/** The snapshot lines rendered even when `verbose` is off (the model reads text, not data). */
+function renderSnapshotLines(data: JsonRecord | null): string[] {
+  if (data === null) return []
+  const rows = Array.isArray(data['snapshots']) ? data['snapshots'] : []
+  if (rows.length === 0) return []
+  const lines = ['Snapshots:']
+  for (const entry of rows.slice(0, 10)) {
+    const row = record(entry)
+    if (row === null) continue
+    const parts: string[] = []
+    for (const key of ['snapshot', 'updatedAt'] as const) {
+      const value = row[key]
+      if (typeof value === 'string' || typeof value === 'number') parts.push(`${key}=${String(value)}`)
+    }
+    const source = record(row['source'])
+    if (source !== null && typeof source['checksum'] === 'string') parts.push(`checksum=${source['checksum'].slice(0, 12)}`)
+    if (row['stale'] === true) parts.push('stale=true')
+    else if (row['stale'] === 'unknown') parts.push('stale=unknown')
+    lines.push(`- ${parts.join(' ')}`)
+  }
+  if (rows.length > 10) lines.push(`- … ${rows.length - 10} more snapshot(s) not shown.`)
+  return lines
+}
+
 const FACT_KEYS = ['name', 'state', 'cpuType', 'comm', 'ip', 'networkMode', 'snapshot'] as const
 
 /**
@@ -183,6 +345,14 @@ function renderFacts(data: JsonRecord | null): string[] {
       .filter((name): name is string => typeof name === 'string')
     if (names.length > 0) facts.push(`live=${names.join(',')}`)
   }
+  const source = record(data['source'])
+  if (source !== null) {
+    if (typeof source['checksum'] === 'string' && source['checksum'].length > 0) {
+      facts.push(`checksum=${source['checksum'].slice(0, 12)}`)
+    }
+    if (data['stale'] === true) facts.push('stale=true')
+    else if (data['stale'] === 'unknown') facts.push('stale=unknown')
+  }
   return facts.length === 0 ? [] : [`Key facts: ${facts.join(' ')}`]
 }
 
@@ -193,6 +363,7 @@ function renderValue(value: OutcomeValue, verbose: boolean): string {
     lines.push(`Error code: ${outcome.error.code}`, `Reason: ${outcome.error.message}`)
   }
   lines.push(...renderFacts(outcome.data))
+  lines.push(...renderSnapshotLines(outcome.data))
   if (verbose && outcome.data !== null) lines.push(`Controller payload:\n${JSON.stringify(outcome.data, null, 2)}`)
   return lines.filter((line) => line.length > 0).join('\n')
 }
@@ -242,7 +413,9 @@ export function registerTools(ctx: Context, dependencies: ToolDependencies): str
       },
       async execute(_args, exec) {
         const scope = snapshotScope(dependencies, exec)
-        return asJsonOutcome(await runOperation(dependencies, 'Status', scope.params, exec.signal))
+        const outcome = await runOperation(dependencies, 'Status', scope.params, exec.signal)
+        await annotateSnapshots(outcome.data, sessionWorkspaceRoot(exec))
+        return asJsonOutcome(outcome)
       },
     }),
   )
@@ -264,7 +437,11 @@ export function registerTools(ctx: Context, dependencies: ToolDependencies): str
         'briefly stopped if needed); restore recreates from a snapshot; resume is the non-first-run fast path: it ' +
         'attaches to a still-running instance, otherwise restores the fast storage copy (ZIP fallback) and powers ' +
         'it on - it keeps the original device identity, so no certificate acceptance and no TIA download are ' +
-        'needed. power_off and remove require confirm=true; create needs confirm_new=true once this workspace holds ' +
+        'needed. Every snapshot records the managed project it came from and its compiled checksum (read from the ' +
+        'workspace source index/evidence ledger); snapshots then renders that checksum and flags a stale image when ' +
+        'the current program differs, and restore/resume repeat the flag. snapshot_remove deletes one saved snapshot ' +
+        '(confirm=true) without touching any instance. power_off and remove require confirm=true; create needs ' +
+        'confirm_new=true once this workspace holds ' +
         'any snapshot, otherwise it refuses with snapshots_available and names them so the user chooses first. ' +
         'list returns the coordinates the TIA side needs: name, ' +
         'communication, ip, state, CPU and licence, plus the snapshots and the already-registered instances. ' +
@@ -280,12 +457,24 @@ export function registerTools(ctx: Context, dependencies: ToolDependencies): str
       parameters: {
         action: {
           type: 'string',
-          enum: ['list', 'snapshots', 'create', 'power_on', 'power_off', 'remove', 'snapshot', 'restore', 'resume'],
+          enum: [
+            'list',
+            'snapshots',
+            'create',
+            'power_on',
+            'power_off',
+            'remove',
+            'snapshot',
+            'snapshot_remove',
+            'restore',
+            'resume',
+          ],
           description:
             "Action to perform; defaults to 'list'. 'snapshots' lists the snapshot root of this workspace plus the " +
-            'instances the Runtime Manager still holds, without starting anything.',
+            'instances the Runtime Manager still holds, without starting anything. `snapshot_remove` deletes one ' +
+            'saved snapshot directory and needs `confirm=true`.',
         },
-        name: { type: 'string', description: 'Instance name (required for everything except list). Convention: the CPU PROFINET device name.' },
+        name: { type: 'string', description: 'Instance name (required for everything except list and snapshot_remove). Convention: the CPU PROFINET device name.' },
         cpu_type: {
           type: 'string',
           enum: [
@@ -325,6 +514,18 @@ export function registerTools(ctx: Context, dependencies: ToolDependencies): str
         subnet_mask: { type: 'string', description: 'Subnet mask for ip (default 255.255.255.0).' },
         gateway: { type: 'string', description: 'Default gateway for ip (default 0.0.0.0).' },
         snapshot: { type: 'string', description: 'Snapshot name (under the workspace snapshot root) for snapshot, or a name/absolute ZIP path for restore/resume.' },
+        source_project: {
+          type: 'string',
+          description:
+            'snapshot only: override the recorded source project path or name. By default the plugin reads the managed ' +
+            'project from <workspace>/source/_dsh-engineering-context.json.',
+        },
+        source_checksum: {
+          type: 'string',
+          description:
+            'snapshot only: override the recorded compiled checksum. By default the plugin reads it from the device ' +
+            'evidence ledger (<workspace>/source/<device>/_evidence.json).',
+        },
         overwrite: { type: 'boolean', description: 'True to replace an existing snapshot with the same name (default false).' },
         run: { type: 'boolean', description: 'For restore/resume: true to switch the instance to RUN after power-on (default false for restore, true for resume).' },
         fast: { type: 'boolean', description: 'For restore: prefer the snapshot storage copy (fast) over the ZIP; default true, falls back to the ZIP.' },
@@ -334,7 +535,7 @@ export function registerTools(ctx: Context, dependencies: ToolDependencies): str
             'Required for create once this workspace already holds snapshots: true states that the user chose a NEW ' +
             'instance (new device, manual certificate once) over resuming one of them.',
         },
-        confirm: { type: 'boolean', description: 'Must be true for power_off and remove.' },
+        confirm: { type: 'boolean', description: 'Must be true for power_off, remove and snapshot_remove.' },
       },
       output: {
         schema: OUTCOME_SCHEMA,
@@ -342,7 +543,7 @@ export function registerTools(ctx: Context, dependencies: ToolDependencies): str
       },
       async execute(args, exec) {
         const action = args.action ?? 'list'
-        if ((action === 'power_off' || action === 'remove') && args.confirm !== true) {
+        if ((action === 'power_off' || action === 'remove' || action === 'snapshot_remove') && args.confirm !== true) {
           return asJsonOutcome(
             failure('Instance', 'confirmation_required', `The '${action}' action needs confirm=true.`),
           )
@@ -361,7 +562,20 @@ export function registerTools(ctx: Context, dependencies: ToolDependencies): str
         if (args.run !== undefined) params['run'] = args.run
         if (args.fast !== undefined) params['fast'] = args.fast
         if (args.confirm_new !== undefined) params['confirm_new'] = args.confirm_new
-        return asJsonOutcome(await runOperation(dependencies, 'Instance', params, exec.signal))
+
+        // A snapshot is only useful if it says WHICH program it contains. The
+        // workspace already records that fact in source/, so read it here rather
+        // than asking the model to repeat it; explicit arguments still win.
+        if (action === 'snapshot') {
+          const provenance = await managedSourceFacts(sessionWorkspaceRoot(exec), args.name)
+          if (args.source_project !== undefined) provenance['source_project'] = args.source_project
+          if (args.source_checksum !== undefined) provenance['source_checksum'] = args.source_checksum
+          for (const [key, value] of Object.entries(provenance)) params[key] = value
+        }
+
+        const outcome = await runOperation(dependencies, 'Instance', params, exec.signal)
+        await annotateSnapshots(outcome.data, sessionWorkspaceRoot(exec))
+        return asJsonOutcome(outcome)
       },
     }),
   )
