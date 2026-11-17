@@ -104,7 +104,35 @@ const CSS = `
   flex: 1;
   min-height: 0;
 }
-.dsh-drawing__list { max-height: 34%; }
+.dsh-drawing__list { flex: none; height: 34%; }
+.dsh-drawing__splitter {
+  flex: none;
+  position: relative;
+  height: 8px;
+  border-radius: 4px;
+  cursor: row-resize;
+  touch-action: none;
+}
+.dsh-drawing__splitter::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 40px;
+  height: 3px;
+  transform: translate(-50%, -50%);
+  border-radius: 2px;
+  background: color-mix(in srgb, currentColor 24%, transparent);
+  transition: background 120ms ease;
+}
+.dsh-drawing__splitter:hover::after,
+.dsh-drawing__splitter:focus-visible::after {
+  background: var(--dsh-accent, #0969da);
+}
+.dsh-drawing__splitter:focus-visible {
+  outline: 1px solid var(--dsh-accent, #0969da);
+  outline-offset: 2px;
+}
 .dsh-drawing__viewer {
   flex: 1;
   min-height: 180px;

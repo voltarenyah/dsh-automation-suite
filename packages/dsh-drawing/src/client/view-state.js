@@ -96,6 +96,43 @@ export function viewerSrc(url, page) {
   return `/drawing-viewer/viewer.html?file=${encodeURIComponent(url)}${initial}`
 }
 
+/** A landscape A4 sheet in PDF points (the common SEE sheet frame). */
+const SHEET_WIDTH = 842
+const SHEET_HEIGHT = 595
+/** Smallest useful sheet list / PDF pane. */
+const LIST_MIN_HEIGHT = 72
+const VIEWER_MIN_HEIGHT = 200
+/** The splitter itself plus the flex gaps above and below it. */
+const SPLITTER_CHROME = 24
+
+/**
+ * Clamp a requested sheet-list height so the viewer keeps a usable height.
+ *
+ * @param {number} value - requested list height in CSS pixels.
+ * @param {number} stageHeight - available height of the list + splitter + viewer.
+ * @returns {number}
+ */
+export function clampListHeight(value, stageHeight) {
+  const max = Math.max(LIST_MIN_HEIGHT, stageHeight - VIEWER_MIN_HEIGHT - SPLITTER_CHROME)
+  const wanted = Number.isFinite(value) ? value : LIST_MIN_HEIGHT
+  return Math.round(Math.min(Math.max(wanted, LIST_MIN_HEIGHT), max))
+}
+
+/**
+ * The list height that leaves the viewer with the height of a landscape A4
+ * sheet painted at the stage's width (plus a little breathing room).
+ *
+ * @param {number} stageWidth - width available to the viewer.
+ * @param {number} stageHeight - height available to list + splitter + viewer.
+ * @returns {number}
+ */
+export function autoListHeight(stageWidth, stageHeight) {
+  const pageWidth = Math.max(0, stageWidth - 2)
+  const pageHeight = pageWidth * (SHEET_HEIGHT / SHEET_WIDTH)
+  return clampListHeight(stageHeight - pageHeight - 10 - SPLITTER_CHROME, stageHeight)
+}
+
+
 
 /**
  * Split a filter query into lower-case tokens. Every token has to appear on a

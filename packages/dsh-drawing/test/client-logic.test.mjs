@@ -14,6 +14,8 @@ import { test } from 'node:test'
 import { getView, setView, subscribeView } from '../src/client/store.js'
 import { openDrawingTab, rightFace } from '../src/client/open-tab.js'
 import {
+  autoListHeight,
+  clampListHeight,
   clampPage,
   pageMatches,
   pickDocument,
@@ -150,6 +152,14 @@ test('viewerSrc points the viewer at the blob and an optional page', () => {
   )
   assert.equal(viewerSrc('', 3), undefined)
   assert.equal(viewerSrc(undefined, 3), undefined)
+})
+
+test('autoListHeight leaves a landscape A4 pane and clamps to the stage', () => {
+  assert.equal(autoListHeight(630, 750), 272, 'A4 landscape at 628px of page width')
+  assert.equal(clampListHeight(10, 750), 72, 'list floor')
+  assert.equal(clampListHeight(9999, 750), 526, 'viewer floor')
+  assert.equal(clampListHeight(Number.NaN, 750), 72)
+  assert.equal(autoListHeight(630, 300), 72, 'a short stage keeps the list minimum')
 })
 
 test('searchTokens lower-cases and splits a query', () => {

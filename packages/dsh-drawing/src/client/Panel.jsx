@@ -17,10 +17,12 @@
  * @module dsh-drawing/client/Panel
  */
 
-import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 
 import { getView, setView, subscribeView } from './store.js'
 import {
+  autoListHeight,
+  clampListHeight,
   pageMatches,
   pickDocument,
   resolvePage,
@@ -33,6 +35,8 @@ const MANIFEST = '.dsh/drawing-manifest.json'
 const VIEW_FILE = '.dsh/drawing-view.json'
 /** Display frame of a landscape SEE sheet, used when an index omits it. */
 const DEFAULT_FRAME = { width: 842, height: 595 }
+/** Where the reader's manual list height is remembered. */
+const LIST_HEIGHT_KEY = 'dsh-drawing:list-height'
 
 /** Join an absolute base with a forward-slash relative path. */
 function joinPath(base, rel) {
@@ -75,6 +79,25 @@ export function Panel(props) {
   const iframeRef = useRef(null)
   /** True once the viewer page has finished loading its document. */
   const [frameReady, setFrameReady] = useState(false)
+
+  // ---- resizable list / viewer split --------------------------------------
+  // Default: the viewer gets the height of a landscape A4 sheet painted at the
+  // pane's width. A manual drag (or arrow keys) takes over and is remembered.
+  const [listHeight, setListHeight] = useState(() => {
+    try {
+      const stored = Number(window.localStorage.getItem(LIST_HEIGHT_KEY))
+      return Number.isFinite(stored) && stored > 0 ? stored : null
+    } catch {
+      return null
+    }
+  })
+  const listHeightRef = useRef(listHeight)
+  const manualHeight = useRef(listHeight !== null)
+  const stageRef = useRef(null)
+  const setHeight = useCallback((value) => {
+    listHeightRef.current = value
+    setListHeight(value)
+  }, [])
 
   const view = useSyncExternalStore(
     useCallback((listener) => subscribeView(sessionId, listener), [sessionId]),
@@ -128,7 +151,7 @@ export function Panel(props) {
     }
   }, [cwd, readJsonFile, sessionId])
 
-  const document = useMemo(() => {
+  const selectedDocument = useMemo(() => {
     const documents = Array.isArray(manifest?.documents) ? manifest.documents : []
     return documents.find((entry) => entry.file === selectedFile)
   }, [manifest, selectedFile])
@@ -167,18 +190,18 @@ export function Panel(props) {
 
   // ---- profile + sheet list + search text ----------------------------------
   useEffect(() => {
-    if (document === undefined || typeof document?.dir !== 'string') return undefined
+    if (selectedDocument === undefined || typeof selectedDocument?.dir !== 'string') return undefined
     let cancelled = false
     void (async () => {
       setPageText(null)
       setFallbackNames(null)
-      const nextProfile = await readJsonFile(joinPath(document.dir, 'profile.json'))
-      const nextSheets = await readJsonFile(joinPath(document.dir, 'index/sheets.json'))
-      const nextText = await readJsonFile(joinPath(document.dir, 'index/text.json'))
+      const nextProfile = await readJsonFile(joinPath(selectedDocument.dir, 'profile.json'))
+      const nextSheets = await readJsonFile(joinPath(selectedDocument.dir, 'index/sheets.json'))
+      const nextText = await readJsonFile(joinPath(selectedDocument.dir, 'index/text.json'))
       // Parser v3 writes text.json. An index built by v2 has only names.json;
       // searching by tag/wire then still beats titles alone.
       const nextNames =
-        nextText === undefined ? await readJsonFile(joinPath(document.dir, 'index/names.json')) : undefined
+        nextText === undefined ? await readJsonFile(joinPath(selectedDocument.dir, 'index/names.json')) : undefined
       if (cancelled) return
       setProfile(nextProfile ?? null)
       setSheets(Array.isArray(nextSheets) ? nextSheets : [])
@@ -189,13 +212,13 @@ export function Panel(props) {
     return () => {
       cancelled = true
     }
-  }, [document, readJsonFile, t])
+  }, [selectedDocument, readJsonFile, t])
 
   // ---- the PDF blob for the one viewer -------------------------------------
   // One blob URL per document. Switching documents must replace it: the old
   // guard (`if (pdfUrlRef.current === null)`) kept showing the previous PDF.
   useEffect(() => {
-    const path = document?.pdf
+    const path = selectedDocument?.pdf
     if (typeof path !== 'string' || path === '') {
       if (pdfUrlRef.current !== null) {
         URL.revokeObjectURL(pdfUrlRef.current)
@@ -227,7 +250,7 @@ export function Panel(props) {
     return () => {
       cancelled = true
     }
-  }, [document?.pdf, props.readBytes])
+  }, [selectedDocument?.pdf, props.readBytes])
 
   useEffect(
     () => () => {
@@ -300,7 +323,7 @@ export function Panel(props) {
 
   const visible = matched.slice(0, 400)
 
-  const pages = document?.pages ?? profile?.pages ?? null
+  const pages = selectedDocument?.pages ?? profile?.pages ?? null
   const currentPage = resolvePage({
     targetPage,
     view,
@@ -331,6 +354,83 @@ export function Panel(props) {
       window.location.origin,
     )
   }, [frameReady, currentPage, hit, displayFrame, selectedFile])
+
+  // ---- list / viewer split -------------------------------------------------
+  // Measure the stage once it exists and derive the A4-friendly default. The
+  // reader's drag takes over from then on (manualHeight) and is remembered.
+  useLayoutEffect(() => {
+    const stage = stageRef.current
+    if (stage === null) return undefined
+    const apply = () => {
+      const rect = stage.getBoundingClientRect()
+      if (rect.width < 160 || rect.height < 200) return
+      const next =
+        manualHeight.current && listHeightRef.current !== null
+          ? clampListHeight(listHeightRef.current, rect.height)
+          : autoListHeight(rect.width, rect.height)
+      if (next !== listHeightRef.current) setHeight(next)
+    }
+    apply()
+    const observer = new ResizeObserver(apply)
+    observer.observe(stage)
+    return () => observer.disconnect()
+  }, [profile, setHeight])
+
+  const onSplitterPointerDown = useCallback(
+    (event) => {
+      if (event.button !== undefined && event.button !== 0) return
+      const stage = stageRef.current
+      if (stage === null) return
+      event.preventDefault()
+      const rect = stage.getBoundingClientRect()
+      const startHeight = listHeightRef.current ?? autoListHeight(rect.width, rect.height)
+      const startY = event.clientY
+      let moved = false
+      const onMove = (moveEvent) => {
+        if (Math.abs(moveEvent.clientY - startY) > 2) moved = true
+        setHeight(clampListHeight(startHeight + moveEvent.clientY - startY, rect.height))
+      }
+      const finish = () => {
+        window.removeEventListener('pointermove', onMove)
+        window.removeEventListener('pointerup', finish)
+        window.removeEventListener('pointercancel', finish)
+        document.body.style.userSelect = ''
+        if (!moved) return
+        manualHeight.current = true
+        try {
+          window.localStorage.setItem(LIST_HEIGHT_KEY, String(listHeightRef.current ?? startHeight))
+        } catch {
+          /* storage may be disabled */
+        }
+      }
+      document.body.style.userSelect = 'none'
+      window.addEventListener('pointermove', onMove)
+      window.addEventListener('pointerup', finish)
+      window.addEventListener('pointercancel', finish)
+    },
+    [setHeight],
+  )
+
+  const onSplitterKeyDown = useCallback(
+    (event) => {
+      if (event.key !== 'ArrowUp' && event.key !== 'ArrowDown') return
+      const stage = stageRef.current
+      if (stage === null) return
+      event.preventDefault()
+      const rect = stage.getBoundingClientRect()
+      const current = listHeightRef.current ?? autoListHeight(rect.width, rect.height)
+      const next = clampListHeight(current + (event.key === 'ArrowDown' ? 16 : -16), rect.height)
+      if (next === current) return
+      manualHeight.current = true
+      setHeight(next)
+      try {
+        window.localStorage.setItem(LIST_HEIGHT_KEY, String(next))
+      } catch {
+        /* storage may be disabled */
+      }
+    },
+    [setHeight],
+  )
 
   if (typeof cwd !== 'string' || cwd === '') {
     return <div className="dsh-drawing">{t('error')}</div>
@@ -430,8 +530,11 @@ export function Panel(props) {
             <div className="dsh-drawing__hint">{t('textIndexMissing')}</div>
           ) : null}
 
-          <div className="dsh-drawing__stage">
-            <div className="dsh-drawing__list">
+          <div className="dsh-drawing__stage" ref={stageRef}>
+            <div
+              className="dsh-drawing__list"
+              style={listHeight === null ? undefined : { height: `${listHeight}px` }}
+            >
               {visible.map((sheet) => (
                 <div
                   key={`${sheet.cabinet}:${sheet.page}`}
@@ -449,6 +552,17 @@ export function Panel(props) {
                 <div className="dsh-drawing__muted dsh-drawing__empty">{t('noMatches')}</div>
               ) : null}
             </div>
+
+            <div
+              className="dsh-drawing__splitter"
+              role="separator"
+              aria-orientation="horizontal"
+              aria-label={t('resize')}
+              title={t('resize')}
+              tabIndex={0}
+              onPointerDown={onSplitterPointerDown}
+              onKeyDown={onSplitterKeyDown}
+            />
 
             <div className="dsh-drawing__viewer">
               {pdfUrl !== null ? (

@@ -21,6 +21,7 @@ export const zh = {
   'filter': '筛选图号 / 标题 / 页面文字',
   'matches': '页匹配',
   'noMatches': '没有匹配的图纸页',
+  'resize': '拖动调整目录高度',
   'textIndexMissing': '全文索引尚未建立：当前只按图号/标题/位号搜索。请让 agent 重新执行 drawing_open 重建索引。',
   'allCabinets': '全部电柜',
   'caveats': '注意',
@@ -49,6 +50,7 @@ export const en = {
   'filter': 'Filter sheet no. / title / page text',
   'matches': 'pages match',
   'noMatches': 'No matching sheets',
+  'resize': 'Drag to resize the sheet list',
   'textIndexMissing':
     'Full-text index not built yet — searching sheet numbers/titles/tags only. Ask the agent to re-run drawing_open to build it.',
   'allCabinets': 'All cabinets',

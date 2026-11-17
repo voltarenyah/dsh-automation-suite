@@ -54,6 +54,7 @@ DSH 插件：**电气图纸**。把一份 PDF 图纸集吃进工作区，建成�
 - PDF 引擎是 [`unpdf`](https://www.npmjs.com/package/unpdf)（MIT，3.1 MB，内含 pdf.js）。它给每个文本 run 的 `transform` + `width`，坐标与 PDFium 逐位一致；`@hyzyla/pdfium` 没有文本几何，`mupdf` 是 AGPL 不能随插件分发。
 - 打印件把每张图旋转 90°（只有 24 页针脚图是 180°），所以 `src/indexer/rules.ts` 的 `placeItem()` 负责把文本矩阵合成到显示坐标系——这是全部几何能力的入口。
 - 底栏是**自带的极简查看器**，不是浏览器内嵌 PDF：宿主用 `/drawing-viewer` 静态路由提供 pdf.js 与一个小 viewer 页（只发代码和字体，不发图纸），面板把 workspace 的 PDF 以 `blob:` 交给它。文档只解析一次，跳页走 `postMessage` 滚动定位；命中框由查看器按索引坐标叠画。查看器只有连续滚动、适宽和右下角极简 **−/+ 缩放**，没有打印/缩略图/内置搜索。
+- 目录区与图纸区之间的分隔条可拖动（也支持上下方向键）：默认高度按**横板 A4**（842×595）在面板宽度下的高度反推，让查看器正好放下整页；手动调整过的高度记在浏览器 `localStorage`，之后面板缩放只在边界内夹取，不再覆盖用户选择。
 - 索引按 `sha256 + PARSER_VERSION` 缓存，从不由查询触发重新解析。
 
 ## 开发
