@@ -47,11 +47,19 @@
 ├── knowledge/                                ← **知识图谱库**（二进制；`*.db*` 不进 git，见 §6）
 │   └── <device>/<device>_knowledge.db         ← 图谱插件从上面那棵树做的**全量重建**（D25 / 发行版 D20）
 │
+├── handoff/                                  ← **交接包**（可见；不进 git，见 §6 / §8 / D30）
+│   └── <handoffId>/
+│       ├── <project>_<yyyyMMdd-HHmm>.zap17   ← 真正发给对方的 TIA 归档
+│       ├── handoff.json                      ← 本机记录：base、sha256、备份、返回状态
+│       ├── HANDOFF.txt                       ← 可直接转发给对方的说明
+│       └── marker.json                       ← `UserFiles/_dsh-handoff.json` 的原样副本
+│
 ├── .dsh/local/                               ← **本机临时状态**（不进 git）
 │   ├── lock.json                             ← workspace 锁（TTL 15 min）
-│   └── stage/<id>/                           ← 一次同步的 STAGE：只放差异与两份文档，成功后删除
+│   ├── stage/<id>/                           ← 一次同步的 STAGE：只放差异与两份文档，成功后删除
+│   └── handoff-backups/<id>/                 ← 被替换前/导入失败时的旧 `tia/<workspace>/`（不自动删）
 │
-├── .gitignore                                ← 由 create_engineering_project 维护（只追加三条规则，§6）
+├── .gitignore                                ← 由 create / handoff_export 维护（只追加，§6）
 └── .git/                                     ← 建议：workspace 根一个仓库
 ```
 
@@ -132,6 +140,41 @@ title，没有就用目录名）：它确定、在打开任何工程之前就知
 **为什么不用它的 `sha256` 当变更键**：TIA 导出的 XML 自带 `<DocumentInfo><Created>`，重新导出就会变
 （`MANIFEST-GAP-ANALYSIS.md` §3）。清单缺失/损坏只会让下一次同步多做一次全量导出，
 **不会被当成"没有变化"**。
+
+### 2.3 `UserFiles/_dsh-handoff.json`：随归档走的出处标记
+
+`handoff_export` 在 TIA 工程目录（`.ap17` 的父目录）的 `UserFiles/` 下写一个
+`_dsh-handoff.json`，再让 TIA 以 `compressed` 模式归档。TIA 的归档是"项目文件夹的临时副本 → ZIP"，
+所以这个文件随 `.zap17` 走；导入时**先读 ZIP 里的它**，再决定是否关闭/替换受管工程。
+SaveAs 与 Retrieve 两种布局都按 `.ap17` 的实际位置解析（`tia/<workspace>/UserFiles/` 或
+`tia/<workspace>/<project>/UserFiles/`）。
+
+```jsonc
+{
+  "schemaVersion": 1,
+  "kind": "dsh-tia-handoff",
+  "handoffId": "20261119T1330-7f3a",
+  "createdAt": "2026-11-19T05:30:00.000Z",
+  "git": { "head": "4af0a95…", "branch": "main", "sourceClean": true },
+  "project": { "name": "PEI…", "tiaVersion": "17.0.0.0" },
+  "archive": { "mode": "compressed" },
+  "devices": [{
+    "device": "PEI_1", "software": "PEI_1",
+    "plcChecksum": "11 05 F8…", "stateId": "sha256:…",
+    "sourceIdentity": "sha256:…", "objectCount": 914,
+    "evidence": { /* 原样嵌入提交时的 _evidence.json，含每块指纹/F 签名 */ }
+  }]
+}
+```
+
+- **`evidence` 是权威**：它就是 `git show <head>:source/<device>/_evidence.json` 的内容；导入时
+  与本仓该 commit 的账本做规范化 JSON 深比较，不一致就拒绝（`handoff_provenance_invalid`）。
+- **`sourceIdentity`** 是对同一账本去掉 `plcChecksum`/`stateId`/`path`/`reason` 后的摘要，
+  用于跨"重新编译"比较源码身份；不是安全签名。
+- **`git.head` 是续接点**：导入要求 `HEAD == marker.git.head` 且 `source/<device>` 干净（v1 不合并
+  本机改动）；不满足就 `handoff_workspace_advanced` / `handoff_source_dirty`。
+- marker **不是防篡改凭证**。它只声明出处；真正的校验是"marker 内嵌账本 == 本仓该 commit 的账本"。
+- `handoff/<id>/marker.json` 是同一份内容的本地副本；丢了 zip 仍能查出这一包从哪一版走的。
 
 ---
 
@@ -220,9 +263,10 @@ assertInsideWith(config, workspaceRoot, candidate):
 | `source/**`（源文件树 + `_evidence.json` + `_manifest.json`） | **`tia/**`（整个目录）** | 工程是二进制，只在 TIA 里改；文本产物与账本才是可读、可 diff、可审阅的东西 |
 | `<workspace>/.gitignore` | **`knowledge/**/*.db*`（图谱库及其 SQLite 旁挂文件）** | 图谱库是 `source/` 的**全量重建派生品**、二进制且很大，重新导出即可再生 |
 | 每次 `project_sync` 的**一次提交**（路径限定 `source/<device>`） | **`.dsh/local/**`（锁 + STAGE）** | 临时状态：锁是进程间互斥，STAGE 是差异暂存；都不该出现在历史里 |
+| | **`handoff/**`（`.zap17` + 记录）** | 交付物是给对方带走的二进制；出处由 zip 内的 marker + git 提交保证，不靠这个目录 |
 | | `**/*.ap17` | 工程文件本身 |
 
-**`.gitignore` 由本插件维护，但只追加**（`create_engineering_project`，缺文件时创建并带注释头）：
+**`.gitignore` 由本插件维护，但只追加**（`create_engineering_project` 写四条；`handoff_export` 对旧 workspace 补 `handoff/`。缺文件时创建并带注释头）：
 
 ```gitignore
 # Written by @voltarenyah/dsh-engineering-context (create_engineering_project).
@@ -234,6 +278,8 @@ assertInsideWith(config, workspaceRoot, candidate):
 # (the trailing * also covers SQLite -wal / -shm / -journal side files).
 # .dsh/local/ holds this plugin's lock and STAGE directory: local runtime state that a
 # sync writes and deletes, never a versioned artifact.
+# handoff/ holds .zap17 archives and their records: deliverables to send, not source.
+# handoff_export appends that line on the first export.
 tia/
 knowledge/**/*.db*
 .dsh/local/
@@ -303,7 +349,10 @@ knowledge/**/*.db*
 | `knowledge/<device>/<device>_knowledge.db`（及其 `-wal` / `-shm` / `-journal` 旁挂文件） | 图谱插件（经 `knowledgeGraph.ingestDevice`，本插件只触发） | ❌（`*.db*`） | 可以（全量重建即可，大工程分钟级） |
 | `<workspace>/.dsh/local/lock.json` | `project_sync` / `project_status` 读、`project_sync` 写（TTL 15 min） | ❌（`.dsh/local/`） | 可以（进程真的不在了就删） |
 | `<workspace>/.dsh/local/stage/<id>/` | 接口插件的 `SyncScan` 写，`project_sync` 提升后删除 | ❌（`.dsh/local/`） | 可以（只是暂存） |
-| `<workspace>/.gitignore` | `create_engineering_project`（只追加三行） | ✅ | 可以（下次调用会重建缺的行） |
+| `<workspace>/.gitignore` | `create_engineering_project`（四条规则：`tia/`、`knowledge/**/*.db*`、`.dsh/`、`handoff/`）+ `handoff_export`（旧 workspace 补 `handoff/`） | ✅ | 可以（下次调用会重建缺的行） |
+| `<workspace>/handoff/<id>/*.zap17` | 调用方经 `archive_project`（TIA）写出 | ❌（`handoff/`） | 可以（发出去后由用户决定） |
+| `<workspace>/handoff/<id>/{handoff.json,HANDOFF.txt,marker.json}` | `handoff_export` / `handoff_import` | ❌（`handoff/`） | 可以（丢的是本机记录，zip 里的 marker 仍在） |
+| `<workspace>/.dsh/local/handoff-backups/<id>/previous-tia/` | `handoff_import` 移动旧工程 | ❌（`.dsh/local/`） | **不要自动删**：它是导入失败/回滚的唯一副本 |
 | `_dsh-eng/**`（P3 台账） | **尚未实现**；路径待定 | — | — |
 
 > **删掉注册表之后**：workspace 里"有哪些工程"不再由任何文件登记，而是**目录布局本身**就是记录
@@ -318,6 +367,7 @@ knowledge/**/*.db*
 | `tiaDirName` | `tia` | 工程本体目录名（必须是单个安全路径段，否则回退默认） |
 | `sourceDirName` | `source` | 源文件树目录名（同上） |
 | `stateDirName` | `.dsh` | 本机临时状态目录名；锁与 STAGE 落在 `<stateDirName>/local/`（同上） |
+| `handoffDirName` | `handoff` | 交接包目录名（必须是单个安全路径段，否则回退默认） |
 | `requireWorkspace` | `true` | `true` 时越界一律拒绝；`false` 仅用于测试 |
 
 ---

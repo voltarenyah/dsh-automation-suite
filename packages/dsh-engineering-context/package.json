@@ -19,6 +19,9 @@
     "./status": {
       "default": "./lib/status-entry.js"
     },
+    "./handoff": {
+      "default": "./lib/handoff-entry.js"
+    },
     "./version": {
       "default": "./lib/version-entry.js"
     },
@@ -59,7 +62,8 @@
   },
   "dependencies": {
     "@e965/xlsx": "^0.20.3",
-    "fast-xml-parser": "^5.11.2"
+    "fast-xml-parser": "^5.11.2",
+    "fflate": "^0.8.3"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",

@@ -942,3 +942,47 @@ commit 的 `Reference` 2 项、入口/工具数 7 项）；接口插件 112 项�
 force 必扫）。**真机（F-CPU 工程）未复测**：下一步要用 `SWT2_PEI_FJib_Hold` 或同类工程
 实测"只改一个 F 块 → `project_sync(force=true)` → `changed≥1` / 账本变化 → `project_commit` 成功"，
 并记录 force 的真实耗时。
+
+---
+
+## D30. 交接工作流：`UserFiles` marker + `compressed` 归档 + git base 校验（v1 不合并）
+
+**背景**：工程要交给另一位工程师调试，对方拿到的是 `.zap17`；回来时必须当作“基于某一版的
+外部改动”继续版本历史，而不是“一个陌生工程”。手工解压/替换/扫描容易丢基线。
+
+**决定**：
+
+1. **交接包是可见目录** `<workspace>/handoff/<handoffId>/`，里面只有
+   `<project>_<yyyyMMdd-HHmm>.zap17` 是对外交付物；`handoff.json` / `HANDOFF.txt` /
+   `marker.json` 是本机记录与说明。整个目录进 `.gitignore`（新建 workspace 由 `create_engineering_project` 写；旧 workspace 由 `handoff_export` 首次追加），
+   因为 zip 是交付二进制、记录含本机路径；持久出处是 zip 内的 marker + git 提交。
+2. **marker 放 TIA 工程目录的 `UserFiles/_dsh-handoff.json`**，不是项目根：`UserFiles` 是 TIA
+   已知的用户文件目录，实测能随归档到另一台机器并原样取出；归档以 `compressed` 模式写出，
+   导出后**从 ZIP 里读回 marker** 验证它真的在包里，否则导出失败。
+3. **marker 嵌入提交时的完整 `_evidence.json`**（每块指纹 / F 签名 / checksum / stateId），
+   外加 `git.head` / `branch` / `sourceClean`、工程名与 TIA 版本、`handoffId`。导入时用
+   `git show <head>:source/<device>/_evidence.json` 做规范化 JSON 深比较；不靠 marker 自说自话。
+   `sourceIdentity` 是去掉 checksum 后的源码身份摘要，只用于快速比较，不是安全签名。
+4. **只允许 `compressed`（或 `discard_restorable_data_and_compressed`）**：`None` /
+   `DiscardRestorableData` 产出的是**文件夹**，Openness `Projects.Retrieve` 取不回。v1 写死
+   `compressed`，因为它保留编译状态/HMI 编译结果；`discard` 的体积优势留到实测 marker 与
+   PLC checksum 都保留之后再作为显式选项。
+5. **v1 不合并本机改动**：导入要求 `HEAD == marker.git.head` 且 `source/<device>` 干净；
+   否则 `handoff_workspace_advanced` / `handoff_source_dirty`。块级三方合并（一文件一块 + 指纹）
+   是明确的 v2，不在导入时偷偷做。
+6. **未编译就停**：取回并打开后读 checksum；`checksum_unavailable` → 记录
+   `awaiting_compile`，新工程保持打开，用户在 TIA 手动编译后 agent 直接跑
+   `project_sync(force: true)`。导入**从不自动 compile**（F-CPU 的安全激活/口令不可控）。
+7. **旧工程只移动、不删除**：`tia/<workspace>/` → `.dsh/local/handoff-backups/<id>/previous-tia/`；
+   取回失败时尽量移回。备份不自动清理。
+8. **工具面**：`handoff_export` / `handoff_import` / `handoff_status` 挂在独立入口
+   `/handoff`（auditor）；`handoff_status` 另挂在 `/status`（leader 只读）。主入口不增加工具。
+
+**代价/边界**：`.zap17` 是 100+ MB 的交付二进制，`handoff/` 会随次数增长；只覆盖 PLC 软件
+（块/类型/标签表），HMI/硬件/安全设置的改动不在本工作流的版本视野内；只支持 V17（V18/V20 归档
+取不回）；marker 可被改/删，但校验失败会拒绝而不是猜测。
+
+**验证**：本包新增 `test/21-handoff.test.mjs` 7 项（marker/ZIP 往返、status、export plan/run、
+import plan、HEAD 前进拒绝、未编译停在 awaiting_compile），全套 **165 项全通过**。
+真机“TIA 归档带 `UserFiles` marker → 另一台机器取回 → 再归档回来”的往返仍需在 app 的控制器上
+跑一次（本会话的 shell 非提权，TIA Openness 连接失败，不能作为验收）。

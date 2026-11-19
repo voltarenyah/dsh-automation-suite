@@ -34,7 +34,7 @@ DeepSeek Harness 插件（**工程上下文插件**）：把一个 **TIA Portal 
 **不再有注册表**：workspace 里"有哪些工程"由目录布局本身回答（`tia/` 与 `source/` 下有什么），
 没有 `_dsh-eng/projects.json`，也没有"当前工程"指针（D22 的刻意取舍）。
 
-## 2. 工具（7 个，另有一个只挂 `project_diff` 的独立入口，外加版本库的 8 个工具）
+## 2. 工具（主入口 7 个 + 独立的 `/diff`、`/handoff`，外加版本库的 8 个工具）
 
 | 工具 | 干什么 | 写？ |
 |---|---|---|
@@ -45,6 +45,16 @@ DeepSeek Harness 插件（**工程上下文插件**）：把一个 **TIA Portal 
 | `workspace_describe` | 只读描述**任意** workspace（默认当前会话工作区，也可传 `workspace_path`）：索引里的工程身份与角色、每台设备的 XML 数、清单/账本、知识库大小与新鲜度、硬件 AML、git HEAD 与未提交改动。**不打开 TIA、不启动控制器、不写任何东西** —— 所以能描述一个正在被别的会话使用、或根本没开 TIA 的参照工程（发行版 [`reference-project.md`](../../docs/reference-project.md) §15） | 否 |
 | `import_preflight` | 导入前预检一批 Simatic ML XML：语言 culture 是否在目标工程激活、批次内重名、目标里已存在的同名对象、依赖是否在批次/目标里（含类型先后顺序），并给出建议导入顺序。读 XML + 读目标工程的**语言设置与对象清单**（经接口插件的 `readProjectLanguages` / `listObjects` 缝）；TIA 没开工程时退化为只查 XML 并说明跳过了哪些检查。**不查块号**（TIA 导入时自动分配）、**不查网络里的调用**、不导入 | 否 |
 | `project_translate` | 项目文本翻译工作流：`plan` 按 source/target 导出官方 project-texts XLSX、筛选/去重并写 `jobs.jsonl`/`selected.jsonl`；模型翻译后 `apply` 只写 target 列、归档、导入、再导出验证，并比较块指纹（只允许 `Comments` 变）。F 块按 `programmingLanguage=F_*` 排除。导入不可回滚，`archive` 默认开；本工具**不激活语言**，target 未激活时返回 `target_language_inactive`，需用户许可后由 `project_languages` 激活。依赖 `@e965/xlsx`（SheetJS fork，读取 TIA 的非标准 OOXML） | 是（导入 + 归档；`apply` 默认不保存） |
+
+**交接（`/handoff` 挂全部 3 个；`/status` 只额外挂只读的 `handoff_status`）**：
+
+| 工具 | 干什么 | 写？ |
+|---|---|---|
+| `handoff_export` | 把 TIA 当前打开的受管工程封成 `.zap17` 交给别人：先要求工程已保存/已编译、源树干净、强制同步报告 `unchanged`，再把出处标记写到工程目录的 `UserFiles/_dsh-handoff.json`，以 `compressed` 模式归档到 `<workspace>/handoff/<id>/<project>_<yyyyMMdd-HHmm>.zap17`，**从 ZIP 读回标记**确认它真的在包里，最后写 `handoff.json` / `HANDOFF.txt` / `marker.json` 并追加 `handoff/` 忽略规则。默认只给计划（不打开/不写） | 是（标记、归档、记录、`.gitignore`） |
+| `handoff_import` | 收到返回的 `.zap17`：**先不碰 TIA**，读 ZIP 里的 marker 与 `.ap17`，校验版本/工程名，并用本仓该 commit 的 `_evidence.json` 证明 marker 没撒谎；v1 要求 `HEAD == marker.git.head` 且源树干净。真跑时关闭旧工程、把旧 `tia/<workspace>/` 移到 `.dsh/local/handoff-backups/<id>/previous-tia/`、取回、更新索引；PLC 已编译则强制同步并把差异留给 `project_diff` / `project_commit`，未编译则停在 `awaiting_compile` 让用户手动编译。失败时尽量把旧工程移回 | 是（关闭/移动/取回/索引/可选同步；从不提交、从不编译） |
+| `handoff_status` | 只读列出 `handoff/<id>/` 的包：状态、base、归档大小/路径/是否还在、旧工程备份是否存在、是否在等编译。`project_status` 仍然只读 | 否 |
+
+**交接的硬约束**：只支持 TIA V17 的 `compressed` 归档（`None` / `DiscardRestorableData` 产出的是文件夹，Openness 取不回）；marker 不是防篡改签名，真正的校验是“marker 内嵌账本 == 本仓该 commit 的账本”；v1 不合并本机在交接期间的新提交，遇到就拒绝（`handoff_workspace_advanced`）。
 
 **版本库（`/version` 挂全部 8 个；`/version-read` 只挂只读的 5 个）**：
 

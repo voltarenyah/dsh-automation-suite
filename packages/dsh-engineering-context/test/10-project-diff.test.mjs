@@ -649,12 +649,19 @@ test('the diff entry registers exactly one tool; the main entry never registers 
   // only, none of the version workflow (D30).
   const { ctx: statusCtx, definitions: statusDefinitions } = createTestContext()
   statusEntry.apply(statusCtx, {})
-  assert.deepEqual(statusDefinitions.map((definition) => definition.name), [STATUS, 'workspace_describe', 'import_preflight'])
+  assert.deepEqual(statusDefinitions.map((definition) => definition.name), [
+    STATUS,
+    'workspace_describe',
+    'import_preflight',
+    'handoff_status',
+  ])
 
   const pkg = JSON.parse(await readFile(join(packageRoot, 'package.json'), 'utf8'))
   assert.deepEqual(pkg.exports['./diff'], { default: './lib/diff-entry.js' })
   assert.deepEqual(pkg.exports['./status'], { default: './lib/status-entry.js' })
+  assert.deepEqual(pkg.exports['./handoff'], { default: './lib/handoff-entry.js' })
   assert.equal(typeof pkg.dependencies['fast-xml-parser'], 'string')
+  assert.equal(typeof pkg.dependencies.fflate, 'string')
 })
 
 test('the presets mount project_diff for the Auditor and Expert, never for the Leader', async () => {
@@ -676,14 +683,17 @@ test('the presets mount project_diff for the Auditor and Expert, never for the L
   assert.ok(expertStart > auditorStart, 'the auditor block precedes the expert block')
 
   const diffRow = '@voltarenyah/dsh-engineering-context/diff'
+  const handoffRow = '@voltarenyah/dsh-engineering-context/handoff'
   const mainRow = /name:\s*'@voltarenyah\/dsh-engineering-context'/u
   const leaderBlock = yaml.slice(leaderStart, auditorStart)
   assert.equal(leaderBlock.includes(diffRow), false, 'the Leader must not mount the diff entry')
   assert.match(leaderBlock, /- id: leader-engineering-status/u)
+  assert.equal(leaderBlock.includes(handoffRow), false, 'the Leader must not mount handoff export/import')
   assert.equal(mainRow.test(leaderBlock), false, 'the Leader must not mount the version workflow')
 
   const auditorBlock = yaml.slice(auditorStart, expertStart)
   assert.equal(auditorBlock.includes(diffRow), true, 'the Auditor must mount the diff entry')
+  assert.equal(auditorBlock.includes(handoffRow), true, 'the Auditor mounts the handoff entry')
   assert.equal(mainRow.test(auditorBlock), true, 'the Auditor keeps the create/status/sync/commit row')
 
   const expertBlock = yaml.slice(expertStart)

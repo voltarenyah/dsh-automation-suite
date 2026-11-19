@@ -91,6 +91,46 @@ export type EngineeringErrorCode =
   | 'archive_failed'
   /** Project-text import failed or returned state=Error. */
   | 'project_text_import_failed'
+  /** The handoff archive named by the caller does not exist. */
+  | 'handoff_archive_not_found'
+  /** The handoff archive is not a readable ZIP, or does not contain a project. */
+  | 'handoff_archive_invalid'
+  /** The archive does not carry `UserFiles/_dsh-handoff.json`. */
+  | 'handoff_marker_missing'
+  /** The marker exists but is not a valid handoff marker. */
+  | 'handoff_marker_invalid'
+  /** The marker does not match the committed evidence at its base commit. */
+  | 'handoff_provenance_invalid'
+  /** The workspace HEAD moved past the handoff base; v1 refuses to merge. */
+  | 'handoff_workspace_advanced'
+  /** The source tree has uncommitted changes; the handoff base is not the tree on disk. */
+  | 'handoff_source_dirty'
+  /** The archive's project does not match the marker or the managed project. */
+  | 'handoff_project_mismatch'
+  /** The archive was not written by TIA Portal V17. */
+  | 'handoff_version_unsupported'
+  /** The open project has unsaved changes, so it cannot be archived or replaced safely. */
+  | 'handoff_project_modified'
+  /** The interface plugin could not force-scan, so F-only changes may be invisible. */
+  | 'handoff_force_scan_unsupported'
+  /** The project TIA has open is not inside this workspace's `tia/` directory. */
+  | 'handoff_project_outside_workspace'
+  /** TIA refused to write the handoff archive. */
+  | 'handoff_archive_failed'
+  /** TIA refused to retrieve the handoff archive. */
+  | 'handoff_retrieve_failed'
+  /** TIA refused to close the project that is about to be replaced. */
+  | 'handoff_close_failed'
+  /** Moving the old project aside failed (usually a file still held by TIA). */
+  | 'handoff_backup_failed'
+  /** Restoring the old project after a failed retrieval failed. */
+  | 'handoff_restore_failed'
+  /** Updating the source index after a retrieval failed. */
+  | 'handoff_index_failed'
+  /** The requested handoff record does not exist. */
+  | 'handoff_record_not_found'
+  /** A handoff import has already swapped the project and must be resumed, not restarted. */
+  | 'handoff_already_imported'
 
 /**
  * A failure with a stable code and machine-readable details.

@@ -912,20 +912,23 @@ test('an existing source tree is announced rather than silently skipped', async 
 })
 
 test('the ignore rules are created, appended or left alone — the file is never rewritten', async (t) => {
-  // Missing file: created with all three rules (the project TIA owns, the
-  // databases the graph plugin derives from the source tree, and local state).
+  // Missing file: created with all four rules (the project TIA owns, the
+  // databases the graph plugin derives from the source tree, local state, and
+  // the handoff packages directory).
   const fresh = await tempWorkspace(t)
   const freshOutcome = assertEnvelope(await executeTool(setup().tool, { dry_run: false }, fakeExec(fresh)))
   const created = await readFile(join(fresh, '.gitignore'), 'utf8')
   assert.match(created, /^tia\/$/mu)
   assert.match(created, /^knowledge\/\*\*\/\*\.db\*$/mu)
   assert.match(created, /^\.dsh\/$/mu)
+  assert.match(created, /^handoff\/$/mu)
   assert.equal(freshOutcome.data.ignore.action, 'created')
-  assert.deepEqual(freshOutcome.data.ignore.added, ['tia/', 'knowledge/**/*.db*', '.dsh/'])
+  assert.deepEqual(freshOutcome.data.ignore.added, ['tia/', 'knowledge/**/*.db*', '.dsh/', 'handoff/'])
   assert.deepEqual(freshOutcome.data.ignore.rules, [
     { rule: 'tia/', present: false },
     { rule: 'knowledge/**/*.db*', present: false },
     { rule: '.dsh/', present: false },
+    { rule: 'handoff/', present: false },
   ])
 
   // Existing file without the rules: the user's lines survive, all three rules are appended.
@@ -938,6 +941,7 @@ test('the ignore rules are created, appended or left alone — the file is never
   assert.match(appended, /^tia\/$/mu)
   assert.match(appended, /^knowledge\/\*\*\/\*\.db\*$/mu)
   assert.match(appended, /^\.dsh\/$/mu)
+  assert.match(appended, /^handoff\/$/mu)
   assert.equal(appendedOutcome.data.ignore.action, 'appended')
 
   // Running twice must not append any rule twice, and the second run reports
@@ -947,6 +951,7 @@ test('the ignore rules are created, appended or left alone — the file is never
   assert.equal(twice.match(/^tia\/$/gmu).length, 1)
   assert.equal(twice.match(/^knowledge\/\*\*\/\*\.db\*$/gmu).length, 1)
   assert.equal(twice.match(/^\.dsh\/$/gmu).length, 1)
+  assert.equal(twice.match(/^handoff\/$/gmu).length, 1)
   assert.equal(twiceOutcome.data.ignore.action, 'unchanged')
   assert.deepEqual(twiceOutcome.data.ignore.added, [])
 
@@ -960,7 +965,8 @@ test('the ignore rules are created, appended or left alone — the file is never
   assert.equal(repaired.match(/tia\//gmu).length, 1, 'the existing spelling is not duplicated')
   assert.match(repaired, /^knowledge\/\*\*\/\*\.db\*$/mu)
   assert.match(repaired, /^\.dsh\/$/mu)
-  assert.deepEqual(halfOutcome.data.ignore.added, ['knowledge/**/*.db*', '.dsh/'])
+  assert.match(repaired, /^handoff\/$/mu)
+  assert.deepEqual(halfOutcome.data.ignore.added, ['knowledge/**/*.db*', '.dsh/', 'handoff/'])
 
   // A workspace that already ignores the database without its SQLite side files
   // gets the wider rule appended; the narrower line is left where the user put it.
@@ -969,7 +975,7 @@ test('the ignore rules are created, appended or left alone — the file is never
   const narrowerOutcome = assertEnvelope(await executeTool(setup().tool, { dry_run: false }, fakeExec(narrower)))
   const upgraded = await readFile(join(narrower, '.gitignore'), 'utf8')
   assert.match(upgraded, /^knowledge\/\*\*\/\*\.db\*$/mu)
-  assert.deepEqual(narrowerOutcome.data.ignore.added, ['knowledge/**/*.db*', '.dsh/'])
+  assert.deepEqual(narrowerOutcome.data.ignore.added, ['knowledge/**/*.db*', '.dsh/', 'handoff/'])
 })
 
 test('the target dirs do not depend on the project name, which is only the recorded identity', async (t) => {

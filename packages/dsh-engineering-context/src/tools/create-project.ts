@@ -46,6 +46,7 @@ import {
 } from '../access.js'
 import {
   evidencePathForDevice,
+  handoffIgnoreRule,
   knowledgeIgnoreRule,
   KNOWLEDGE_DIR_NAME,
   manifestPathForDevice,
@@ -400,6 +401,10 @@ function ignoreRules(config: PluginConfig): IgnoreRuleSpec[] {
       rule: versionIgnoreRule(config),
       purpose: 'Local state (lock, STAGE, version store): derived per machine, never committed.',
     },
+    {
+      rule: handoffIgnoreRule(config),
+      purpose: 'Handoff packages: .zap17 archives and their records are deliverables, not source.',
+    },
   ]
 }
 
@@ -461,6 +466,7 @@ async function applyIgnoreRules(ignore: IgnoreFile): Promise<IgnoreAction> {
       '# (the trailing * also covers SQLite -wal / -shm / -journal side files).',
       '# .dsh/local/ holds this plugin\'s lock and STAGE directory: local runtime state that a',
       '# sync writes and deletes, never a versioned artifact.',
+      '# handoff/ holds .zap17 archives and their records: deliverables to send, not source.',
       ...added,
       '',
     ].join('\n')

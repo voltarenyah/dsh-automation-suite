@@ -121,6 +121,28 @@ export async function runSync(
   exec: ToolRunContext,
   options: { forceScan?: boolean } = {},
 ): Promise<SyncRunResult> {
+  return await withLock(
+    scope.workspace.path,
+    'sync',
+    async () => await runSyncUnlocked(scope, access, device, exec, options),
+    scope.config.stateDirName,
+  )
+}
+
+/**
+ * The unlocked body of a sync.
+ *
+ * Callers that already hold the workspace lock (the handoff workflow wraps the
+ * swap, the retrieval and the sync in one lock) call this directly; everything
+ * else calls {@link runSync}. It still refuses a service without syncScan.
+ */
+export async function runSyncUnlocked(
+  scope: ResolvedScope,
+  access: EngineeringAccessLike,
+  device: DeviceInfo,
+  exec: ToolRunContext,
+  options: { forceScan?: boolean } = {},
+): Promise<SyncRunResult> {
   if (typeof access.syncScan !== 'function') {
     throw new EngineeringContextError(
       'tia_access_unavailable',
@@ -129,8 +151,7 @@ export async function runSync(
     )
   }
 
-  return await withLock(scope.workspace.path, 'sync', async () => {
-    const root = scope.workspace.path
+  const root = scope.workspace.path
     await ensureRepository(root)
 
     const evidenceFile = evidencePathForDevice(device.directory)
@@ -316,7 +337,6 @@ export async function runSync(
     } finally {
       await rm(stageDir, { recursive: true, force: true }).catch(() => undefined)
     }
-  }, scope.config.stateDirName)
 }
 
 /** Re-exported for callers that want the entry type without importing the module. */

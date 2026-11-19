@@ -31,10 +31,11 @@
 #        dsh-engineering-graph 提供 `knowledgeGraph` + C# 引擎；
 #        它们的**模型面工具**已经拆到各自的 `/tools` 子路径行，由 preset 声明。
 #      • `dsh-engineering-context` 没有宿主面资源，所以宿主面这一行显式 `disabled: true`；
-#        它的三个入口由 preset 分开挂：
+#        它的四个入口由 preset 分开挂：
 #          - `.`（create/status/sync/commit）→ 只给 `auditor`；
 #          - `/diff`（project_diff）        → 给 `auditor` 与 `expert`；
-#          - `/status`（project_status）    → 只给 `leader`（只读的派发前检查）。
+#          - `/status`（project_status 等）  → 只给 `leader`（只读的派发前检查）；
+#          - `/handoff`（导出/导入/状态）     → 只给 `auditor`（要动 TIA 与百 MB 目录）。
 #      ⇒ 后果（有意为之）：一个会话能用哪些工程工具，取决于它的 preset。切到没有
 #        声明这些行的内置 preset（standard / minimal / …）时，这些工具**不存在**。
 #      ⇒ 版本工作流**只有 auditor 有**：leader 想创建工程、同步、看差异、提交，都只能派发。
@@ -655,6 +656,8 @@
             name: '@voltarenyah/dsh-engineering-context/version'
           - id: auditor-project-diff
             name: '@voltarenyah/dsh-engineering-context/diff'
+          - id: auditor-handoff
+            name: '@voltarenyah/dsh-engineering-context/handoff'
           - id: auditor-graph-tools
             name: '@voltarenyah/dsh-engineering-graph/tools'
             config:

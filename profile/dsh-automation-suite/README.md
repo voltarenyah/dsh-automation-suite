@@ -12,7 +12,7 @@
 | `@deepseek-ai/dsh-base` | DSH 基础层（会话、工具注册表、LLM……） |
 | `@deepseek-ai/dsh-web-app` | Web 应用层 —— 没有它这个 profile 启动后没有 app 可跑 |
 | `@voltarenyah/dsh-tia-openness-v17-min` | 接口插件族：TIA 控制器子进程 + `engineeringAccess` 服务（**模型面工具已拆到 `/tools` 子路径行**，见下节） |
-| `@voltarenyah/dsh-engineering-context` | 工程上下文插件：`create_engineering_project` / `project_status` / `project_sync`。**没有宿主面资源**，所以宿主面这一行被 `disabled: true`，整行搬进 `leader` 与 `auditor` preset |
+| `@voltarenyah/dsh-engineering-context` | 工程上下文插件：`create_engineering_project` / `project_status` / `project_sync` / `project_commit`，外加 `project_diff`、版本库与交接（`handoff_export` / `handoff_import` / `handoff_status`）。**没有宿主面资源**，所以宿主面这一行被 `disabled: true`，各入口由 preset 分开挂 |
 | `@voltarenyah/dsh-engineering-graph` | 工程知识图谱插件：C# 引擎子进程 + `knowledgeGraph` 服务（**模型面工具同样拆到 `/tools`**） |
 | `dsh-tool-git` | 结构化 Git 工具族 + `gitContext` 服务 + 破坏性命令闸门（vendor 自上游 `lxj808624/dsh-tool-git` v0.1.3）。**模型面工具已拆到 `dsh-tool-git/tools`，只挂 `leader`**；`expert` / `auditor` 看不到 |
 | `dsh-ui-plc-source` | **纯 UI 插件**：右侧栏多一个 **PLC Blocks** 标签页（读 `source/<device>/_manifest.json`，按 device 与 simaticType 筛选，点行打开既有文档预览）。宿主半侧是空 `apply()`，**不注册任何模型可见的东西**；必须在 `dsh-web-app` 之后，浏览器半侧才拿得到客户端座位 |
@@ -80,8 +80,8 @@
 
 | preset | 谁用 | 工具面 |
 |---|---|---|
-| **`leader`** | 主 agent | 内置 `standard` 的全部工具 + **编辑与检查面**：TIA 26、工程上下文 `project_status` 1、图谱 5（`includeIngest: false, includeDrilldown: inspect`）、git 12。**没有** create / sync / commit / diff / ingest（D30） |
-| **`auditor`** | 版本管理子 agent（leader 派它跑慢活） | 工程上下文 4（`create_engineering_project` / `project_status` / `project_sync` / `project_commit`）+ `project_diff` + 图谱 5（`includeIngest: true, includeDrilldown: none`）+ 只读 `read`/`read_image`/`glob`/`grep` + `ask_user_question` + `send_message`/`interrupt_agent` + `todo` + `time-context` + `compaction` |
+| **`leader`** | 主 agent | 内置 `standard` 的全部工具 + **编辑与检查面**：TIA 26、工程上下文只读 4（`project_status` / `workspace_describe` / `import_preflight` / `handoff_status`）、图谱 5（`includeIngest: false, includeDrilldown: inspect`）、git 12。**没有** create / sync / commit / diff / handoff 导出导入 / ingest（D30） |
+| **`auditor`** | 版本管理子 agent（leader 派它跑慢活） | 工程上下文 4（`create_engineering_project` / `project_status` / `project_sync` / `project_commit`）+ `project_diff` + handoff 3（`handoff_export` / `handoff_import` / `handoff_status`）+ 图谱 5（`includeIngest: true, includeDrilldown: none`）+ 只读 `read`/`read_image`/`glob`/`grep` + `ask_user_question` + `send_message`/`interrupt_agent` + `todo` + `time-context` + `compaction` |
 | **`expert`** | 子 agent（`subagent` 的默认 preset） | **只读**：图谱 `knowledge_workspace` / `knowledge_schema` / `knowledge_query` + 四个下钻工具（`includeIngest: false, includeDrilldown: all`）、`project_diff`、`read`/`read_image`/`glob`/`grep`、`send_message`/`interrupt_agent`、`ask_user_question`（读源码审批，D29）、`time-context`、`compaction` |
 
 `auditor` **没有**：`pwsh`/`bash`、TIA 26 个原子工具（import/compile 是 leader 的编辑环）、
@@ -109,9 +109,10 @@ DSH 的工具可见性是**按声明作用域**解析的（`dsh-tools` 的 `view
 - **模型面工具行由 preset 声明**：`@voltarenyah/dsh-tia-openness-v17-min/tools`、
   `@voltarenyah/dsh-engineering-graph/tools`、`dsh-tool-git/tools`。哪个 preset 写了这一行，
   它名下的 agent 才有这些工具。
-- **`dsh-engineering-context` 没有宿主面资源**，所以它的三个入口由 preset 分开挂：
+- **`dsh-engineering-context` 没有宿主面资源**，所以它的四个入口由 preset 分开挂：
   `.`（create/status/sync/commit）只给 `auditor`，`/diff` 给 `auditor` 与 `expert`，
-  `/status` 只给 `leader`；宿主面那份 `disabled: true`（否则这些工具会落在全局层被所有 agent 继承）。
+  `/status` 只给 `leader`，`/handoff`（导出/导入/状态）只给 `auditor`；
+  宿主面那份 `disabled: true`（否则这些工具会落在全局层被所有 agent 继承）。
   这个拆分本身是政策（D30）：**版本工作流只有 auditor 有**，leader 想创建/同步/看差异/提交，只能派发。
 
 ⇒ 一个会话能用哪些工程工具，取决于它的 preset。内置 preset 默认已禁用；若手动恢复并切过去，

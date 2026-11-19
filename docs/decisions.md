@@ -1415,3 +1415,36 @@ WebView2 与终端里起的 `dsh web`，两者都是回环，"本地有人"这�
 - 快照仍绑定当前机器与 PLCSIM Advanced 大版本；跨环境按"重新下载 + 重新快照"处理。
 - 专项仿真项目若重启，按 `simulation-workspaces.md` §8 的形态与四个前置问题重新评估。
 
+
+---
+
+## D38 · 交接工作流 v1：`UserFiles` marker + `compressed` 归档 + git base 校验 ✅
+
+**背景**：受管 TIA 工程要交给另一位工程师调试，对方只拿到 `.zap17`；回来时必须作为
+"基于某一版的外部改动"继续 git 历史，而不是"陌生工程"。手工解压/替换/扫描容易丢基线。
+
+**决定**（细节与验收见 `packages/dsh-engineering-context/docs/decisions.md` D30）：
+
+1. **交付包可见**：`<workspace>/handoff/<handoffId>/<project>_<yyyyMMdd-HHmm>.zap17`，
+   旁边 `handoff.json` / `HANDOFF.txt` / `marker.json`；整个 `handoff/` 进 workspace `.gitignore`（新建 workspace 由 create 写；旧 workspace 由 export 补）
+   （首次导出追加）。文件名只带工程名和时间，避免在对方机器上解压时总路径过长。
+2. **marker 放工程目录的 `UserFiles/_dsh-handoff.json`**，不放在项目根/AdditionalFiles；它随
+   `compressed` 归档往返。导出后**从 ZIP 读回 marker** 验证，否则导出失败。
+3. **marker 嵌入提交时的完整 `_evidence.json`**（每块指纹/F 签名/checksum/stateId）+ `git.head`
+   + 工程名/TIA 版本。导入时用 `git show <head>:source/<device>/_evidence.json` 深比较；不靠
+   marker 自说自话。marker 不是防篡改签名。
+4. **只支持 V17、只支持 `compressed`**：`None` / `DiscardRestorableData` 产出文件夹，Openness
+   取不回；`discard_restorable_data_and_compressed` 的体积优势留到实测 marker 与 PLC checksum
+   都保留之后再作为显式选项。
+5. **v1 不合并本机改动**：`HEAD == marker.git.head` 且 `source/<device>` 干净，否则拒绝
+   （`handoff_workspace_advanced` / `handoff_source_dirty`）；块级三方合并是 v2。
+6. **未编译就停**：`awaiting_compile`，工程保持打开，用户手动编译后 agent 跑
+   `project_sync(force: true)`；导入从不自动 compile。
+7. **旧工程只移动、不删除**：`.dsh/local/handoff-backups/<id>/previous-tia/`；取回失败尽量移回。
+8. **工具面**：`handoff_export` / `handoff_import` / `handoff_status` 挂 `/handoff`（auditor），
+   `handoff_status` 另挂 `/status`（leader 只读）。
+
+**后果**：只覆盖 PLC 软件；HMI/硬件/安全设置改动不在版本视野；`handoff/` 与备份会随次数增长，
+不自动清理；真机"归档带 UserFiles marker → 另一台机器取回 → 再归档回来"的往返仍需在 app 的
+控制器上验收（本会话 shell 非提权，TIA Openness 连接失败）。
+

@@ -36,6 +36,8 @@ export interface PluginConfig {
    * and manifest are committed with the XML, but the temporary stage is not.
    */
   stateDirName: string
+  /** Directory holding handoff packages (archives and their records), relative to the workspace root. */
+  handoffDirName: string
   /**
    * When true (the default) any path outside the workspace root is refused.
    * Only a test harness has a reason to set it to false.
@@ -48,6 +50,7 @@ export const configDefaults: PluginConfig = {
   tiaDirName: 'tia',
   sourceDirName: 'source',
   stateDirName: '.dsh',
+  handoffDirName: 'handoff',
   requireWorkspace: true,
 }
 
@@ -56,6 +59,7 @@ export const Config = Schema.object({
   tiaDirName: Schema.string().default(configDefaults.tiaDirName),
   sourceDirName: Schema.string().default(configDefaults.sourceDirName),
   stateDirName: Schema.string().default(configDefaults.stateDirName),
+  handoffDirName: Schema.string().default(configDefaults.handoffDirName),
   requireWorkspace: Schema.boolean().default(configDefaults.requireWorkspace),
 })
 
@@ -107,6 +111,7 @@ export function resolveConfig(config?: Partial<PluginConfig>): PluginConfig {
     tiaDirName: segment(source.tiaDirName, configDefaults.tiaDirName),
     sourceDirName: segment(source.sourceDirName, configDefaults.sourceDirName),
     stateDirName: segment(source.stateDirName, configDefaults.stateDirName),
+    handoffDirName: segment(source.handoffDirName, configDefaults.handoffDirName),
     requireWorkspace:
       typeof source.requireWorkspace === 'boolean' ? source.requireWorkspace : configDefaults.requireWorkspace,
   }
@@ -248,4 +253,33 @@ export const KNOWLEDGE_DIR_NAME = 'knowledge'
  */
 export function knowledgeIgnoreRule(): string {
   return `${KNOWLEDGE_DIR_NAME}/**/*.db*`
+}
+
+
+/**
+ * Absolute directory holding the handoff packages of this workspace.
+ *
+ * It is a **visible** top-level directory (default `handoff/`), not the hidden
+ * `.dsh/local/` state: the archive is a deliverable the user has to find and
+ * send, while the local state is runtime scratch. One subdirectory per handoff
+ * keeps the package, its record and the human instructions together.
+ *
+ * @param config - the resolved configuration.
+ * @param workspaceRoot - the canonical workspace root.
+ */
+export function handoffDirectoryPath(config: PluginConfig, workspaceRoot: string): string {
+  return join(workspaceRoot, config.handoffDirName)
+}
+
+/**
+ * The `.gitignore` line that keeps handoff packages out of version control.
+ *
+ * The `.zap17` archive is a delivered binary, and `handoff.json` carries machine
+ * paths that are only meaningful on this machine. The durable provenance is the
+ * marker inside the archive plus the git commit, not this directory.
+ *
+ * @param config - the resolved configuration.
+ */
+export function handoffIgnoreRule(config: PluginConfig): string {
+  return `${config.handoffDirName}/`
 }

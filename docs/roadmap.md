@@ -15,7 +15,7 @@
 | 名称 | 对应层 | 状态 | 落地位置 |
 |---|---|---|---|
 | 工控软件接口插件族（软件版本：V17/V18…；能力不拆包，由 preset 装配，D31） | ① 接入层 | 🟡 已有 **V17** 成员 | `packages/dsh-tia-openness-v17-min` |
-| 工程上下文插件 | 作用域（横向） | 🟡 **部分实现**（6 个工具：`create_engineering_project` 把工程接进 workspace —— 按 `source_project` 的类型打开 `.ap17` 或取回 `.zap17`（解包到 `tia/`）—— 另存 + 重建源文件树 + 经【缝 B】逐设备触发图谱建库；`project_status` 只读；`project_sync` 只写树、`project_commit` 才写历史（D30 把同步与提交分成两步）；**`workspace_describe` 不打开 TIA 描述任意 workspace**、**`import_preflight` 在导入前报告语言/依赖/同名**（2026-11-04，见 [`reference-project.md`](reference-project.md) §15）。**已登记进蓝图**。P0 的注册表与 P1 的版本层已删除，见该包 D22、图谱这一步见 D25、归档取回见该包 D27） | `packages/dsh-engineering-context` |
+| 工程上下文插件 | 作用域（横向） | 🟡 **部分实现**（10 个工具、165 项单测：`create_engineering_project` 把工程接进 workspace —— 按 `source_project` 的类型打开 `.ap17` 或取回 `.zap17`（解包到 `tia/`）—— 另存 + 重建源文件树 + 经【缝 B】逐设备触发图谱建库；`project_status` 只读；`project_sync` 只写树、`project_commit` 才写历史（D30 把同步与提交分成两步）；**`workspace_describe` 不打开 TIA 描述任意 workspace**、**`import_preflight` 在导入前报告语言/依赖/同名**（2026-11-04，见 [`reference-project.md`](reference-project.md) §15）；**`handoff_export` / `handoff_import` / `handoff_status`** 把受管工程封成带 `UserFiles` marker 的 `.zap17` 交给别人，返回时按 marker 的 base 校验并替换（该包 D30；v1 不合并本机新提交、未编译就停）。**已登记进蓝图**。P0 的注册表与 P1 的版本层已删除，见该包 D22、图谱这一步见 D25、归档取回见该包 D27） | `packages/dsh-engineering-context` |
 | 工程知识图谱插件 | ② 语义层 | 🟡 **部分实现**（引擎 + 协议 + 8 个工具 + `knowledgeGraph` 服务；**已登记进蓝图**，并被族 2 的工作流调用） | `packages/dsh-engineering-graph` |
 | Web GUI 视图插件（PLC Blocks / TIA 控制台 / Versions） | 跨层：只读 ② 的落盘产物与会话事件 | ✅ 三个都在跑（前两个已有，**Versions 2026-11-02 落地**；见 §1.1） | `packages/dsh-ui-plc-source`、`packages/dsh-ui-tia-console`、`packages/dsh-ui-versions` |
 | 主栏帮助页（Prompt Guide） | 跨层：只读发行版自身的能力说明 | ✅ 2026-11-03 落地（见 §1.2） | `packages/dsh-ui-prompt-guide` |
@@ -243,7 +243,7 @@
 | **B2 一次性导入**：`create_engineering_project` 在无外仓时初始化 git 并提交 baseline；未编译先拒绝；一次 `SyncScan(adopt_existing:true)` 把已导出的文件采纳为 evidence，不再二次导出；`.gitattributes` 固定 XML 行尾 | ✅ 单测 | 控制器 `adopt_existing`/`data.adopted`（自测 18/18，TIA 102 项）；上下文 116 项；`create` 不再需要模型猜 git 参数 |
 | **B3 差异与新鲜度**：`project_diff` 块级结构差异（**Auditor/Expert**，支持 `to:"WORKTREE"`）；图谱 sidecar 以 PLC checksum 报 `fresh/stale/unknown` | ✅ 单测 | 上下文 116 项；图谱 128 项；`project_diff` 13 项 + 新鲜度 5 项；D30 把 diff 从 Leader 移给 Auditor |
 | **B4 图谱增量**：引擎 `Update` 替换变更组件 + 一跳依赖闭包、删除被删组件，单事务；`knowledge_update` 工具；`project_sync(refresh_knowledge:true)` 按变更类型/数量选增量或全量，失败只警告 | ✅ 单测 + 引擎自测 | 引擎 128 项（含 Update/删除/拒绝码/回滚）；上下文 116 项；类型/标签表/超 20 文件走全量 |
-| **D30 版本管理真的派出去**：`auditor` 成为可派子 preset（`allowedAgentPresets` 含它）；版本工作流三个入口分开挂（`.`→auditor、`/diff`→auditor+expert、`/status`→leader）；sync/commit 两步 + 提交信息由 auditor 生成、经 leader 拿用户确认；XML 编辑纪律进 leader persona | ✅ 单测 + 配置验收；真机链路待跑 | 上下文 116 项（新增 6 项 commit）；`--dump-config` 2003 / 2036 行；`docs/decisions.md` D30 |
+| **D30 版本管理真的派出去**：`auditor` 成为可派子 preset（`allowedAgentPresets` 含它）；版本工作流入口分开挂（`.`→auditor、`/diff`→auditor+expert、`/status`→leader；交接后来另加 `/handoff`→auditor）；sync/commit 两步 + 提交信息由 auditor 生成、经 leader 拿用户确认；XML 编辑纪律进 leader persona | ✅ 单测 + 配置验收；真机链路待跑 | 上下文 116 项（新增 6 项 commit）；`--dump-config` 2003 / 2036 行；`docs/decisions.md` D30 |
 
 ### 缺口（P3 起）
 

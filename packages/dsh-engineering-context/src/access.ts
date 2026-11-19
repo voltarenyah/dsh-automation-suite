@@ -297,6 +297,17 @@ export interface EngineeringAccessLike {
   ): Promise<unknown>
   saveProjectAs(directory: string, options?: { signal?: AbortSignal }): Promise<unknown>
   /**
+   * Close the project TIA holds. Optional: an interface plugin built before the
+   * close seam existed has no such method, and the handoff import must report
+   * that instead of assuming it can free the project folder.
+   */
+  closeProject?(options: {
+    dryRun: boolean
+    save?: boolean
+    closePortal?: boolean
+    signal?: AbortSignal
+  }): Promise<unknown>
+  /**
    * Optional: an interface plugin built before `.zap*` retrieval was wired into
    * this service has no such method. A caller that needs it must check for the
    * method and report a coded absence instead of assuming it exists.
@@ -425,6 +436,30 @@ export function projectTextAccess(ctx: Context): ProjectTextAccessLike | undefin
     if (typeof candidate[member] !== 'function') return undefined
   }
   return service as ProjectTextAccessLike
+}
+
+/**
+ * The narrow write seam the handoff workflow uses.
+ *
+ * It only needs `archiveProject`; requiring the whole `ProjectTextAccessLike`
+ * shape would couple archiving to the translation workflow's member list.
+ */
+export interface ProjectArchiveAccessLike {
+  archiveProject(request: {
+    targetDir: string
+    targetName: string
+    mode?: 'none' | 'compressed' | 'discard_restorable_data' | 'discard_restorable_data_and_compressed'
+    signal?: AbortSignal
+  }): Promise<unknown>
+}
+
+/** The host's `projectTextAccess` service, narrowed to archiving. */
+export function projectArchiveAccess(ctx: Context): ProjectArchiveAccessLike | undefined {
+  const service = ctx.get(PROJECT_TEXT_ACCESS_SERVICE)
+  if (service === null || typeof service !== 'object') return undefined
+  const candidate = service as Record<string, unknown>
+  if (typeof candidate['archiveProject'] !== 'function') return undefined
+  return service as ProjectArchiveAccessLike
 }
 
 /**
@@ -887,5 +922,32 @@ export function normalizeObjectListing(raw: unknown): ProjectObjectListing {
     families,
     truncated: source['truncated'] === true || Object.values(families).some((family) => family.truncated),
     error: errorOf(source['error']),
+  }
+}
+
+/** The generic result envelope a project write returns. */
+export interface CallReport {
+  ok: boolean
+  error: AccessError | null
+  summary: string
+  data: Record<string, unknown> | null
+}
+
+/**
+ * Normalize a plain `ok`/`error`/`summary`/`data` result.
+ *
+ * Used for the project writes that have no operation-specific normalizer
+ * (`closeProject`, `archiveProject`, `saveProject`). A missing `ok` is a failure,
+ * never a success by omission.
+ *
+ * @param raw - the service's return value.
+ */
+export function normalizeCall(raw: unknown): CallReport {
+  const source = record(raw) ?? {}
+  return {
+    ok: boolOr(source['ok'], false),
+    error: errorOf(source['error']),
+    summary: text(source['summary']) ?? '',
+    data: record(source['data']),
   }
 }

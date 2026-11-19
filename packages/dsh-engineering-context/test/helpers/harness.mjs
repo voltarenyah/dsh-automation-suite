@@ -60,6 +60,26 @@ export async function loadVersionEntryModule() {
   return await importBuilt('version-entry.js')
 }
 
+/** Load the separate handoff entry point (`lib/handoff-entry.js`). */
+export async function loadHandoffEntryModule() {
+  return await importBuilt('handoff-entry.js')
+}
+
+/** Load the handoff marker module. */
+export async function loadHandoffMarkerModule() {
+  return await importBuilt('handoff', 'marker.js')
+}
+
+/** Load the handoff ZIP reader. */
+export async function loadHandoffZipModule() {
+  return await importBuilt('handoff', 'zip.js')
+}
+
+/** Load the handoff record module. */
+export async function loadHandoffRecordModule() {
+  return await importBuilt('handoff', 'record.js')
+}
+
 /** Load the built config module. */
 export async function loadConfigModule() {
   return await importBuilt('config.js')

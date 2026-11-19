@@ -71,7 +71,7 @@ DSH 的解析机制有两条独立路径，**两者都靠包名**：
 
 | 位置 | 是什么 |
 |---|---|
-| `profile/dsh-automation-suite/cordis.patch.yml` | 政策层本体：`- id: system-prompt`（全局 persona）、`- id: agent-preset-registry`（默认 preset = `leader`）、`- insert: - id: preset-leader`（主 agent preset，政策文本在它的 persona 行里）、`- insert: - id: preset-auditor`（版本管理 preset；`subagent.allowedAgentPresets` 含它，所以 leader 能派它跑慢活）、`- insert: - id: preset-expert`（子 agent preset）、`- id: engineering-context`（`disabled: true`；三个入口分开挂：`.`→`auditor`、`/diff`→`auditor`+`expert`、`/status`→`leader`，见 D30） |
+| `profile/dsh-automation-suite/cordis.patch.yml` | 政策层本体：`- id: system-prompt`（全局 persona）、`- id: agent-preset-registry`（默认 preset = `leader`）、`- insert: - id: preset-leader`（主 agent preset，政策文本在它的 persona 行里）、`- insert: - id: preset-auditor`（版本管理 preset；`subagent.allowedAgentPresets` 含它，所以 leader 能派它跑慢活）、`- insert: - id: preset-expert`（子 agent preset）、`- id: engineering-context`（`disabled: true`；四个入口分开挂：`.`→`auditor`、`/diff`→`auditor`+`expert`、`/status`→`leader`、`/handoff`→`auditor`，见 D30） |
 | 同上文件头部注释 | 为什么必须整份重述 preset、工具面为什么按 preset 分发、升级 DSH 后怎么重新生成 |
 | `profile/dsh-automation-suite/README.md` | 「发行版政策层」「三个 preset：`leader`、`auditor` 与 `expert`」两节：机理、验收、演示命令 |
 | 根 `README.md` §8.1 / §11 | 用户向说明与验收行数 |
@@ -152,7 +152,7 @@ pnpm run clean:build      # 清构建产物（只碰 lib/ dist/）
 ## 4. 测试与验收
 
 ```powershell
-pnpm test          # 全仓：TIA 112 项（111 通过 / 1 跳过）+ dsh-tool-git 51 项 + engineering-context 151 项 + engineering-graph 128 项 + drawing 23 项 + plcsim-advanced 24 项 + ui-plc-source 47 项 + ui-tia-console 22 项 + ui-versions 15 项 + ui-hardware 9 项 + ui-prompt-guide 25 项 + ui-brandmark 5 项 + tia-todo-bridge 18 项
+pnpm test          # 全仓：TIA 112 项（111 通过 / 1 跳过）+ dsh-tool-git 51 项 + engineering-context 165 项 + engineering-graph 128 项 + drawing 23 项 + plcsim-advanced 24 项 + ui-plc-source 47 项 + ui-tia-console 22 项 + ui-versions 15 项 + ui-hardware 9 项 + ui-prompt-guide 25 项 + ui-brandmark 5 项 + tia-todo-bridge 18 项
 pnpm -r build
 pnpm -r typecheck
 ```
@@ -704,4 +704,3 @@ node tools/site-editor/server.mjs        # 默认 http://127.0.0.1:4173/，自�
 - 验收：`tools/site-editor/test/smoke.py`（Python Playwright，41 项；用**副本 + 两个端口**跑，
   步骤见 `tools/site-editor/README.md`）。`tools/` 不进 Pages 上传范围、不是 npm 包，
   不参与 `pnpm -r build/test`。
-

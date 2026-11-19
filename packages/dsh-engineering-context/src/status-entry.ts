@@ -29,6 +29,7 @@ import type { Context } from '@deepseek-ai/cordis'
 import { Config, resolveConfig, type PluginConfig } from './config.js'
 import type { ToolDependencies } from './tools/deps.js'
 import { WORKSPACE_DESCRIBE_TOOL, workspaceDescribeTool } from './tools/describe.js'
+import { HANDOFF_STATUS_TOOL, handoffStatusTool } from './tools/handoff-status.js'
 import { IMPORT_PREFLIGHT_TOOL, importPreflightTool } from './tools/preflight.js'
 import { PROJECT_STATUS_TOOL, statusTool } from './tools/status.js'
 
@@ -56,9 +57,10 @@ export function apply(ctx: Context, config?: Partial<PluginConfig>): void {
   ctx.tools.register(statusTool(dependencies))
   ctx.tools.register(workspaceDescribeTool(dependencies))
   ctx.tools.register(importPreflightTool(dependencies))
+  ctx.tools.register(handoffStatusTool(dependencies))
   log.info(
-    `Registered 3 read-only engineering-context tools (${PROJECT_STATUS_TOOL}, ${WORKSPACE_DESCRIBE_TOOL}, ` +
-      `${IMPORT_PREFLIGHT_TOOL}); the version workflow stays on the auditor.`,
+    `Registered 4 read-only engineering-context tools (${PROJECT_STATUS_TOOL}, ${WORKSPACE_DESCRIBE_TOOL}, ` +
+      `${IMPORT_PREFLIGHT_TOOL}, ${HANDOFF_STATUS_TOOL}); the version workflow stays on the auditor.`,
   )
 }
 
