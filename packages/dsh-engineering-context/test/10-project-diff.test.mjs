@@ -688,12 +688,15 @@ test('the presets mount project_diff for the Auditor and Expert, never for the L
   const leaderBlock = yaml.slice(leaderStart, auditorStart)
   assert.equal(leaderBlock.includes(diffRow), false, 'the Leader must not mount the diff entry')
   assert.match(leaderBlock, /- id: leader-engineering-status/u)
+  assert.match(leaderBlock, /handoff_status/u, 'the Leader persona must tell it to check handoff_status')
+  assert.match(leaderBlock, /handoff_export/u, 'the Leader persona must tell it to delegate the export')
   assert.equal(leaderBlock.includes(handoffRow), false, 'the Leader must not mount handoff export/import')
   assert.equal(mainRow.test(leaderBlock), false, 'the Leader must not mount the version workflow')
 
   const auditorBlock = yaml.slice(auditorStart, expertStart)
   assert.equal(auditorBlock.includes(diffRow), true, 'the Auditor must mount the diff entry')
   assert.equal(auditorBlock.includes(handoffRow), true, 'the Auditor mounts the handoff entry')
+  assert.match(auditorBlock, /handoff_import/u, 'the Auditor persona must document the handoff workflow')
   assert.equal(mainRow.test(auditorBlock), true, 'the Auditor keeps the create/status/sync/commit row')
 
   const expertBlock = yaml.slice(expertStart)

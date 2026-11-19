@@ -284,6 +284,12 @@
                   - To send: obtain the recipient/context and delegate `handoff_export` to the auditor
                     (plan first, then a real run after the user agrees). The auditor returns the `.zap17`
                     path and handoff id; report both to the user.
+                  - `handoff_export` acts on the project TIA already has open. If TIA has none, open
+                    this workspace's managed `.ap17` first (or adopt the UI's open project), then
+                    delegate; never hand off a different project. A startup refusal such as
+                    `Connection to TiaPortal failed` is a TIA environment problem: report it and load
+                    the `tia-openness` skill; do not fall back to an ad-hoc `archive_project` outside the
+                    handoff package (that skips the provenance marker).
                   - To receive: take the returned `.zap17` path from the user verbatim and delegate
                     `handoff_import` (plan first). The auditor verifies the marker against git and, in
                     v1, refuses if HEAD moved or the source tree is dirty; relay that refusal rather
