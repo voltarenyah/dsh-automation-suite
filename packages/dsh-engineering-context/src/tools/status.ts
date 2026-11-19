@@ -31,6 +31,7 @@ import { resolveDevice } from '../device.js'
 import { EngineeringContextError } from '../errors.js'
 import { presentObjects, readEvidence, type EvidenceDocument } from '../evidence.js'
 import { gitPath, runGit, statusPaths } from '../git.js'
+import { listRecords } from '../handoff/record.js'
 import { readLock } from '../lock.js'
 import { describePath, resolveScope, type ResolvedScope } from '../scope.js'
 import type { ToolDependencies } from './deps.js'
@@ -411,6 +412,34 @@ export function statusTool(dependencies: ToolDependencies): ToolDefinition {
         else if (dirty.length > 0) nextAction = 'commit'
         else nextAction = 'clean'
 
+        // Handoff is a workspace-level fact, not a TIA fact: read the visible
+        // packages so the leader sees "a project is out / waiting for a compile"
+        // on its normal pre-dispatch status call, not only when it remembers
+        // handoff_status.
+        const handoffListing = await listRecords(scope.config, root)
+        const handoffOutstanding = handoffListing.records.filter(
+          (record) => record.status === 'issued' || record.status === 'returned',
+        ).length
+        const handoffAwaitingCompile = handoffListing.records.filter(
+          (record) => record.status === 'awaiting_compile',
+        ).length
+        const handoffLatest = handoffListing.records[0] ?? null
+        const handoff = {
+          root: join(root, scope.config.handoffDirName),
+          total: handoffListing.records.length,
+          outstanding: handoffOutstanding,
+          awaitingCompile: handoffAwaitingCompile,
+          latest:
+            handoffLatest === null
+              ? null
+              : {
+                  handoffId: handoffLatest.handoffId,
+                  status: handoffLatest.status,
+                  archive: handoffLatest.archive.path,
+                  createdAt: handoffLatest.createdAt,
+                },
+        }
+
         const details = [
           device === null
             ? workspaceEmpty
@@ -441,6 +470,10 @@ export function statusTool(dependencies: ToolDependencies): ToolDefinition {
             ? 'Git: not checked (no open project).'
             : `Git: ${repository ? `${dirty.length} change(s) in the device directory` : 'not a repository'}.`,
           lock === null ? 'Lock: free.' : `Lock: held by ${lock.operation} (pid ${lock.pid}).`,
+          handoff.total === 0
+            ? 'Handoff: none in this workspace.'
+            : `Handoff: ${handoffOutstanding} outstanding, ${handoffAwaitingCompile} awaiting compile` +
+              (handoffLatest === null ? '.' : `; latest ${handoffLatest.handoffId} (${handoffLatest.status}).`),
         ]
         if (device === null) {
           details.push(
@@ -465,6 +498,7 @@ export function statusTool(dependencies: ToolDependencies): ToolDefinition {
             knowledge,
             git: { checked: device !== null, repository: device === null ? null : repository, dirty },
             lock: lock === null ? null : { held: true, operation: lock.operation, pid: lock.pid, startedAt: lock.startedAt },
+            handoffs: handoff,
             nextAction,
             wouldSync,
             syncReason,

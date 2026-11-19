@@ -80,7 +80,7 @@
 
 | preset | 谁用 | 工具面 |
 |---|---|---|
-| **`leader`** | 主 agent | 内置 `standard` 的全部工具 + **编辑与检查面**：TIA 26、工程上下文只读 4（`project_status` / `workspace_describe` / `import_preflight` / `handoff_status`）、图谱 5（`includeIngest: false, includeDrilldown: inspect`）、git 12。**没有** create / sync / commit / diff / handoff 导出导入 / ingest（D30） |
+| **`leader`** | 主 agent | 内置 `standard` 的全部工具 + **编辑与检查面**：TIA 26、工程上下文只读 4（`project_status` / `workspace_describe` / `import_preflight` / `handoff_status`）、图谱 5（`includeIngest: false, includeDrilldown: inspect`）、git 12。**没有** create / sync / commit / diff / handoff 导出导入 / ingest（D30）。交接时先用 `handoff_status`（或 `project_status` 的 `handoffs` 摘要）看状态，再派 auditor 执行导出/导入；`awaiting_compile` 由 leader 编译后再派 `project_sync(force=true)` |
 | **`auditor`** | 版本管理子 agent（leader 派它跑慢活） | 工程上下文 4（`create_engineering_project` / `project_status` / `project_sync` / `project_commit`）+ `project_diff` + handoff 3（`handoff_export` / `handoff_import` / `handoff_status`）+ 图谱 5（`includeIngest: true, includeDrilldown: none`）+ 只读 `read`/`read_image`/`glob`/`grep` + `ask_user_question` + `send_message`/`interrupt_agent` + `todo` + `time-context` + `compaction` |
 | **`expert`** | 子 agent（`subagent` 的默认 preset） | **只读**：图谱 `knowledge_workspace` / `knowledge_schema` / `knowledge_query` + 四个下钻工具（`includeIngest: false, includeDrilldown: all`）、`project_diff`、`read`/`read_image`/`glob`/`grep`、`send_message`/`interrupt_agent`、`ask_user_question`（读源码审批，D29）、`time-context`、`compaction` |
 

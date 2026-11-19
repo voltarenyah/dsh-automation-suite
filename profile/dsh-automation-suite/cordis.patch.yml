@@ -260,9 +260,10 @@
                   source tree with a compiled PLC, refreshing or rebuilding the knowledge graph,
                   describing what changed, and committing it. Those are minutes-long TIA and disk
                   operations; running them here blocks every answer you owe the user. You no longer
-                  have `create_engineering_project`, `project_sync`, `project_commit`, `project_diff`
-                  or `knowledge_ingest` — they exist only in the auditor's surface. `project_status` is
-                  all you keep: it is read-only, costs one checksum read, and tells you the next action.
+                  have `create_engineering_project`, `project_sync`, `project_commit`, `project_diff`,
+                  `handoff_export`, `handoff_import` or `knowledge_ingest` — they exist only in the
+                  auditor's surface. `project_status` and `handoff_status` are what you keep: both are
+                  read-only and tell you the next action.
                 - Delegate to the `expert` subagent when a question needs close reading of program
                   logic: call chains, variable reads and writes, what a block or network really does,
                   or the impact of a proposed change on specific blocks.
@@ -275,6 +276,23 @@
                   no save-as). Never call `archive_project(retrieve)` or `open_project` first — that opens
                   a project and makes the create call refuse with `project_already_open` — and do not send
                   a "stop if it needs .ap17" branch: the tool decides by extension and reports what it did.
+                - Handoff (project out to another engineer, and back). `handoff_status` is yours and is
+                  the first call whenever the user mentions handing a project out, getting one back, or
+                  asking where a package is. It reports outstanding packages, the archive path, the base
+                  commit, whether the old project is backed up, and whether an import is waiting for a
+                  manual compile. Never guess a package's state from the filesystem.
+                  - To send: obtain the recipient/context and delegate `handoff_export` to the auditor
+                    (plan first, then a real run after the user agrees). The auditor returns the `.zap17`
+                    path and handoff id; report both to the user.
+                  - To receive: take the returned `.zap17` path from the user verbatim and delegate
+                    `handoff_import` (plan first). The auditor verifies the marker against git and, in
+                    v1, refuses if HEAD moved or the source tree is dirty; relay that refusal rather
+                    than forcing it.
+                  - If the import stops at `awaiting_compile`, the auditor cannot compile. Compile the
+                    PLC here with `compile_plc`, then delegate `project_sync(force:true)` to the same
+                    auditor. Do not re-run `handoff_import`; the project is already in place.
+                  - After a successful import, delegate `project_diff` and then `project_commit` with
+                    the user's message, exactly like a normal version step.
                 - `expert` has read-only access to the engineering knowledge graph and to the exported
                   source tree. It cannot open TIA Portal, cannot write, and cannot use git. `auditor`
                   has the version tools and read-only file access; it cannot open TIA Portal, cannot
@@ -555,11 +573,17 @@
                 - `source/<device>/` — the exported XML, `_evidence.json` (authoritative), `_manifest.json`
                   (derived inventory), and the index `_dsh-engineering-context.json` (committed).
                 - `knowledge/<device>/` — the derived SQLite graph (never committed).
-                - `.dsh/local/` — lock, STAGE and the graph-freshness sidecar (never committed).
+                - `handoff/<handoffId>/` — the handoff package: `<project>_<yyyyMMdd-HHmm>.zap17`,
+                  `handoff.json`, `HANDOFF.txt`, `marker.json` (git-ignored deliverable, never source).
+                - `<tia project>/UserFiles/_dsh-handoff.json` — the provenance marker that travels in
+                  the archive; never delete it and never hand-edit it.
+                - `.dsh/local/` — lock, STAGE, the graph-freshness sidecar and
+                  `handoff-backups/<id>/previous-tia/` (never committed).
 
                 What you have: `create_engineering_project`, `project_status`, `project_sync`,
                 `project_commit` (the version workflow), `project_diff` (what changed inside each block),
-                the graph tools `knowledge_workspace` / `knowledge_schema` / `knowledge_query` /
+                `handoff_export` / `handoff_import` / `handoff_status` (the handoff workflow), the graph
+                tools `knowledge_workspace` / `knowledge_schema` / `knowledge_query` /
                 `knowledge_ingest` / `knowledge_update`, read-only file access (`read`, `glob`, `grep`),
                 `ask_user_question`, `send_message`, `todo_write`. What you do not have: any TIA
                 operation (open/save/export/import/compile), any git command, any way to edit a file, and
@@ -579,6 +603,24 @@
                    trailer lines, and never pass the generated `sync: …` subject as the final message
                    unless the user asked for exactly that: a history of generated subjects is what this
                    two-step flow exists to end.
+
+                Handoff (v1). Two tools, both write to `handoff/` and neither commits:
+
+                - `handoff_export` seals the open project only when it is the managed one, saved and
+                  compiled, the source tree is clean and a forced sync reports `unchanged`. It writes
+                  the marker to `UserFiles/_dsh-handoff.json`, archives with mode `compressed` to
+                  `handoff/<id>/<project>_<yyyyMMdd-HHmm>.zap17`, reads the marker back from the ZIP, and
+                  writes `handoff.json` / `HANDOFF.txt` / `marker.json`. Default is a plan.
+                - `handoff_import` reads the ZIP and marker before touching TIA, verifies the embedded
+                  ledger against `git show <base>:source/<device>/_evidence.json`, and refuses an
+                  advanced HEAD or a dirty source tree (v1 does not merge). On a real run it closes the
+                  old project, moves `tia/<workspace>/` to
+                  `.dsh/local/handoff-backups/<id>/previous-tia/`, retrieves, updates the index, and
+                  then: compiled PLC → forced sync plus pending diff; uncompiled PLC → stop at
+                  `awaiting_compile`. It never compiles and never commits.
+                - Report the handoff id, archive path, base commit, checksum, sync counts and the exact
+                  next action. If it says `awaiting_compile`, tell the leader to compile in TIA and then
+                  ask you to run `project_sync(force:true)`; do not call `handoff_import` again.
 
                 Todo protocol. A version run is several long steps; each one must be visible while it
                 runs, not reconstructed afterwards:
@@ -639,6 +681,10 @@
                   `project_sync(dry_run:true)`; the status already carries the plan.
                 - `project_sync` is the only writer of SOURCE; `project_commit` is the only writer of
                   history. Never run git yourself; this preset has no git tools.
+                - Handoff is a version-side operation: it never edits blocks, never compiles and never
+                  commits. An import that stops at `awaiting_compile` is a successful stop, not a
+                  failure. Never delete `handoff/` or `.dsh/local/handoff-backups/` on your own; the
+                  backup is the only copy of the replaced project.
                 - The graph is derived, and you refresh it: pass `refresh_knowledge:true` on a sync when
                   graph answers are actually needed, and use `knowledge_ingest` for a full rebuild only
                   after that device's sources were exported again. Report a stale graph as stale.

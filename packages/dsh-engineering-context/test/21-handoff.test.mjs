@@ -35,6 +35,7 @@ import {
   loadHandoffEntryModule,
   loadHandoffMarkerModule,
   loadHandoffZipModule,
+  loadToolsModule,
   makeFile,
   tempWorkspace,
 } from './helpers/harness.mjs'
@@ -287,7 +288,7 @@ test('marker and zip utilities: build, round-trip, read back from a real ZIP', a
 })
 
 test('handoff_status lists packages and their archive/backup state', async (t) => {
-  const { root } = await seededWorkspace(t)
+  const { root, projectPath } = await seededWorkspace(t)
   const id = '20261119T1330-7f3a'
   const archive = join(root, 'handoff', id, `${PROJECT}_20261119-1330.zap17`)
   await makeFile(archive, 'zip')
@@ -307,13 +308,25 @@ test('handoff_status lists packages and their archive/backup state', async (t) =
     import: null,
   }
   await makeFile(join(root, 'handoff', id, 'handoff.json'), `${JSON.stringify(record, null, 2)}\n`)
-  const access = fakeAccess({ projectPath: null })
-  const tool = toolFor(access.service, undefined)( 'handoff_status')
+  const access = fakeAccess({ projectPath })
+  const tool = toolFor(access.service, undefined)('handoff_status')
   const outcome = assertEnvelope(await executeTool(tool, {}, fakeExec(root)))
   assert.equal(outcome.ok, true)
   assert.equal(outcome.data.count, 1)
   assert.equal(outcome.data.handoffs[0].handoffId, id)
   assert.equal(outcome.data.handoffs[0].archive.present, true)
+
+  // The Leader's normal pre-dispatch status already carries the handoff summary.
+  const { toolDefinitions } = await loadToolsModule()
+  const { ctx } = createTestContext({ services: { engineeringAccess: access.service } })
+  const definitions = toolDefinitions({ ctx, config: resolveConfig(), log: ctx.logger })
+  const statusTool = findTool(definitions, 'project_status')
+  const status = assertEnvelope(await executeTool(statusTool, {}, fakeExec(root)))
+  assert.equal(status.ok, true)
+  assert.equal(status.data.handoffs.total, 1)
+  assert.equal(status.data.handoffs.outstanding, 1)
+  assert.equal(status.data.handoffs.awaitingCompile, 0)
+  assert.match(status.details.join('\n'), /Handoff:/u)
 })
 
 test('handoff_export dry run reports the base and the package without writing', async (t) => {
@@ -401,4 +414,3 @@ test('handoff_import stops at awaiting_compile and keeps the old project backed 
   const marker = await readFile(join(root, 'tia', basename(root), 'HandoffProject', 'UserFiles', '_dsh-handoff.json'), 'utf8')
   assert.match(marker, /"kind": "dsh-tia-handoff"/u)
 })
-
