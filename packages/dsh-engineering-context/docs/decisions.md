@@ -982,7 +982,9 @@ force 必扫）。**真机（F-CPU 工程）未复测**：下一步要用 `SWT2_
 （块/类型/标签表），HMI/硬件/安全设置的改动不在本工作流的版本视野内；只支持 V17（V18/V20 归档
 取不回）；marker 可被改/删，但校验失败会拒绝而不是猜测。
 
-**验证**：本包新增 `test/21-handoff.test.mjs` 7 项（marker/ZIP 往返、status、export plan/run、
-import plan、HEAD 前进拒绝、未编译停在 awaiting_compile），全套 **165 项全通过**。
+**验证**：本包新增 `test/21-handoff.test.mjs` 8 项（marker/ZIP 往返、status、export plan/run、force-scan 零改动、
+import plan、HEAD 前进拒绝、未编译停在 awaiting_compile），全套 **166 项全通过**。
 真机“TIA 归档带 `UserFiles` marker → 另一台机器取回 → 再归档回来”的往返仍需在 app 的控制器上
 跑一次（本会话的 shell 非提权，TIA Openness 连接失败，不能作为验收）。
+
+

@@ -92,7 +92,7 @@
 | 名称 | 对应层 | 负责什么 | 现状 |
 |---|---|---|---|
 | **工控软件接口插件族**<br>（以 TIA 为例即 `tia-openness`；按**软件版本**分成员：V17/V18…；能力不拆包、由 preset 装配，见 D31） | ① 接入层 | 与工控软件对接、**读写工程对象**；为后续分析提供**素材**与**验证工具**；并**附带文档**说清每个能力"何时调用 / 怎么调用 / 调用后的数据怎么用" | 🟡 已有 **V17**（定位是验证基础功能） |
-| **工程上下文插件** | 作用域（横向） | 管住用户的**多个 TIA 项目 × 多个分支 × 多个历史版本**；对工程对象做优化适配（路径内容、变更识别与跟进）；用**「待办清单」式工具承载工程变更上下文**，在合适的时候交给 LLM 辅助判断用户意图；版本间变更明确易读、工程对象可交叉关联 | 🟡 部分实现（10 个工具：`create_engineering_project` / `project_status` / `project_sync` / `project_commit` + 只读的 `workspace_describe`（不打开 TIA 描述任意 workspace）、`import_preflight`（导入前预检语言/依赖/同名）与 `handoff_status`，外加 `project_diff`、版本库与交接的 `handoff_export` / `handoff_import`；TIA → SOURCE 的 checksum+指纹同步已通，**同步与提交分两步**，165 项单测；DRAFT/REMOTE 与变更台账未做；**已登记进蓝图**，见 [`packages/dsh-engineering-context/docs/`](packages/dsh-engineering-context/docs/)） |
+| **工程上下文插件** | 作用域（横向） | 管住用户的**多个 TIA 项目 × 多个分支 × 多个历史版本**；对工程对象做优化适配（路径内容、变更识别与跟进）；用**「待办清单」式工具承载工程变更上下文**，在合适的时候交给 LLM 辅助判断用户意图；版本间变更明确易读、工程对象可交叉关联 | 🟡 部分实现（10 个工具：`create_engineering_project` / `project_status` / `project_sync` / `project_commit` + 只读的 `workspace_describe`（不打开 TIA 描述任意 workspace）、`import_preflight`（导入前预检语言/依赖/同名）与 `handoff_status`，外加 `project_diff`、版本库与交接的 `handoff_export` / `handoff_import`；TIA → SOURCE 的 checksum+指纹同步已通，**同步与提交分两步**，166 项单测；DRAFT/REMOTE 与变更台账未做；**已登记进蓝图**，见 [`packages/dsh-engineering-context/docs/`](packages/dsh-engineering-context/docs/)） |
 | **工程知识图谱插件** | ② 语义层 | **准确翻译 XML 中的 PLC 语法**（兼容性强）：解析工程源文件 → **建立图数据库** → 暴露接口给出工程细节 | 🟡 部分实现（引擎 + 协议 + 8 个工具 + `knowledgeGraph` 服务，104 项单测；**已登记进蓝图**，并被族 2 的工作流调用） |
 
 插件不再编号：**只有接口插件族是"一族多成员"**（成员 = 软件版本；能力不拆包，见 D31），工程上下文插件与
@@ -170,7 +170,7 @@ PLC 对象增删改、监视表与软件单元、F 相关服务、编译与关�
 | 插件 | 目标 | 状态 |
 |---|---|---|
 | **工控软件接口插件族** | 把工控软件暴露的能力整体变成 LLM 的能力范围（含配套文档） | 🟡 **V17**（块·UDT·标签表）；在线/硬件组态等更多能力与 V18+ 待补（不拆包，由 preset 装配，D31）。**多成员形态已定**：一族多包、插件页 bundle 开关激活、同一时刻只激活一个、切换后重启客户端（**D36**，落地清单见 [`docs/tia-version-members.md`](docs/tia-version-members.md)） |
-| **工程上下文插件** | 管住"现在谈的是哪个工程、它在 workspace 的哪里、它和 TIA 是否一致" | 🟡 **部分实现**：10 个工具（165 项单测）—— `create_engineering_project` 把 TIA 工程接进 workspace（按 `source_project` 的类型打开 `.ap17` 或取回 `.zap17`，解包到 `tia/`）、读源文件树、经【缝 B】逐设备触发知识图谱建库；`project_status` 只读账本/清单/git/锁并给出下一步；`project_sync` 用 PLC checksum 快路径 + 逐对象指纹/归一化哈希慢路径，只把差异提升进 SOURCE，**不再提交**；`project_commit` 用调用方给的信息把这次同步提交成历史（`message` 必填、默认只给计划、插件补 trailer，可选 `reference` 记跨项目出处）；`workspace_describe` 不打开 TIA 就能描述任意 workspace（索引/清单/证据/图谱/git）；`import_preflight` 在导入前报告语言 culture、依赖顺序、同名对象。**同步与提交分两步**是为了让"变了什么"先被读到、提交信息由人确认（D30）；`project_diff` 走独立入口。图谱缺席/引擎未构建只报"图谱未建成"，不让流程失败。DRAFT/REMOTE 与变更台账未做。P0 的工程注册表与 P1 的内部 git 版本层**已删除**（该包 D22；现行版本管理见 D26）。**已登记进蓝图**（`--dump-config` 行数见根 `AGENTS.md` §4，DSH 0.2.1-rc.2） |
+| **工程上下文插件** | 管住"现在谈的是哪个工程、它在 workspace 的哪里、它和 TIA 是否一致" | 🟡 **部分实现**：10 个工具（166 项单测）—— `create_engineering_project` 把 TIA 工程接进 workspace（按 `source_project` 的类型打开 `.ap17` 或取回 `.zap17`，解包到 `tia/`）、读源文件树、经【缝 B】逐设备触发知识图谱建库；`project_status` 只读账本/清单/git/锁并给出下一步；`project_sync` 用 PLC checksum 快路径 + 逐对象指纹/归一化哈希慢路径，只把差异提升进 SOURCE，**不再提交**；`project_commit` 用调用方给的信息把这次同步提交成历史（`message` 必填、默认只给计划、插件补 trailer，可选 `reference` 记跨项目出处）；`workspace_describe` 不打开 TIA 就能描述任意 workspace（索引/清单/证据/图谱/git）；`import_preflight` 在导入前报告语言 culture、依赖顺序、同名对象。**同步与提交分两步**是为了让"变了什么"先被读到、提交信息由人确认（D30）；`project_diff` 走独立入口。图谱缺席/引擎未构建只报"图谱未建成"，不让流程失败。DRAFT/REMOTE 与变更台账未做。P0 的工程注册表与 P1 的内部 git 版本层**已删除**（该包 D22；现行版本管理见 D26）。**已登记进蓝图**（`--dump-config` 行数见根 `AGENTS.md` §4，DSH 0.2.1-rc.2） |
 | **工程知识图谱插件** | 准确翻译 XML 中的 PLC 语法，XML → 图数据库 → 按需给出工程细节 | 🟡 **部分实现**：Simatic ML → 图 → SQLite 已通（7 个真实 fixture 出 72 节点 / 153 边，覆盖 15 种节点种类），引擎协议 + 8 个工具 + `knowledgeGraph` 服务（111 项单测，含经真实引擎的端到端）；**被族 2 的 `create_engineering_project` 调用**（该包 D25）。`knowledge_workspace` 让模型自己读到库路径、`knowledge_query` 的 `db_path` 因此可省略，四个下钻工具（search / block / network / variable usage，TS 侧固定 SQL，零 C# 改动）把程序逻辑读成有界答复（**D24** 两阶段）。**新鲜度/增量、兼容层未做**。**已登记进蓝图** |
 | **TIA 操作可见性（Todo）** | 让输入框上方的 Todo 面板在 TIA/版本操作期间总有内容、结束后不残留转圈 | ✅ 2026-11-07：leader/auditor persona 写死 `TIA · <tool> · <object>` 协议 + `dsh-tia-todo-bridge` 兜底（模型没写清单时补项并自动结束）；见 [D34](docs/decisions.md) 与 profile README「TIA 操作的 Todo 清单」 |
 
@@ -699,7 +699,7 @@ packages/
     README.md / README.zh.md       上游 README（英/中）
   dsh-engineering-context/         工程上下文插件：**已登记进蓝图；10 个工具（D22 + S2 + 跨 workspace 的 workspace_describe / import_preflight / handoff_status + 交接的 handoff_export / handoff_import）+ 缝 B 的图谱建库（D25）+ 归档取回（D27）+ 交接工作流（该包 D30）**
     src/                           作用域解析、缝 A/B、证据账本、锁、shell-free git、4 个工作流工具（tsc → lib/）
-    test/                          node:test 套件（165 项，假 TIA/图谱服务 + 真实运行时 schema 校验 + 真实 git 仓库）
+    test/                          node:test 套件（166 项，假 TIA/图谱服务 + 真实运行时 schema 校验 + 真实 git 仓库）
     scripts/                       link-dsh-runtime.mjs / tsc.mjs / run-tests.mjs
     docs/                          ARCHITECTURE.md / PATH-RULES.md / decisions.md
   dsh-engineering-graph/           工程知识图谱插件：**引擎 + 协议 + 8 个工具 + knowledgeGraph 服务，已登记进蓝图**
@@ -786,7 +786,7 @@ pnpm run clean:build      # 清构建产物（只碰 lib/ dist/）
 |---|---|---|
 | `dsh-tia-openness-v17-min` | `node:test`（`node --test test/*.test.mjs`） | 112 项：111 通过 / 1 跳过（跳过项是"控制器未构建"的降级路径） |
 | `dsh-tool-git` | `vitest`（`vitest run`） | 51 项全通过 |
-| `@voltarenyah/dsh-engineering-context` | `node:test`（`node scripts/run-tests.mjs`，先构建再跑） | 165 项全通过（含经假 `engineeringAccess` / 假 `knowledgeGraph` 服务的契约用例，以及 7 项交接工作流用例） |
+| `@voltarenyah/dsh-engineering-context` | `node:test`（`node scripts/run-tests.mjs`，先构建再跑） | 166 项全通过（含经假 `engineeringAccess` / 假 `knowledgeGraph` 服务的契约用例，以及 8 项交接工作流用例） |
 | `@voltarenyah/dsh-engineering-graph` | `node:test`（`node scripts/run-tests.mjs`，先构建再跑） | 128 项全通过（含经真实引擎的端到端；引擎没构建时该项 skip 并打印构建命令） |
 | `@voltarenyah/dsh-drawing` | `node:test`（`node scripts/run-tests.mjs`，先构建再跑） | 23 项全通过（PDF 索引/检索模型 + 字典；浏览器半侧靠真实图纸验收） |
 | `@voltarenyah/dsh-plcsim-advanced` | `node:test`（`node --test --test-reporter=spec`） | 24 项全通过（纯协议与工具面：转发、工作区存档根、证书规则、渲染事实行、快照来源/stale/清理） |
@@ -1056,3 +1056,5 @@ TIA 排障第一步永远是让模型调：
 | [`packages/dsh-tia-openness-v17-min/AGENTS.md`](packages/dsh-tia-openness-v17-min/AGENTS.md) | 覆盖矩阵与知识库的同步规则 |
 | [`AGENTS.md`](AGENTS.md) | 仓库级约定：结构、命名、危险操作红线、验收口径 |
 | [`LICENSE`](LICENSE) | 本仓 MIT 许可证；随包出货/ vendor 内容的条款归属见 [§15](#15-许可证与第三方) |
+
+

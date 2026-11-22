@@ -143,7 +143,7 @@ async function seededWorkspace(t) {
 }
 
 /** A fake engineeringAccess with a mutable open-project state. */
-function fakeAccess({ projectPath, checksum = 'AA BB', onChange } = {}) {
+function fakeAccess({ projectPath, checksum = 'AA BB', onChange, fullScanClean = false } = {}) {
   const state = { projectPath, closed: 0, retrieved: 0, checked: 0 }
   const software = [{ device: DEVICE, software: SOFTWARE, blockCount: 1 }]
   const session = () => ({
@@ -201,7 +201,36 @@ function fakeAccess({ projectPath, checksum = 'AA BB', onChange } = {}) {
         }
         return { ok: true, summary: 'checksum', data: { checksum, device: DEVICE, software: SOFTWARE } }
       },
-      async syncScan() {
+      async syncScan(query) {
+        if (fullScanClean) {
+          // Reproduce the controller's real full-scan path: it ran, it found
+          // nothing, and it still reports `unchanged:false` with a STAGE ledger.
+          await mkdir(query.stageDir, { recursive: true })
+          const evidence = await readFile(join(query.sourceRoot, '_evidence.json'), 'utf8')
+          const manifest = await readFile(join(query.sourceRoot, '_manifest.json'), 'utf8')
+          const stageEvidence = join(query.stageDir, '_evidence.json')
+          const stageManifest = join(query.stageDir, '_manifest.json')
+          await writeFile(stageEvidence, evidence)
+          await writeFile(stageManifest, manifest)
+          return {
+            ok: true,
+            summary: 'full scan: 0 changed',
+            data: {
+              checksum,
+              unchanged: false,
+              scanSkipped: false,
+              manifestRebuilt: true,
+              counts: { blocks: 1, types: 0, tagTables: 0, changed: 0, added: 0, removed: 0, unexportable: 0 },
+              changed: [],
+              added: [],
+              removed: [],
+              unexportable: [],
+              stage: { root: query.stageDir, evidence: stageEvidence, manifest: stageManifest, files: 0 },
+              stateId: 'sha256:0123456789abcdef',
+              adopted: 0,
+            },
+          }
+        }
         return {
           ok: true,
           summary: 'unchanged',
@@ -357,6 +386,20 @@ test('handoff_export run writes the marker, the archive and a readable record', 
   assert.match(await readFile(join(root, '.gitignore'), 'utf8'), /^handoff\/$/mu)
   const marker = await readFile(join(dirname(projectPath), 'UserFiles', '_dsh-handoff.json'), 'utf8')
   assert.match(marker, /"kind": "dsh-tia-handoff"/u)
+})
+
+test('handoff_export accepts a forced full scan that found zero changes', async (t) => {
+  // The controller's `force_scan` path always returns unchanged=false because it
+  // deliberately bypasses the checksum fast path. That is an execution-mode flag,
+  // not a change: three zero deltas and a clean working tree must still seal.
+  const { root, projectPath } = await seededWorkspace(t)
+  const access = fakeAccess({ projectPath, fullScanClean: true })
+  const outcome = assertEnvelope(
+    await executeTool(toolFor(access.service, fakeTextAccess({ projectPath }))('handoff_export'), { dry_run: false }, fakeExec(root)),
+  )
+  assert.equal(outcome.ok, true)
+  assert.equal(outcome.data.record.status, 'issued')
+  assert.equal(await exists(join(root, outcome.data.record.archive.path)), true)
 })
 
 test('handoff_import dry run verifies the marker against git', async (t) => {

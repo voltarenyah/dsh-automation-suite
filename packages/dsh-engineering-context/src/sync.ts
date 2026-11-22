@@ -304,6 +304,15 @@ export async function runSyncUnlocked(
       // The sync stops here: `project_commit` is the only place that writes history,
       // because the message has to describe *why* these files changed and a human
       // gets to see the change set before it is committed.
+      // The controller's full-scan path reports `unchanged:false` even when it
+      // found nothing: `force_scan` deliberately bypasses the checksum fast path,
+      // and the scan always writes its STAGE ledger. Execution mode is not a
+      // change. A scan whose three deltas are zero and whose promoted files left
+      // the device directory clean is `unchanged`, whatever the controller's flag
+      // said — otherwise every forced scan would look like a pending commit.
+      const noObjectChanges =
+        report.counts.changed === 0 && report.counts.added === 0 && report.counts.removed === 0
+      const unchanged = noObjectChanges && dirty.length === 0
       const pending = {
         paths: dirty,
         suggestedMessage:
@@ -320,7 +329,7 @@ export async function runSyncUnlocked(
 
       return {
         device,
-        unchanged: false,
+        unchanged,
         scanSkipped: false,
         manifestRebuilt: report.manifestRebuilt,
         counts: report.counts,

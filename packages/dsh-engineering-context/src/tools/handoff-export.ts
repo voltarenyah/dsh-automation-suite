@@ -294,7 +294,19 @@ export function handoffExportTool(dependencies: ToolDependencies): ToolDefinitio
             )
           }
           const sync = await runSyncUnlocked(resolvedScope, service, device, exec, { forceScan: true })
-          if (!sync.unchanged) {
+          // The controller's full-scan path reports `unchanged:false` even when it
+          // found nothing: `force_scan` deliberately bypasses the checksum fast
+          // path, and the scan always writes its STAGE ledger. The truth that
+          // matters here is "no object changed and no path is dirty", not the
+          // controller's execution-mode flag. A forced scan of an identical tree
+          // therefore counts as verified when all three deltas are zero and the
+          // promoted ledger left the working tree clean.
+          const scannedClean =
+            sync.counts.changed === 0 &&
+            sync.counts.added === 0 &&
+            sync.counts.removed === 0 &&
+            sync.pending.paths.length === 0
+          if (!sync.unchanged && !scannedClean) {
             throw new EngineeringContextError(
               'handoff_source_dirty',
               'The forced sync found changes that are not in the commit being handed off. Run project_diff and ' +
