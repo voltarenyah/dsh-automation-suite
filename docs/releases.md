@@ -15,6 +15,7 @@
 
 | 版本 | 发布日期 | profile 名 | 主要变化 | 内容提交 | 远端 tag 现状 |
 |---|---|---|---|---|---|
+| **0.2.6** | 2026-11-23 | `dsh-automation-suite`（桌面固定 profile） | **测试门禁修复**（`dsh-tool-git` 适配 DSH 0.2.2 的 executor/批次 API，51/51）；共享 `plugin-runtime` 缓存改为同版本增量补齐，并行测试不再互删；**交接提交带 `Reference: handoff:<id>`**（导入提示 + leader/auditor 政策）；**源索引 `source/_dsh-engineering-context.json` 不再入库**（新工作区自动忽略，旧工作区需 `git rm --cached` 一次）；无运行时功能变化 | `482d64d` | ✅ `v0.2.6` → `482d64d` |
 | **0.2.5** | 2026-11-11 | `dsh-automation-suite`（桌面固定 profile） | **Plugins 页真正能装插件**（profile 保留 `tarballs/` + `pnpm-lock.yaml` + `file:` 规格，安装器按本机重写 `.modules.yaml`，doctor 硬检查）；**PLCSIM 工作区快照 + F-CPU 型号**（先扫描再创建、`Key facts`、证书规则）；**TIA 同步 `force` 跳过 checksum 快路径**、导出清单保留跳过项 + 原子覆盖；DSH 0.2.2 的 `agent-preset/invalid` 修复；D36 V17/V18 路线文档 | `5cde3e1` | ✅ `v0.2.5` → `5cde3e1` |
 | **0.2.4** | 2026-11-10 | `dsh-automation-suite`（桌面固定 profile） | **报告问题入口**（标题栏 `Application → 报告问题…` + 托盘 `Report issues`）；**最大化后任务栏可点**（`WM_GETMINMAXINFO` 钉到工作区，含副屏）；站点双语 | `cf0caa3` | ✅ `v0.2.4` → `cf0caa3` |
 | **0.2.3** | 2026-11-08 | `dsh-automation-suite`（桌面固定 profile） | **首页 hero 品牌**（dsh-automation-suite / TIA-V17 / 桌面壳图标）；侧栏中文（提示词引导 / 项目看板）；右侧栏五个 tab 独立图标；应用内目录选择器 | `44bdef6` | ✅ `v0.2.3` → `44bdef6` |
