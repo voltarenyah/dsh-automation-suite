@@ -484,6 +484,12 @@ test('handoff_import records the accepted rename and updates the index', async (
   assert.equal(outcome.ok, true)
   assert.equal(outcome.data.record.nameChange.from, PROJECT)
   assert.equal(outcome.data.record.nameChange.to, `${PROJECT}_1`)
+  // The commit after an import must carry the handoff id: handoff/ is git-ignored,
+  // so the `Reference:` trailer is the only durable link from history to the package.
+  assert.match(
+    outcome.details.join('\n'),
+    new RegExp(`reference: "handoff:${exported.data.handoffId}"`, 'u'),
+  )
   assert.equal(await exists(join(root, 'tia', basename(root), `${PROJECT}_1`, `${PROJECT}_1.ap17`)), true)
   const index = JSON.parse(await readFile(join(root, 'source', '_dsh-engineering-context.json'), 'utf8'))
   assert.equal(index.project.name, `${PROJECT}_1`)

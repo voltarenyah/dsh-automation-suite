@@ -11,6 +11,9 @@ import { Context } from '@deepseek-ai/cordis'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import ToolRuntime from '@deepseek-ai/dsh-tools'
 import type { ToolExecutionResult } from '@deepseek-ai/dsh-tools'
+// The package exports `apply`/`name`/`inject` (no default), exactly the shape
+// cordis' loader resolves from a bundle row, so a namespace import is the plugin.
+import * as NativeToolExecutor from '@deepseek-ai/dsh-tool-executor-native'
 import * as gitPlugin from '../src/index.ts'
 import * as toolsEntry from '../src/tools-entry.ts'
 
@@ -131,14 +134,21 @@ export interface SetupOptions extends Partial<gitPlugin.Config> {
 const sessionCwds = new WeakMap<Context, string>()
 
 /**
- * Boot a context with SystemPrompt + ToolRuntime + the git host row, and by
- * default the `/tools` row on top.
+ * Boot a context with SystemPrompt + ToolRuntime + the native executor + the git
+ * host row, and by default the `/tools` row on top.
+ *
+ * The native executor is a hard requirement from DSH 0.2.2 on: `tools.execute()`
+ * dispatches a call batch to the executor selected for the calling scope and
+ * throws `ToolExecutorUnavailableError` when none is loaded. Production mounts
+ * `@deepseek-ai/dsh-tool-executor-native` globally; the fixture mirrors that
+ * rather than bypassing the pipeline.
  */
 export async function setupPlugin(options: SetupOptions = {}): Promise<Context> {
   const { cwd, withTools = true, ...config } = options
   const ctx = new Context()
   await ctx.plugin(SystemPrompt)
   await ctx.plugin(ToolRuntime)
+  await ctx.plugin(NativeToolExecutor)
   await ctx.plugin(gitPlugin, { ...DEFAULT_CONFIG, ...config })
   if (withTools) await ctx.plugin(toolsEntry)
   if (cwd !== undefined) sessionCwds.set(ctx, cwd)
@@ -158,12 +168,20 @@ export async function setupToolsOnly(cwd?: string): Promise<Context> {
   const ctx = new Context()
   await ctx.plugin(SystemPrompt)
   await ctx.plugin(ToolRuntime)
+  await ctx.plugin(NativeToolExecutor)
   await ctx.plugin(toolsEntry)
   if (cwd !== undefined) sessionCwds.set(ctx, cwd)
   return ctx
 }
 
-/** Invoke a registered tool through the full pipeline as one agent session. */
+/**
+ * Invoke one registered tool through the full pipeline as one agent session.
+ *
+ * DSH 0.2.2 replaced the old single-call `tools.execute({ callId, name,
+ * arguments })` with a batch: raw model calls are parsed, admitted, and
+ * dispatched by the selected executor. This helper wraps a single call and
+ * unwraps its result so the specs keep asserting on one outcome.
+ */
 export async function callTool(
   ctx: Context,
   name: string,
@@ -174,11 +192,12 @@ export async function callTool(
   if (sessionCwd === undefined) {
     throw new Error('test helper: pass setupPlugin({ cwd }) or callTool(…, cwd) to set the session cwd')
   }
-  return ctx.tools.execute({
+  const batch = await ctx.tools.execute({
+    calls: [{ type: 'tool-call', id: 'test-call', name, arguments: JSON.stringify(args) }],
     signal: new AbortController().signal,
-    callId: 'test-call' as never,
-    name,
-    arguments: args,
     agent: { session: { header: { cwd: sessionCwd } } },
   })
+  const settled = batch.results[0]
+  if (settled === undefined) throw new Error('test helper: the executor settled no result for the call')
+  return settled.result
 }

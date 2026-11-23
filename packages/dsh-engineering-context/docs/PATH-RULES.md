@@ -264,6 +264,7 @@ assertInsideWith(config, workspaceRoot, candidate):
 | `<workspace>/.gitignore` | **`knowledge/**/*.db*`（图谱库及其 SQLite 旁挂文件）** | 图谱库是 `source/` 的**全量重建派生品**、二进制且很大，重新导出即可再生 |
 | 每次 `project_sync` 的**一次提交**（路径限定 `source/<device>`） | **`.dsh/local/**`（锁 + STAGE）** | 临时状态：锁是进程间互斥，STAGE 是差异暂存；都不该出现在历史里 |
 | | **`handoff/**`（`.zap17` + 记录）** | 交付物是给对方带走的二进制；出处由 zip 内的 marker + git 提交保证，不靠这个目录 |
+| | **`source/_dsh-engineering-context.json`** | 本机提示：记录 `savedAs`、取回归档、设备目录等**绝对路径**，且 `handoff_import` 会重写它；工程归属可由 `source/<device>/_evidence.json` 与目录结构重建 |
 | | `**/*.ap17` | 工程文件本身 |
 
 **`.gitignore` 由本插件维护，但只追加**（`create_engineering_project` 写四条；`handoff_export` 对旧 workspace 补 `handoff/`。缺文件时创建并带注释头）：
@@ -280,16 +281,24 @@ assertInsideWith(config, workspaceRoot, candidate):
 # sync writes and deletes, never a versioned artifact.
 # handoff/ holds .zap17 archives and their records: deliverables to send, not source.
 # handoff_export appends that line on the first export.
+# source/_dsh-engineering-context.json is a local hint: it records this machine's
+# absolute paths, so it is rebuilt instead of versioned.
 tia/
 knowledge/**/*.db*
 .dsh/local/
+handoff/
+source/_dsh-engineering-context.json
 ```
 
-六条自我约束：
+自我约束：
 
 - **已有该行时不动文件**；文件已存在但没有该行时**只追加缺的那一行**，绝不重写用户的内容；
   `tia/`、`/tia/`、`tia` 三种写法都算"已有"；`knowledge/**/*.db*` 同样按带前导斜杠的写法认定，
   窄规则 `knowledge/**/*.db`（没有尾随 `*`）**不算已有**；`.dsh/local/` 同理；
+- **index 是本地提示，不是工程身份**：`source/_dsh-engineering-context.json` 记录本机绝对路径，
+  且 `handoff_import` 每次都会改写它，所以**永远不进 git**。旧工作区里它若已被跟踪，需要
+  一次性 `git rm --cached source/_dsh-engineering-context.json` 才能停止跟踪；忽略规则由
+  `create_engineering_project` 写入（新建工作区）——已经物化过的工作区不会被追溯改写；
 - 规则在**另存成功之后、导出与建图之前**写入 —— 目录里一有工程、一有库，ignore 就必须已经生效，
   否则下一次 `git add -A` 会把二进制工程、几百 MB 的库或本机锁带进仓库；
 - 只忽略**数据库文件**，不忽略整个 `knowledge/`：那是图谱插件的地盘，将来它在那里写出的**文本**产物

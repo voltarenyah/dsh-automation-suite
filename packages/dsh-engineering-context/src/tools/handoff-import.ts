@@ -461,7 +461,7 @@ export function handoffImportTool(dependencies: ToolDependencies): ToolDefinitio
               next:
                 existingRecord?.status === 'awaiting_compile'
                   ? 'Compile the PLC in TIA, then run project_sync with force=true.'
-                  : 'The source tree is already synced; run project_diff and project_commit.',
+                  : `The source tree is already synced; run project_diff and project_commit with reference: "handoff:${marker.handoffId}".`,
             },
             {
               dryRun: true,
@@ -822,7 +822,8 @@ export function handoffImportTool(dependencies: ToolDependencies): ToolDefinitio
               ? 'Sync: no scan was run.'
               : `Sync: ${sync.counts.changed} changed, ${sync.counts.added} added, ${sync.counts.removed} removed; ${sync.pending.paths.length} path(s) pending.`,
             ...(sync === null ? [] : [`Suggested message: ${sync.pending.suggestedMessage.split(/\r?\n/u)[0] ?? ''}`]),
-            'Next: run project_diff on the WORKTREE, read the change set, then project_commit with the reason.',
+            'Next: run project_diff on the WORKTREE, read the change set, then project_commit with the reason AND ' +
+              `reference: "handoff:${marker.handoffId}" so the commit's Reference trailer records which handoff produced it.`,
           )
         } else {
           summary = `Imported ${outcome.projectName}, but syncing failed: ${outcome.syncError ?? 'unknown error'}. The old project is backed up.`

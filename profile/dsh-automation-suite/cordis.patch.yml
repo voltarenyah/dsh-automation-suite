@@ -304,7 +304,9 @@
                     PLC here with `compile_plc`, then delegate `project_sync(force:true)` to the same
                     auditor. Do not re-run `handoff_import`; the project is already in place.
                   - After a successful import, delegate `project_diff` and then `project_commit` with
-                    the user's message, exactly like a normal version step.
+                    the user's message and `reference: "handoff:<id>"` (the id `handoff_import`
+                    reported), exactly like a normal version step. That trailer is the only durable
+                    link from the commit back to the handoff package, which stays git-ignored.
                 - `expert` has read-only access to the engineering knowledge graph and to the exported
                   source tree. It cannot open TIA Portal, cannot write, and cannot use git. `auditor`
                   has the version tools and read-only file access; it cannot open TIA Portal, cannot
@@ -633,6 +635,11 @@
                 - Report the handoff id, archive path, base commit, checksum, sync counts and the exact
                   next action. If it says `awaiting_compile`, tell the leader to compile in TIA and then
                   ask you to run `project_sync(force:true)`; do not call `handoff_import` again.
+                - When the commit follows a handoff import, pass `reference: "handoff:<id>"` to
+                  `project_commit` (the id the import reported). The commit's `Reference:` trailer is
+                  the durable provenance — `handoff/` and its `handoff.json` are git-ignored, so
+                  without it the history cannot tie the commit to the package. Do not invent an id;
+                  use the one in the import result.
                 - If the archive project name differs from the marker, `handoff_import` stops with
                   `handoff_project_name_changed` and both names in the error. Report the two names and
                   wait for the leader's explicit user confirmation; only then run it again with

@@ -26,7 +26,7 @@
  * resolve without a nested install.
  */
 
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
 
@@ -42,6 +42,10 @@ export const RUNTIME_ROOTS = [
   '@deepseek-ai/cordis',
   '@deepseek-ai/schemastery',
   '@deepseek-ai/dsh-system-prompt',
+  // Required from 0.2.2: `tools.execute()` dispatches to an executor that must
+  // be loaded in the composition, and the tests load the native one — the same
+  // executor the installed profile mounts. See tests/helpers.ts.
+  '@deepseek-ai/dsh-tool-executor-native',
 ]
 
 /** Directory, inside the archive, that holds the harness's hoisted node_modules. */
@@ -190,9 +194,17 @@ function extractDirectory(archive, index, archiveDir, destination) {
 
   for (const path of index.files.keys()) {
     if (!path.startsWith(prefix)) continue
+    const target = join(destination, path.slice(prefix.length))
+    // A same-version top-up runs over a shared cache another package may be
+    // reading. Skip files already present at the right size instead of
+    // truncating and rewriting identical bytes under the reader.
+    try {
+      if (statSync(target).size === index.files.get(path).size) continue
+    } catch {
+      // Missing target: fall through and write it.
+    }
     const contents = readAsarFile(archive, index, path, unpackedDir)
     if (contents === null) continue
-    const target = join(destination, path.slice(prefix.length))
     mkdirSync(dirname(target), { recursive: true })
     writeFileSync(target, contents)
     written++
@@ -263,7 +275,12 @@ export function ensureRuntimeCache({ quiet = false, force = false } = {}) {
   if (existsSync(cacheRoot) && cached === null) {
     return { ok: false, reason: `${cacheRoot} exists without ${CACHE_MARKER}; refusing to replace it` }
   }
-  if (existsSync(cacheRoot)) rmSync(cacheRoot, { recursive: true, force: true })
+  // Same app version, incomplete roots: several packages share this cache with
+  // different root sets, so re-extracting is **additive**. Deleting first would
+  // drop a sibling's packages (and race a parallel test run reading them).
+  // Only a version change replaces the tree wholesale.
+  const additive = cached !== null && cached.version === version && existsSync(cacheRoot)
+  if (existsSync(cacheRoot) && !additive) rmSync(cacheRoot, { recursive: true, force: true })
 
   const { located, missing } = resolveClosure(archive, index)
   const missingRoots = missing.filter((name) => RUNTIME_ROOTS.includes(name))
@@ -281,9 +298,10 @@ export function ensureRuntimeCache({ quiet = false, force = false } = {}) {
   for (const [name, dir] of located) files += extractDirectory(archive, index, dir, join(modules, name))
 
   mkdirSync(cacheRoot, { recursive: true })
+  const packages = [...new Set([...(additive ? cached.packages : []), ...located.keys()])].sort()
   writeFileSync(
     join(cacheRoot, CACHE_MARKER),
-    `${JSON.stringify({ version, archive, extractedAt: new Date().toISOString(), packages: [...located.keys()].sort() }, undefined, 2)}\n`,
+    `${JSON.stringify({ version, archive, extractedAt: new Date().toISOString(), packages }, undefined, 2)}\n`,
   )
 
   if (!quiet) {

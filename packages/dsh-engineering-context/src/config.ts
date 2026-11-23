@@ -160,6 +160,23 @@ export function sourceIndexPath(config: PluginConfig, workspaceRoot: string): st
 /** File name of the tool's own index, inside the source directory. */
 export const SOURCE_INDEX_FILE = '_dsh-engineering-context.json'
 
+/**
+ * The `.gitignore` line that keeps the source index out of version control.
+ *
+ * The index is a **local hint**, not project identity: it records absolute
+ * machine paths (`savedAs`, the retrieved archive under the DSH home, each
+ * device directory) and is rewritten by `handoff_import`, so committing it would
+ * put this machine's paths in the history and leave every import as an
+ * uncommitted change. Readers already treat it as a hint and fall back to
+ * `source/<device>/_evidence.json`, so a fresh clone can rebuild it with
+ * `create_engineering_project`.
+ *
+ * @param config - the resolved configuration.
+ */
+export function sourceIndexIgnoreRule(config: PluginConfig): string {
+  return `${config.sourceDirName}/${SOURCE_INDEX_FILE}`
+}
+
 /** Name of the per-device evidence ledger and inventory, relative to the device directory. */
 export const EVIDENCE_FILE = '_evidence.json'
 export const MANIFEST_FILE = '_manifest.json'

@@ -52,6 +52,7 @@ import {
   manifestPathForDevice,
   projectDirectoryPath,
   sourceDirectoryPath,
+  sourceIndexIgnoreRule,
   sourceIndexPath,
   stageRootPath,
   tiaIgnoreRule,
@@ -382,10 +383,13 @@ async function alreadyInside(projectPath: string | null, targetDirectory: string
 /**
  * The rules this plugin keeps in the workspace `.gitignore`.
  *
- * Both are about **binary rebuildables** the workflow puts beside the source
- * tree: the TIA project TIA itself owns, and the per-device knowledge databases
- * the engineering-graph plugin derives from that tree. The text artifact that
- * belongs in version control is `source/` alone.
+ * They are about **binary rebuildables and machine-local hints** the workflow
+ * puts beside the source tree: the TIA project TIA itself owns, the per-device
+ * knowledge databases the engineering-graph plugin derives from that tree, the
+ * local state directory, the handoff deliverables, and the source index (which
+ * records absolute machine paths). The text artifact that belongs in version
+ * control is `source/` alone — `source/_dsh-engineering-context.json` is a local
+ * hint, not project identity.
  */
 function ignoreRules(config: PluginConfig): IgnoreRuleSpec[] {
   return [
@@ -404,6 +408,10 @@ function ignoreRules(config: PluginConfig): IgnoreRuleSpec[] {
     {
       rule: handoffIgnoreRule(config),
       purpose: 'Handoff packages: .zap17 archives and their records are deliverables, not source.',
+    },
+    {
+      rule: sourceIndexIgnoreRule(config),
+      purpose: 'Source index: records this machine\'s absolute paths, a local hint rather than project identity.',
     },
   ]
 }
@@ -467,6 +475,8 @@ async function applyIgnoreRules(ignore: IgnoreFile): Promise<IgnoreAction> {
       '# .dsh/local/ holds this plugin\'s lock and STAGE directory: local runtime state that a',
       '# sync writes and deletes, never a versioned artifact.',
       '# handoff/ holds .zap17 archives and their records: deliverables to send, not source.',
+      '# source/_dsh-engineering-context.json is a local hint: it records this machine\'s',
+      '# absolute paths, so it is rebuilt instead of versioned.',
       ...added,
       '',
     ].join('\n')

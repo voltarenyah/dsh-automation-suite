@@ -10,14 +10,15 @@
  * hand-written ambient file; see this package's `AGENTS.md`.
  *
  * The declarations mirror the runtime the local harness actually ships
- * (0.2.0-rc.2 when they were written; re-verified unchanged against 0.2.1-rc.2 on
- * 2026-10-19). They were written against the real implementation rather than
- * guessed: the shapes of `ToolExecutionResult`, the `tools/pre-execute` gate's
- * `exec`, and the return of `next()` were read off the live runtime, and
- * `@deepseek-ai/cordis` / `@deepseek-ai/schemastery` ship their original
- * TypeScript sources, from which their signatures here are taken. The plugin's
- * own test suite executes against that runtime, so a declaration that lied about
- * a member would surface there.
+ * (0.2.0-rc.2 when they were written; re-verified against 0.2.2-rc.3 on
+ * 2026-11-23, when `tools.execute()` became a batch dispatch that requires a
+ * loaded executor). They were written against the real implementation rather
+ * than guessed: the shapes of `ToolExecutionResult`, the `tools/pre-execute`
+ * gate's `exec`, the batch input/result, and the return of `next()` were read
+ * off the live runtime, and `@deepseek-ai/cordis` /
+ * `@deepseek-ai/schemastery` ship their original TypeScript sources, from which
+ * their signatures here are taken. The plugin's own test suite executes against
+ * that runtime, so a declaration that lied about a member would surface there.
  *
  * This file must stay a **script** (no top-level `import`/`export`), so that each
  * `declare module` augments the global module map instead of defining a module
@@ -358,18 +359,43 @@ declare module '@deepseek-ai/dsh-tools' {
     options: DefineToolOptions<S, O>,
   ): ToolDefinition
 
-  /** The request accepted by {@link ToolRuntime.execute}. */
-  export interface ToolExecuteRequest {
-    readonly signal: AbortSignal
-    readonly callId: string
+  /** One model-requested call. `arguments` is the raw JSON string the provider produced. */
+  export interface ToolCallBlock {
+    readonly type: 'tool-call'
+    /** Provider-issued call id, echoed by the settled result. */
+    readonly id: string
     readonly name: string
-    readonly arguments: Record<string, unknown>
-    /**
-     * The calling agent scope. The test fixture supplies a minimal stand-in
-     * carrying `session.header.cwd`; the live pipeline supplies the real
-     * agent, which also selects the tool-visibility layer.
-     */
+    /** Raw JSON text; the executor parses it and preserves malformed input as text. */
+    readonly arguments: string
+  }
+
+  /** One settled outcome, correlated with the call that produced it. */
+  export interface ToolCallResult {
+    readonly callId: string
+    readonly result: ToolExecutionResult
+  }
+
+  /**
+   * One raw call batch handed to the selected executor.
+   *
+   * Since DSH 0.2.2 `tools.execute()` takes a batch, not a single call, and
+   * dispatches it to the executor loaded in the calling scope. The fixture
+   * supplies a minimal agent stand-in carrying `session.header.cwd`, exactly
+   * like the live batch does for its owning agent.
+   */
+  export interface ToolBatchInput {
+    readonly calls: readonly ToolCallBlock[]
+    readonly signal: AbortSignal
     readonly agent?: ToolAgent
+    /** Positive integer overriding the executor's concurrency limit for this batch. */
+    readonly maxParallelToolCalls?: number
+  }
+
+  /** Model-ordered settled outcomes for one batch. */
+  export interface ToolBatchResult {
+    readonly results: readonly ToolCallResult[]
+    readonly additionalContexts: readonly unknown[]
+    readonly concluded: boolean
   }
 
   /**
@@ -391,13 +417,31 @@ declare module '@deepseek-ai/dsh-tools' {
   export interface ToolRuntime {
     /** Registers one definition; returns the disposer that unregisters it. */
     register(definition: ToolDefinition): () => void
-    /** Runs one tool call through the full pipeline. */
-    execute(request: ToolExecuteRequest): Promise<ToolExecutionResult>
+    /** Dispatches one call batch to the executor selected for the agent's scope. */
+    execute(input: ToolBatchInput): Promise<ToolBatchResult>
   }
 
   /** The tool runtime plugin, loaded by the test fixture onto a bare context. */
   const ToolRuntime: import('@deepseek-ai/cordis').Plugin
   export default ToolRuntime
+}
+
+declare module '@deepseek-ai/dsh-tool-executor-native' {
+  /**
+   * The native executor plugin.
+   *
+   * It has no default export: the loader treats the module namespace itself as
+   * the plugin (`name` + `inject` + `apply`), and `apply()` calls
+   * `ctx.tools.setExecutor(new NativeToolExecutor(ctx))`. Booting this module
+   * after the tool runtime is what makes `tools.execute()` dispatch instead of
+   * throwing `ToolExecutorUnavailableError`.
+   */
+  export const name: string
+  export const inject: readonly string[]
+  export function apply(ctx: import('@deepseek-ai/cordis').Context): void
+  export class NativeToolExecutor {
+    constructor(ctx: import('@deepseek-ai/cordis').Context, maxParallel?: () => number)
+  }
 }
 
 declare module '@deepseek-ai/dsh-system-prompt' {
