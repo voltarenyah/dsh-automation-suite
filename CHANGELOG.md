@@ -6,6 +6,54 @@
 格式参考 [Keep a Changelog](https://keepachangelog.com/)；日期为本地日期；版本从
 GitHub Releases 与 git tag `v<version>` 对齐（发布流程见 [`docs/releases.md`](docs/releases.md)）。
 
+## [0.2.6] - 2026-11-23
+
+本版没有新的用户功能：修掉在 DSH 0.2.2 宿主上一直红的测试门禁，补齐交接（handoff）
+的发布级追溯，并把含本机绝对路径的源索引移出版本控制。插件运行期行为不变（交接导入的
+下一步提示与新建工作区的 `.gitignore` 除外）。
+
+### Fixed
+
+- **`dsh-tool-git` 的 35 项测试在 DSH 0.2.2 上必然失败**（开发门禁，不是用户可见故障）：
+  DSH 从 0.2.2 起把 `ctx.tools.execute()` 改成「批次 + 作用域内必须已装载 executor」，
+  测试脚手架仍按 0.2.1 的单调用 API 调用，且组装上下文时没有装载
+  `@deepseek-ai/dsh-tool-executor-native`，因此全部报
+  `ToolExecutorUnavailableError`。现在测试按真实组合装载 native executor，并通过批次 API
+  调用；`src/dsh-runtime.d.ts` 按 0.2.2-rc.3 的真实签名重写。**生产插件代码未改**。
+- **多个包的测试并行跑时会互相删掉共享运行时缓存**：`dsh-tool-git` 与
+  `dsh-tia-openness-v17-min` 各自从 `app.asar` 抽取 `<DSH_HOME>/plugin-runtime`，但 root
+  集合不同（后者需要 `dsh-skill`，前者需要 `dsh-tool-executor-native`）。任一方发现缓存
+  "不完整"都会删掉整棵树重建，于是并发跑 `pnpm -r test` 时会出现 `ENOTEMPTY`、以及刚被
+  对方抽出的包消失。现在**同版本的补齐是增量的**：不删除已有缓存，只补缺的包并写入并集
+  清单；只有宿主版本变化才整树重建。已存在的文件按大小跳过，避免在读者眼皮下截断重写。
+
+### Changed
+
+- **`source/_dsh-engineering-context.json` 不再入库**：它是本机提示（记录 `savedAs`、
+  取回归档、设备目录等绝对路径），且 `handoff_import` 每次都会重写它；提交它等于把本机
+  路径写进历史，并让每次导入都留下未提交改动。新建工作区的
+  `create_engineering_project` 会追加忽略规则
+  `source/_dsh-engineering-context.json`；**已经物化过的旧工作区需要一次性
+  `git rm --cached source/_dsh-engineering-context.json`** 才能停止跟踪（忽略规则不会
+  自动把已跟踪文件移出索引）。读者仍然把它当提示：缺失时按 `source/<device>/_evidence.json`
+  与目录结构回退。
+- **交接提交必须带 `Reference:` 追溯**：`handoff_import` 的下一步提示现在明确要求
+  `project_commit(reference: "handoff:<id>")`；`leader` / `auditor` 的 preset 政策同步要求
+  这样做。`handoff/` 及其 `handoff.json` 仍然 gitignore（交付物 + 本机记录），因此提交里的
+  `Reference: handoff:<id>` 是历史与交接包之间唯一持久的链接。
+- `packages/dsh-engineering-context/docs/PATH-RULES.md` §6 的 git 边界表与忽略清单同步了
+  上述索引规则。
+
+### Verification
+
+- 全仓 `pnpm -r build`、`pnpm -r typecheck`、`pnpm -r test`（`DOTNET_ROOT=%USERPROFILE%\.dotnet10`）
+  全部 exit 0；`dsh-tool-git` 51/51、engineering-context 168、engineering-graph 128、
+  TIA Openness 120 通过 / 1 跳过。
+- 图谱引擎对真实回导后的源树（931 文件）实测：`--self-test` 的 Ingest 路径
+  `filesFound=931 filesImported=931 nodes=88918 edges=223190`。之前那次
+  `knowledge_ingest` 失败是本机缺 .NET 10 运行时，不是本次回归；重建图谱需要设置
+  `DOTNET_ROOT=%USERPROFILE%\.dotnet10`。
+
 ## [0.2.5] - 2026-11-11
 
 修复桌面安装包「Plugins 页无法安装插件」，并更新 PLCSIM 与 TIA 插件；安装流程不变（仍为
