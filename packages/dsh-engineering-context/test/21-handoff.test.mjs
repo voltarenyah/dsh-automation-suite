@@ -23,7 +23,7 @@ import { basename, dirname, join } from 'node:path'
 import { test } from 'node:test'
 import { promisify } from 'node:util'
 
-import { strToU8, zipSync } from 'fflate'
+import { strToU8, unzipSync, zipSync } from 'fflate'
 
 import {
   assertEnvelope,
@@ -49,6 +49,11 @@ const SOFTWARE = 'SW1'
 const PROJECT = 'HandoffProject'
 const AP17 = `<?xml version="1.0" encoding="utf-8"?>
 <Data Type="Project" Name="${PROJECT}" ProjectCompatibilityVersion="17.0.0.0" xmlns="http://www.siemens.com/2007/07/Automation/CommonServices/DataInfoValueData" />`
+
+/** The same project XML under another TIA project name. */
+function ap17Named(name) {
+  return AP17.replace(`Name="${PROJECT}"`, `Name="${name}"`)
+}
 
 async function git(root, args) {
   return await execFileAsync('git', ['-C', root, ...args], { encoding: 'utf8', windowsHide: true })
@@ -143,13 +148,13 @@ async function seededWorkspace(t) {
 }
 
 /** A fake engineeringAccess with a mutable open-project state. */
-function fakeAccess({ projectPath, checksum = 'AA BB', onChange, fullScanClean = false } = {}) {
-  const state = { projectPath, closed: 0, retrieved: 0, checked: 0 }
+function fakeAccess({ projectPath, checksum = 'AA BB', onChange, fullScanClean = false, retrievedName = PROJECT } = {}) {
+  const state = { projectPath, projectName: PROJECT, closed: 0, retrieved: 0, checked: 0 }
   const software = [{ device: DEVICE, software: SOFTWARE, blockCount: 1 }]
   const session = () => ({
     running: true,
     projectOpen: state.projectPath !== null,
-    projectName: PROJECT,
+    projectName: state.projectName,
     projectPath: state.projectPath,
     isModified: false,
     software,
@@ -177,15 +182,16 @@ function fakeAccess({ projectPath, checksum = 'AA BB', onChange, fullScanClean =
       },
       async retrieveProject(_archive, target) {
         state.retrieved += 1
-        state.projectPath = join(target, PROJECT, `${PROJECT}.ap17`)
+        state.projectName = retrievedName
+        state.projectPath = join(target, retrievedName, `${retrievedName}.ap17`)
         await mkdir(dirname(state.projectPath), { recursive: true })
-        await writeFile(state.projectPath, AP17, 'utf8')
+        await writeFile(state.projectPath, ap17Named(retrievedName), 'utf8')
         if (onChange) await onChange(state.projectPath)
         return {
           ok: true,
           summary: 'retrieved',
           data: {
-            projectName: PROJECT,
+            projectName: retrievedName,
             projectPath: state.projectPath,
             targetDir: target,
             archivePath: _archive,
@@ -271,6 +277,20 @@ function fakeTextAccess({ projectPath, ap17Text = AP17 }) {
       return { ok: true, summary: 'saved' }
     },
   }
+}
+
+/** Rewrite an exported archive as if TIA had renamed the project on the other machine. */
+async function renamedArchive(root, exportedRecord, name) {
+  const source = join(root, exportedRecord.archive.path)
+  const files = unzipSync(await readFile(source))
+  const renamed = {}
+  for (const [entry, bytes] of Object.entries(files)) {
+    if (!entry.toLowerCase().endsWith('.ap17')) renamed[entry] = bytes
+  }
+  renamed[`${name}.ap17`] = strToU8(ap17Named(name))
+  const target = join(root, 'handoff', exportedRecord.handoffId, `${name}_returned.zap17`)
+  await writeFile(target, zipSync(renamed))
+  return target
 }
 
 function toolFor(service, textAccess, config = resolveConfig()) {
@@ -416,6 +436,57 @@ test('handoff_import dry run verifies the marker against git', async (t) => {
   assert.equal(outcome.dryRun, true)
   assert.equal(outcome.data.plan.marker.handoffId, exported.data.handoffId)
   assert.equal(outcome.data.plan.marker.baseCommit, (await git(root, ['rev-parse', 'HEAD'])).stdout.trim())
+})
+
+test('handoff_import refuses a renamed archive by default, accepts it only with the flag', async (t) => {
+  const { root, projectPath } = await seededWorkspace(t)
+  const access = fakeAccess({ projectPath, retrievedName: `${PROJECT}_1` })
+  const texts = fakeTextAccess({ projectPath })
+  const exported = await executeTool(toolFor(access.service, texts)('handoff_export'), { dry_run: false }, fakeExec(root))
+  const archive = await renamedArchive(root, exported.data.record, `${PROJECT}_1`)
+
+  const refused = assertEnvelope(
+    await executeTool(toolFor(access.service, texts)('handoff_import'), { archive_path: archive }, fakeExec(root)),
+  )
+  assert.equal(refused.ok, false)
+  assert.equal(refused.error.code, 'handoff_project_name_changed')
+  assert.equal(refused.error.details.markerProject, PROJECT)
+  assert.equal(refused.error.details.archiveProject, `${PROJECT}_1`)
+
+  const accepted = assertEnvelope(
+    await executeTool(
+      toolFor(access.service, texts)('handoff_import'),
+      { archive_path: archive, accept_renamed_project: true },
+      fakeExec(root),
+    ),
+  )
+  assert.equal(accepted.ok, true)
+  assert.equal(accepted.dryRun, true)
+  assert.equal(accepted.data.plan.renamed, true)
+  assert.equal(accepted.data.plan.nameAccepted, true)
+  assert.equal(accepted.data.plan.archive.projectName, `${PROJECT}_1`)
+})
+
+test('handoff_import records the accepted rename and updates the index', async (t) => {
+  const { root, projectPath } = await seededWorkspace(t)
+  const access = fakeAccess({ projectPath, retrievedName: `${PROJECT}_1` })
+  const texts = fakeTextAccess({ projectPath })
+  const exported = await executeTool(toolFor(access.service, texts)('handoff_export'), { dry_run: false }, fakeExec(root))
+  const archive = await renamedArchive(root, exported.data.record, `${PROJECT}_1`)
+
+  const outcome = assertEnvelope(
+    await executeTool(
+      toolFor(access.service, texts)('handoff_import'),
+      { archive_path: archive, accept_renamed_project: true, dry_run: false },
+      fakeExec(root),
+    ),
+  )
+  assert.equal(outcome.ok, true)
+  assert.equal(outcome.data.record.nameChange.from, PROJECT)
+  assert.equal(outcome.data.record.nameChange.to, `${PROJECT}_1`)
+  assert.equal(await exists(join(root, 'tia', basename(root), `${PROJECT}_1`, `${PROJECT}_1.ap17`)), true)
+  const index = JSON.parse(await readFile(join(root, 'source', '_dsh-engineering-context.json'), 'utf8'))
+  assert.equal(index.project.name, `${PROJECT}_1`)
 })
 
 test('handoff_import refuses when HEAD advanced past the base', async (t) => {

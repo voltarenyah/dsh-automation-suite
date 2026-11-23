@@ -152,7 +152,7 @@ pnpm run clean:build      # 清构建产物（只碰 lib/ dist/）
 ## 4. 测试与验收
 
 ```powershell
-pnpm test          # 全仓：TIA 112 项（111 通过 / 1 跳过）+ dsh-tool-git 51 项 + engineering-context 166 项 + engineering-graph 128 项 + drawing 23 项 + plcsim-advanced 24 项 + ui-plc-source 47 项 + ui-tia-console 22 项 + ui-versions 15 项 + ui-hardware 9 项 + ui-prompt-guide 25 项 + ui-brandmark 5 项 + tia-todo-bridge 18 项
+pnpm test          # 全仓：TIA 112 项（111 通过 / 1 跳过）+ dsh-tool-git 51 项 + engineering-context 168 项 + engineering-graph 128 项 + drawing 23 项 + plcsim-advanced 24 项 + ui-plc-source 47 项 + ui-tia-console 22 项 + ui-versions 15 项 + ui-hardware 9 项 + ui-prompt-guide 25 项 + ui-brandmark 5 项 + tia-todo-bridge 18 项
 pnpm -r build
 pnpm -r typecheck
 ```
@@ -704,4 +704,3 @@ node tools/site-editor/server.mjs        # 默认 http://127.0.0.1:4173/，自�
 - 验收：`tools/site-editor/test/smoke.py`（Python Playwright，41 项；用**副本 + 两个端口**跑，
   步骤见 `tools/site-editor/README.md`）。`tools/` 不进 Pages 上传范围、不是 npm 包，
   不参与 `pnpm -r build/test`。
-

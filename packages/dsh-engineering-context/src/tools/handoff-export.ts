@@ -414,6 +414,7 @@ export function handoffExportTool(dependencies: ToolDependencies): ToolDefinitio
             createdAt: marker.createdAt,
             workspace: resolvedScope.workspace.title ?? basename(root),
             note: typeof args.note === 'string' && args.note.trim().length > 0 ? args.note.trim() : null,
+            nameChange: null,
             base: { commit: head, branch, sourceClean: true },
             project: {
               name: marker.project.name,

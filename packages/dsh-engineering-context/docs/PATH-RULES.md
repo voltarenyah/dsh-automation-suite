@@ -174,7 +174,7 @@ SaveAs 与 Retrieve 两种布局都按 `.ap17` 的实际位置解析（`tia/<wor
 - **`git.head` 是续接点**：导入要求 `HEAD == marker.git.head` 且 `source/<device>` 干净（v1 不合并
   本机改动）；不满足就 `handoff_workspace_advanced` / `handoff_source_dirty`。
 - marker **不是防篡改凭证**。它只声明出处；真正的校验是"marker 内嵌账本 == 本仓该 commit 的账本"。
-- `handoff/<id>/marker.json` 是同一份内容的本地副本；丢了 zip 仍能查出这一包从哪一版走的。
+- `handoff/<id>/marker.json` 是同一份内容的本地副本；丢了 zip 仍能查出这一包从哪一版走的。`n- **工程名可能被 TIA 改**：对方机器已有同名工程时，取回会把工程改名。`handoff_import` 默认以 `handoff_project_name_changed` 拒绝；用户确认后传 `accept_renamed_project:true`，沿用归档名并更新索引/记录（`nameChange`）。版本历史按 device/source 路径续接，不依赖工程名。
 
 ---
 

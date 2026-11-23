@@ -197,6 +197,9 @@ export function handoffInstructions(record: HandoffRecord): string {
     `Handoff id:      ${record.handoffId}`,
     `Created:         ${record.createdAt}`,
     `Project:         ${record.project.name} (TIA Portal ${record.project.tiaVersion})`,
+    ...(record.nameChange === null || record.nameChange === undefined
+      ? []
+      : [`Name change:    ${record.nameChange.from} → ${record.nameChange.to} (TIA rename accepted)`]),
     `PLC:             ${record.project.device} / ${record.project.software}`,
     `Base commit:     ${record.base.commit}`,
     `PLC checksum:    ${record.import?.checksum ?? 'see marker.json'}`,
@@ -302,4 +305,3 @@ export function markerCopyFileName(): string {
 
 /** Exposed for tests: the marker copy path builder needs the same file name. */
 export { HANDOFF_MARKER_FILE }
-

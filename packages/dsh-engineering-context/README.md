@@ -51,7 +51,7 @@ DeepSeek Harness 插件（**工程上下文插件**）：把一个 **TIA Portal 
 | 工具 | 干什么 | 写？ |
 |---|---|---|
 | `handoff_export` | 把 TIA 当前打开的受管工程封成 `.zap17` 交给别人：先要求工程已保存/已编译、源树干净、强制同步报告 `unchanged`，再把出处标记写到工程目录的 `UserFiles/_dsh-handoff.json`，以 `compressed` 模式归档到 `<workspace>/handoff/<id>/<project>_<yyyyMMdd-HHmm>.zap17`，**从 ZIP 读回标记**确认它真的在包里，最后写 `handoff.json` / `HANDOFF.txt` / `marker.json` 并追加 `handoff/` 忽略规则。默认只给计划（不打开/不写） | 是（标记、归档、记录、`.gitignore`） |
-| `handoff_import` | 收到返回的 `.zap17`：**先不碰 TIA**，读 ZIP 里的 marker 与 `.ap17`，校验版本/工程名，并用本仓该 commit 的 `_evidence.json` 证明 marker 没撒谎；v1 要求 `HEAD == marker.git.head` 且源树干净。真跑时关闭旧工程、把旧 `tia/<workspace>/` 移到 `.dsh/local/handoff-backups/<id>/previous-tia/`、取回、更新索引；PLC 已编译则强制同步并把差异留给 `project_diff` / `project_commit`，未编译则停在 `awaiting_compile` 让用户手动编译。失败时尽量把旧工程移回 | 是（关闭/移动/取回/索引/可选同步；从不提交、从不编译） |
+| `handoff_import` | 收到返回的 `.zap17`：**先不碰 TIA**，读 ZIP 里的 marker 与 `.ap17`，校验版本/工程名，并用本仓该 commit 的 `_evidence.json` 证明 marker 没撒谎；v1 要求 `HEAD == marker.git.head` 且源树干净。真跑时关闭旧工程、把旧 `tia/<workspace>/` 移到 `.dsh/local/handoff-backups/<id>/previous-tia/`、取回、更新索引；PLC 已编译则强制同步并把差异留给 `project_diff` / `project_commit`，未编译则停在 `awaiting_compile` 让用户手动编译。工程名与 marker 不一致时默认拒绝（`handoff_project_name_changed`）；用户确认是 TIA 因同名重命名后，传 `accept_renamed_project:true` 接受归档名，索引与记录写 from→to。失败时尽量把旧工程移回 | 是（关闭/移动/取回/索引/可选同步；从不提交、从不编译） |
 | `handoff_status` | 只读列出 `handoff/<id>/` 的包：状态、base、归档大小/路径/是否还在、旧工程备份是否存在、是否在等编译。`project_status` 仍然只读 | 否 |
 
 **交接的硬约束**：只支持 TIA V17 的 `compressed` 归档（`None` / `DiscardRestorableData` 产出的是文件夹，Openness 取不回）；marker 不是防篡改签名，真正的校验是“marker 内嵌账本 == 本仓该 commit 的账本”；v1 不合并本机在交接期间的新提交，遇到就拒绝（`handoff_workspace_advanced`）。

@@ -294,6 +294,12 @@
                     `handoff_import` (plan first). The auditor verifies the marker against git and, in
                     v1, refuses if HEAD moved or the source tree is dirty; relay that refusal rather
                     than forcing it.
+                  - If `handoff_import` returns `handoff_project_name_changed`, ask the user with
+                    `ask_user_question`: show the marker name and the archive name, explain that TIA
+                    renamed the project because the other machine already had one with that name, and
+                    that accepting keeps the archive name as the managed name while git history
+                    continues. Only after an explicit yes re-delegate with
+                    `accept_renamed_project: true`; never pass it silently or guess.
                   - If the import stops at `awaiting_compile`, the auditor cannot compile. Compile the
                     PLC here with `compile_plc`, then delegate `project_sync(force:true)` to the same
                     auditor. Do not re-run `handoff_import`; the project is already in place.
@@ -627,6 +633,11 @@
                 - Report the handoff id, archive path, base commit, checksum, sync counts and the exact
                   next action. If it says `awaiting_compile`, tell the leader to compile in TIA and then
                   ask you to run `project_sync(force:true)`; do not call `handoff_import` again.
+                - If the archive project name differs from the marker, `handoff_import` stops with
+                  `handoff_project_name_changed` and both names in the error. Report the two names and
+                  wait for the leader's explicit user confirmation; only then run it again with
+                  `accept_renamed_project: true`. The archive name becomes the managed project name and
+                  the record keeps the old → new change; git history continues by device/source path.
 
                 Todo protocol. A version run is several long steps; each one must be visible while it
                 runs, not reconstructed afterwards:

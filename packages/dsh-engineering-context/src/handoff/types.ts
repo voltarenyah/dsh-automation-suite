@@ -94,6 +94,12 @@ export interface HandoffRecord {
   workspace: string
   /** The export-time note (recipient, ticket, why it went out). */
   note: string | null
+  /** Set when TIA renamed the project (e.g. a duplicate name on the other machine). */
+  nameChange: {
+    from: string
+    to: string
+    acceptedAt: string
+  } | null
   base: {
     commit: string
     branch: string | null
@@ -170,6 +176,10 @@ export interface HandoffExportPlan {
 
 /** What the import plan shows before anything is moved. */
 export interface HandoffImportPlan {
+  /** True when the archive project name differs from the marker's project name. */
+  renamed: boolean
+  /** True only when the caller passed the explicit user-confirmed flag. */
+  nameAccepted: boolean
   archive: {
     path: string
     bytes: number

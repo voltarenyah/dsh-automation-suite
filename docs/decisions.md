@@ -1443,6 +1443,10 @@ WebView2 与终端里起的 `dsh web`，两者都是回环，"本地有人"这�
 7. **旧工程只移动、不删除**：`.dsh/local/handoff-backups/<id>/previous-tia/`；取回失败尽量移回。
 8. **工具面**：`handoff_export` / `handoff_import` / `handoff_status` 挂 `/handoff`（auditor），
    `handoff_status` 另挂 `/status`（leader 只读）。
+9. **工程名变化必须用户确认**：TIA 在对方机器遇到同名工程时会给取回的工程改名。导入默认以
+   `handoff_project_name_changed` 拒绝；leader 用 `ask_user_question` 展示 marker 名与归档名，
+   只有用户确认后才让 auditor 传 `accept_renamed_project:true`。接受后沿用归档名，索引与
+   `handoff.json` 记录 `nameChange`；git 历史按 device/source 续接，不依赖工程名。
 
 **后果**：只覆盖 PLC 软件；HMI/硬件/安全设置改动不在版本视野；`handoff/` 与备份会随次数增长，
 不自动清理；真机"归档带 UserFiles marker → 另一台机器取回 → 再归档回来"的往返仍需在 app 的

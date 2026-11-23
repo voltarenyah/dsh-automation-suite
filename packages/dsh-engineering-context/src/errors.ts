@@ -107,6 +107,8 @@ export type EngineeringErrorCode =
   | 'handoff_source_dirty'
   /** The archive's project does not match the marker or the managed project. */
   | 'handoff_project_mismatch'
+  /** The archive's project name differs from the marker's (TIA renamed it on the other machine). */
+  | 'handoff_project_name_changed'
   /** The archive was not written by TIA Portal V17. */
   | 'handoff_version_unsupported'
   /** The open project has unsaved changes, so it cannot be archived or replaced safely. */

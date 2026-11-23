@@ -40,6 +40,7 @@ async function describe(root: string, record: HandoffRecord): Promise<Record<str
     status: record.status,
     createdAt: record.createdAt,
     note: record.note ?? null,
+    nameChange: record.nameChange ?? null,
     project: record.project,
     base: record.base,
     archive: {

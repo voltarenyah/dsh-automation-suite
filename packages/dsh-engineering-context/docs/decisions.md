@@ -977,14 +977,18 @@ force 必扫）。**真机（F-CPU 工程）未复测**：下一步要用 `SWT2_
    取回失败时尽量移回。备份不自动清理。
 8. **工具面**：`handoff_export` / `handoff_import` / `handoff_status` 挂在独立入口
    `/handoff`（auditor）；`handoff_status` 另挂在 `/status`（leader 只读）。主入口不增加工具。
+9. **工程名变化必须显式确认**：对方机器上已有同名工程时，TIA 会把取回的工程改名（如 `pilot` →
+   `pilot_1`）。`handoff_import` 默认以 `handoff_project_name_changed` 在**碰 TIA 之前**拒绝，并给出
+   marker 名与归档名；只有用户明确确认“这是同一工程被 TIA 重命名”后，leader 才能让 auditor 传
+   `accept_renamed_project:true` 重跑。接受后**沿用归档名**作为受管工程名，索引同步更新，记录写
+   `nameChange: {from,to,acceptedAt}`。版本历史按 device/source 路径续接，不依赖工程名，所以不需要
+   SaveAs/改名；代价只是工作区里的工程名变了，后续 handoff 的 marker 也会用新名字。
 
 **代价/边界**：`.zap17` 是 100+ MB 的交付二进制，`handoff/` 会随次数增长；只覆盖 PLC 软件
 （块/类型/标签表），HMI/硬件/安全设置的改动不在本工作流的版本视野内；只支持 V17（V18/V20 归档
 取不回）；marker 可被改/删，但校验失败会拒绝而不是猜测。
 
-**验证**：本包新增 `test/21-handoff.test.mjs` 8 项（marker/ZIP 往返、status、export plan/run、force-scan 零改动、
-import plan、HEAD 前进拒绝、未编译停在 awaiting_compile），全套 **166 项全通过**。
+**验证**：本包新增 `test/21-handoff.test.mjs` 10 项（marker/ZIP 往返、status、export plan/run、force-scan 零改动、
+import plan、工程名变化默认拒绝/确认后接受、HEAD 前进拒绝、未编译停在 awaiting_compile），全套 **168 项全通过**。
 真机“TIA 归档带 `UserFiles` marker → 另一台机器取回 → 再归档回来”的往返仍需在 app 的控制器上
 跑一次（本会话的 shell 非提权，TIA Openness 连接失败，不能作为验收）。
-
-

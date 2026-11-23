@@ -91,6 +91,13 @@ const PARAMETERS = {
     type: 'boolean',
     description: 'Default true: retrieve into a visible TIA Portal instance (the user may have to compile there).',
   },
+  accept_renamed_project: {
+    type: 'boolean',
+    description:
+      'Default false. If the archive project name differs from the marker (TIA renamed it because the other machine already ' +
+      'had a project with that name), the import stops with handoff_project_name_changed. Set this to true only after the ' +
+      'user explicitly confirms it is the same project and accepts the archive name as the new managed project name.',
+  },
   note: {
     type: 'string',
     description: 'Optional one-line note about the returned changes, stored in handoff.json and shown in the result.',
@@ -282,7 +289,10 @@ export function handoffImportTool(dependencies: ToolDependencies): ToolDefinitio
       'open project, moves the old tia/<workspace>/ to .dsh/local/handoff-backups/<id>/previous-tia/, retrieves the ' +
       'archive, updates the source index and then: if the PLC is compiled, runs a forced sync and reports the pending ' +
       'change set for project_diff/project_commit; if it is not compiled, stops at awaiting_compile and leaves the ' +
-      'project open for the user to compile. It never compiles and never commits. Defaults to a plan (dry_run: true).',
+      'project open for the user to compile. If TIA renamed the project because the other machine already had one with ' +
+      'that name, it stops with handoff_project_name_changed before touching TIA; only after the user confirms may the ' +
+      'caller re-run with accept_renamed_project: true, which keeps the archive name and records the change. It never ' +
+      'compiles and never commits. Defaults to a plan (dry_run: true).',
     parameters: PARAMETERS,
     async execute(args, exec) {
       let scope: ResolvedScope | null = null
@@ -346,11 +356,20 @@ export function handoffImportTool(dependencies: ToolDependencies): ToolDefinitio
             { project: ap17.name, tiaVersion: ap17.tiaVersion },
           )
         }
-        if (ap17.name.toLowerCase() !== marker.project.name.toLowerCase()) {
+        const renamed = ap17.name.toLowerCase() !== marker.project.name.toLowerCase()
+        if (renamed && args.accept_renamed_project !== true) {
           throw new EngineeringContextError(
-            'handoff_project_mismatch',
-            `The archive's project is ${ap17.name}, but its marker says ${marker.project.name}.`,
-            { project: ap17.name, marker: marker.project.name },
+            'handoff_project_name_changed',
+            `The archive's project is ${ap17.name}, but its marker says ${marker.project.name}. TIA renames a project ` +
+              'when the other machine already has one with that name; the evidence and device still belong to this ' +
+              'handoff. If the user confirms this is the same project, re-run with accept_renamed_project: true. The ' +
+              'imported project will use the archive name, and the workspace index will record the change.',
+            {
+              markerProject: marker.project.name,
+              archiveProject: ap17.name,
+              archive: archivePath,
+              hint: 'Ask the user to confirm the rename; only then pass accept_renamed_project: true.',
+            },
           )
         }
 
@@ -388,6 +407,8 @@ export function handoffImportTool(dependencies: ToolDependencies): ToolDefinitio
 
         const backupDirectory = join(localStateDirectoryPath(config, root), 'handoff-backups', marker.handoffId, 'previous-tia')
         const plan: HandoffImportPlan = {
+          renamed,
+          nameAccepted: args.accept_renamed_project === true,
           archive: {
             path: archivePath,
             bytes: archive.bytes.length,
@@ -468,6 +489,9 @@ export function handoffImportTool(dependencies: ToolDependencies): ToolDefinitio
                 `Archive: ${toPortable(root, archivePath)} (${archive.bytes.length} bytes) — project ${ap17.name} (TIA ${ap17.tiaVersion}).`,
                 `Marker: ${marker.handoffId}, base ${marker.git.head}${verified.branch === null ? '' : ` on ${verified.branch}`}, ${markerDevice.objectCount} object(s), checksum ${markerDevice.plcChecksum}.`,
                 `Workspace: HEAD ${headNow ?? 'none'} — matches base.`,
+                plan.renamed
+                  ? `Name: marker ${marker.project.name} → archive ${ap17.name}; accepted by the user (the archive name becomes the managed name).`
+                  : `Name: ${ap17.name} — matches the marker.`,
                 `Close: ${session.projectOpen ? `TIA's ${session.projectName ?? 'open project'} (${session.projectPath ?? '?'})` : 'no project is open'}.`,
                 `Backup: ${toPortable(root, backupDirectory)}/ (the old tia/<workspace>/ is moved, never deleted).`,
                 'After retrieval: if the PLC is compiled, a forced sync writes the source tree and stops before commit; if not, the import stops at awaiting_compile.',
@@ -584,12 +608,22 @@ export function handoffImportTool(dependencies: ToolDependencies): ToolDefinitio
             )
           }
           const projectName = retrieved.projectName ?? basename(canonicalProject, '.ap17')
-          if (projectName.toLowerCase() !== marker.project.name.toLowerCase()) {
+          const acceptAnyName = args.accept_renamed_project === true
+          if (projectName.length === 0) {
             await restoreOld()
             throw new EngineeringContextError(
-              'handoff_project_mismatch',
-              `TIA retrieved ${projectName}, but the handoff marker says ${marker.project.name}. The old project was restored.`,
-              { retrieved: projectName, marker: marker.project.name },
+              'project_name_unavailable',
+              'TIA retrieved the project but reported no usable project name. The old project was restored.',
+              { projectPath: canonicalProject },
+            )
+          }
+          if (!acceptAnyName && projectName.toLowerCase() !== marker.project.name.toLowerCase()) {
+            await restoreOld()
+            throw new EngineeringContextError(
+              'handoff_project_name_changed',
+              `TIA retrieved ${projectName}, but the handoff marker says ${marker.project.name}. If the user confirms this ` +
+                'is a TIA rename of the same project, re-run with accept_renamed_project: true; the old project was restored.',
+              { retrieved: projectName, marker: marker.project.name, hint: 'Ask the user, then pass accept_renamed_project: true.' },
             )
           }
 
@@ -676,6 +710,7 @@ export function handoffImportTool(dependencies: ToolDependencies): ToolDefinitio
               createdAt: marker.createdAt,
               workspace: resolvedScope.workspace.title ?? basename(root),
               note: null,
+              nameChange: null,
               base: { commit: marker.git.head, branch: verified.branch, sourceClean: true },
               project: {
                 name: marker.project.name,
@@ -694,9 +729,13 @@ export function handoffImportTool(dependencies: ToolDependencies): ToolDefinitio
               returned: null,
               import: null,
             }
+          const nameChanged = projectName.toLowerCase() !== marker.project.name.toLowerCase()
           const updatedRecord: HandoffRecord = {
             ...baseRecord,
             status,
+            nameChange: nameChanged
+              ? { from: marker.project.name, to: projectName, acceptedAt: new Date().toISOString() }
+              : (existingRecord?.nameChange ?? null),
             returned: {
               path: archivePath,
               sha256: archive.sha256,
@@ -760,6 +799,9 @@ export function handoffImportTool(dependencies: ToolDependencies): ToolDefinitio
           `Project: ${outcome.projectName} at ${toPortable(root, outcome.projectPath)}.`,
           `Handoff: ${marker.handoffId} — base ${marker.git.head}, archive ${archive.sha256.slice(0, 16)}….`,
           `PLC: ${outcome.device.device} / ${outcome.device.software}; checksum ${outcome.checksum ?? 'unavailable'}.`,
+          outcome.record.nameChange === null || outcome.record.nameChange === undefined
+            ? `Name: ${outcome.projectName}.`
+            : `Name: ${outcome.record.nameChange.from} → ${outcome.record.nameChange.to} (TIA rename accepted; index updated).`,
           outcome.backup === null
             ? 'Backup: no previous project directory was present.'
             : `Backup: ${toPortable(root, outcome.backup)}/ (kept; never deleted automatically).`,
