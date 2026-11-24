@@ -8,6 +8,15 @@
   "description": "DSH plugin: manage S7-PLCSIM Advanced instances and exchange PLC tags through the PLCSIM Advanced runtime API (API 4.0 baseline, Softbus by default).",
   "type": "module",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/voltarenyah/dsh-automation-suite.git",
+    "directory": "packages/dsh-plcsim-advanced"
+  },
+  "homepage": "https://github.com/voltarenyah/dsh-automation-suite#readme",
+  "bugs": {
+    "url": "https://github.com/voltarenyah/dsh-automation-suite/issues"
+  },
   "engines": {
     "node": ">=22.19.0"
   },
@@ -27,7 +36,8 @@
     "controller/bin",
     "README.md",
     "LICENSE",
-    "docs"
+    "docs",
+    "!**/*.pdb"
   ],
   "dsh": {
     "manifestVersion": 1,

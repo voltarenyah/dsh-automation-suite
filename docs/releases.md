@@ -184,3 +184,34 @@ git show de237b8:profile/dsh-automation-suite/cordis.patch.yml |
 3. **复用 tag/版本号** → GitHub 资产名不可重复上传，必须用新版本。
 4. **忘记更新台账** → 下次不知道发到哪；本文件与 CHANGELOG 必须同一次提交更新。
 5. **上传后立刻下载 404** → CDN 传播延迟，不是资产丢失；等 1–2 分钟重试。
+
+---
+
+## 7. npm 发布（准备中，尚未执行）
+
+15 个插件统一发布在 npm 组织 `automation-suite` 下（`@automation-suite/*`，见 D39）。npm 是
+**GitHub Releases 之后的第二条渠道**，不替代 profile 分发包。
+
+**硬性规则：只从 release 产物发布，不要在工作树 `pnpm publish` / `npm publish`。**
+
+- `packages/dsh-engineering-graph/engine/bin` 在仓库里是 framework-dependent 开发构建，带着 15 个
+  RID 的 SQLite 原生库（解包 33 MB）。发布物必须是 `scripts/build-distribution.mjs` 用 .NET 10 SDK
+  重建的 self-contained win-x64 单文件（`-p:PublishSingleFile=true`；staging 里已剔除 `fixtures/` 与 `.pdb`）。
+- 其余包 `pnpm pack` 即可：`files` 已排除 `.pdb`、`controller/bin/*.inuse-*`、`engine/bin/fixtures`，
+  `LICENSE` / README / `cordis.patch.yml` 都在包里。
+
+**流程**
+
+1. `node scripts/build-distribution.mjs --version <x.y.z>` —— 产物在 `dist/release/<x.y.z>/assets/`，
+   文件名形如 `automation-suite-ui-versions-0.1.0.tgz`；
+2. 逐个 dry-run 核对内容：`npm publish --dry-run <tgz>`；
+3. `npm publish <tgz>`（`publishConfig.access = "public"` 已写在包里，不需要再传 `--access`）；
+4. 验证：`npm view @automation-suite/<name> versions`，再在临时 profile 里
+   `dsh plugin add @automation-suite/<name>@<ver>` 走一次真实安装链路。
+
+**权限**：granular token 需要 `automation-suite` 组织的 packages read+write（外加 org read），
+存在本机 `%USERPROFILE%\.npmrc`；`npm org ls automation-suite` 应显示 `{"yuanheng":"owner"}`。
+2027-01 起 npm 限制"绕过 2FA 的 token 直接发布"，能开 2FA 的 granular token 更稳。
+
+**未决**：首发版本号（15 个包目前都是 0.1.0；tool-git 沿用上游 0.1.3，它是 fork、与上游不是同一个
+npm 包）；graph 的 self-contained 产物是否同时附到 GitHub Releases。

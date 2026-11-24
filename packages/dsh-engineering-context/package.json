@@ -8,6 +8,15 @@
   "description": "DSH plugin: engineering project context — saves the project TIA Portal has open into the workspace and rebuilds its source tree, through the TIA interface plugin's service seam (it never talks to TIA Portal itself).",
   "type": "module",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/voltarenyah/dsh-automation-suite.git",
+    "directory": "packages/dsh-engineering-context"
+  },
+  "homepage": "https://github.com/voltarenyah/dsh-automation-suite#readme",
+  "bugs": {
+    "url": "https://github.com/voltarenyah/dsh-automation-suite/issues"
+  },
   "engines": {
     "node": ">=22.19.0"
   },

@@ -8,6 +8,15 @@
   "description": "DSH plugin: a right-sidebar 'Changes' tab listing uncommitted files with per-file line counts, and a commit area that sends a fixed prompt into the current session (the commit itself stays with the agent's git tools).",
   "type": "module",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/voltarenyah/dsh-automation-suite.git",
+    "directory": "packages/dsh-ui-changes"
+  },
+  "homepage": "https://github.com/voltarenyah/dsh-automation-suite#readme",
+  "bugs": {
+    "url": "https://github.com/voltarenyah/dsh-automation-suite/issues"
+  },
   "engines": {
     "node": ">=22.19.0"
   },

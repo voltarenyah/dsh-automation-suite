@@ -8,6 +8,15 @@
   "description": "DSH plugin: a right-sidebar 'Versions' tab that reads the engineering version store (.dsh/versions-view.json) and shows version history, per-block change timelines and fingerprint deltas.",
   "type": "module",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/voltarenyah/dsh-automation-suite.git",
+    "directory": "packages/dsh-ui-versions"
+  },
+  "homepage": "https://github.com/voltarenyah/dsh-automation-suite#readme",
+  "bugs": {
+    "url": "https://github.com/voltarenyah/dsh-automation-suite/issues"
+  },
   "engines": {
     "node": ">=22.19.0"
   },

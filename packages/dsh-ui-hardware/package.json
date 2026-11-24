@@ -8,6 +8,15 @@
   "description": "DSH plugin: a right-sidebar 'Hardware' tab that renders the TIA hardware configuration view (.dsh/hardware-view.json) as a rack-strip panel — devices by role, slots, order numbers, address windows, subnets and signal mappings.",
   "type": "module",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/voltarenyah/dsh-automation-suite.git",
+    "directory": "packages/dsh-ui-hardware"
+  },
+  "homepage": "https://github.com/voltarenyah/dsh-automation-suite#readme",
+  "bugs": {
+    "url": "https://github.com/voltarenyah/dsh-automation-suite/issues"
+  },
   "engines": {
     "node": ">=22.19.0"
   },

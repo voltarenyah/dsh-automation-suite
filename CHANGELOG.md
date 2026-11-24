@@ -20,9 +20,17 @@ GitHub Releases 与 git tag `v<version>` 对齐（发布流程见 [`docs/release
   `%USERPROFILE%\dsh-automation-suite-home` 里仍是旧包名依赖，`start-env.ps1 -Reset`（或 `cmd /c rmdir /s /q`
   后重建）才会加载新包；日常 `desktop` profile 不受影响。按 id 落的设置/状态（如 project-dashboard 的
   tags owner）会随 id 变化重新开始。
-- **发布元数据**：15 个可发布包都加了 `"publishConfig": { "access": "public" }`（scoped 包默认 restricted）。
-  **实际 `npm publish` 尚未执行**：当前 npm 身份 `yuanheng` 对 `automation-suite` 组织返回 403，
-  需要先加入组织（或换组织所有者账号），详见 `docs/decisions.md` D39。
+- **发布就绪整理**：15 个包补 `repository` / `homepage` / `bugs`；12 个包补 `LICENSE`（原先只有
+  tool-git / plcsim / tia 有）；`dsh-ui-hardware` 补上 README（`files` 里写着它、但文件原先不存在）；
+  `files` 排除 `**/*.pdb`、`controller/bin/*.inuse-*`、`engine/bin/fixtures`，并删掉控制器遗留的
+  `TiaOpennessV17Min.Controller.exe.inuse-34948`；`clean:build` 后重建清掉了 tool-git 里陈旧的
+  `lib/runner-*.mjs` 共享块。
+- **npm 权限已就绪，发布尚未执行**：本机 `yuanheng` 现为 `automation-suite` 组织的 owner
+  （`npm org ls automation-suite` → `{"yuanheng":"owner"}`），15 个包名在 registry 上仍全部空闲；
+  `npm publish --dry-run` 对 `ui-versions` 与 `tia-openness-v17` 均通过（public access）。
+  **发布必须从 `scripts/build-distribution.mjs` 的 release 产物走**——graph 包的 `engine/bin`
+  在工作树里是 framework-dependent 开发构建（含多 RID SQLite 原生库，解包 33 MB），发布物必须是
+  self-contained 单文件。流程见 [`docs/releases.md`](docs/releases.md) §7。
 
 ## [0.2.6] - 2026-11-23
 

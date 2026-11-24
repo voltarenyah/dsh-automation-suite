@@ -8,6 +8,15 @@
   "description": "DSH plugin: a 'Prompt Guide' page in the main sidebar — the automation suite's capability map as ready-to-use prompts (what to ask, what happens, which tool/preset runs it), with copy and 'use in a new session' buttons.",
   "type": "module",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/voltarenyah/dsh-automation-suite.git",
+    "directory": "packages/dsh-ui-prompt-guide"
+  },
+  "homepage": "https://github.com/voltarenyah/dsh-automation-suite#readme",
+  "bugs": {
+    "url": "https://github.com/voltarenyah/dsh-automation-suite/issues"
+  },
   "engines": {
     "node": ">=22.19.0"
   },

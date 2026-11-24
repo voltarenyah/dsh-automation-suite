@@ -8,6 +8,15 @@
   "description": "DSH plugin: a 'Project Dashboard' global panel placed above Plugins — one page summarising every workspace (sessions, engineering scale, hardware, versions, drawings) with multi-level tags, search and tag filtering.",
   "type": "module",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/voltarenyah/dsh-automation-suite.git",
+    "directory": "packages/dsh-ui-project-dashboard"
+  },
+  "homepage": "https://github.com/voltarenyah/dsh-automation-suite#readme",
+  "bugs": {
+    "url": "https://github.com/voltarenyah/dsh-automation-suite/issues"
+  },
   "engines": {
     "node": ">=22.19.0"
   },

@@ -8,6 +8,15 @@
   "description": "DSH plugin: minimal TIA Portal V17 Openness block read/write (export/import Simatic ML, compile, verified writes) through a whitelisted C# controller subprocess.",
   "type": "module",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/voltarenyah/dsh-automation-suite.git",
+    "directory": "packages/dsh-tia-openness-v17-min"
+  },
+  "homepage": "https://github.com/voltarenyah/dsh-automation-suite#readme",
+  "bugs": {
+    "url": "https://github.com/voltarenyah/dsh-automation-suite/issues"
+  },
   "engines": {
     "node": ">=22.19.0"
   },
@@ -31,7 +40,9 @@
     "skills",
     "README.md",
     "THIRD_PARTY_NOTICES.md",
-    "docs"
+    "docs",
+    "!controller/bin/*.inuse-*",
+    "!**/*.pdb"
   ],
   "dsh": {
     "manifestVersion": 1,

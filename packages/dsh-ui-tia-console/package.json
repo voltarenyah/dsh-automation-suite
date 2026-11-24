@@ -8,6 +8,15 @@
   "description": "DSH plugin: a TIA Portal console above the composer — live state (no project / opening / open / saving / compiling / closing), elapsed time for long operations, one-click open/save/compile/close through the existing /tia-* commands, and a refresh that re-syncs the state with the controller.",
   "type": "module",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/voltarenyah/dsh-automation-suite.git",
+    "directory": "packages/dsh-ui-tia-console"
+  },
+  "homepage": "https://github.com/voltarenyah/dsh-automation-suite#readme",
+  "bugs": {
+    "url": "https://github.com/voltarenyah/dsh-automation-suite/issues"
+  },
   "engines": {
     "node": ">=22.19.0"
   },

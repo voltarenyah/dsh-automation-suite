@@ -8,6 +8,15 @@
   "description": "DSH plugin: electrical drawings — ingest PDF drawing sets into a workspace index (sheets, cross-references, entities), retrieve pages and elements for the model, and show the located page in a right-sidebar 'Drawing' tab.",
   "type": "module",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/voltarenyah/dsh-automation-suite.git",
+    "directory": "packages/dsh-drawing"
+  },
+  "homepage": "https://github.com/voltarenyah/dsh-automation-suite#readme",
+  "bugs": {
+    "url": "https://github.com/voltarenyah/dsh-automation-suite/issues"
+  },
   "engines": {
     "node": ">=22.19.0"
   },
