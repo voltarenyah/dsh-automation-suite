@@ -10,7 +10,7 @@
  * `lib/client.js` when an enabled entry declares the package (see `cordis.patch.yml`).
  * It owns no resource and does no work.
  *
- * @module dsh-ui-hardware
+ * @module @automation-suite/ui-hardware
  */
 
 /** Cordis plugin name, kept in step with the row id in `cordis.patch.yml`. */

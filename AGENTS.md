@@ -34,15 +34,18 @@ tools/       仓库级本地工具，不进发布物：site-editor = 站点文�
 - 迁移是**无损单向**的：曾逐文件比对哈希，归档目录里没有任何本仓库缺的文件（0 个）。
 - 需要把历史接进本仓库属于重写历史的操作，要做单独规划，别顺手做。
 
-### 第三方插件是 vendor 副本，包名不加 scope
+### 第三方插件是 vendor 副本，以 fork 身份发布在本仓 scope 下
 
 `packages/dsh-tool-git` 不是本仓原创代码，而是上游
-[`lxj808624/dsh-tool-git`](https://github.com/lxj808624/dsh-tool-git) `v0.1.3` 的**压平 vendor 副本**，
-**包名刻意保持上游的 `dsh-tool-git`（不加 scope）**。因此：
+[`lxj808624/dsh-tool-git`](https://github.com/lxj808624/dsh-tool-git) `v0.1.3` 的**压平 vendor 副本**。
+上游的裸名 `dsh-tool-git` 已被占用，所以本仓以 **fork 身份**发布在自有 scope 下：
+包名是 `@automation-suite/dsh-tool-git`（保留上游名 `dsh-tool-git` 作尾段，便于与上游对照；
+MIT 允许 fork，README / LICENSE 里保留上游署名与 `repository` 指向）。因此：
 
-- `package.json` 的 `name` 与 `cordis.patch.yml` 的 `insert[].name` **都**是 `dsh-tool-git`
-  （不以 `@` 开头，YAML 里不需要引号）；改任一处必须同步另一处；
-- 它**不能**以同名发布到 npm（`dsh-tool-git` 已被上游占用），要发布得先决定是改 scope 还是只出 tarball；
+- `package.json` 的 `name` 与 `cordis.patch.yml` 的 `insert[].name` **都**是 `@automation-suite/dsh-tool-git`
+  （以 `@` 开头，YAML 里**必须加引号**）；改任一处必须同步另一处；
+- 它与上游**不是同一个 npm 包**：`npm i dsh-tool-git` 拿的是上游原版，`npm i @automation-suite/dsh-tool-git`
+  才是本仓这份带 B1 改造（服务化 + `/tools` 拆分 + `neverBundle`）的 fork；
 - 它的开发期约定与 TIA 包**不完全相同**（多了 `src/dsh-runtime.d.ts`、tsdown 的 `deps.neverBundle`），
   见 `packages/dsh-tool-git/AGENTS.md`，不要按 TIA 包的印象去改它。
 
@@ -152,31 +155,31 @@ pnpm run clean:build      # 清构建产物（只碰 lib/ dist/）
 ## 4. 测试与验收
 
 ```powershell
-pnpm test          # 全仓：TIA 112 项（111 通过 / 1 跳过）+ dsh-tool-git 51 项 + engineering-context 168 项 + engineering-graph 128 项 + drawing 23 项 + plcsim-advanced 24 项 + ui-plc-source 47 项 + ui-tia-console 22 项 + ui-versions 15 项 + ui-hardware 9 项 + ui-prompt-guide 25 项 + ui-brandmark 5 项 + tia-todo-bridge 18 项
+pnpm test          # 全仓：TIA 112 项（111 通过 / 1 跳过）+ @automation-suite/dsh-tool-git 51 项 + engineering-context 168 项 + engineering-graph 128 项 + drawing 23 项 + plcsim-advanced 24 项 + ui-plc-source 47 项 + ui-tia-console 22 项 + ui-versions 15 项 + ui-hardware 9 项 + ui-prompt-guide 25 项 + ui-brandmark 5 项 + tia-todo-bridge 18 项
 pnpm -r build
 pnpm -r typecheck
 ```
 
-本地插件加 vendor 的 `dsh-tool-git` 用**两种测试运行器**，`pnpm -r test` 会把它们都跑到：
+本地插件加 vendor 的 `@automation-suite/dsh-tool-git` 用**两种测试运行器**，`pnpm -r test` 会把它们都跑到：
 
 | 包 | 运行器 | 命令 |
 |---|---|---|
-| `dsh-tia-openness-v17-min` | `node:test` | `node --test test/*.test.mjs` |
-| `dsh-tool-git` | `vitest` | `vitest run` |
-| `dsh-engineering-context` | `node:test` | `node scripts/run-tests.mjs`（**先构建再跑**，因为它不提交 `lib/`） |
-| `dsh-engineering-graph` | `node:test` | `node scripts/run-tests.mjs`（**先构建再跑**，同上） |
-| `dsh-drawing` | `node:test` | `node scripts/run-tests.mjs`（**先构建再跑**；PDF 索引/检索模型 + 字典，浏览器半侧靠真实图纸验收） |
-| `dsh-plcsim-advanced` | `node:test` | `node --test --test-reporter=spec "test/*.test.mjs"`（纯协议与工具面，控制器不在时降级） |
-| `dsh-ui-plc-source` | `node:test` | `node scripts/run-tests.mjs`（**先构建再跑**，同上；浏览器半侧是 `.jsx`，不进 `tsc`，靠这套纯模型单测 + 浏览器验收） |
-| `dsh-ui-tia-console` | `node:test` | `node scripts/run-tests.mjs`（**先构建再跑**；纯事件折叠 + 字典，浏览器半侧靠真实 `/tia-*` 流程验收） |
-| `dsh-ui-versions` | `node:test` | `node scripts/run-tests.mjs`（**先构建再跑**；纯视图解析/筛选/时间线 + 字典，浏览器半侧靠真实 `.dsh/versions-view.json` 验收） |
-| `dsh-ui-hardware` | `node:test` | `node scripts/run-tests.mjs`（**先构建再跑**；视图解析/筛选/机位面 + 字典，浏览器半侧靠真实 `.dsh/hardware-view.json` 验收） |
-| `dsh-ui-prompt-guide` | `node:test` | `node scripts/run-tests.mjs`（**先构建再跑**；内容数据完整性 + 工具白名单、路径安全/trust fence/路由响应、产物包装与 seat 名；浏览器半侧靠真实 dev-env 验收） |
-| `dsh-ui-brandmark` | `node:test` | `node scripts/run-tests.mjs`（**先构建再跑**；文案映射/字典落回 + 128px 桌面图标 + manifest 与 Loader 行一致性，5 项；浏览器半侧靠真实 dev-env 验收） |
-| `dsh-ui-changes` | `node:test` | `node scripts/run-tests.mjs`（**先构建再跑**；Changes 面板 P1：git 状态路由/服务/字典 + 客户端折叠，48 项） |
-| `dsh-tia-todo-bridge` | `node:test` | `node --test --test-reporter=spec "test/*.test.mjs"`（纯状态机 + manifest，18 项；不依赖 TIA） |
+| `@automation-suite/tia-openness-v17` | `node:test` | `node --test test/*.test.mjs` |
+| `@automation-suite/dsh-tool-git` | `vitest` | `vitest run` |
+| `@automation-suite/engineering-context` | `node:test` | `node scripts/run-tests.mjs`（**先构建再跑**，因为它不提交 `lib/`） |
+| `@automation-suite/engineering-graph` | `node:test` | `node scripts/run-tests.mjs`（**先构建再跑**，同上） |
+| `@automation-suite/pdf-drawing` | `node:test` | `node scripts/run-tests.mjs`（**先构建再跑**；PDF 索引/检索模型 + 字典，浏览器半侧靠真实图纸验收） |
+| `@automation-suite/plcsim-advanced` | `node:test` | `node --test --test-reporter=spec "test/*.test.mjs"`（纯协议与工具面，控制器不在时降级） |
+| `@automation-suite/ui-plc-source` | `node:test` | `node scripts/run-tests.mjs`（**先构建再跑**，同上；浏览器半侧是 `.jsx`，不进 `tsc`，靠这套纯模型单测 + 浏览器验收） |
+| `@automation-suite/ui-tia-console` | `node:test` | `node scripts/run-tests.mjs`（**先构建再跑**；纯事件折叠 + 字典，浏览器半侧靠真实 `/tia-*` 流程验收） |
+| `@automation-suite/ui-versions` | `node:test` | `node scripts/run-tests.mjs`（**先构建再跑**；纯视图解析/筛选/时间线 + 字典，浏览器半侧靠真实 `.dsh/versions-view.json` 验收） |
+| `@automation-suite/ui-hardware` | `node:test` | `node scripts/run-tests.mjs`（**先构建再跑**；视图解析/筛选/机位面 + 字典，浏览器半侧靠真实 `.dsh/hardware-view.json` 验收） |
+| `@automation-suite/ui-prompt-guide` | `node:test` | `node scripts/run-tests.mjs`（**先构建再跑**；内容数据完整性 + 工具白名单、路径安全/trust fence/路由响应、产物包装与 seat 名；浏览器半侧靠真实 dev-env 验收） |
+| `@automation-suite/ui-brandmark` | `node:test` | `node scripts/run-tests.mjs`（**先构建再跑**；文案映射/字典落回 + 128px 桌面图标 + manifest 与 Loader 行一致性，5 项；浏览器半侧靠真实 dev-env 验收） |
+| `@automation-suite/ui-changes` | `node:test` | `node scripts/run-tests.mjs`（**先构建再跑**；Changes 面板 P1：git 状态路由/服务/字典 + 客户端折叠，48 项） |
+| `@automation-suite/tia-todo-bridge` | `node:test` | `node --test --test-reporter=spec "test/*.test.mjs"`（纯状态机 + manifest，18 项；不依赖 TIA） |
 
-⚠️ `dsh-engineering-graph` 还有一个 **C# 引擎**（`engine/`，net10，需要 .NET 10 SDK）。`pnpm -r build` 只构建 TypeScript ——
+⚠️ `@automation-suite/engineering-graph` 还有一个 **C# 引擎**（`engine/`，net10，需要 .NET 10 SDK）。`pnpm -r build` 只构建 TypeScript ——
 它的产物 `engine/bin/` **进 git**（与接口插件族的 `controller/bin` 同理），所以 checkout 开箱可用；只有改了 C# 源码才需要 `pwsh -NoProfile -File engine/build.ps1` 重建（输出到 `engine/bin/`，其中 `engine/bin/fixtures/` 与 `engine/obj/` 被 ignore）。
 **发布包里的引擎是 self-contained win-x64 单文件**：`scripts/build-distribution.mjs` 在打包时用 .NET 10 SDK 生成到临时 staging，用户不需要安装 .NET；仓库里的 `engine/bin/` 仍是 framework-dependent 的开发/测试构建（跑测试要有 .NET 10 runtime，或设 `DOTNET_ROOT`）。
 它有一项测试**驱动该引擎**（跑 `--self-test`：原生 SQLite 加载 + 真实导出物解析 + 只读闸门），
@@ -186,10 +189,10 @@ pnpm -r typecheck
 各包的测试自举会各自自动触发抽取；也可以手动：
 
 ```powershell
-pnpm --filter @voltarenyah/dsh-tia-openness-v17-min run link:runtime
-pnpm --filter dsh-tool-git run link:runtime
-pnpm --filter @voltarenyah/dsh-engineering-context run link:runtime
-pnpm --filter @voltarenyah/dsh-engineering-graph run link:runtime
+pnpm --filter @automation-suite/tia-openness-v17 run link:runtime
+pnpm --filter @automation-suite/dsh-tool-git run link:runtime
+pnpm --filter @automation-suite/engineering-context run link:runtime
+pnpm --filter @automation-suite/engineering-graph run link:runtime
 ```
 
 前两者从**已安装 app 自己的 `resources/app.asar`** 里求闭包（约 32 个包 / 8 MB / <1 s），
@@ -197,7 +200,7 @@ pnpm --filter @voltarenyah/dsh-engineering-graph run link:runtime
 `runtime.json` 记下宿主版本，宿主升级后自动重抽。环境变量覆盖：`DSH_APP_ASAR`（asar 路径）、
 `DSH_HOME`（harness home）。
 
-⚠️ `dsh-engineering-context` 与 `dsh-engineering-graph` 的链接脚本只链 `@deepseek-ai/*`，且**从不抽取**：
+⚠️ `@automation-suite/engineering-context` 与 `@automation-suite/engineering-graph` 的链接脚本只链 `@deepseek-ai/*`，且**从不抽取**：
 它们只读已存在的 `<DSH_HOME>/plugin-runtime`，缺包就报错并让你去跑兄弟包的抽取器。理由：抽取会删除并重建
 一个**在仓库之外、无法用 git 恢复**的目录。它们的依赖（`typescript` / `@types/node`）由
 `pnpm install` 提供 —— **手工链接绝不能指向另一个 workspace 包的 `node_modules`**，
@@ -205,7 +208,7 @@ pnpm --filter @voltarenyah/dsh-engineering-graph run link:runtime
 
 **抽取出来的运行时不含 `.d.ts`**（app 的生产构建剥掉了类型声明），所以各包各自手写了一份
 环境声明来喂 `tsc`：`packages/*/src/dsh-runtime.d.ts`。抽取的 `RUNTIME_ROOTS` 与手写声明
-**都按包而异**（`dsh-tool-git` 多一个 `dsh-system-prompt`，且需要 `oneOf` 的特殊处理），
+**都按包而异**（`@automation-suite/dsh-tool-git` 多一个 `dsh-system-prompt`，且需要 `oneOf` 的特殊处理），
 改一个包时别照抄另一个包。
 
 **版本必须对齐运行中的宿主**：手动把来源指回 `~/.dsh/profiles/*/node_modules` 会验到旧版本
@@ -223,59 +226,59 @@ dsh --profile dsh-automation-suite --dump-config
 `dsh.profile.bundles` 一致；其中 `engineering-context` 带 `disabled: true`（它整行搬进了 `leader` preset）：
 
 ```yaml
-# == @voltarenyah/dsh-tia-openness-v17-min
-- id: tia-openness-v17-min
-  name: '@voltarenyah/dsh-tia-openness-v17-min'
-# == @voltarenyah/dsh-plcsim-advanced
+# == @automation-suite/tia-openness-v17
+- id: tia-openness-v17
+  name: '@automation-suite/tia-openness-v17'
+# == @automation-suite/plcsim-advanced
 - id: plcsim-advanced
-  name: '@voltarenyah/dsh-plcsim-advanced'
-# == @voltarenyah/dsh-engineering-context, patched by …\cordis.patch.yml
+  name: '@automation-suite/plcsim-advanced'
+# == @automation-suite/engineering-context, patched by …\cordis.patch.yml
 - id: engineering-context
-  name: '@voltarenyah/dsh-engineering-context'
+  name: '@automation-suite/engineering-context'
   disabled: true
-# == @voltarenyah/dsh-engineering-graph
+# == @automation-suite/engineering-graph
 - id: engineering-graph
-  name: '@voltarenyah/dsh-engineering-graph'
-# == @voltarenyah/dsh-drawing
-- id: drawing
-  name: '@voltarenyah/dsh-drawing'
-# == dsh-tool-git
+  name: '@automation-suite/engineering-graph'
+# == @automation-suite/pdf-drawing
+- id: pdf-drawing
+  name: '@automation-suite/pdf-drawing'
+# == @automation-suite/dsh-tool-git
 - id: tool-git
-  name: dsh-tool-git
-# == dsh-ui-plc-source
+  name: '@automation-suite/dsh-tool-git'
+# == @automation-suite/ui-plc-source
 - id: ui-plc-source
-  name: dsh-ui-plc-source
-# == dsh-ui-tia-console
+  name: '@automation-suite/ui-plc-source'
+# == @automation-suite/ui-tia-console
 - id: ui-tia-console
-  name: dsh-ui-tia-console
-# == dsh-ui-versions
+  name: '@automation-suite/ui-tia-console'
+# == @automation-suite/ui-versions
 - id: ui-versions
-  name: dsh-ui-versions
-# == dsh-ui-changes
+  name: '@automation-suite/ui-versions'
+# == @automation-suite/ui-changes
 - id: ui-changes
-  name: dsh-ui-changes
-# == dsh-ui-hardware
+  name: '@automation-suite/ui-changes'
+# == @automation-suite/ui-hardware
 - id: ui-hardware
-  name: dsh-ui-hardware
-# == dsh-ui-prompt-guide
+  name: '@automation-suite/ui-hardware'
+# == @automation-suite/ui-prompt-guide
 - id: ui-prompt-guide
-  name: dsh-ui-prompt-guide
-# == dsh-ui-project-dashboard
-- id: project-dashboard
-  name: dsh-ui-project-dashboard
-# == dsh-ui-brandmark
+  name: '@automation-suite/ui-prompt-guide'
+# == @automation-suite/ui-project-dashboard
+- id: ui-project-dashboard
+  name: '@automation-suite/ui-project-dashboard'
+# == @automation-suite/ui-brandmark
 - id: ui-brandmark
-  name: dsh-ui-brandmark
-# == @voltarenyah/dsh-tia-todo-bridge
+  name: '@automation-suite/ui-brandmark'
+# == @automation-suite/tia-todo-bridge
 - id: tia-todo-bridge
-  name: '@voltarenyah/dsh-tia-todo-bridge'
+  name: '@automation-suite/tia-todo-bridge'
 # == dsh-opencode-go
 - id: opencode-go
   name: dsh-opencode-go
 ```
 
-行数基线（**DSH 0.2.1-rc.2 实测，2026-11-08（加入 `dsh-ui-changes`、`dsh-ui-project-dashboard`、
-`dsh-tia-todo-bridge`、`dsh-ui-brandmark` 与目录选择器 pin 之后）**；换宿主版本、改蓝图或增减插件后必须重测）：
+行数基线（**DSH 0.2.1-rc.2 实测，2026-11-08（加入 `@automation-suite/ui-changes`、`@automation-suite/ui-project-dashboard`、
+`@automation-suite/tia-todo-bridge`、`@automation-suite/ui-brandmark` 与目录选择器 pin 之后）**；换宿主版本、改蓝图或增减插件后必须重测）：
 
 | 命令 | 行数 |
 |---|---|
@@ -345,7 +348,7 @@ Config 字段（如 `opennessDir`，或 git 插件的 `destructivePolicy`），�
   `pnpm install --lockfile-only`（本机 `pnpm` 不在 PATH，用自带那份）并确认 diff 里**没有**
   `+  '@deepseek-ai/dsh-llm@…` 这类运行时包的整棵子树；`--frozen-lockfile --lockfile-only` 应 exit 0。
 - **`tsdown` 会把能解析到的包打进产物**。插件对 `@deepseek-ai/*` 的 import 必须在构建期保持外部，
-  否则产物里会塞进一份私有的宿主运行时。`dsh-tool-git` 用 `deps: { neverBundle: true }` 钉住这一点；
+  否则产物里会塞进一份私有的宿主运行时。`@automation-suite/dsh-tool-git` 用 `deps: { neverBundle: true }` 钉住这一点；
   详细机理与验收口径见 `packages/dsh-tool-git/AGENTS.md`。新增插件时同样要显式声明。
 
 ---
@@ -479,7 +482,7 @@ TIA Portal / Openness 的功能测试统一拿下面这个源项目当"源"，**
   `project_already_open` 拒绝。
 
 **造测试项目 = 一次工具调用，只给它源路径**（`create_engineering_project` 属于
-`@voltarenyah/dsh-engineering-context`，它再经 `engineeringAccess` 走 TIA 插件）：
+`@automation-suite/engineering-context`，它再经 `engineeringAccess` 走 TIA 插件）：
 
 ```jsonc
 create_engineering_project({

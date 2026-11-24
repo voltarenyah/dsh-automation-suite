@@ -116,7 +116,7 @@ export function syncTool(dependencies: ToolDependencies): ToolDefinition {
             if (typeof service.readPlcChecksum !== 'function') {
               throw new EngineeringContextError(
                 'tia_access_unavailable',
-                'The installed TIA interface plugin has no readPlcChecksum method. Update dsh-tia-openness-v17-min.',
+                'The installed TIA interface plugin has no readPlcChecksum method. Update @automation-suite/tia-openness-v17.',
                 { service: 'engineeringAccess', method: 'readPlcChecksum' },
               )
             }

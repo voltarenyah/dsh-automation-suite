@@ -1,6 +1,9 @@
 {
-  "name": "dsh-ui-changes",
+  "name": "@automation-suite/ui-changes",
   "version": "0.1.0",
+  "publishConfig": {
+    "access": "public"
+  },
   "private": false,
   "description": "DSH plugin: a right-sidebar 'Changes' tab listing uncommitted files with per-file line counts, and a commit area that sends a fixed prompt into the current session (the commit itself stays with the agent's git tools).",
   "type": "module",

@@ -7,11 +7,11 @@
  * only renames the class prefix to `hwv-` and swaps the standalone palette for the
  * host's `--dsw-*` semantic tokens. Edit the mockup, then re-run the script.
  *
- * @module dsh-ui-hardware/client/style
+ * @module @automation-suite/ui-hardware/client/style
  */
 
 /** Identifier of the injected stylesheet, unique across the page. */
-export const TAG_ID = 'dsh-ui-hardware/hardware.css'
+export const TAG_ID = '@automation-suite/ui-hardware/hardware.css'
 
 /** Stylesheet text. Class names are prefixed to stay out of the app's way. */
 export const CSS = `

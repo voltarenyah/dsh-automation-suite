@@ -6,7 +6,7 @@
  * hand-written surface stays as small as the code that touches it. Extend a
  * declaration here rather than widening it to `any`.
  *
- * @module dsh-ui-plc-source/node-shims
+ * @module @automation-suite/ui-plc-source/node-shims
  */
 
 declare module 'node:fs/promises' {

@@ -270,7 +270,7 @@ assertInsideWith(config, workspaceRoot, candidate):
 **`.gitignore` 由本插件维护，但只追加**（`create_engineering_project` 写四条；`handoff_export` 对旧 workspace 补 `handoff/`。缺文件时创建并带注释头）：
 
 ```gitignore
-# Written by @voltarenyah/dsh-engineering-context (create_engineering_project).
+# Written by @automation-suite/engineering-context (create_engineering_project).
 # The TIA project directory holds the projects this workspace saved into it: binary, and
 # edited in TIA Portal rather than here, so it is not versioned. The rebuilt source tree
 # beside it is the text artifact that belongs in version control.

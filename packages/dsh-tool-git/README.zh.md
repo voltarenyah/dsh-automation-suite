@@ -1,4 +1,4 @@
-# dsh-tool-git
+# @automation-suite/dsh-tool-git
 
 [![npm](https://img.shields.io/npm/v/dsh-tool-git?logo=npm)](https://www.npmjs.com/package/dsh-tool-git)
 [![CI](https://img.shields.io/github/actions/workflow/status/lxj808624/dsh-tool-git/ci.yml?branch=main&logo=githubactions&logoColor=white&label=CI)](https://github.com/lxj808624/dsh-tool-git/actions)
@@ -8,14 +8,14 @@
 
 为 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)（`dsh`）开发的结构化、安全 Git 工具插件。
 
-编码 agent 几乎每天都在用 git，但 dsh 默认只提供裸 `bash` 命令。`dsh-tool-git` 为模型提供十二个结构化工具——通过无 shell 的子进程运行器执行 `git`，返回规范的 JSON 值——并内置 `tools/pre-execute` 安全门，在破坏性 git 操作（强制推送、硬重置、rebase、amend、删除分支等）发生之前将其拦截，无论模型是通过这些工具调用，还是**通过 shell 工具**调用。
+编码 agent 几乎每天都在用 git，但 dsh 默认只提供裸 `bash` 命令。`@automation-suite/dsh-tool-git` 为模型提供十二个结构化工具——通过无 shell 的子进程运行器执行 `git`，返回规范的 JSON 值——并内置 `tools/pre-execute` 安全门，在破坏性 git 操作（强制推送、硬重置、rebase、amend、删除分支等）发生之前将其拦截，无论模型是通过这些工具调用，还是**通过 shell 工具**调用。
 
 本包拆成两个入口，便于 profile 按 agent 授予工具：
 
 | 入口 | 注册内容 |
 |---|---|
-| `dsh-tool-git`（宿主行） | `gitContext` 服务 + 安全门。**不注册任何模型工具。** |
-| `dsh-tool-git/tools`（工具行） | 十二个 `git_*` 工具。它注入 `gitContext`，所以缺少宿主行时**根本不会加载**（fail closed）。 |
+| `@automation-suite/dsh-tool-git`（宿主行） | `gitContext` 服务 + 安全门。**不注册任何模型工具。** |
+| `@automation-suite/dsh-tool-git/tools`（工具行） | 十二个 `git_*` 工具。它注入 `gitContext`，所以缺少宿主行时**根本不会加载**（fail closed）。 |
 
 - **无 shell 注入**：所有命令通过 `execFile` + 显式参数数组执行，模型提供的路径和消息永远不会被字符串拼接进 shell。
 - **机器可读输出**：porcelain v2、`--numstat`、`--format` 记录被解析为结构化 JSON，而不是文本。
@@ -88,7 +88,7 @@ await gitContext.create(root)           // 绑定到所在仓库的 GitContext
 **npm（推荐）** —— 任意目录执行：
 
 ```sh
-dsh plugin --profile web add dsh-tool-git
+dsh plugin --profile web add @automation-suite/dsh-tool-git
 ```
 
 **从 GitHub**（或本地目录 / tarball）：
@@ -106,7 +106,7 @@ dsh plugin --profile web add github:lxj808624/dsh-tool-git#v0.1.2
 ```yaml
 # 宿主行：服务 + 安全门（不含模型工具）
 - id: tool-git
-  name: dsh-tool-git
+  name: '@automation-suite/dsh-tool-git'
   config:
     gitPath: git               # git 可执行文件
     destructivePolicy: deny    # deny | ask | allow
@@ -116,7 +116,7 @@ dsh plugin --profile web add github:lxj808624/dsh-tool-git#v0.1.2
 
 # 工具行：十二个模型工具（自身没有配置）
 - id: tool-git-tools
-  name: dsh-tool-git/tools
+  name: '@automation-suite/dsh-tool-git/tools'
 ```
 
 **没有 `workDir`**。工具根目录来自调用会话的 cwd；`/tools` 行从宿主行的服务继承
@@ -135,10 +135,10 @@ dsh plugin --profile web add github:lxj808624/dsh-tool-git#v0.1.2
 前置条件：Node.js ≥ 22.19 和 pnpm。在本 monorepo 内，`@deepseek-ai/*` 运行时包**刻意不从 npm 安装**：
 公开 registry 上这条线止于 `0.1.0-rc.6`，而本仓库对标的宿主发行的是更新的运行时，拿 registry 副本做
 类型检查或跑测试等于**对着错误的 API 面验收**。这些包改为从**已安装 app 自己的 `resources/app.asar`**
-里链接出来，与 `dsh-tia-openness-v17-min` 同一套机制：
+里链接出来，与 `@automation-suite/tia-openness-v17` 同一套机制：
 
 ```sh
-pnpm --filter dsh-tool-git run link:runtime   # 每个 checkout 跑一次
+pnpm --filter @automation-suite/dsh-tool-git run link:runtime   # 每个 checkout 跑一次
 ```
 
 测试套件首次运行时会自动完成同样的链接。

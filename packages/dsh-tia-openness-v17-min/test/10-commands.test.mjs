@@ -359,7 +359,7 @@ test('a failed operation settles as an error card with the structured reason', a
 
 test('the /commands row injects commands and the runtime seam and registers the same names', async () => {
   const entry = await loadCommandsEntry()
-  assert.equal(entry.name, 'tia-openness-v17-min-commands')
+  assert.equal(entry.name, 'tia-openness-v17-commands')
   assert.deepEqual(entry.inject, ['commands', 'tiaOpennessRuntime'])
 
   const harness = createTestContext()

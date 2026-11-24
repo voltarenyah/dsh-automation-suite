@@ -2,7 +2,7 @@
  * Tests for the tags route: the fence, method/path handling, the document
  * shape, validation, conflicts, and the body cap.
  *
- * @module dsh-ui-project-dashboard/test/route
+ * @module @automation-suite/ui-project-dashboard/test/route
  */
 
 import assert from 'node:assert/strict'

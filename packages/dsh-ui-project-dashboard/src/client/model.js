@@ -10,7 +10,7 @@
  *    (from ui-session's `useSessions` snapshot `{ ids, byId }`)
  *  - status: `Map<sessionId, { running, pendingInteraction?, completionUnread }>`
  *
- * @module dsh-ui-project-dashboard/client/model
+ * @module @automation-suite/ui-project-dashboard/client/model
  */
 
 /** Deepest tag path the editor accepts; the host validates the same limit. */

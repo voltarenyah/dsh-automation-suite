@@ -45,7 +45,7 @@ test('the /tools row reads the host row’s runtime seam across sibling rows', a
   const { ctx, names } = recordingContext()
 
   const hostFiber = ctx.plugin({
-    name: 'tia-openness-v17-min',
+    name: 'tia-openness-v17',
     inject: [],
     apply: (scoped) => host.apply(scoped, { controllerPath: MISSING_CONTROLLER }),
   })
@@ -59,7 +59,7 @@ test('the /tools row reads the host row’s runtime seam across sibling rows', a
   // Mounted the way the loader does: `inject` holds the row until both services
   // exist, which is why the two rows may appear in any composition order.
   const toolsFiber = ctx.plugin({
-    name: 'tia-openness-v17-min-tools',
+    name: 'tia-openness-v17-tools',
     inject: ['tools', TIA_RUNTIME_SERVICE],
     apply: (scoped) => entry.apply(scoped, {}),
   })
@@ -77,7 +77,7 @@ test('the host row registers no tool on a real context, and unloading removes it
   const { ctx, names } = recordingContext()
 
   const hostFiber = ctx.plugin({
-    name: 'tia-openness-v17-min',
+    name: 'tia-openness-v17',
     inject: [],
     apply: (scoped) => host.apply(scoped, { controllerPath: MISSING_CONTROLLER }),
   })

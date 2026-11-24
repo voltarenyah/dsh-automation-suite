@@ -1,4 +1,4 @@
-# dsh-tool-git
+# @automation-suite/dsh-tool-git
 
 [![npm](https://img.shields.io/npm/v/dsh-tool-git?logo=npm)](https://www.npmjs.com/package/dsh-tool-git)
 [![CI](https://img.shields.io/github/actions/workflow/status/lxj808624/dsh-tool-git/ci.yml?branch=main&logo=githubactions&logoColor=white&label=CI)](https://github.com/lxj808624/dsh-tool-git/actions)
@@ -9,7 +9,7 @@
 Structured, safe Git tool family for [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) (`dsh`).
 
 Coding agents reach for git constantly, but the stock runtime only offers raw `bash`.
-`dsh-tool-git` gives the model twelve structured tools that run `git` through a
+`@automation-suite/dsh-tool-git` gives the model twelve structured tools that run `git` through a
 shell-free subprocess runner and return canonical JSON values — plus a
 `tools/pre-execute` safety gate that stops destructive git operations
 (force push, hard reset, rebase, amend, branch deletion, …) before they happen,
@@ -19,8 +19,8 @@ The package has two entries so a profile can grant the tools per agent:
 
 | Entry | What it registers |
 |---|---|
-| `dsh-tool-git` (host row) | the `gitContext` service and the safety gate. **No model tools.** |
-| `dsh-tool-git/tools` (tools row) | the twelve `git_*` tools. It injects `gitContext`, so without the host row it does not load at all (fail closed). |
+| `@automation-suite/dsh-tool-git` (host row) | the `gitContext` service and the safety gate. **No model tools.** |
+| `@automation-suite/dsh-tool-git/tools` (tools row) | the twelve `git_*` tools. It injects `gitContext`, so without the host row it does not load at all (fail closed). |
 
 - **No shell injection**: every command goes through `execFile` with an explicit
   argument array. Model-supplied paths and messages are never string-interpolated.
@@ -109,7 +109,7 @@ configured policy, not by bypassing the gate.
 **npm (recommended)** — from any directory:
 
 ```sh
-dsh plugin --profile web add dsh-tool-git
+dsh plugin --profile web add @automation-suite/dsh-tool-git
 ```
 
 **From GitHub** (or a local checkout / tarball):
@@ -129,7 +129,7 @@ All options are optional; the defaults are shown below:
 ```yaml
 # host row: service + safety gate (no model tools)
 - id: tool-git
-  name: dsh-tool-git
+  name: '@automation-suite/dsh-tool-git'
   config:
     gitPath: git               # git executable
     destructivePolicy: deny    # deny | ask | allow
@@ -139,7 +139,7 @@ All options are optional; the defaults are shown below:
 
 # tools row: the twelve model tools (no config of its own)
 - id: tool-git-tools
-  name: dsh-tool-git/tools
+  name: '@automation-suite/dsh-tool-git/tools'
 ```
 
 There is no `workDir`. Tool roots come from the calling session's cwd, and the
@@ -167,7 +167,7 @@ copy would validate the plugin against the wrong API surface. Instead the
 packages are linked out of the *installed app's own* `resources/app.asar`:
 
 ```sh
-pnpm --filter dsh-tool-git run link:runtime   # once per checkout
+pnpm --filter @automation-suite/dsh-tool-git run link:runtime   # once per checkout
 ```
 
 The test suite performs the same linking automatically on first run.

@@ -8,4 +8,4 @@
 # `name` must equal package.json's `name` verbatim.
 - insert:
     - id: ui-prompt-guide
-      name: dsh-ui-prompt-guide
+      name: '@automation-suite/ui-prompt-guide'

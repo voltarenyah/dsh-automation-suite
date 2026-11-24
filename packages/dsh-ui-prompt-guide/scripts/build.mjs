@@ -25,7 +25,7 @@
  * checks it is there, because a missing page turns the sidebar entry into a
  * blank frame with no error anywhere (the route would 404 on every load).
  *
- * @module dsh-ui-prompt-guide/scripts/build
+ * @module @automation-suite/ui-prompt-guide/scripts/build
  */
 
 import { existsSync, mkdirSync, readdirSync, readFileSync } from 'node:fs'

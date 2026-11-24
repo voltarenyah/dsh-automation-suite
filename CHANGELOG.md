@@ -6,6 +6,24 @@
 格式参考 [Keep a Changelog](https://keepachangelog.com/)；日期为本地日期；版本从
 GitHub Releases 与 git tag `v<version>` 对齐（发布流程见 [`docs/releases.md`](docs/releases.md)）。
 
+## [Unreleased]
+
+### Changed
+
+- **15 个插件统一到 npm 组织 `automation-suite` 的 scope 下，并重新整理名字**（D39）：`@voltarenyah/*`
+  与裸名 `dsh-*` 全部改为 `@automation-suite/<域名>`（`dsh-tool-git` 是例外，保留 `dsh-` 以对照上游 fork）。
+  两处语义变化：`dsh-tia-openness-v17-min` → `@automation-suite/tia-openness-v17`（去掉 `-min`，
+  与 V18 起的族内命名对齐）、`dsh-drawing` → `@automation-suite/pdf-drawing`。Loader id 同步收敛
+  （`tia-openness-v17-min` → `tia-openness-v17`、`drawing` → `pdf-drawing`、`project-dashboard` →
+  `ui-project-dashboard`），技能 provider 名改为 `tia-openness-v17`。
+- **已物化的 profile 必须重建**：`~/.dsh/profiles/dsh-automation-suite` 与
+  `%USERPROFILE%\dsh-automation-suite-home` 里仍是旧包名依赖，`start-env.ps1 -Reset`（或 `cmd /c rmdir /s /q`
+  后重建）才会加载新包；日常 `desktop` profile 不受影响。按 id 落的设置/状态（如 project-dashboard 的
+  tags owner）会随 id 变化重新开始。
+- **发布元数据**：15 个可发布包都加了 `"publishConfig": { "access": "public" }`（scoped 包默认 restricted）。
+  **实际 `npm publish` 尚未执行**：当前 npm 身份 `yuanheng` 对 `automation-suite` 组织返回 403，
+  需要先加入组织（或换组织所有者账号），详见 `docs/decisions.md` D39。
+
 ## [0.2.6] - 2026-11-23
 
 本版没有新的用户功能：修掉在 DSH 0.2.2 宿主上一直红的测试门禁，补齐交接（handoff）

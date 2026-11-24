@@ -1,6 +1,9 @@
 {
-  "name": "@voltarenyah/dsh-engineering-graph",
+  "name": "@automation-suite/engineering-graph",
   "version": "0.1.0",
+  "publishConfig": {
+    "access": "public"
+  },
   "private": false,
   "description": "DSH plugin: engineering knowledge graph — the TypeScript half that will drive the vendored C# `engine/` over engineering artefacts (block logic, cross-references), with no dependency on TIA Portal.",
   "type": "module",

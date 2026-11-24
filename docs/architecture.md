@@ -15,10 +15,10 @@
 
 | 名称 | 对应层 | 一句话职责 | 现状 |
 |---|---|---|---|
-| **工控软件接口插件族**<br>（以 TIA 为例即 `tia-openness`；**按软件版本**分成员：V17/V18…；能力不拆包、由 preset 装配，见 D31；**一族多包、同一时刻只激活一个**，见 D36） | ① 接入层 | 与工控软件对接，**读写工程对象**；为后续分析提供**素材**与**验证工具**；并**附带文档**说清何时调用、怎么调用、数据怎么用 | 🟡 已有第一个成员：`@voltarenyah/dsh-tia-openness-v17-min`（V17，定位是**验证基础功能**）；第二个成员 `…-v18` 的形态与落地清单见 [`tia-version-members.md`](tia-version-members.md) |
-| **工程上下文插件** | 横向（作用域） | 面对用户的**多个 TIA 项目 × 多个分支 × 多个历史版本**，管理工程上下文，在会话中就某个工程问题**暴露出恰当的工程上下文**；对**工程对象做优化适配**并用「待办清单」式载体承接工程变更上下文 | 🟡 部分实现：`@voltarenyah/dsh-engineering-context`（6 个工具：`create_engineering_project` / `project_status` / `project_sync` / `project_commit`，以及只读的 `workspace_describe`（跨 workspace 描述，不打开 TIA）与 `import_preflight`（导入前预检），分三个 Loader 入口，见 D30；DRAFT/REMOTE 与变更台账未做） |
-| **工程知识图谱插件** | ② 语义层 | **准确翻译 XML 中的 PLC 语法**（兼容性强），把工程源文件解析成 LLM 便于处理的信息：**解析 XML → 建立图数据库 → 暴露接口**提供所需工程细节 | 🟡 部分实现：`@voltarenyah/dsh-engineering-graph`（引擎 + 8 个工具 + `knowledgeGraph` 服务；库发现与下钻见 D24；新鲜度/增量未做） |
-| **Web GUI 视图插件**<br>（`dsh-ui-plc-source` / `dsh-ui-tia-console` / `dsh-ui-versions`） | 跨层（不占三层编号） | 把上面两层已经落盘的事实**显示在人眼前**：右侧栏 **PLC Blocks**（读 `source/<device>/_manifest.json`）、输入框上方 **TIA 控制台**（折叠会话的 `command/*`、`tool/*` 事件）、右侧栏 **Versions**（读 `<workspace>/.dsh/versions-view.json`）。**不新增子进程、不新增 HTTP 路由、不注册模型工具** | ✅ 三个都已实现并登记进蓝图 |
+| **工控软件接口插件族**<br>（以 TIA 为例即 `tia-openness`；**按软件版本**分成员：V17/V18…；能力不拆包、由 preset 装配，见 D31；**一族多包、同一时刻只激活一个**，见 D36） | ① 接入层 | 与工控软件对接，**读写工程对象**；为后续分析提供**素材**与**验证工具**；并**附带文档**说清何时调用、怎么调用、数据怎么用 | 🟡 已有第一个成员：`@automation-suite/tia-openness-v17`（V17，定位是**验证基础功能**）；第二个成员 `…-v18` 的形态与落地清单见 [`tia-version-members.md`](tia-version-members.md) |
+| **工程上下文插件** | 横向（作用域） | 面对用户的**多个 TIA 项目 × 多个分支 × 多个历史版本**，管理工程上下文，在会话中就某个工程问题**暴露出恰当的工程上下文**；对**工程对象做优化适配**并用「待办清单」式载体承接工程变更上下文 | 🟡 部分实现：`@automation-suite/engineering-context`（6 个工具：`create_engineering_project` / `project_status` / `project_sync` / `project_commit`，以及只读的 `workspace_describe`（跨 workspace 描述，不打开 TIA）与 `import_preflight`（导入前预检），分三个 Loader 入口，见 D30；DRAFT/REMOTE 与变更台账未做） |
+| **工程知识图谱插件** | ② 语义层 | **准确翻译 XML 中的 PLC 语法**（兼容性强），把工程源文件解析成 LLM 便于处理的信息：**解析 XML → 建立图数据库 → 暴露接口**提供所需工程细节 | 🟡 部分实现：`@automation-suite/engineering-graph`（引擎 + 8 个工具 + `knowledgeGraph` 服务；库发现与下钻见 D24；新鲜度/增量未做） |
+| **Web GUI 视图插件**<br>（`@automation-suite/ui-plc-source` / `@automation-suite/ui-tia-console` / `@automation-suite/ui-versions`） | 跨层（不占三层编号） | 把上面两层已经落盘的事实**显示在人眼前**：右侧栏 **PLC Blocks**（读 `source/<device>/_manifest.json`）、输入框上方 **TIA 控制台**（折叠会话的 `command/*`、`tool/*` 事件）、右侧栏 **Versions**（读 `<workspace>/.dsh/versions-view.json`）。**不新增子进程、不新增 HTTP 路由、不注册模型工具** | ✅ 三个都已实现并登记进蓝图 |
 
 > **只有接口插件族是"一族多成员"**（成员 = 软件版本；能力不拆包，见 D31）；工程上下文插件与工程知识图谱插件
 > 都是**单一插件**，不存在同族成员。插件本身不再编号 —— 编号只保留给 [`vision.md`](vision.md) §3 的
@@ -37,7 +37,7 @@
 - 模型在会话里看到的，与人在面板上看到的，是**同一份落盘事实**（清单文件、会话事件流、
   `versions-view.json`）。所以它们**不产生新契约**——删掉任何一个，数据与工具面都不受影响；
 - 唯一的跨插件依赖是**读一个约定的文件**：`versions-view.json` 的写出方是工程上下文插件
-  （`src/version/view.ts`），读入方是 `dsh-ui-versions`，两侧各自有解析与形状校验；
+  （`src/version/view.ts`），读入方是 `@automation-suite/ui-versions`，两侧各自有解析与形状校验；
 - **判断新功能该不该进这类插件**，只有一条标准：**它是不是只读、且不改变任何已落盘的东西**。
   要回写就走工具或斜线指令，不要从渲染进程直接改文件（那等于绕过工具面与审计）。
 - 加载机制、座位目录与打包配方见 [`ui-plugins.md`](ui-plugins.md)。
@@ -137,7 +137,7 @@
 | 工程结构 | 是否含软件单元、多用户、项目库 / 全局库 |
 
 每个能力具体囊括什么**日后再详细定义**。**不拆包**（D31）：所有能力都写在
-`dsh-tia-openness-v17-min` 里，能力的**开关单位是「Loader 行 + 行内配置」**，由 preset 装配 ——
+`@automation-suite/tia-openness-v17` 里，能力的**开关单位是「Loader 行 + 行内配置」**，由 preset 装配 ——
 这正是 D23 已经落地的机制（宿主行只放控制器与服务，模型面工具拆成 `/tools` 行）。
 不再有 `-std` / `-pro` 包，也不存在"同族两档互斥"的问题：一个 profile 里只有这一个包、
 一个控制器。
@@ -352,7 +352,7 @@
 
 | 规划中的插件 | 仓库里的对应物 |
 |---|---|
-| 接口插件族 | `packages/dsh-tia-openness-v17-min`（V17；能力不拆包，更多能力写在同一包里由 preset 装配，见 D31；族内后续成员按 TIA 版本增加 —— V18 起包名为 `@voltarenyah/dsh-tia-openness-v18`（**不带 `-min`**），形态与落地清单见 [`tia-version-members.md`](tia-version-members.md) / D36） |
+| 接口插件族 | `packages/dsh-tia-openness-v17-min`（V17；能力不拆包，更多能力写在同一包里由 preset 装配，见 D31；族内后续成员按 TIA 版本增加 —— V18 起包名为 `@automation-suite/tia-openness-v18`（**不带 `-min`**），形态与落地清单见 [`tia-version-members.md`](tia-version-members.md) / D36） |
 | 工程上下文插件 | `packages/dsh-engineering-context`；`packages/dsh-tool-git`（12 个结构化 git 工具）是可能被复用的**通用底座** |
 | 工程知识图谱插件 | `packages/dsh-engineering-graph` |
 

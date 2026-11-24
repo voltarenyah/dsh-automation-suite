@@ -87,7 +87,7 @@ async function readTarget(
   if (typeof service.listObjects !== 'function' || typeof service.readProjectLanguages !== 'function') {
     warnings.push(
       'The installed TIA interface plugin has no listObjects/readProjectLanguages on its service, so target language and name ' +
-        'checks were skipped. Update dsh-tia-openness-v17-min to a build that provides both.',
+        'checks were skipped. Update @automation-suite/tia-openness-v17 to a build that provides both.',
     )
     return { target: null, warnings }
   }

@@ -35,7 +35,7 @@
  * effect disposer when the host row unloads — so unloading never leaves the
  * subprocess behind.
  *
- * @module dsh-tia-openness-v17-min
+ * @module @automation-suite/tia-openness-v17
  */
 
 import type { Context } from '@deepseek-ai/cordis'
@@ -50,7 +50,7 @@ import { registerSkillProvider } from './skills.js'
 import type { ToolDependencies } from './tools.js'
 
 /** Plugin identity; the loader uses it as the entry id in the profile tree. */
-export const name = 'tia-openness-v17-min'
+export const name = 'tia-openness-v17'
 
 /**
  * The host row needs no service before `apply` runs.

@@ -146,7 +146,7 @@ export async function runSyncUnlocked(
   if (typeof access.syncScan !== 'function') {
     throw new EngineeringContextError(
       'tia_access_unavailable',
-      'The installed TIA interface plugin has no syncScan method. Update dsh-tia-openness-v17-min to a build that has PlcChecksum and SyncScan.',
+      'The installed TIA interface plugin has no syncScan method. Update @automation-suite/tia-openness-v17 to a build that has PlcChecksum and SyncScan.',
       { service: 'engineeringAccess', method: 'syncScan' },
     )
   }

@@ -6,7 +6,7 @@
  * repository develops against is extracted from the *installed app's*
  * `resources/app.asar`, and that production build carries **no** `.d.ts` files at
  * all, so `tsc` reports `TS7016` for every runtime import. The sibling packages
- * (`dsh-tia-openness-v17-min`, `dsh-tool-git`) solve this the same way; see this
+ * (`@automation-suite/tia-openness-v17`, `@automation-suite/dsh-tool-git`) solve this the same way; see this
  * package's `docs/decisions.md`.
  *
  * The declarations mirror the runtime the local harness actually ships

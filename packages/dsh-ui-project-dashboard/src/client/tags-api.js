@@ -5,7 +5,7 @@
  * plain `fetch` is enough; failures carry the host's stable `code` so the UI can
  * distinguish "storage failed" from "another window changed it".
  *
- * @module dsh-ui-project-dashboard/client/tags-api
+ * @module @automation-suite/ui-project-dashboard/client/tags-api
  */
 
 /** Where the host serves the tag document. */

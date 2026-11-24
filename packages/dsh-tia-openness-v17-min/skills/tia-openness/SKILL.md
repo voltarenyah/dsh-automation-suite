@@ -1,6 +1,6 @@
 ---
 name: tia-openness
-description: Troubleshooting index for tia-openness-v17-min: project data, blocks/types/tag tables/tags/watch+force/units, F-safety, CAx/AML, controller_status, and the project library (Types/versions, Master copies, library-managed blocks, direct-import refusal). Load before any TIA Openness or project-library question (library versions, check-in/release, library-managed import, exclusive access, transactions, Simatic ML, compile, licensing). Maps symptoms to vendored skills and library workflow.
+description: Troubleshooting index for tia-openness-v17: project data, blocks/types/tag tables/tags/watch+force/units, F-safety, CAx/AML, controller_status, and the project library (Types/versions, Master copies, library-managed blocks, direct-import refusal). Load before any TIA Openness or project-library question (library versions, check-in/release, library-managed import, exclusive access, transactions, Simatic ML, compile, licensing). Maps symptoms to vendored skills and library workflow.
 ---
 
 # TIA Portal Openness 知识库（路由 skill）

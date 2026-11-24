@@ -37,7 +37,7 @@ function localized(value, label) {
 }
 
 test('payload declares its identity and stays JSON-safe', () => {
-  assert.equal(doc.plugin, 'dsh-ui-prompt-guide')
+  assert.equal(doc.plugin, '@automation-suite/ui-prompt-guide')
   assert.equal(doc.version, GUIDE_VERSION)
   assert.deepEqual(JSON.parse(JSON.stringify(doc)), doc)
 })
@@ -121,7 +121,7 @@ test('the catalog itself is unique and covers every advertised tool', () => {
 
 test('the page payload is what the host route will serialise', () => {
   const serialised = JSON.stringify(guideDocument())
-  assert.ok(serialised.includes('"plugin":"dsh-ui-prompt-guide"'))
+  assert.ok(serialised.includes('"plugin":"@automation-suite/ui-prompt-guide"'))
   assert.ok(serialised.includes('"categories"'))
   assert.ok(serialised.includes('"entries"'))
   // JSON.stringify keeps non-ASCII as UTF-8 rather than escaping it; the page
@@ -139,12 +139,12 @@ test('document() returns a copy, not the module-level arrays', () => {
 
 test('package metadata points at the built halves', () => {
   const manifest = JSON.parse(readFileSync(join(packageRoot(), 'package.json'), 'utf8'))
-  assert.equal(manifest.name, 'dsh-ui-prompt-guide')
+  assert.equal(manifest.name, '@automation-suite/ui-prompt-guide')
   assert.equal(manifest.main, './lib/index.js')
   assert.equal(manifest.exports['./client'].default, './lib/client.js')
   assert.equal(manifest.dsh.client.platform, 'web')
   assert.ok(manifest.files.includes('page'), 'page/ must ship with the package')
   const patch = readFileSync(join(packageRoot(), 'cordis.patch.yml'), 'utf8')
   assert.ok(patch.includes('id: ui-prompt-guide'))
-  assert.ok(patch.includes('name: dsh-ui-prompt-guide'))
+  assert.ok(patch.includes("name: '@automation-suite/ui-prompt-guide'"))
 })

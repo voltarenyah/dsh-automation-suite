@@ -29,7 +29,7 @@
 
 ```
 ┌─ DSH 宿主进程 (Node) ──────────────────────────┐
-│  dsh-tia-openness-v17-min (本插件, TypeScript) │
+│  @automation-suite/tia-openness-v17 (本插件, TypeScript) │
 │  宿主行 ('.')：                                │
 │   • ctx.effect() 拥有 C# 控制器子进程           │
 │   • 注册 engineeringAccess 服务（公开缝）        │
@@ -155,8 +155,8 @@ plugin_manager(action: "install_bundle", target: "C:\\Users\\Ansel\\dsh-automati
 
 ```yaml
 - insert:
-    - id: tia-openness-v17-min
-      name: '@voltarenyah/dsh-tia-openness-v17-min'
+    - id: tia-openness-v17
+      name: '@automation-suite/tia-openness-v17'
       config:
         requestTimeoutMs: 600000     # 大项目导入/编译可能需要更长时间
 ```
@@ -165,8 +165,8 @@ plugin_manager(action: "install_bundle", target: "C:\\Users\\Ansel\\dsh-automati
 
 ```yaml
 - insert:
-    - id: tia-openness-v17-min-tools
-      name: '@voltarenyah/dsh-tia-openness-v17-min/tools'
+    - id: tia-openness-v17-tools
+      name: '@automation-suite/tia-openness-v17/tools'
 ```
 
 两条行可以放在 composition 的任意位置：工具行的 `inject` 会让 loader 等到 `tiaOpennessRuntime`
@@ -200,9 +200,9 @@ TIA 工具），所以注册被拆成两行；**人**用的斜线指令是第三
 
 | 行 | 子路径导出 | `name` | `inject` | 内容 |
 |---|---|---|---|---|
-| 宿主行 | `.`（`lib/index.js`） | `tia-openness-v17-min` | `[]` | `ControllerProcess` + `ctx.effect` 的所有权、`engineeringAccess` 服务（只读公开缝）、`projectTextAccess` 服务（项目文本/语言/归档/保存的写缝）、`tiaOpennessRuntime`（本包另两行的内部缝）、bundled skill provider |
-| 工具行 | `./tools`（`lib/tools-entry.js`） | `tia-openness-v17-min-tools` | `['tools', 'tiaOpennessRuntime']` | 39 个模型可见工具（`src/tools.ts`） |
-| 命令行 | `./commands`（`lib/commands-entry.js`） | `tia-openness-v17-min-commands` | `['commands', 'tiaOpennessRuntime']` | 7 个 `/tia-…` 斜线指令（`src/commands.ts`，复用工具的操作与渲染） |
+| 宿主行 | `.`（`lib/index.js`） | `tia-openness-v17` | `[]` | `ControllerProcess` + `ctx.effect` 的所有权、`engineeringAccess` 服务（只读公开缝）、`projectTextAccess` 服务（项目文本/语言/归档/保存的写缝）、`tiaOpennessRuntime`（本包另两行的内部缝）、bundled skill provider |
+| 工具行 | `./tools`（`lib/tools-entry.js`） | `tia-openness-v17-tools` | `['tools', 'tiaOpennessRuntime']` | 39 个模型可见工具（`src/tools.ts`） |
+| 命令行 | `./commands`（`lib/commands-entry.js`） | `tia-openness-v17-commands` | `['commands', 'tiaOpennessRuntime']` | 7 个 `/tia-…` 斜线指令（`src/commands.ts`，复用工具的操作与渲染） |
 
 - **只有该看到 TIA 的 preset 才声明工具行**：`leader` 声明它 → 保留 39 个工具；
   `expert` 不声明 → 一个 TIA 工具都没有。宿主行对所有 agent 都加载，因为控制器与会话是

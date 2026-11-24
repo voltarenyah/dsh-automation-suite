@@ -9,4 +9,4 @@
 # `name` must equal package.json's `name` verbatim.
 - insert:
     - id: ui-changes
-      name: dsh-ui-changes
+      name: '@automation-suite/ui-changes'

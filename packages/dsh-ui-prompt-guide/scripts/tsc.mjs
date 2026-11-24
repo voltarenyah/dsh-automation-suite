@@ -8,7 +8,7 @@
  * repository root's copy, which exists because the root package depends on
  * typescript.
  *
- * @module dsh-ui-prompt-guide/scripts/tsc
+ * @module @automation-suite/ui-prompt-guide/scripts/tsc
  */
 
 import { spawnSync } from 'node:child_process'

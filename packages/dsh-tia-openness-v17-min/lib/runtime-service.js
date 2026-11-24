@@ -26,7 +26,7 @@
  *      `tools.ts` except the *type* of the dependency bag, so constructing it
  *      never registers a tool — that is the whole point of the split.
  *
- * @module dsh-tia-openness-v17-min/runtime-service
+ * @module @automation-suite/tia-openness-v17/runtime-service
  */
 import { Service } from '@deepseek-ai/cordis';
 /**
@@ -84,7 +84,7 @@ export function tiaOpennessRuntimeOf(ctx) {
     const runtime = ctx.get(TIA_RUNTIME_SERVICE);
     if (runtime === undefined) {
         throw new Error(`The ${TIA_RUNTIME_SERVICE} service is not in this composition: the /tools row needs the host row ` +
-            `('@voltarenyah/dsh-tia-openness-v17-min') to be declared too. The row's inject waits for that service, ` +
+            `('@automation-suite/tia-openness-v17') to be declared too. The row's inject waits for that service, ` +
             `so the order of the two rows does not matter — only that both are declared.`);
     }
     return runtime;

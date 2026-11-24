@@ -21,7 +21,7 @@
  * the standard root hooks, tags through this plugin's own endpoint, and the two
  * navigation verbs through the injected face below.
  *
- * @module dsh-ui-project-dashboard/client
+ * @module @automation-suite/ui-project-dashboard/client
  */
 
 import { createElement } from 'react'
@@ -31,7 +31,7 @@ import { NS, zh, en } from './locales.js'
 import { ensureStyle } from './style.js'
 
 /** Package name; also the panel id and the `main` seat key — they must agree. */
-export const ID = 'dsh-ui-project-dashboard'
+export const ID = '@automation-suite/ui-project-dashboard'
 
 /** Panel id used by both root seats. */
 const PANEL = 'project-dashboard'

@@ -6,7 +6,7 @@ type Result = Awaited<ReturnType<typeof callTool>>
 
 const value = (result: Result): Record<string, unknown> => result.value as Record<string, unknown>
 
-describe('dsh-tool-git tools', () => {
+describe('@automation-suite/dsh-tool-git tools', () => {
   let repo: TempRepo
   let ctx: Context
   const cleanup: Array<() => void> = []

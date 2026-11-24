@@ -1,4 +1,4 @@
-# @voltarenyah/dsh-drawing
+# @automation-suite/pdf-drawing
 
 DSH 插件：**电气图纸**。把一份 PDF 图纸集吃进工作区，建成可检索的索引，让 agent 回答"这根线在哪张图、这个位号连着哪几页、这张图写了什么"，并把定位结果推到右侧栏 **Drawing** 页给用户看。
 
@@ -36,8 +36,8 @@ DSH 插件：**电气图纸**。把一份 PDF 图纸集吃进工作区，建成�
 ## 配置
 
 ```yaml
-- id: drawing
-  name: '@voltarenyah/dsh-drawing'
+- id: pdf-drawing
+  name: '@automation-suite/pdf-drawing'
   config:
     dir: drawing     # 工作区内放图纸与索引的目录，默认 drawing
 ```

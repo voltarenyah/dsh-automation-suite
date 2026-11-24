@@ -5,7 +5,7 @@
  * serialises {@link StatusPayload}, the panel renders it, and both the route
  * tests and the service tests build it.
  *
- * @module dsh-ui-changes/types
+ * @module @automation-suite/ui-changes/types
  */
 
 import type { StatusError } from './errors.js'

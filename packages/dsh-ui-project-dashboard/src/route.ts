@@ -6,7 +6,7 @@
  * opens; writes happen only when the user adds or removes a tag. There is no
  * polling and no per-workspace host work — the rule set on 2026-11-05.
  *
- * Security posture (same shape as `dsh-ui-prompt-guide`, plus a Host check):
+ * Security posture (same shape as `@automation-suite/ui-prompt-guide`, plus a Host check):
  * `ctx.webServer` routes carry **no authentication** — only `/api` does — so
  * this route copies the minimal trust fence: reject `Sec-Fetch-Site: cross-site`,
  * require the `Host` to be a loopback name (or an explicitly trusted one), and
@@ -15,7 +15,7 @@
  * could read the file directly anyway. The request carries no paths — only a
  * workspace id and tag strings — so there is nothing to traverse.
  *
- * @module dsh-ui-project-dashboard/route
+ * @module @automation-suite/ui-project-dashboard/route
  */
 
 import { TagConflictError, TagInputError, type TagDocument, type TagEntry, type TagOperation } from './tags/model.js'

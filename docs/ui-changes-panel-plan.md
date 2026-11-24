@@ -39,7 +39,7 @@
 | G1 | **看得见**：随时看到未提交文件清单 + 每文件 `+N/−M` + 汇总 | 打开 tab 即见，无需问 agent |
 | G2 | **看得懂**：区分 M/A/D/R/未跟踪/冲突，显示仓库根与分支 | 与 `git status` 逐项一致 |
 | G3 | **提交得动**：有一个提交区，能把固定提示词发进**当前会话** | 点按钮后输入框出现提示词并被提交 |
-| G4 | **不越权**：面板**自己不执行** `git commit`，提交仍由 agent 经 `dsh-tool-git` 的工具与安全门完成 | 提交出现在 transcript 里，可审计、可回滚 |
+| G4 | **不越权**：面板**自己不执行** `git commit`，提交仍由 agent 经 `@automation-suite/dsh-tool-git` 的工具与安全门完成 | 提交出现在 transcript 里，可审计、可回滚 |
 | G5 | **不抢戏**：不自动弹 tab、不改用户草稿、不打断正在跑的轮次 | 见 §5.4 |
 
 ### 1.3 非目标（v1 明确不做）
@@ -61,7 +61,7 @@
 ```js
 // ① 类型注册：id 必须等于包名，kind 是这个类型的地址名（sidebar://<kind>）
 ctx.inject(['sidebarRightTabs'], (i) => i.get('sidebarRightTabs').register({
-  id: 'dsh-ui-changes',
+  id: '@automation-suite/ui-changes',
   kind: 'changes',
   title: () => t('tab.title'),          // thunk，跟语言
   guide: [{ id: 'changes', order: 102, title: () => t('guide.title'),
@@ -205,7 +205,7 @@ const shell = conversation.input.for(actx)           // 该会话的输入机
 | `ready` | 有变更 | 列表 + 提交区可用 |
 | `clean` | 0 个文件 | "工作区干净" + 提交区禁用 |
 | `not-repo` | cwd 不在任何 git 仓库 | 说明 + "这不是 git 仓库，提交按钮不可用" |
-| `no-git-service` | `gitContext` 没装（`dsh-tool-git` 不在组合里） | "git 插件未加载" |
+| `no-git-service` | `gitContext` 没装（`@automation-suite/dsh-tool-git` 不在组合里） | "git 插件未加载" |
 | `error` | 超时/权限/未知 | 错误码 + 重试按钮（错误码是字典键，句子在字典里） |
 
 ### 3.5 交互细节
@@ -218,13 +218,13 @@ const shell = conversation.input.for(actx)           // 该会话的输入机
   逐段 `encodeURIComponent`）；
 - **键盘**：列表行 `role="row"` + `aria-selected`，`↑/↓` 移动、空格勾选、Enter 打开；
 - **持久化**：选中集合、折叠、过滤（若有）按 tab id 放 `defineStore` 的桶里，随 `tab.signal` 清理
-  （照抄 `dsh-ui-plc-source` 的 store 做法）。
+  （照抄 `@automation-suite/ui-plc-source` 的 store 做法）。
 
 ### 3.6 文案
 
 `ctx.locale.register('changes', { zh, en })`，**只提供 zh/en**（DSH 设置里就这两种）。
 tab 标题、引导项、chip 标题都用 thunk，跟随语言；错误文案由模型层只返回**字典键**。
-占位符集合两边必须一致（这是本仓 `dsh-ui-plc-source` 测试第 5 条的既定口径）。
+占位符集合两边必须一致（这是本仓 `@automation-suite/ui-plc-source` 测试第 5 条的既定口径）。
 
 ---
 
@@ -413,7 +413,7 @@ if (draft.trim().length === 0) {
 
 ### 5.4 为什么不直接 `git commit`
 
-- 提交是**有后果**的操作：本仓的 `dsh-tool-git` 有安全门（`destructivePolicy`），
+- 提交是**有后果**的操作：本仓的 `@automation-suite/dsh-tool-git` 有安全门（`destructivePolicy`），
   提交信息、路径范围、失败恢复都由工具面承担；
 - 面板直接提交会绕过 transcript：用户看不到"谁提交了什么、为什么"，也无法在失败后让 agent 补救；
 - 走对话还顺带解决"提交信息写不好"：模型看得到 diff，可以拟一条像样的。
@@ -440,12 +440,12 @@ if (draft.trim().length === 0) {
 
 ## 7. 包结构与实现清单
 
-新包 `packages/dsh-ui-changes`（**不带 scope**，与 `dsh-ui-versions` / `dsh-ui-plc-source` 一致）：
+新包 `packages/dsh-ui-changes`（包名 `@automation-suite/ui-changes`，与 `@automation-suite/ui-versions` / `@automation-suite/ui-plc-source` 同一命名与 scope 规则，见 D39）：
 
 ```
 packages/dsh-ui-changes/
   package.json            # dsh.client + dsh.bundle.patch；main=lib/index.js，exports["./client"]
-  cordis.patch.yml        # - id: ui-changes / name: dsh-ui-changes
+  cordis.patch.yml        # - id: ui-changes / name: '@automation-suite/ui-changes'
   tsconfig.json           # "types": ["node"]（宿主用 URL/URLSearchParams）
   src/
     index.ts              # 宿主半侧：路由 + 两个服务的解析（已实现）
@@ -470,7 +470,7 @@ packages/dsh-ui-changes/
   scripts/run-tests.mjs
 ```
 
-宿主半侧骨架（关键点：**不 import `dsh-tool-git`，只用服务**；实际实现见 `src/index.ts`）：
+宿主半侧骨架（关键点：**不 import `@automation-suite/dsh-tool-git`，只用服务**；实际实现见 `src/index.ts`）：
 
 ```ts
 export const name = 'ui-changes'
@@ -520,7 +520,7 @@ dsh --profile dsh-automation-suite --dump-config    # 插件行数从 12 变 13
 ```
 
 单测只测**纯逻辑**（解析、模板、路由 answer、字典），宿主与浏览器的接线由真机验收兜住 ——
-这与 `dsh-ui-plc-source` / `dsh-ui-versions` 的分工一致。
+这与 `@automation-suite/ui-plc-source` / `@automation-suite/ui-versions` 的分工一致。
 
 ### 8.1 P0 落地记录（2026-11-06）
 
@@ -531,19 +531,19 @@ dsh --profile dsh-automation-suite --dump-config    # 插件行数从 12 变 13
 |---|---|
 | `pnpm -r build` / `pnpm -r typecheck` | ✅ 全仓通过（新包产物 `lib/client.js` 15.6 KB） |
 | 新包单测 | ✅ 20/20（fence、方法/路径/参数、500 两个分支、字典一致性） |
-| 装载 | ✅ `start-env.ps1 -Restart` 打印 `设置依赖: dsh-ui-changes` / `同步 bundles: dsh-ui-changes` |
-| 启动图行 | ✅ `{"id":"dsh-ui-changes","url":"plugins/??dsh-ui-changes/client.js&rev=…"}` |
-| 客户端产物 | ✅ 200 / 15 600 B，`window.__ModuleLoader__.load({ id: "dsh-ui-changes" … })` |
-| `apply()` 执行 | ✅ 页面里出现 `style[data-plugin="dsh-ui-changes"]` |
+| 装载 | ✅ `start-env.ps1 -Restart` 打印 `设置依赖: @automation-suite/ui-changes` / `同步 bundles: @automation-suite/ui-changes` |
+| 启动图行 | ✅ `{"id":"@automation-suite/ui-changes","url":"plugins/??@automation-suite/ui-changes/client.js&rev=…"}` |
+| 客户端产物 | ✅ 200 / 15 600 B，`window.__ModuleLoader__.load({ id: "@automation-suite/ui-changes" … })` |
+| `apply()` 执行 | ✅ 页面里出现 `style[data-plugin="@automation-suite/ui-changes"]` |
 | tab 能开 | ✅ 右侧栏引导页出现 **Changes** 胶囊，点开后渲染面板（真实 GUI，Playwright 驱动） |
 | 路由 | ✅ `GET /changes/api/status?session=…` → 200 桩数据；POST → 405、缺 session → 400、`Sec-Fetch-Site: cross-site` → 403 |
 | 面板内容 | ✅ 示例横幅 + `main · 0000000 · 4 files +64 −93` + 四行（M/A/D/?） |
 
 > 两个照抄时容易踩的点：
-> 1. `ensureStyle(ID)` 传的是**包名**，所以 `<style>` 上是 `data-plugin="dsh-ui-changes"`，
+> 1. `ensureStyle(ID)` 传的是**包名**，所以 `<style>` 上是 `data-plugin="@automation-suite/ui-changes"`，
 >    而不是 `style.js` 里的 `TAG_ID`（用 `TAG_ID` 去查会查不到，误判成"没加载"）；
 > 2. 宿主半侧用到 `URL` / `URLSearchParams`，类型来自 `@types/node`，所以本包 `tsconfig`
->    是 `"types": ["node"]`（与 `dsh-ui-prompt-guide` 一致），不是 `dsh-ui-versions` 的 `"types": []`。
+>    是 `"types": ["node"]`（与 `@automation-suite/ui-prompt-guide` 一致），不是 `@automation-suite/ui-versions` 的 `"types": []`。
 
 ### 8.2 P1 落地记录（2026-11-06，真实数据）
 
@@ -605,8 +605,8 @@ dsh --profile dsh-automation-suite --dump-config    # 插件行数从 12 变 13
 
 | 插件 | 数据来源 | 写动作 |
 |---|---|---|
-| `dsh-ui-plc-source` | workspace 里的 `source/_manifest.json` | 无（只读；"在对话里提及"是写 composer） |
-| `dsh-ui-versions` | workspace 里的 `.dsh/versions-view.json` | 无 |
-| **`dsh-ui-changes`** | **宿主经 `gitContext` 现算，走自开路由** | **无 git 写；写的是 composer（提交提示词）** |
+| `@automation-suite/ui-plc-source` | workspace 里的 `source/_manifest.json` | 无（只读；"在对话里提及"是写 composer） |
+| `@automation-suite/ui-versions` | workspace 里的 `.dsh/versions-view.json` | 无 |
+| **`@automation-suite/ui-changes`** | **宿主经 `gitContext` 现算，走自开路由** | **无 git 写；写的是 composer（提交提示词）** |
 
 它是本发行版里**第一个**为了"实时状态"自开路由的 UI 插件 —— 因此 §6 的安全条目不是可选项。

@@ -1,6 +1,9 @@
 {
-  "name": "dsh-ui-versions",
+  "name": "@automation-suite/ui-versions",
   "version": "0.1.0",
+  "publishConfig": {
+    "access": "public"
+  },
   "private": false,
   "description": "DSH plugin: a right-sidebar 'Versions' tab that reads the engineering version store (.dsh/versions-view.json) and shows version history, per-block change timelines and fingerprint deltas.",
   "type": "module",

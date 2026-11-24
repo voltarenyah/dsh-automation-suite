@@ -11,7 +11,7 @@
  * Keeping the mapping in a pure module is what makes it testable: the client
  * half is a bundle, but the rule it applies is plain data.
  *
- * @module dsh-ui-brandmark/model
+ * @module @automation-suite/ui-brandmark/model
  */
 
 /** i18n namespace that owns the hero strings (the conversation client bundle). */

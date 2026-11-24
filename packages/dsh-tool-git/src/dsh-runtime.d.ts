@@ -6,7 +6,7 @@
  * repository develops against is extracted from the *installed app's*
  * `resources/app.asar`, and that production build carries **no** `.d.ts` files at
  * all. `tsc` therefore reports `TS7016` for every runtime import. The sibling
- * package `dsh-tia-openness-v17-min` solves this the same way, with a
+ * package `@automation-suite/tia-openness-v17` solves this the same way, with a
  * hand-written ambient file; see this package's `AGENTS.md`.
  *
  * The declarations mirror the runtime the local harness actually ships

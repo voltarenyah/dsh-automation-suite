@@ -10,7 +10,7 @@
  * Data arrives through the injected `readTextFile` face (the host's
  * `workspaceFiles.readBytes`), which reads `<workspace>/.dsh/hardware-view.json`.
  *
- * @module dsh-ui-hardware/client/Panel
+ * @module @automation-suite/ui-hardware/client/Panel
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'

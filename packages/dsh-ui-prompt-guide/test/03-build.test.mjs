@@ -20,7 +20,7 @@ const root = packageRoot()
 test('the client bundle registers a module factory for this package', () => {
   const bundle = readFileSync(join(root, 'lib', 'client.js'), 'utf8')
   assert.ok(bundle.startsWith('window.__ModuleLoader__.load({'), 'missing module-loader wrapper')
-  assert.ok(bundle.includes('id: "dsh-ui-prompt-guide"'))
+  assert.ok(bundle.includes('id: "@automation-suite/ui-prompt-guide"'))
   assert.ok(bundle.includes('return module.exports;'))
 })
 
@@ -40,7 +40,7 @@ test('the host half exports the loader contract', async () => {
   assert.deepEqual(module.inject, ['webServer'])
   assert.equal(typeof module.apply, 'function')
   const doc = module.guideDocument()
-  assert.equal(doc.plugin, 'dsh-ui-prompt-guide')
+  assert.equal(doc.plugin, '@automation-suite/ui-prompt-guide')
   assert.ok(doc.entries.length >= 15)
 })
 

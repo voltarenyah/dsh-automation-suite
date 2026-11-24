@@ -3,11 +3,11 @@
  * small values the panel prints. No React, no I/O — the panel and the tests
  * both drive this module.
  *
- * The view file is written by `@voltarenyah/dsh-engineering-context` and is
+ * The view file is written by `@automation-suite/engineering-context` and is
  * deliberately flat JSON: the browser cannot open the SQLite store, and a
  * pre-built view keeps the tab a single `readBytes` call.
  *
- * @module dsh-ui-versions/model
+ * @module @automation-suite/ui-versions/model
  */
 
 /** Workspace-relative path of the view file. */

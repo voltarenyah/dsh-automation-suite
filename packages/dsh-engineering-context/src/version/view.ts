@@ -22,7 +22,7 @@ import { openVersionStore, type VersionStore } from './store.js'
 /** File name under the local state dir. */
 export const VERSION_VIEW_FILE = 'versions-view.json'
 
-/** What the view file holds, mirroring `dsh-ui-versions`' parser. */
+/** What the view file holds, mirroring `@automation-suite/ui-versions`' parser. */
 export interface VersionViewFile {
   device: string
   workspace: string

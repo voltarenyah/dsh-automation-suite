@@ -13,7 +13,7 @@
  * requires `zh` and `en` to carry the same key set, and `test/locales.test.mjs`
  * fails if they drift apart.
  *
- * @module dsh-ui-plc-source/locales
+ * @module @automation-suite/ui-plc-source/locales
  */
 
 /** Namespace every key here is registered under. */

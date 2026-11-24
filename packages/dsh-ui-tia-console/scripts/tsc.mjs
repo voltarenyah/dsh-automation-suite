@@ -6,7 +6,7 @@
  * reliable. The binary is resolved explicitly: this package's own link first,
  * then the repository root's copy.
  *
- * @module dsh-ui-tia-console/scripts/tsc
+ * @module @automation-suite/ui-tia-console/scripts/tsc
  */
 
 import { spawnSync } from 'node:child_process'

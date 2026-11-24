@@ -54,7 +54,7 @@ test('the real registry accepts the candidate the provider returns', async (t) =
   assert.equal(catalog.length, 1, 'the plugin contributes exactly one catalog entry')
   const [summary] = catalog
   assert.equal(summary.name, 'tia-openness')
-  assert.equal(summary.provider, 'tia-openness-v17-min')
+  assert.equal(summary.provider, 'tia-openness-v17')
   assert.equal(summary.source, 'bundled')
   assert.equal(summary.path, ROUTER, 'the UI can preview the file from the catalog')
   assert.deepEqual(summary.resourceBase, { kind: 'directory', path: SKILLS })

@@ -11,14 +11,14 @@
 |---|---|
 | `@deepseek-ai/dsh-base` | DSH 基础层（会话、工具注册表、LLM……） |
 | `@deepseek-ai/dsh-web-app` | Web 应用层 —— 没有它这个 profile 启动后没有 app 可跑 |
-| `@voltarenyah/dsh-tia-openness-v17-min` | 接口插件族：TIA 控制器子进程 + `engineeringAccess` 服务（**模型面工具已拆到 `/tools` 子路径行**，见下节） |
-| `@voltarenyah/dsh-engineering-context` | 工程上下文插件：`create_engineering_project` / `project_status` / `project_sync` / `project_commit`，外加 `project_diff`、版本库与交接（`handoff_export` / `handoff_import` / `handoff_status`）。**没有宿主面资源**，所以宿主面这一行被 `disabled: true`，各入口由 preset 分开挂 |
-| `@voltarenyah/dsh-engineering-graph` | 工程知识图谱插件：C# 引擎子进程 + `knowledgeGraph` 服务（**模型面工具同样拆到 `/tools`**） |
-| `dsh-tool-git` | 结构化 Git 工具族 + `gitContext` 服务 + 破坏性命令闸门（vendor 自上游 `lxj808624/dsh-tool-git` v0.1.3）。**模型面工具已拆到 `dsh-tool-git/tools`，只挂 `leader`**；`expert` / `auditor` 看不到 |
-| `dsh-ui-plc-source` | **纯 UI 插件**：右侧栏多一个 **PLC Blocks** 标签页（读 `source/<device>/_manifest.json`，按 device 与 simaticType 筛选，点行打开既有文档预览）。宿主半侧是空 `apply()`，**不注册任何模型可见的东西**；必须在 `dsh-web-app` 之后，浏览器半侧才拿得到客户端座位 |
-| `dsh-ui-tia-console` | **仅浏览器半侧**：会话输入框上方的 **TIA 控制台**（状态 + 打开/保存/编译/关闭/刷新五个按钮，dispatch 现有 `/tia-*` 指令）。同样不注册任何模型可见的东西 |
-| `@voltarenyah/dsh-tia-todo-bridge` | **宿主面兜底**：模型没写 Todo 清单时，把 `open_project` / `export_blocks` / `project_diff` 等 TIA 与版本操作补进会话 `todos` 投影，操作返回即改 `completed`；模型自己写了清单则完全不改。不注册工具、不注册服务，见 [包 README](../../packages/dsh-tia-todo-bridge/README.md) 与下面「TIA 操作的 Todo 清单」 |
-| `dsh-ui-versions` | **仅浏览器半侧**：右侧栏多一个 **Versions** 标签页（排队在 PLC Blocks 之后，读工程上下文插件写出的 `.dsh/versions-view.json`；上面是版本历史，点块 key 看该块的跨版本轨迹）。宿主半侧是空 `apply()`，不注册任何模型可见的东西；同样必须在 `dsh-web-app` 之后 |
+| `@automation-suite/tia-openness-v17` | 接口插件族：TIA 控制器子进程 + `engineeringAccess` 服务（**模型面工具已拆到 `/tools` 子路径行**，见下节） |
+| `@automation-suite/engineering-context` | 工程上下文插件：`create_engineering_project` / `project_status` / `project_sync` / `project_commit`，外加 `project_diff`、版本库与交接（`handoff_export` / `handoff_import` / `handoff_status`）。**没有宿主面资源**，所以宿主面这一行被 `disabled: true`，各入口由 preset 分开挂 |
+| `@automation-suite/engineering-graph` | 工程知识图谱插件：C# 引擎子进程 + `knowledgeGraph` 服务（**模型面工具同样拆到 `/tools`**） |
+| `@automation-suite/dsh-tool-git` | 结构化 Git 工具族 + `gitContext` 服务 + 破坏性命令闸门（vendor 自上游 `lxj808624/dsh-tool-git` v0.1.3）。**模型面工具已拆到 `@automation-suite/dsh-tool-git/tools`，只挂 `leader`**；`expert` / `auditor` 看不到 |
+| `@automation-suite/ui-plc-source` | **纯 UI 插件**：右侧栏多一个 **PLC Blocks** 标签页（读 `source/<device>/_manifest.json`，按 device 与 simaticType 筛选，点行打开既有文档预览）。宿主半侧是空 `apply()`，**不注册任何模型可见的东西**；必须在 `dsh-web-app` 之后，浏览器半侧才拿得到客户端座位 |
+| `@automation-suite/ui-tia-console` | **仅浏览器半侧**：会话输入框上方的 **TIA 控制台**（状态 + 打开/保存/编译/关闭/刷新五个按钮，dispatch 现有 `/tia-*` 指令）。同样不注册任何模型可见的东西 |
+| `@automation-suite/tia-todo-bridge` | **宿主面兜底**：模型没写 Todo 清单时，把 `open_project` / `export_blocks` / `project_diff` 等 TIA 与版本操作补进会话 `todos` 投影，操作返回即改 `completed`；模型自己写了清单则完全不改。不注册工具、不注册服务，见 [包 README](../../packages/dsh-tia-todo-bridge/README.md) 与下面「TIA 操作的 Todo 清单」 |
+| `@automation-suite/ui-versions` | **仅浏览器半侧**：右侧栏多一个 **Versions** 标签页（排队在 PLC Blocks 之后，读工程上下文插件写出的 `.dsh/versions-view.json`；上面是版本历史，点块 key 看该块的跨版本轨迹）。宿主半侧是空 `apply()`，不注册任何模型可见的东西；同样必须在 `dsh-web-app` 之后 |
 | `dsh-opencode-go` | **公共插件**（npm 上的第三方 bundle，不是本仓代码）：OpenCode Go 模型提供方 + 设置页。见下面的「公共插件」一节 |
 
 `dsh-web-app` 是**超出最初清单额外加的**：只列 `dsh-base` 的话 profile 能 `--dump-config`，
@@ -106,10 +106,10 @@ DSH 的工具可见性是**按声明作用域**解析的（`dsh-tools` 的 `view
 
 - **宿主面（bundle 层）只留资源与服务**：TIA 控制器子进程、`engineeringAccess`、
   C# 引擎、`knowledgeGraph`、git 的 `gitContext` 服务与安全闸门。
-- **模型面工具行由 preset 声明**：`@voltarenyah/dsh-tia-openness-v17-min/tools`、
-  `@voltarenyah/dsh-engineering-graph/tools`、`dsh-tool-git/tools`。哪个 preset 写了这一行，
+- **模型面工具行由 preset 声明**：`@automation-suite/tia-openness-v17/tools`、
+  `@automation-suite/engineering-graph/tools`、`@automation-suite/dsh-tool-git/tools`。哪个 preset 写了这一行，
   它名下的 agent 才有这些工具。
-- **`dsh-engineering-context` 没有宿主面资源**，所以它的四个入口由 preset 分开挂：
+- **`@automation-suite/engineering-context` 没有宿主面资源**，所以它的四个入口由 preset 分开挂：
   `.`（create/status/sync/commit）只给 `auditor`，`/diff` 给 `auditor` 与 `expert`，
   `/status` 只给 `leader`，`/handoff`（导出/导入/状态）只给 `auditor`；
   宿主面那份 `disabled: true`（否则这些工具会落在全局层被所有 agent 继承）。
@@ -118,7 +118,7 @@ DSH 的工具可见性是**按声明作用域**解析的（`dsh-tools` 的 `view
 ⇒ 一个会话能用哪些工程工具，取决于它的 preset。内置 preset 默认已禁用；若手动恢复并切过去，
 这些工具仍然不存在——这是有意的，不是故障。
 
-> ✅ `dsh-tool-git` 的 12 个模型工具已从宿主行拆到 `dsh-tool-git/tools`，只挂 `leader`；
+> ✅ `@automation-suite/dsh-tool-git` 的 12 个模型工具已从宿主行拆到 `@automation-suite/dsh-tool-git/tools`，只挂 `leader`；
 > `auditor` / `expert` 看不到它们。宿主行保留 `gitContext` 服务与破坏性命令闸门。
 
 ### TIA 操作的 Todo 清单（两层：政策 + 兜底）
@@ -130,7 +130,7 @@ TIA 操作**总有可见进度、且结束后不残留转圈**，这里做成两
    任务名统一为 `TIA · <tool_name> · <object>`；操作开始前标 `in_progress`，结果一到立刻标
    `completed`。派发出去的版本操作（create / sync / diff / commit / 图谱重建）也要在
    `subagent` 前标 `in_progress`，auditor 的结果消息到达后才标 `completed`。
-2. **兜底层（`@voltarenyah/dsh-tia-todo-bridge`）**：模型**没有**写清单时，插件在第一个同步
+2. **兜底层（`@automation-suite/tia-todo-bridge`）**：模型**没有**写清单时，插件在第一个同步
    TIA 操作开始时补一行 `in_progress`，操作返回时改成 `completed`（失败加 `（失败）`）。
    模型一旦自己写了清单，插件**完全不改**，所有权归模型；若清单里的对应项在操作返回时还没
    `completed`，只发一条 model-visible 的 settlement notice 要求模型立即 `todo_write`。
@@ -182,7 +182,7 @@ PLCSIM 工具（`simulation_*`，挂在 `leader` 的 `/tools` 行）同时受**�
 （`dsh-subagent` 的 `captureDelegatedPolicyOverrides`）——需要审批的操作自动拒绝、不会弹给用户。
 所以"它写不了工程"由"它没有被授予任何 TIA 写工具"成立。
 
-> ⚠️ **但 git 是例外**：`dsh-tool-git` 的 12 个工具仍是宿主面全局行，其中
+> ⚠️ **但 git 是例外**：`@automation-suite/dsh-tool-git` 的 12 个工具仍是宿主面全局行，其中
 > `git_commit` / `git_stage` / `git_checkout` / `git_stash` 能改仓库。实测要求子 agent
 > 回答"你有没有 TIA 或 git 写工具"时它答的是 **yes**（指的是 git）。
 > 想让它真的只读，要么把该包也拆成 `/tools` 行（第 5 处 vendor 偏离），要么接受这一点 ——
@@ -319,7 +319,7 @@ dsh --profile web --patch .\profile\dsh-automation-suite\cordis.patch.yml --dump
 dsh --profile dsh-automation-suite --dump-config | Select-String "preset-(leader|auditor|expert)"
 
 # 2. 工程工具的宿主面行已被禁用、工具行在 preset 里
-dsh --profile dsh-automation-suite --dump-config | Select-String "engineering-context|tia-openness-v17-min/tools|engineering-graph/tools"
+dsh --profile dsh-automation-suite --dump-config | Select-String "engineering-context|tia-openness-v17/tools|engineering-graph/tools"
 ```
 
 本 profile 自身（物化后）的验收：
@@ -378,8 +378,8 @@ Copy-Item .\package.json,.\cordis.patch.yml,.\pnpm-workspace.yaml $dst
 # 2. 把每个 workspace:^ 换成对应 tarball 的 file: 路径（每个插件一条）
 $repo = "<repo>"
 $tarballs = @{
-  '@voltarenyah/dsh-tia-openness-v17-min' = "$repo\packages\dsh-tia-openness-v17-min\voltarenyah-dsh-tia-openness-v17-min-0.1.0.tgz"
-  'dsh-tool-git'                          = "$repo\packages\dsh-tool-git\dsh-tool-git-0.1.3.tgz"
+  '@automation-suite/tia-openness-v17' = "$repo\packages\dsh-tia-openness-v17-min\automation-suite-tia-openness-v17-0.1.0.tgz"
+  '@automation-suite/dsh-tool-git'                          = "$repo\packages\dsh-tool-git\automation-suite-dsh-tool-git-0.1.3.tgz"
 }
 $pkg = Get-Content "$dst\package.json" -Raw | ConvertFrom-Json
 foreach ($name in $tarballs.Keys) {
@@ -397,7 +397,7 @@ v11.28.5）装完，`--dump-config` exit 0 且以 8 个插件行结尾（行数�
 `dsh-opencode-go` 不用换成 tarball —— 它是公共包，保持 `"0.1.24"` 就会从 npm 解析。
 
 > ⚠️ 第 2 步的 tarball 文件名不要硬编码 `@scope-` 前缀：`pnpm pack` 对 `@scope/name` 产出的是
-> `scope-name-<version>.tgz`（剥掉 `@`、`/`→`-`），对不带 scope 的包就是 `dsh-tool-git-0.1.3.tgz`。
+> `scope-name-<version>.tgz`（剥掉 `@`、`/`→`-`），所以这里是 `automation-suite-dsh-tool-git-0.1.3.tgz`。
 > 目录里可能同时躺着多个历史 tarball，脚本另行用 `packages/*/*.tgz` 取最新一个更稳。
 
 ### C. 发布之后
@@ -415,27 +415,27 @@ dsh --profile dsh-automation-suite --dump-config
 预期结尾出现：
 
 ```yaml
-# == @voltarenyah/dsh-tia-openness-v17-min
-- id: tia-openness-v17-min
-  name: '@voltarenyah/dsh-tia-openness-v17-min'
-# == @voltarenyah/dsh-engineering-context
+# == @automation-suite/tia-openness-v17
+- id: tia-openness-v17
+  name: '@automation-suite/tia-openness-v17'
+# == @automation-suite/engineering-context
 - id: engineering-context
-  name: '@voltarenyah/dsh-engineering-context'
-# == @voltarenyah/dsh-engineering-graph
+  name: '@automation-suite/engineering-context'
+# == @automation-suite/engineering-graph
 - id: engineering-graph
-  name: '@voltarenyah/dsh-engineering-graph'
-# == dsh-tool-git
+  name: '@automation-suite/engineering-graph'
+# == @automation-suite/dsh-tool-git
 - id: tool-git
-  name: dsh-tool-git
-# == dsh-ui-plc-source
+  name: '@automation-suite/dsh-tool-git'
+# == @automation-suite/ui-plc-source
 - id: ui-plc-source
-  name: dsh-ui-plc-source
-# == dsh-ui-tia-console
+  name: '@automation-suite/ui-plc-source'
+# == @automation-suite/ui-tia-console
 - id: ui-tia-console
-  name: dsh-ui-tia-console
-# == dsh-ui-versions
+  name: '@automation-suite/ui-tia-console'
+# == @automation-suite/ui-versions
 - id: ui-versions
-  name: dsh-ui-versions
+  name: '@automation-suite/ui-versions'
 # == dsh-opencode-go
 - id: opencode-go
   name: dsh-opencode-go

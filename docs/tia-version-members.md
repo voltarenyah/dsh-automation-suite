@@ -49,11 +49,11 @@ persona 政策文本、TIA 控制台按钮全部要按版本分叉）。
 
 1. **互斥可见**：两个都开着时，只有一个真正工作，另一个在日志里明确报错，并且 `doctor` 会报；
 2. **名字不变**：39 个工具名、7 个 `/tia-*` 命令名、`tia-openness` 路由 skill 名**跨版本逐字相同**；
-3. **后端零改动**：除成员包自己，其余插件**一行不改** —— `dsh-engineering-context`、`dsh-engineering-graph`、
-   `dsh-drawing`、`dsh-plcsim-advanced`、`dsh-tool-git`、`dsh-tia-todo-bridge`，以及 8 个 UI 插件
+3. **后端零改动**：除成员包自己，其余插件**一行不改** —— `@automation-suite/engineering-context`、`@automation-suite/engineering-graph`、
+   `@automation-suite/pdf-drawing`、`@automation-suite/plcsim-advanced`、`@automation-suite/dsh-tool-git`、`@automation-suite/tia-todo-bridge`，以及 8 个 UI 插件
    （`ui-plc-source` / `ui-tia-console` / `ui-versions` / `ui-changes` / `ui-hardware` / `ui-prompt-guide` /
    `ui-project-dashboard` / `ui-brandmark`）。
-   > 唯一的**例外**是 §9 那张表：`dsh-engineering-context` 里的 V17 硬编码文案与包名要在做 V18 时一并清掉
+   > 唯一的**例外**是 §9 那张表：`@automation-suite/engineering-context` 里的 V17 硬编码文案与包名要在做 V18 时一并清掉
    > ——但那属于"说错话"的问题，不是"接不上"的问题，V18 成员本身不需要它们改动就能工作。
 
 ---
@@ -74,9 +74,9 @@ if (candidate === undefined || candidates.length > 1
 
 | 行 | 声明位置 | 平面 | 插件页能逐行开关？ |
 |---|---|---|---|
-| `tia-openness-v17-min`（宿主行：控制器 + 服务 + skill） | bundle 的 `cordis.patch.yml` → profile `insert` | **include** | ✅ 能 |
-| `@voltarenyah/dsh-tia-openness-v17-min/tools` | profile 蓝图的 `preset-leader` 内 | **preset** | ❌ 一律 `unaddressable`，开关不出现 |
-| `@voltarenyah/dsh-tia-openness-v17-min/commands` | 同上 | **preset** | ❌ 同上 |
+| `tia-openness-v17`（宿主行：控制器 + 服务 + skill） | bundle 的 `cordis.patch.yml` → profile `insert` | **include** | ✅ 能 |
+| `@automation-suite/tia-openness-v17/tools` | profile 蓝图的 `preset-leader` 内 | **preset** | ❌ 一律 `unaddressable`，开关不出现 |
+| `@automation-suite/tia-openness-v17/commands` | 同上 | **preset** | ❌ 同上 |
 
 所以**逐行开关只能开到控制器/服务那一层**，而工具行永远在 preset 里常驻。
 这正是必须选 **bundle 开关** 的原因：bundle 开关写的是 `package.json` 的
@@ -94,18 +94,19 @@ if (candidate === undefined || candidates.length > 1
 
 | 项 | V17（现状） | V18（新成员） |
 |---|---|---|
-| 包名 | `@voltarenyah/dsh-tia-openness-v17-min` | `@voltarenyah/dsh-tia-openness-v18` |
+| 包名 | `@automation-suite/tia-openness-v17` | `@automation-suite/tia-openness-v18` |
 | bundle 显示名 | **TIA Portal V17** | **TIA Portal V18** |
-| 宿主行 id | `tia-openness-v17-min` | `tia-openness-v18` |
-| tools 行 id / 子路径 | `tia-openness-v17-min-tools` / `./tools` | `tia-openness-v18-tools` / `./tools` |
-| commands 行 id / 子路径 | `tia-openness-v17-min-commands` / `./commands` | `tia-openness-v18-commands` / `./commands` |
+| 宿主行 id | `tia-openness-v17` | `tia-openness-v18` |
+| tools 行 id / 子路径 | `tia-openness-v17-tools` / `./tools` | `tia-openness-v18-tools` / `./tools` |
+| commands 行 id / 子路径 | `tia-openness-v17-commands` / `./commands` | `tia-openness-v18-commands` / `./commands` |
 | 控制器程序集 | `TiaOpennessV17Min.Controller` | `TiaOpennessV18.Controller` |
 | 控制器 exe | `controller/bin/TiaOpennessV17Min.Controller.exe` | `controller/bin/TiaOpennessV18.Controller.exe` |
-| 技能 provider 名 | `tia-openness-v17-min` | `tia-openness-v18` |
+| 技能 provider 名 | `tia-openness-v17` | `tia-openness-v18` |
 
-**`-min` 后缀不再出现在 V18 及以后**：它是 D2 时代"min / std / pro 三档"的残留，D31 之后档位已不成立，
-继续带后缀只会让人以为 V18 也有张三档。**V17 的包名保持不动**（有已发布 tarball、已装 profile、
-归档仓库的历史提交都按这个名字），改名属于独立的破坏性操作，不在 V18 的工作里做。
+**`-min` 后缀不再出现在任何成员上**：它是 D2 时代"min / std / pro 三档"的残留，D31 之后档位已不成立。
+V17 曾在 D36 里被"保持原名不动"（理由：已发布 tarball、已装 profile、归档仓库都引用它），
+但 **D39 已按使用者的统一命名决定把它改成 `@automation-suite/tia-openness-v17`** —— 旧 tarball 仍在，
+只是新构建不再产出那个名字；V18 起沿用同一规则。
 
 ### 4.2 显示名怎么来
 
@@ -343,8 +344,8 @@ claimFamily(...) 成功 ?
 
 | 服务 | 生产者 | 消费者 | 必选方法 |
 |---|---|---|---|
-| `engineeringAccess` | 每个成员 | `dsh-engineering-context` | `readTiaSession` / `openProject` / `saveProjectAs` / `rebuildSource`（另有 5 个**可选**能力方法） |
-| `projectTextAccess` | 每个成员 | `dsh-engineering-context` | `exportTexts` / `importTexts` / `readLanguages` / `setLanguages` / `archiveProject` / `saveProject` / `listBlocks`（7 个全必选） |
+| `engineeringAccess` | 每个成员 | `@automation-suite/engineering-context` | `readTiaSession` / `openProject` / `saveProjectAs` / `rebuildSource`（另有 5 个**可选**能力方法） |
+| `projectTextAccess` | 每个成员 | `@automation-suite/engineering-context` | `exportTexts` / `importTexts` / `readLanguages` / `setLanguages` / `archiveProject` / `saveProject` / `listBlocks`（7 个全必选） |
 
 - 消费者用 `typeof service.xxx !== 'function'` 做能力探测
   （`src/scan.ts:42`、`src/sync.ts:124`、`src/tools/create-project.ts:233/691`、`src/tools/preflight.ts:87`、
@@ -373,8 +374,8 @@ V18 若要加字段，只能**新增可选字段**（例如将来的 `tiaObjectI
 
 | 名字 | 为什么不能变 |
 |---|---|
-| 39 个工具名（`open_project` / `export_blocks` / …） | `dsh-tia-todo-bridge` 的 `TRACKED_TOOLS`（`bridge.ts:64`）是**按名字**的白名单；persona 政策文本里写死了 `TIA · <tool_name> · <object>` 的待办格式 |
-| 7 个 `/tia-*` 命令名 | TIA 控制台面板的按钮直接 `dispatch('/tia-open')` 等（`dsh-ui-tia-console/src/client/TiaBar.jsx:126/129/132/135/138`） |
+| 39 个工具名（`open_project` / `export_blocks` / …） | `@automation-suite/tia-todo-bridge` 的 `TRACKED_TOOLS`（`bridge.ts:64`）是**按名字**的白名单；persona 政策文本里写死了 `TIA · <tool_name> · <object>` 的待办格式 |
+| 7 个 `/tia-*` 命令名 | TIA 控制台面板的按钮直接 `dispatch('/tia-open')` 等（`@automation-suite/ui-tia-console/src/client/TiaBar.jsx:126/129/132/135/138`） |
 | `tia-openness` 路由 skill 名 | 每个工具的描述都统一追加一句 `Troubleshooting: load the bundled `tia-openness` skill …`（`src/tools.ts:1156` 的 `KNOWLEDGE_HINT`）；名字一分裂，这句指向不存在的 skill |
 | 服务名 `engineeringAccess` / `projectTextAccess` | §6.1 |
 | 子路径 `./tools` / `./commands` | preset 行按 `<包名>/tools` 声明（`profile/…/cordis.patch.yml:487/493`） |
@@ -426,7 +427,7 @@ V18 若要加字段，只能**新增可选字段**（例如将来的 `tiaObjectI
 
 | # | 检查 | 判定 |
 |---|---|---|
-| 1 | **族成员行数** | 解析 `--dump-config`，统计 `# == @voltarenyah/dsh-tia-openness-v*` 的**启用**行。`= 0` → `warn`（"没有 TIA 接口插件可用"）；`= 1` → `ok`；`≥ 2` → **`fail`**，文案指明"只能激活一个，请到插件页关掉多余的并重启" |
+| 1 | **族成员行数** | 解析 `--dump-config`，统计 `# == @automation-suite/tia-openness-v*` 的**启用**行。`= 0` → `warn`（"没有 TIA 接口插件可用"）；`= 1` → `ok`；`≥ 2` → **`fail`**，文案指明"只能激活一个，请到插件页关掉多余的并重启" |
 | 2 | **TIA 版本探测改为多版本** | 现在的 `$tiaDll` 写死 `Portal V17\PublicAPI\V17`（`doctor.ps1:250`）。改为探测 `Portal V*` 目录，列出找到的所有版本，并与"当前激活的族成员版本"对照：不匹配时 `warn`（"激活的是 V17 但本机只装了 V18"） |
 | 3 | **残留控制器进程** | 若激活的是 V18，但 `Get-Process TiaOpennessV17Min.Controller` 还在 → `warn`（"旧版本控制器仍在运行，切换后请重启客户端"） |
 
@@ -441,14 +442,14 @@ V18 若要加字段，只能**新增可选字段**（例如将来的 `tiaObjectI
 
 | # | 位置 | 写死了什么 | V18 下的错误表现 |
 |---|---|---|---|
-| 1 | `dsh-engineering-context/src/tools/create-project.ts:204-209`（`sourceFileOf`） | `.zap17` 视为"无需升级"，其余 `.zap*` 一律 `needsUpgrade: true` | 传 `.zap18` → 被要求确认"会不可逆升级到 V17" |
-| 2 | `dsh-engineering-context/src/tools/create-project.ts:245`、`:1321`、`:1334` | 文案 "TIA rewrites the copy to **V17**" / "upgraded … to V17" | 对 V18 成员说错目标版本 |
-| 3 | `dsh-engineering-context/src/tools/create-project.ts:237`、`:695`、`:1091`；`src/sync.ts:127`；`src/scan.ts:25`；`src/tools/preflight.ts:90`；`src/tools/project-translate.ts:295` | 错误信息点名 `@voltarenyah/dsh-tia-openness-v17-min` | 让用户去"升级 V17 包"，而实际装的是 V18 |
-| 4 | `dsh-engineering-context/src/tools/create-project.ts:1049-1060`、`:1123` | 工具描述把 `.ap17` / `.zap17` 当固定格式 | 模型对 V18 用户说错扩展名 |
+| 1 | `@automation-suite/engineering-context/src/tools/create-project.ts:204-209`（`sourceFileOf`） | `.zap17` 视为"无需升级"，其余 `.zap*` 一律 `needsUpgrade: true` | 传 `.zap18` → 被要求确认"会不可逆升级到 V17" |
+| 2 | `@automation-suite/engineering-context/src/tools/create-project.ts:245`、`:1321`、`:1334` | 文案 "TIA rewrites the copy to **V17**" / "upgraded … to V17" | 对 V18 成员说错目标版本 |
+| 3 | `@automation-suite/engineering-context/src/tools/create-project.ts:237`、`:695`、`:1091`；`src/sync.ts:127`；`src/scan.ts:25`；`src/tools/preflight.ts:90`；`src/tools/project-translate.ts:295` | 错误信息点名 `@automation-suite/tia-openness-v17` | 让用户去"升级 V17 包"，而实际装的是 V18 |
+| 4 | `@automation-suite/engineering-context/src/tools/create-project.ts:1049-1060`、`:1123` | 工具描述把 `.ap17` / `.zap17` 当固定格式 | 模型对 V18 用户说错扩展名 |
 | 5 | `scripts/doctor.ps1:250` | `Portal V17\PublicAPI\V17` | V18 用户被报"Openness 未安装"（见 §8 第 2 条） |
-| 6 | `dsh-tia-todo-bridge/src/bridge.ts:64` 起的 `TRACKED_TOOLS` | 工具名白名单 | 只要工具名不变就没事——**但这是一条隐含约定，没人写过**；§6.3 已把它显式化 |
+| 6 | `@automation-suite/tia-todo-bridge/src/bridge.ts:64` 起的 `TRACKED_TOOLS` | 工具名白名单 | 只要工具名不变就没事——**但这是一条隐含约定，没人写过**；§6.3 已把它显式化 |
 
-**修法（做 V18 时一并做，属 `dsh-engineering-context` 的改动）**：
+**修法（做 V18 时一并做，属 `@automation-suite/engineering-context` 的改动）**：
 
 给 `engineeringAccess` 加一个**可选**方法，让成员自报身份，消费者不再靠扩展名猜：
 
@@ -514,7 +515,7 @@ family?(): { product: 'tia'; version: number; projectExt: string; archiveExt: st
 
 **C. 蓝图（`profile/dsh-automation-suite/`）**
 
-11. `package.json` 的 `dependencies` 加入 `@voltarenyah/dsh-tia-openness-v18`（装），但
+11. `package.json` 的 `dependencies` 加入 `@automation-suite/tia-openness-v18`（装），但
     `dsh.profile.bundles` **暂不**加入（不默认启用）——这样插件页能看到它的卡片、可以一键打开，
     而默认组合仍是 V17。这是本方案对"默认只激活一个"的落地方式。
 12. `cordis.patch.yml` 的 **`preset-leader`**（只有它声明了 TIA 行，见 `:486-493`）里，**再加一份** V18 成员的

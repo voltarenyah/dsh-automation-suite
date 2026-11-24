@@ -44,7 +44,7 @@ export function ensureRuntimePackages() {
     throw new Error(
       `The harness runtime packages ${result.missing.join(', ')} are not available. Install DeepSeek Harness, or run ` +
         '"node scripts/link-dsh-runtime.mjs" once. The shared cache is (re)built by the sibling package: ' +
-        '"pnpm --filter @voltarenyah/dsh-tia-openness-v17-min run link:runtime".',
+        '"pnpm --filter @automation-suite/tia-openness-v17 run link:runtime".',
     )
   }
 }

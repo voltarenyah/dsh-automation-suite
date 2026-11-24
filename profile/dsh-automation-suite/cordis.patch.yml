@@ -27,7 +27,7 @@
 # 3. 把 agent-preset-registry 的默认 preset 指到 `leader`，新会话默认就用它。
 # 4. 工程工具按 preset 分发（本发行版对方案 A 的落地，见 docs/decisions.md D23/D30）：
 #      • 宿主面（bundle 层）只留**控制器/引擎子进程与服务**：
-#        dsh-tia-openness-v17-min 提供 `engineeringAccess` + TIA 控制器，
+#        @automation-suite/tia-openness-v17 提供 `engineeringAccess` + TIA 控制器，
 #        dsh-engineering-graph 提供 `knowledgeGraph` + C# 引擎；
 #        它们的**模型面工具**已经拆到各自的 `/tools` 子路径行，由 preset 声明。
 #      • `dsh-engineering-context` 没有宿主面资源，所以宿主面这一行显式 `disabled: true`；
@@ -41,7 +41,7 @@
 #      ⇒ 版本工作流**只有 auditor 有**：leader 想创建工程、同步、看差异、提交，都只能派发。
 #        这是 2026-10-23 复盘的直接结论——审计角色当时"新增了但从未被调用"，因为
 #        调用它的路径不存在、而 leader 自己握着全部工具（D30）。
-#      ✅ git 的 12 个模型工具已拆成 `dsh-tool-git/tools` 行，只挂在 `leader`；
+#      ✅ git 的 12 个模型工具已拆成 `@automation-suite/dsh-tool-git/tools` 行，只挂在 `leader`；
 #        `expert` 与 `auditor` 都看不到它们（git 的 root 由 `gitContext` 服务解析）。
 #
 # ⚠️ 升级 DSH 后：两个 preset 的 plugins 列表**不会**自动跟随上游 standard 的更新
@@ -513,19 +513,19 @@
           # 的模型工具面分开声明：它只 inject `commands` + `tiaOpennessRuntime`，
           # 不声明任何工具，所以没有 `/tools` 行的 preset 也能单独挂它。
           - id: leader-engineering-status
-            name: '@voltarenyah/dsh-engineering-context/status'
+            name: '@automation-suite/engineering-context/status'
           - id: leader-version-store
-            name: '@voltarenyah/dsh-engineering-context/version'
+            name: '@automation-suite/engineering-context/version'
           - id: leader-tia-tools
-            name: '@voltarenyah/dsh-tia-openness-v17-min/tools'
+            name: '@automation-suite/tia-openness-v17/tools'
           - id: leader-plcsim-tools
-            name: '@voltarenyah/dsh-plcsim-advanced/tools'
+            name: '@automation-suite/plcsim-advanced/tools'
           - id: leader-git-tools
-            name: dsh-tool-git/tools
+            name: '@automation-suite/dsh-tool-git/tools'
           - id: leader-tia-commands
-            name: '@voltarenyah/dsh-tia-openness-v17-min/commands'
+            name: '@automation-suite/tia-openness-v17/commands'
           - id: leader-graph-tools
-            name: '@voltarenyah/dsh-engineering-graph/tools'
+            name: '@automation-suite/engineering-graph/tools'
             config:
               includeIngest: false
               includeDrilldown: inspect
@@ -721,15 +721,15 @@
           - id: time-context
             name: '@deepseek-ai/dsh-time-context'
           - id: auditor-engineering-context
-            name: '@voltarenyah/dsh-engineering-context'
+            name: '@automation-suite/engineering-context'
           - id: auditor-version-store
-            name: '@voltarenyah/dsh-engineering-context/version'
+            name: '@automation-suite/engineering-context/version'
           - id: auditor-project-diff
-            name: '@voltarenyah/dsh-engineering-context/diff'
+            name: '@automation-suite/engineering-context/diff'
           - id: auditor-handoff
-            name: '@voltarenyah/dsh-engineering-context/handoff'
+            name: '@automation-suite/engineering-context/handoff'
           - id: auditor-graph-tools
-            name: '@voltarenyah/dsh-engineering-graph/tools'
+            name: '@automation-suite/engineering-graph/tools'
             config:
               includeIngest: true
               includeDrilldown: none
@@ -782,7 +782,7 @@
     #   ⇒ 它自己的 preset 声明 15 个工具（图谱 7 + read/read_image + glob/grep +
     #     send_message/interrupt_agent + project_diff + ask_user）。宿主面仍有
     #     `dsh-tool-working-directory` 的 `working_directory`（上游本来就把这一行留在宿主面）；
-    #     git 的 12 个工具已拆成 `dsh-tool-git/tools` 行，只挂在 Leader，所以 Expert 看不到它们。
+    #     git 的 12 个工具已拆成 `@automation-suite/dsh-tool-git/tools` 行，只挂在 Leader，所以 Expert 看不到它们。
     #   ⚠️ 子 agent 的 `ask_user_question` **没有 answerer**（宿主只为 root agent 提供）：
     #     它会以 NO_PROVIDER 失败。D25/D29 的规则因此写成"失败就不得读源"，而不是"问用户"。
     # ⚠️ 沙箱与权限：子 agent 继承父会话的**显式**沙箱覆盖（本 profile 默认
@@ -878,14 +878,14 @@
           - id: time-context
             name: '@deepseek-ai/dsh-time-context'
           - id: expert-graph-tools
-            name: '@voltarenyah/dsh-engineering-graph/tools'
+            name: '@automation-suite/engineering-graph/tools'
             config:
               includeIngest: false
               includeDrilldown: all
           - id: expert-project-diff
-            name: '@voltarenyah/dsh-engineering-context/diff'
+            name: '@automation-suite/engineering-context/diff'
           - id: expert-version-store-read
-            name: '@voltarenyah/dsh-engineering-context/version-read'
+            name: '@automation-suite/engineering-context/version-read'
           - id: expert-fs-readonly
             name: '@deepseek-ai/dsh-tool-fs'
             config:

@@ -7,7 +7,7 @@
  * changes. The PNG is inlined as a data URL at build time — the browser half
  * has no route of its own to serve assets from.
  *
- * @module dsh-ui-brandmark/client/BrandMark
+ * @module @automation-suite/ui-brandmark/client/BrandMark
  */
 
 import iconUrl from '../../assets/brandmark.png'

@@ -1,19 +1,19 @@
-# dsh-ui-versions
+# @automation-suite/ui-versions
 
 DSH 插件（**浏览器半侧**）：在 dsh-web 的**右侧栏**增加一个 **Versions** 标签页，读工程上下文插件写出的
 版本视图（`<workspace>/.dsh/versions-view.json`），展示版本历史、每个块的变更时间线与指纹变化。
 
 > 本包只有 UI：宿主半侧是一个只写日志的 `apply()`，存在的意义是让包在 Loader 里有一行 ——
 > `client-modules` 是**扫描已启用的 Loader 条目**才发现 `lib/client.js` 的，
-> 没有行就不会有 `/plugins/??dsh-ui-versions/client.js`，而且**不报错**。
+> 没有行就不会有 `/plugins/??@automation-suite/ui-versions/client.js`，而且**不报错**。
 >
-> 数据不在这里产生：视图文件由 `@voltarenyah/dsh-engineering-context` 在**版本操作之后**写出
+> 数据不在这里产生：视图文件由 `@automation-suite/engineering-context` 在**版本操作之后**写出
 > （`project_version_reindex`、`project_commit`、`project_version_annotate`）。
 > 本包**不读 SQLite**，也不需要版本库的 schema。
 
 ## 它做什么
 
-- 右侧栏 tab 类型（id `dsh-ui-versions`，kind `versions`，引导项 order **101**，排在 PLC Blocks 的 100 之后）；
+- 右侧栏 tab 类型（id `@automation-suite/ui-versions`，kind `versions`，引导项 order **101**，排在 PLC Blocks 的 100 之后）；
 - 顶部一行：标题、设备名、**刷新**（重新整文件读取一次；没有文件监听，切回 tab 不会自动重读）；
 - 工具栏：**搜索**（提交号 / 标题 / 意图 / 块名 / 原因）、**All faces** 过滤、**All problems** 过滤
   （问题下拉只在视图里有问题时出现）；
@@ -36,10 +36,10 @@ DSH 插件（**浏览器半侧**）：在 dsh-web 的**右侧栏**增加一个 *
 ## 数据从哪来
 
 ```
-<workspace>/.dsh/versions-view.json          ← dsh-engineering-context 写（派生文件）
+<workspace>/.dsh/versions-view.json          ← @automation-suite/engineering-context 写（派生文件）
         │  remote.workspaceFiles.readBytes(sessionId, path) 整文件一次读完
         ▼
-   dsh-ui-versions（浏览器半侧）解析 → 过滤 → 渲染
+   @automation-suite/ui-versions（浏览器半侧）解析 → 过滤 → 渲染
 ```
 
 - 路径常量在 `src/model.ts`（`VIEW_FILE`），与会写它的插件一致；
@@ -96,13 +96,13 @@ tab 的布局看**面板自己的宽度**，不看窗口宽度 —— 用 CSS **
 
 两处（少一处就静默不生效）：
 
-1. `profile/dsh-automation-suite/package.json` 的 `dependencies` 加 `"dsh-ui-versions": "workspace:^"`；
-2. 同文件 `dsh.profile.bundles` 加 `"dsh-ui-versions"`，位置在 `dsh-ui-tia-console` 之后、`dsh-opencode-go` 之前。
+1. `profile/dsh-automation-suite/package.json` 的 `dependencies` 加 `"@automation-suite/ui-versions": "workspace:^"`；
+2. 同文件 `dsh.profile.bundles` 加 `"@automation-suite/ui-versions"`，位置在 `@automation-suite/ui-tia-console` 之后、`dsh-opencode-go` 之前。
 
 已物化的 profile **不能只靠依赖**：`start-env.ps1` 以前只在 profile 目录尚不存在时拷贝
 `dsh.profile.bundles`。现在脚本多了一步 **bundle sync** —— 把蓝图的 bundle 列表并进已物化的
 `package.json`（按蓝图顺序，profile 自己的额外条目保留在末尾），列表有变化时重装依赖。
-症状记在这里，免得下次再查：只装依赖、不补 bundle 行时，`dsh-ui-versions` 不会出现在启动 HTML 里。
+症状记在这里，免得下次再查：只装依赖、不补 bundle 行时，`@automation-suite/ui-versions` 不会出现在启动 HTML 里。
 
 ## 开发
 

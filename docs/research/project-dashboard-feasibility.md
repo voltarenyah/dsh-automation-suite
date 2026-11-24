@@ -31,7 +31,7 @@
 | D | **多级标签**（A/B/C）+ 顶部搜索 + 标签筛选 | ✅ 纯客户端；`localStorage` 持久化，零宿主代码 | §5.1 / §5.2 |
 
 **推荐形态**：新建 `packages/dsh-ui-project-dashboard`（**纯客户端插件**，宿主半侧空 `apply()`），
-与 `dsh-ui-prompt-guide` 同一套注入方式、与 `dsh-ui-hardware` 同一套构建链。
+与 `@automation-suite/ui-prompt-guide` 同一套注入方式、与 `@automation-suite/ui-hardware` 同一套构建链。
 
 ---
 
@@ -146,7 +146,7 @@ root 作用域的每个插槽组件都会拿到一组**标准 Hook**，由宿主
   落点是 `<DSH_HOME>/storages/project-dashboard/tags.json`：
 
   ```jsonc
-  { "version": 1, "revision": 12, "owner": "dsh-ui-project-dashboard",
+  { "version": 1, "revision": 12, "owner": "@automation-suite/ui-project-dashboard",
     "workspaces": { "<workspaceId>": { "path": "C:\\…\\SWT1", "tags": ["客户/PEI"], "updatedAt": "…" } } }
   ```
 
@@ -281,7 +281,7 @@ root 作用域的每个插槽组件都会拿到一组**标准 Hook**，由宿主
 
 ## 7. 工作量与分期
 
-新包 `packages/dsh-ui-project-dashboard`，构建链直接复用 `dsh-ui-hardware`（`scripts/build.mjs` 用 esbuild，
+新包 `packages/dsh-ui-project-dashboard`，构建链直接复用 `@automation-suite/ui-hardware`（`scripts/build.mjs` 用 esbuild，
 平台表 external；`tsc` 出宿主半侧；CSS/字典/`cordis.patch.yml` 同构）。
 **P0 是纯客户端；P1 因标签持久化多了一个宿主半侧**（标签文件 + 路由），这是用户 2026-11-05 的决定。
 
@@ -298,8 +298,8 @@ root 作用域的每个插槽组件都会拿到一组**标准 Hook**，由宿主
 ### 登记三处（缺一处就静默不出现）
 
 1. `packages/dsh-ui-project-dashboard/`：`package.json`（`dsh.client` + `exports["./client"]` + `dsh.bundle.patch`）、`lib/index.js`、`lib/client.js`；
-2. 包内 `cordis.patch.yml`：`insert: - id: project-dashboard / name: 'dsh-ui-project-dashboard'`（`@` 不存在时不需要引号，但**逐字**等于包名）；
-3. `profile/dsh-automation-suite/package.json`：`dependencies` + `dsh.profile.bundles`（放 `dsh-ui-prompt-guide` 之后）。
+2. 包内 `cordis.patch.yml`：`insert: - id: ui-project-dashboard / name: '@automation-suite/ui-project-dashboard'`（`@` 不存在时不需要引号，但**逐字**等于包名）；
+3. `profile/dsh-automation-suite/package.json`：`dependencies` + `dsh.profile.bundles`（放 `@automation-suite/ui-prompt-guide` 之后）。
 
 ⚠️ **已存在的 3095 环境不会自动跟随蓝图**（`docs/ui-plugins.md` §9.2）：要么手工把包名补进
 `%USERPROFILE%\dsh-automation-suite-home\profiles\dsh-automation-suite\package.json` 的 bundles，
@@ -316,10 +316,10 @@ pwsh -NoProfile -File scripts\start-env.ps1 -Restart
 
 # 2) 硬证据一：组合里有这一行（用该环境的 DSH_HOME）
 $env:DSH_HOME = "$env:USERPROFILE\dsh-automation-suite-home"
-dsh --profile dsh-automation-suite --dump-config | Select-String 'dsh-ui-project-dashboard'
+dsh --profile dsh-automation-suite --dump-config | Select-String '@automation-suite/ui-project-dashboard'
 
 # 3) 硬证据二：启动图里有客户端行（需带 token 的 URL）
-#    {"id":"dsh-ui-project-dashboard","url":"plugins/??dsh-ui-project-dashboard/client.js&rev=…"}
+#    {"id":"@automation-suite/ui-project-dashboard","url":"plugins/??@automation-suite/ui-project-dashboard/client.js&rev=…"}
 
 # 4) 硬证据三（最直观）：左侧栏第一行是 Project Dashboard（位于 Plugins 之上）；
 #    点开后 data-dsh-panel="project-dashboard"，探针 dataset.dshProjectDashboard === 'p1'。

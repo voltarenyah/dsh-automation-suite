@@ -5,4 +5,4 @@
 # the loader treats this string as a module identifier (root AGENTS.md §1).
 - insert:
     - id: engineering-context
-      name: '@voltarenyah/dsh-engineering-context'
+      name: '@automation-suite/engineering-context'

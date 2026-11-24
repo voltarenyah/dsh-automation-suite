@@ -1,6 +1,6 @@
-# AGENTS.md — dsh-plcsim-advanced
+# AGENTS.md — @automation-suite/plcsim-advanced
 
-Package-level conventions for `@voltarenyah/dsh-plcsim-advanced`.
+Package-level conventions for `@automation-suite/plcsim-advanced`.
 User-level rules are in `~/.dsh/AGENTS.md`; repository-level rules are in the
 root `AGENTS.md`.
 
@@ -53,7 +53,7 @@ root `AGENTS.md`.
 - `/tools` row (`src/tools-entry.ts`, package `"./tools"`): the four tools. It is
   declared by the leader preset only; expert/auditor must not inherit it.
 - Keep the package name, `cordis.patch.yml` `insert[].name` and the profile
-  bundle entry identical (`@voltarenyah/dsh-plcsim-advanced`, quoted in YAML).
+  bundle entry identical (`@automation-suite/plcsim-advanced`, quoted in YAML).
 
 ## 4. Commands
 

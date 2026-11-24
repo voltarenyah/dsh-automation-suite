@@ -27,7 +27,7 @@
  *      closes a session, and `closeProject` deliberately makes the caller state
  *      `dryRun` explicitly.
  *
- * @module dsh-tia-openness-v17-min/access
+ * @module @automation-suite/tia-openness-v17/access
  */
 import { Service } from '@deepseek-ai/cordis';
 import { join } from 'node:path';

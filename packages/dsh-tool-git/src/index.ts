@@ -1,5 +1,5 @@
 /**
- * dsh-tool-git host entry — the capability layer.
+ * @automation-suite/dsh-tool-git host entry — the capability layer.
  *
  * This row registers **no model-facing tools**. It provides:
  *
@@ -11,13 +11,13 @@
  *   rewrites — whether they arrive through the `/tools` row's own tools or
  *   through a shell tool.
  *
- * The twelve `git_*` model tools live on the `dsh-tool-git/tools` subpath
+ * The twelve `git_*` model tools live on the `@automation-suite/dsh-tool-git/tools` subpath
  * (`./tools-entry.ts`), so a profile/preset can grant them to one agent
  * without also handing them to every other agent. That row injects
  * `gitContext`; without this host row it does not load at all, so a missing
  * host row fails closed instead of producing unguarded tools.
  *
- * @module dsh-tool-git
+ * @module @automation-suite/dsh-tool-git
  */
 
 import type { Context } from '@deepseek-ai/cordis'
@@ -28,7 +28,7 @@ import { createGitContextService } from './service.ts'
 export const name = 'tool-git'
 export const inject = ['tools']
 
-/** dsh-tool-git host configuration (service + safety gate). */
+/** @automation-suite/dsh-tool-git host configuration (service + safety gate). */
 export interface Config {
   /** The `git` executable to invoke. Defaults to `git` on PATH. */
   gitPath: string
@@ -68,7 +68,7 @@ export const Config: z<Config> = z.object({
 /**
  * Apply the host entry: provide the `gitContext` service and install the
  * destructive-command safety gate. Model-facing tools are registered by the
- * `dsh-tool-git/tools` entry instead.
+ * `@automation-suite/dsh-tool-git/tools` entry instead.
  * @param ctx - registrant context carrying the tool runtime.
  * @param config - validated host configuration.
  */

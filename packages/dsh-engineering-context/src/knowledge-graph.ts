@@ -358,7 +358,7 @@ export async function ingestKnowledgeGraph(request: KnowledgeIngestRequest): Pro
           'loaded), so no knowledge database was written. The source tree is complete and is the artifact to work from.',
       ],
       details: [
-        'Knowledge graph: not built — no knowledgeGraph service in this composition (install @voltarenyah/dsh-engineering-graph ' +
+        'Knowledge graph: not built — no knowledgeGraph service in this composition (install @automation-suite/engineering-graph ' +
           'to build it).',
       ],
     }

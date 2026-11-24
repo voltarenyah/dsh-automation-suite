@@ -7,15 +7,15 @@
  *  - `sessions` (from `dsh-session`) maps the session id to its `header.cwd` —
  *    the request never carries a path, so the route cannot be pointed at an
  *    arbitrary directory;
- *  - `gitContext` (from `dsh-tool-git`) binds that cwd to a repository and runs
+ *  - `gitContext` (from `@automation-suite/dsh-tool-git`) binds that cwd to a repository and runs
  *    `status` / `diff --numstat`. The package is **not imported**: a composition
- *    without `dsh-tool-git` answers `changes/no-git-service` instead of failing
+ *    without `@automation-suite/dsh-tool-git` answers `changes/no-git-service` instead of failing
  *    to load.
  *
  * The route carries **no authentication** (only `/api` does): see the security
  * posture in `route.ts` before widening what it returns.
  *
- * @module dsh-ui-changes
+ * @module @automation-suite/ui-changes
  */
 
 import { readFile, stat } from 'node:fs/promises'

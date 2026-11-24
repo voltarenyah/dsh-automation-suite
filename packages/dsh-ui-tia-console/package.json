@@ -1,6 +1,9 @@
 {
-  "name": "dsh-ui-tia-console",
+  "name": "@automation-suite/ui-tia-console",
   "version": "0.1.0",
+  "publishConfig": {
+    "access": "public"
+  },
   "private": false,
   "description": "DSH plugin: a TIA Portal console above the composer — live state (no project / opening / open / saving / compiling / closing), elapsed time for long operations, one-click open/save/compile/close through the existing /tia-* commands, and a refresh that re-syncs the state with the controller.",
   "type": "module",

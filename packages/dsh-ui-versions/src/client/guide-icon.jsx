@@ -14,7 +14,7 @@
  * The glyph is a history timeline: one rail with three milestones, the newest
  * one in amber.
  *
- * @module dsh-ui-versions/client/guide-icon
+ * @module @automation-suite/ui-versions/client/guide-icon
  */
 
 /**

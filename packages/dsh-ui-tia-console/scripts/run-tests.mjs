@@ -6,7 +6,7 @@
  * bundle. The host half is still compiled first: it is what the Loader row
  * imports, and a broken `lib/index.js` should fail here rather than at startup.
  *
- * @module dsh-ui-tia-console/scripts/run-tests
+ * @module @automation-suite/ui-tia-console/scripts/run-tests
  */
 
 import { spawnSync } from 'node:child_process'

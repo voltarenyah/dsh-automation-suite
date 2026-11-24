@@ -5,7 +5,7 @@
  * demand — the first request pays for it — and it is terminated by the disposer
  * the plugin registers through `ctx.effect`, so unloading the plugin never leaves
  * the engine behind. The mechanics mirror the TIA Openness plugin's controller client
- * (`dsh-tia-openness-v17-min/src/controller.ts`) deliberately: the two plugins own
+ * (`@automation-suite/tia-openness-v17/src/controller.ts`) deliberately: the two plugins own
  * the same kind of resource, and one of them being subtly different would be a
  * defect, not a feature.
  *

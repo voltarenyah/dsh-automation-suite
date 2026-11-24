@@ -1,4 +1,4 @@
-# 决策记录（`dsh-engineering-context`）
+# 决策记录（`@automation-suite/engineering-context`）
 
 > 本文件记录**本插件自己的技术取舍**：为什么这么定、连带约束是什么、哪一条还等着验证。
 > 发行版级的取舍在 [`docs/decisions.md`](../../../docs/decisions.md)；尚未决定的问题在
@@ -285,7 +285,7 @@ TIA 包已因此把 31 个上游 skill 收敛为 1 个）；项目级 skill **�
 
 **决定**：`build` 就是 `tsc -p tsconfig.json`，测试用 `node --test`；**不引入 `tsdown` / `vitest`**。
 
-**理由**：`dsh-tool-git` 用 tsdown + vitest 是因为它是上游 vendor 副本；本包是原创代码，
+**理由**：`@automation-suite/dsh-tool-git` 用 tsdown + vitest 是因为它是上游 vendor 副本；本包是原创代码，
 TIA 包那套（`tsc` 出 `lib/`，`node:test` 跑真实运行时）已经够用，且**不新增任何工具链依赖**
 （根 `node_modules` 里已有 `typescript`，`vitest`/`tsdown` 只在 git 包的 `node_modules` 里）。
 连带好处见 P0-3：不需要 `pnpm install` 就能构建与测试。
@@ -306,7 +306,7 @@ TIA 包那套（`tsc` 出 `lib/`，`node:test` 跑真实运行时）已经够用
 **决定**：声明好 `devDependencies`，但**不在本仓执行 `pnpm install`**；
 本地验证靠 `scripts/link-dsh-runtime.mjs` 建**项目内**的链接。
 
-**理由（这是本阶段最要紧的一条）**：本工作树里 `dsh-tia-openness-v17-min` 与 `dsh-tool-git`
+**理由（这是本阶段最要紧的一条）**：本工作树里 `@automation-suite/tia-openness-v17` 与 `@automation-suite/dsh-tool-git`
 的 `node_modules/@deepseek-ai/*` 是**手工创建**的链接，而 `@deepseek-ai/*` 被刻意排除在
 `dependencies` 之外（根 AGENTS.md §3）。pnpm 的 workspace 安装会把"多余"条目 prune 掉，
 也就是**很可能删掉这两个包的手工链接**，使它们的测试立刻失效 —— 而当前还有别的会话在用这棵树。
@@ -324,8 +324,8 @@ TIA 包那套（`tsc` 出 `lib/`，`node:test` 跑真实运行时）已经够用
 # 按候选列表探测，别写死一个。
 node "$env:LOCALAPPDATA\Programs\DeepSeek Harness\resources\runtime\primary-runtime\dependencies\pnpm\bin\pnpm.mjs" install
 # 然后按需恢复两个兄弟包的链接（若被 prune）：
-node <pnpm> --filter @voltarenyah/dsh-tia-openness-v17-min run link:runtime
-node <pnpm> --filter dsh-tool-git run link:runtime
+node <pnpm> --filter @automation-suite/tia-openness-v17 run link:runtime
+node <pnpm> --filter @automation-suite/dsh-tool-git run link:runtime
 ```
 
 ### P0-4 · dry-run 规则：加信息立即生效，删/覆盖信息需要显式 `dry_run: false` ✅
@@ -427,7 +427,7 @@ P1 填值时不必让模型重新学。结果里同时给出 `phases.pending`，
    `pnpm-lock.yaml` 现在有本包的 importer（`packages/dsh-engineering-context:`）。
 2. **实测否定了 P0-3 的担心**：安装**没有** prune 掉兄弟包的 `@deepseek-ai/*` 手工链接
    （TIA 4 条、tool-git 4 条、本包 3 条，install 前后一致）；
-   `dsh-tool-git` 的 `prepare` 也按预期跑了，产物仍是 **57.78 kB**（说明它的
+   `@automation-suite/dsh-tool-git` 的 `prepare` 也按预期跑了，产物仍是 **57.78 kB**（说明它的
    `deps.neverBundle: true` 没被破坏）。
 3. `scripts/link-dsh-runtime.mjs` 退回**只管 `@deepseek-ai/*`**：typescript 与 `@types`
    交给 `pnpm install`。
@@ -446,7 +446,7 @@ P1 填值时不必让模型重新学。结果里同时给出 `phases.pending`，
 `pnpm install` 随即成功；`node_modules` 里的 `typescript` 与 `@types/node` 现在由 pnpm 管理。
 
 **验证（install 之后实测）**：`pnpm -r test` 三个包全绿 ——
-本包 37/37（无跳过）、TIA 62 项（61 通过 / 1 跳过）、`dsh-tool-git` 33/33。
+本包 37/37（无跳过）、TIA 62 项（61 通过 / 1 跳过）、`@automation-suite/dsh-tool-git` 33/33。
 
 ### P0-15 · 更正："插件侧自翻页"做不到（控制器没有 offset）✅
 
@@ -673,7 +673,7 @@ workspace"。
 
 ## D25. 导出之后接上【缝 B】：逐设备重建图谱库，且这一步**必须是软的**
 
-**背景**（使用者 2026-10 的剩余工作清单）：`dsh-engineering-graph` 已登记进蓝图，除了 3 个工具还注册了
+**背景**（使用者 2026-10 的剩余工作清单）：`@automation-suite/engineering-graph` 已登记进蓝图，除了 3 个工具还注册了
 cordis 服务 `knowledgeGraph`；`create_engineering_project` 写完源文件树后应逐设备调用它，把程序块逻辑
 转译进 `knowledge.db`。给出的事实：服务要**按名取、不 import**；`rebuildSource` 返回的
 `devices[].directory` 就是要传的 `device_dir`；省略 `dbPath` 时库落在

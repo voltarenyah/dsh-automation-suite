@@ -127,7 +127,7 @@ dist/release/<version>/
 官方"发行版"其实就是伞形 bundle：`@deepseek-ai/dsh-experimental-inspector-profile` 是一个
 声明了 `dsh.bundle.patch` 的包，依赖功能包，patch 里 `insert` 它们的行。本仓也做了原型：
 
-- 把一个 `@voltarenyah/dsh-automation-suite-profile` 装进从 `web` 模板物化的 profile
+- 把一个 `@automation-suite/dsh-automation-suite-profile` 装进从 `web` 模板物化的 profile
   （原型基于当时的六插件版本），`--dump-config` **1869 行**，七个插件行（六个插件 +
   `dsh-opencode-go`）、三个 preset、`engineering-context` 的 `disabled: true` 全部就位，
   `--dump-config-schema` 里能看到 `opennessDir` / `destructivePolicy`（模块真的被 import 了）；
@@ -139,13 +139,14 @@ dist/release/<version>/
 
 ### 方案 C：npm 发布
 
-多数插件可以按现有名字发布；`dsh-tool-git` **不能**——上游已经占用了这个名字和 `0.1.3`
-这个版本（另有若干 UI 插件本来就不带 scope）。三条出路：
+D39 之后 15 个插件**全部**发布在 npm 组织 `automation-suite` 下（`@automation-suite/*`），
+名字与 Loader id 已统一（见 `decisions.md` D39）。两条要点：
 
-1. 改名为 `@voltarenyah/dsh-tool-git`（要同步改 `cordis.patch.yml` 的 `insert[].name`、蓝图的
-   `bundles`、本仓测试；是独立决策）；
-2. 保持运行时名字不变，npm 上用 URL 依赖指向它的 Release tarball（npm 允许 URL 依赖）；
-3. 伞形包内部 vendoring + 要求用户关 `blockExoticSubdeps`（最不推荐）。
+1. `@automation-suite/dsh-tool-git` 是上游 `lxj808624/dsh-tool-git` 的 **fork**，不是同一个 npm 包；
+   上游名 `dsh-tool-git` 仍被占用，所以不能也不该用裸名发布。它仍可参考上游 Release tarball 做 URL 依赖
+   （npm 允许），但正文路线是发到自己的 scope；
+2. 发布前先解决组织权限：本机 `npm whoami` = `yuanheng`，对该组织 `npm org ls automation-suite` 返回 403；
+   要么把该身份加进组织，要么换组织所有者账号。15 个包都已声明 `publishConfig.access = "public"`。
 
 ---
 
@@ -311,7 +312,7 @@ pwsh -NoProfile -File dist/release/test/0.1.5/install.ps1 -DshHome C:\temp\dsh-t
 
 ## 6. 已知限制
 
-- **图谱引擎自包含**：发布 tarball 里的 `dsh-engineering-graph` 带一个约 39 MB 的 win-x64 单文件引擎，
+- **图谱引擎自包含**：发布 tarball 里的 `@automation-suite/engineering-graph` 带一个约 39 MB 的 win-x64 单文件引擎，
   **用户不需要安装 .NET 8/10**；代价是图谱 tarball 从约 13 MB 增到约 34 MB（压缩后），整套 zip 约 48 MB。
   维护者重新构建引擎/发版需要 .NET 10 SDK（`build-distribution.mjs` 自动找 `%USERPROFILE%\.dotnet10`，
   也可 `--dotnet <path>`）。
@@ -337,4 +338,5 @@ pwsh -NoProfile -File dist/release/test/0.1.5/install.ps1 -DshHome C:\temp\dsh-t
 - `scripts/build-distribution.mjs` — 生成发布目录与 `install.ps1`
 - `profile/dsh-automation-suite/` — 蓝图（`package.json` / `cordis.patch.yml` / `pnpm-workspace.yaml`）
 - `scripts/start-env.ps1` — 开发机的独立验收环境（与本文件不是一回事）
+- [`plugin-independence.md`](plugin-independence.md) — 插件独立安装、能力原子化与按需安装的功能漏洞评估
 - 根 `README.md` §6 — 使用者视角的快速开始

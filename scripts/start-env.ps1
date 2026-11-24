@@ -207,7 +207,7 @@ foreach ($plugin in $plugins) {
 
 # bundles 同样来自蓝图：物化目录里那份只在**首次创建**时拷过去，之后新增插件只更新
 # $pkg.dependencies —— 依赖装上了、loader 却看不到这个 bundle，症状是插件静默不加载
-# （实测 2026-11-02 加 dsh-ui-versions：依赖与 link 都对，boot HTML 里没有它的 client.js）。
+# （实测 2026-11-02 加 @automation-suite/ui-versions：依赖与 link 都对，boot HTML 里没有它的 client.js）。
 # 这里按蓝图顺序补齐缺失项；只在物化目录里存在、蓝图里没有的条目保留在末尾，不擅自删。
 $blueprintBundles = @((Get-Content (Join-Path $blueprint 'package.json') -Raw | ConvertFrom-Json).dsh.profile.bundles)
 $currentBundles = @($pkg.dsh.profile.bundles)
@@ -265,7 +265,7 @@ Say ''
 Step '启动（浏览器会自动打开；Ctrl+C 停止）'
 Say '   首次进入：设置 → Models 填 API key；或用首次运行弹窗 "Save and continue"。'
 Say '   验收 TIA 工具前，建议先在设置里把 requestTimeoutMs 调大（见 profile 的 cordis.patch.yml 注释）。'
-Say '   git_* 工具由 dsh-tool-git 提供；破坏性 git 命令默认被拒（destructivePolicy: deny）。'
+Say '   git_* 工具由 @automation-suite/dsh-tool-git 提供；破坏性 git 命令默认被拒（destructivePolicy: deny）。'
 Say ''
 
 $env:DSH_HOME = $DshHome

@@ -1,6 +1,6 @@
 /**
  * `git_stash` — list, push, and pop stashes.
- * @module dsh-tool-git/tools/stash
+ * @module @automation-suite/dsh-tool-git/tools/stash
  */
 
 import { defineTool } from '@deepseek-ai/dsh-tools'

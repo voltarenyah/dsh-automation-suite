@@ -1,6 +1,6 @@
 /**
  * `git_diff` — change statistics and optional patch text.
- * @module dsh-tool-git/tools/diff
+ * @module @automation-suite/dsh-tool-git/tools/diff
  */
 
 import { defineTool } from '@deepseek-ai/dsh-tools'

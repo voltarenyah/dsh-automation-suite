@@ -84,7 +84,7 @@ function findPackageSource(candidates) {
  *
  * A link here may point into the harness installation, and a recursive delete
  * that follows the link destroys the *target* (the incident recorded in
- * `dsh-tia-openness-v17-min/docs/ECOSYSTEM-COMPAT.md` cost a repository its
+ * `@automation-suite/tia-openness-v17/docs/ECOSYSTEM-COMPAT.md` cost a repository its
  * `.git` metadata). Node reports junctions as symlinks, so those are unlinked;
  * only a real directory is removed recursively.
  */
@@ -152,7 +152,7 @@ if (invokedDirectly) {
         `Harness runtime searched in: ${runtimeCandidates().join(', ')}\n` +
         'Install DeepSeek Harness and/or set DSH_HOME to its home folder. This script never extracts the runtime ' +
         "cache, because that directory is outside the repository. To (re)build the cache, run the sibling package's " +
-        'extractor deliberately: pnpm --filter @voltarenyah/dsh-tia-openness-v17-min run link:runtime\n',
+        'extractor deliberately: pnpm --filter @automation-suite/tia-openness-v17 run link:runtime\n',
     )
     process.exit(1)
   }

@@ -6,7 +6,7 @@
  * the rendering side of that contract: it parses defensively, filters, and formats —
  * no I/O, so the tests can drive it directly.
  *
- * @module dsh-ui-hardware/model
+ * @module @automation-suite/ui-hardware/model
  */
 
 /** Where the producer writes the view, relative to the workspace root. */

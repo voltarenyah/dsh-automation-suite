@@ -7,7 +7,7 @@
  * and its `command(line)` verb, and `locale` for the copy. No host service and
  * no model message is involved.
  *
- * @module dsh-ui-tia-console/client
+ * @module @automation-suite/ui-tia-console/client
  */
 
 import { TiaBar } from './TiaBar.jsx'
@@ -15,7 +15,7 @@ import { ensureStyle } from './style.js'
 import { NS, en, zh } from './locales.js'
 
 /** Package name; also the slot key, so a second registration cannot collide. */
-export const ID = 'dsh-ui-tia-console'
+export const ID = '@automation-suite/ui-tia-console'
 
 /** Client services this plugin waits for before its body runs. */
 export const inject = ['slots', 'sessions', 'locale']

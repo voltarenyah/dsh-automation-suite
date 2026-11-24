@@ -1,6 +1,6 @@
 # 生态兼容性验收（L0–L3）实测记录
 
-对象：`dsh-tia-openness-v17-min@0.1.0`（本仓库）。
+对象：`@automation-suite/tia-openness-v17@0.1.0`（本仓库）。
 环境：Windows、TIA Portal V17 Update 7、DSH `0.2.0-rc.2`（桌面端 0.2.0-rc.2）。
 原则：**不修改默认 profile 的语义、可回滚**；隔离部分用独立 `DSH_HOME`。
 
@@ -17,9 +17,9 @@
 
 | 层 | 验什么 | 结果 |
 |---|---|---|
-| **L0 静态组合** | bundle patch 语法、插件行插入、Config 进组合 schema | ✅ `--dump-config` 带 `--patch` 时插入本插件行；`--dump-config-schema` 输出的 29,188 行 schema 中含 `opennessDir`、`requestTimeoutMs`、`const:"dsh-tia-openness-v17-min"`、`const:"tia-openness-v17-min"` |
+| **L0 静态组合** | bundle patch 语法、插件行插入、Config 进组合 schema | ✅ `--dump-config` 带 `--patch` 时插入本插件行；`--dump-config-schema` 输出的 29,188 行 schema 中含 `opennessDir`、`requestTimeoutMs`、`const:"@automation-suite/tia-openness-v17"`、`const:"tia-openness-v17"` |
 | **L1 隔离 home 真宿主** | `apply` 被真实 loader 调用；`ctx.effect` 持有子进程；宿主退出不留残 | ✅ 宿主在 3080 起来；控制器子进程出现（**恰好 1 个**，无重复挂载）；宿主结束 → 子进程退出；`~/.dsh` 未被触碰 |
-| **L1b UI 级复核** | 插件页/工具可见、**禁用→启用**触发 disposer | ✅ 插件页显示 `dsh-tia-openness-v17-min v0.1.0` + 描述 + Uninstall + 总开关；Components `1 total · 1 running`；**关闭开关 → 控制器 pid 15404 消失；重新启用 → 新 pid 43936**（`ctx.effect` 异步 disposer 实证） |
+| **L1b UI 级复核** | 插件页/工具可见、**禁用→启用**触发 disposer | ✅ 插件页显示 `@automation-suite/tia-openness-v17 v0.1.0` + 描述 + Uninstall + 总开关；Components `1 total · 1 running`；**关闭开关 → 控制器 pid 15404 消失；重新启用 → 新 pid 43936**（`ctx.effect` 异步 disposer 实证） |
 | **L2 隔离 home 真 agent** | 模型能否发现并正确调用工具、错误语义、与自带工具共存 | ✅ 见 §2；控制器从隔离 home 的 `node_modules` 内运行成功 |
 | **L3 desktop profile** | 装进真实 profile、活宿主可见性、卸载后是否回基线 | ✅ 见 §3；卸载后 5 个 profile 文件与快照**逐字节一致** |
 | **L4 分发形态** | `npm pack` 产物是否自洽（`link:` 会掩盖打包问题） | ✅ 596 KB / 34 文件，含 `lib/index.js`、`cordis.patch.yml`、`controller/bin/*.exe`；从 tarball 安装后宿主正常起、控制器从该目录运行 |
@@ -38,7 +38,7 @@
 
 1. 快照 `package.json` / `cordis.yml` / `cordis.patch.yml` / `pnpm-lock.yaml` / `pnpm-workspace.yaml` 并记录 SHA-256；
 2. `dsh plugin --profile desktop add link:<repo>` → `dependencies` 与 **`dsh.profile.bundles` 自动追加**本包；
-3. **活宿主立刻可见**：`plugin_manager list_bundles` 返回 `{"name":"dsh-tia-openness-v17-min","version":"0.1.0","enabled":true,"installed":true,"removable":true, rows:[tia-openness-v17-min]}`；
+3. **活宿主立刻可见**：`plugin_manager list_bundles` 返回 `{"name":"@automation-suite/tia-openness-v17","version":"0.1.0","enabled":true,"installed":true,"removable":true, rows:[tia-openness-v17]}`；
 4. **但不热挂载**：宿主 Config 检查器里该条目状态为 **`inactive`**，且**没有** prewarm 控制器子进程 → 说明"CLI 安装 → 清单可见，挂载需重启宿主（或由管理器动作触发）"。因此**正在使用的会话没有被扰动**；
 5. `dsh plugin --profile desktop remove` → 5 个 profile 文件**逐字节回到快照**。
 
@@ -89,7 +89,7 @@
 # L0
 $env:DSH_HOME='C:\tia-openness-test\dsh-home'
 dsh --profile tia-test --patch <repo>\test-profile\plugin-overlay.yml --dump-config
-dsh --profile tia-test --dump-config-schema | Select-String 'opennessDir|tia-openness-v17-min'
+dsh --profile tia-test --dump-config-schema | Select-String 'opennessDir|tia-openness-v17'
 # L1（脚本会等控制器出现、结束后核对残留）
 pwsh -NoProfile -File <repo>\test-profile\test-dsh-load.ps1 -Profile tia-test -Port 3080
 # L4

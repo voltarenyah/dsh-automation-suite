@@ -1,4 +1,4 @@
-# Bundle patch of @voltarenyah/dsh-plcsim-advanced.
+# Bundle patch of @automation-suite/plcsim-advanced.
 #
 # The host row owns the C# controller and the plcsimRuntime seam. The
 # model-facing tools live in the package's "./tools" row and are declared by an
@@ -9,4 +9,4 @@
 # the compatibility baseline (4.0-7.0 runtimes accept it; V7 verified).
 - insert:
     - id: plcsim-advanced
-      name: '@voltarenyah/dsh-plcsim-advanced'
+      name: '@automation-suite/plcsim-advanced'

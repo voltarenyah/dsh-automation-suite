@@ -221,9 +221,9 @@ if ($resolvedDsh -and $Profile -and (Test-Path -LiteralPath $profileManifestPath
 # and is the only check that proves a self-contained engine actually runs.
 # ---------------------------------------------------------------------------
 if ($profileDir) {
-    $engine = Join-Path $profileDir 'node_modules\@voltarenyah\dsh-engineering-graph\engine\bin\EngineeringGraph.Engine.exe'
+    $engine = Join-Path $profileDir 'node_modules\@automation-suite\engineering-graph\engine\bin\EngineeringGraph.Engine.exe'
     if (-not (Test-Path -LiteralPath $engine)) {
-        Add-Result 'engine' 'Knowledge graph engine' 'warn' 'engine executable is not installed.' 'Install @voltarenyah/dsh-engineering-graph in this profile.'
+        Add-Result 'engine' 'Knowledge graph engine' 'warn' 'engine executable is not installed.' 'Install @automation-suite/engineering-graph in this profile.'
     }
     else {
         $engineOut = @(& $engine --self-test 2>&1)

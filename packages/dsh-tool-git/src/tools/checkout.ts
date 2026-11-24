@@ -1,6 +1,6 @@
 /**
  * `git_checkout` — switch branches, or create and switch to a new one.
- * @module dsh-tool-git/tools/checkout
+ * @module @automation-suite/dsh-tool-git/tools/checkout
  */
 
 import { defineTool } from '@deepseek-ai/dsh-tools'

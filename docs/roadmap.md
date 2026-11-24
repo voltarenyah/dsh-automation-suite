@@ -40,18 +40,18 @@
 
 | 插件 | 读什么 | 落点 | 状态 |
 |---|---|---|---|
-| `dsh-ui-plc-source` | `source/<device>/_manifest.json`（清单不可读时退回目录列举） | 右侧栏 **PLC Blocks** | ✅ |
-| `dsh-ui-tia-console` | 会话里的 `command/*`、`tool/*` 事件 | 输入框上方 **TIA 控制台** | ✅ |
-| `dsh-ui-versions` | `<workspace>/.dsh/versions-view.json` | 右侧栏 **Versions**（PLC Blocks 之后） | ✅ 2026-11-02 |
-| `dsh-ui-changes` | 宿主路由现算的未提交变更（真实 git：路径 + 每文件 `+N/−M`，未跟踪按行数计） | 右侧栏 **Changes**（Versions 之后） | 🟡 P1 2026-11-06（只读；提交区 P2 未做），见[设计稿](ui-changes-panel-plan.md) |
+| `@automation-suite/ui-plc-source` | `source/<device>/_manifest.json`（清单不可读时退回目录列举） | 右侧栏 **PLC Blocks** | ✅ |
+| `@automation-suite/ui-tia-console` | 会话里的 `command/*`、`tool/*` 事件 | 输入框上方 **TIA 控制台** | ✅ |
+| `@automation-suite/ui-versions` | `<workspace>/.dsh/versions-view.json` | 右侧栏 **Versions**（PLC Blocks 之后） | ✅ 2026-11-02 |
+| `@automation-suite/ui-changes` | 宿主路由现算的未提交变更（真实 git：路径 + 每文件 `+N/−M`，未跟踪按行数计） | 右侧栏 **Changes**（Versions 之后） | 🟡 P1 2026-11-06（只读；提交区 P2 未做），见[设计稿](ui-changes-panel-plan.md) |
 
-> **两条只读路由**：`dsh-ui-project-dashboard`（工作区标签）与 `dsh-ui-changes`（git 状态）各新增了
+> **两条只读路由**：`@automation-suite/ui-project-dashboard`（工作区标签）与 `@automation-suite/ui-changes`（git 状态）各新增了
 > 一条宿主路由 —— 它们的输入不在工作区里，也没有可等的落盘产物。`ctx.webServer` 的路由
 > **没有**宿主鉴权，所以两者都自抄了同一份 trust fence（拒绝 cross-site、`Host` 限 loopback、
-> `Origin` 必须等于 `Host`）；`dsh-ui-changes` 另外只回路径与计数、不回文件内容。
+> `Origin` 必须等于 `Host`）；`@automation-suite/ui-changes` 另外只回路径与计数、不回文件内容。
 > 见 [`ui-changes-panel-plan.md`](ui-changes-panel-plan.md) §6。
 
-**`dsh-ui-versions` 读的是派生视图，不是账本。** 那份 JSON 由工程上下文插件写出
+**`@automation-suite/ui-versions` 读的是派生视图，不是账本。** 那份 JSON 由工程上下文插件写出
 （`src/version/view.ts`：`buildVersionView` + `writeVersionView`，在 `project_version_reindex`、
 提交、`project_version_annotate` 之后各写一次），内容是设备/工作区身份、`counts`
 （版本数 / 变更事件数 / 基线快照数）、版本列表（每版带变更事件与逐 face 指纹、
@@ -142,7 +142,7 @@
 **每个能力具体囊括什么，日后再详细定义**；**不拆包**，能力由 preset 装配
 （D31，取代 D2 的"一档一个包"）。
 
-现有的 `dsh-tia-openness-v17-min` = **V17 基础能力**，定位是"验证基础功能"，**不是终点**。
+现有的 `@automation-suite/tia-openness-v17` = **V17 基础能力**，定位是"验证基础功能"，**不是终点**。
 （v0.2 已把覆盖面推到手册的三个章节 —— 按 D1 的口径，这是在基础能力上**加宽**，装配方式没有变。）
 
 ### 已实现（V17 基础能力，有实测记录）
@@ -239,7 +239,7 @@
 | **版本管理取证（控制器侧，S0/S1）**：`PlcChecksum` 读 `PlcChecksumProvider.Software`；`SyncScan` 自己遍历全部块/类型/标签表，与上一版 evidence 逐对象比对指纹/归一化哈希，只把差异导出到 STAGE 并写下版 `_evidence.json` | ✅ 单测 + 真机通过 | 接口插件 `controller/OperationsSync.cs`、`controller/Evidence.cs`、`src/access.ts`（`readPlcChecksum` / `syncScan`）；控制器自测 17 项（含 3 项 evidence）+ `test/08-access-service.test.mjs` 4 项；`matrix:build` 操作 27 / 工具 26。真机：checksum `C0 01 C3 13 58 AC 0E 50`；全量扫描 1155 块 / 215 类型 / 7 标签表、1376 文件 / 74.8 MB / **121–231 s**（TIA 缓存冷热差异）；**1 块变化的慢路径 48.3 s**（导出 1 块 + 7 标签表 = 8 文件）；同账本 `unchanged` **1.6–3.0 s**；同一 `SyncScan` 调用还增量维护 `_manifest.json`（改名自 `_tia-openness-manifest.json`，无时间戳/绝对路径，标签表只提升真正变化的那张） |
 | **D31 checksum 透镜补 F 盲区**：只改 F 块时 `PlcChecksumProvider.Software` 不动，`SyncScan` 快速路径因此"看不见"安全程序改动（表现为 `project_sync` 说没变、`project_commit` 提交不了）。控制器加 `force_scan`（跳过快速路径强制枚举，工程没变时幂等），`data.scanSkipped` 区分"跳过"与"真比过"，工具面 `project_sync(force:true)`，`project_status` 的 `syncReason` 由 `in-sync` 改名 `checksum-matches` 并打印 "Safety program: NOT compared" | ✅ 单测；**F-CPU 真机未复测** | 接口插件 `controller/OperationsSync.cs`、`src/access.ts`、`test/08-access-service.test.mjs`（+1 项，120 项）；上下文 `src/sync.ts`、`src/tools/sync.ts`、`src/tools/status.ts`、`test/09-status-sync.test.mjs`（+2 项，158 项）；`matrix:check` / `skills:check` 通过；该包 D29 记录了反射实证（V17 无"整包 F 签名"，`SafetySignatureType` 只有 `BlockOfflineSignature`） |
 | **版本管理消费侧（S2）**：`project_status` 只读状态（证据账本 / 清单 / git / 锁 / nextAction）；`project_sync` checksum 快路径 → 慢路径 → STAGE → SOURCE，**不提交**；`project_commit` 单独提交 | ✅ 单测；完整真机链路待跑 | 本包 `src/tools/status.ts`、`src/tools/sync.ts`、`src/tools/commit.ts`、`src/commit.ts`、`src/sync.ts`、`src/evidence.ts`、`src/git.ts`、`src/lock.ts`、`src/device.ts`；`test/09-status-sync.test.mjs`（22 项）+ `test/11-project-commit.test.mjs`（6 项）。提交带 `Tia-Op` / `Tia-Checksum` / `Tia-State` trailer；`unchanged` 不产生脏树；失败的扫描也清 STAGE；空信息/无账本/别处脏文件都有守卫（D30） |
-| **B1 工具面与 git 底座**：`auditor` preset（create/status/sync/commit/diff/ingest + 只读文件 + `send_message`，无 pwsh/TIA 原子工具/git/图谱下钻）；git 的 12 个模型工具拆到 `dsh-tool-git/tools` 只挂 Leader；`gitContext` 服务按显式根目录解析（无 `repoDir`/`workDir`）；checksum 30s 缓存只服务计划 | ✅ | 蓝图 + `packages/dsh-tool-git`（51 项）+ 上下文（116 项）；`gitContext` 服务 `isRepository` / `repoRoot` / `create` / `init` + bound `run`/`status`/`head`/`commit` |
+| **B1 工具面与 git 底座**：`auditor` preset（create/status/sync/commit/diff/ingest + 只读文件 + `send_message`，无 pwsh/TIA 原子工具/git/图谱下钻）；git 的 12 个模型工具拆到 `@automation-suite/dsh-tool-git/tools` 只挂 Leader；`gitContext` 服务按显式根目录解析（无 `repoDir`/`workDir`）；checksum 30s 缓存只服务计划 | ✅ | 蓝图 + `packages/dsh-tool-git`（51 项）+ 上下文（116 项）；`gitContext` 服务 `isRepository` / `repoRoot` / `create` / `init` + bound `run`/`status`/`head`/`commit` |
 | **B2 一次性导入**：`create_engineering_project` 在无外仓时初始化 git 并提交 baseline；未编译先拒绝；一次 `SyncScan(adopt_existing:true)` 把已导出的文件采纳为 evidence，不再二次导出；`.gitattributes` 固定 XML 行尾 | ✅ 单测 | 控制器 `adopt_existing`/`data.adopted`（自测 18/18，TIA 102 项）；上下文 116 项；`create` 不再需要模型猜 git 参数 |
 | **B3 差异与新鲜度**：`project_diff` 块级结构差异（**Auditor/Expert**，支持 `to:"WORKTREE"`）；图谱 sidecar 以 PLC checksum 报 `fresh/stale/unknown` | ✅ 单测 | 上下文 116 项；图谱 128 项；`project_diff` 13 项 + 新鲜度 5 项；D30 把 diff 从 Leader 移给 Auditor |
 | **B4 图谱增量**：引擎 `Update` 替换变更组件 + 一跳依赖闭包、删除被删组件，单事务；`knowledge_update` 工具；`project_sync(refresh_knowledge:true)` 按变更类型/数量选增量或全量，失败只警告 | ✅ 单测 + 引擎自测 | 引擎 128 项（含 Update/删除/拒绝码/回滚）；上下文 116 项；类型/标签表/超 20 文件走全量 |
@@ -424,7 +424,7 @@
   做 V18 时照 [`tia-version-members.md`](tia-version-members.md) 执行；
 - **更多工程对象**：硬件组态、HMI、库、多用户、在线下载/上传与比较（按 D1 的维度分组，由 D31 决定装配）；
 - **其它厂商的工程软件**：**当前只规划 Rockwell，其他厂商暂无计划**（D11）；
-- **仿真 / 运行态**：S7-PLCSIM Advanced 的接入评估与方案见 [`simulation-plcsim-advanced.md`](simulation-plcsim-advanced.md)（提案：独立插件 `dsh-plcsim-advanced`；**全链路已跑通**：TIA V17 + PLCSIM V7 TCP/IP，`adopt_open_project` → `download` → RUN → 51 标签 → Bool 读写；**两次一次性人工前置**：工程 PLC 配子网/IP、TIA UI 接受首次证书——证书是**每台新虚拟设备一次**（新实例=新 MAC=新自签名证书），`resume` 同一快照则完全跳过；**后续快速复用**：首次成功后 `snapshot`，下次 `resume` 直接启动（无需 TIA/重下）；启动仿真前先 `simulation_instance(action="snapshots")` 扫描工作区 `<workspace>/.dsh/simulation/` 存档并问用户"用旧快照还是新建"，有存档时 `create` 需 `confirm_new=true` 才放行；存档根按会话工作区推导（0.2.5 前误取宿主进程 cwd）；Softbus 仅 V20 可用（V17 Openness 只枚举 TCP/IP）；**专项仿真项目（一个测试任务一个 TIA 工程）暂缓，原因与重启条件见 [`simulation-workspaces.md`](simulation-workspaces.md) §2；受管工程 + PLCSIM 快照的工作区存储、来源绑定（manifest v2）、stale 提示与 `snapshot_remove` 已落地（**D37**，方案见同文）；专项仿真项目未排期、未改状态**）；
+- **仿真 / 运行态**：S7-PLCSIM Advanced 的接入评估与方案见 [`simulation-plcsim-advanced.md`](simulation-plcsim-advanced.md)（提案：独立插件 `@automation-suite/plcsim-advanced`；**全链路已跑通**：TIA V17 + PLCSIM V7 TCP/IP，`adopt_open_project` → `download` → RUN → 51 标签 → Bool 读写；**两次一次性人工前置**：工程 PLC 配子网/IP、TIA UI 接受首次证书——证书是**每台新虚拟设备一次**（新实例=新 MAC=新自签名证书），`resume` 同一快照则完全跳过；**后续快速复用**：首次成功后 `snapshot`，下次 `resume` 直接启动（无需 TIA/重下）；启动仿真前先 `simulation_instance(action="snapshots")` 扫描工作区 `<workspace>/.dsh/simulation/` 存档并问用户"用旧快照还是新建"，有存档时 `create` 需 `confirm_new=true` 才放行；存档根按会话工作区推导（0.2.5 前误取宿主进程 cwd）；Softbus 仅 V20 可用（V17 Openness 只枚举 TCP/IP）；**专项仿真项目（一个测试任务一个 TIA 工程）暂缓，原因与重启条件见 [`simulation-workspaces.md`](simulation-workspaces.md) §2；受管工程 + PLCSIM 快照的工作区存储、来源绑定（manifest v2）、stale 提示与 `snapshot_remove` 已落地（**D37**，方案见同文）；专项仿真项目未排期、未改状态**）；
 - **跨项目视角**：把多个项目的工程上下文放在一起比较与复用。
 
 ---

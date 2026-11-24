@@ -1,6 +1,9 @@
 {
-  "name": "@voltarenyah/dsh-plcsim-advanced",
+  "name": "@automation-suite/plcsim-advanced",
   "version": "0.1.0",
+  "publishConfig": {
+    "access": "public"
+  },
   "private": false,
   "description": "DSH plugin: manage S7-PLCSIM Advanced instances and exchange PLC tags through the PLCSIM Advanced runtime API (API 4.0 baseline, Softbus by default).",
   "type": "module",

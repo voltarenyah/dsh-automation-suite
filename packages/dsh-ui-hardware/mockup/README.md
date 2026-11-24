@@ -1,7 +1,7 @@
 # Hardware 页面 · HTML 样板
 
-用于验收 `dsh-ui-hardware` 右侧栏 tab 的**外观与时序**，不是插件本体。验收通过后再按
-`dsh-ui-versions` 的模式做成插件（host half + client half + esbuild bundle）。
+用于验收 `@automation-suite/ui-hardware` 右侧栏 tab 的**外观与时序**，不是插件本体。验收通过后再按
+`@automation-suite/ui-versions` 的模式做成插件（host half + client half + esbuild bundle）。
 
 打开 `hardware.html`（单文件、无外部依赖）。
 

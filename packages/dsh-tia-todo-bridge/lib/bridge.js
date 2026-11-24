@@ -9,7 +9,7 @@
  *
  * Everything here is pure and unit-testable; `index.ts` owns the event wiring.
  *
- * @module @voltarenyah/dsh-tia-todo-bridge/bridge
+ * @module @automation-suite/tia-todo-bridge/bridge
  */
 /**
  * Operations that change TIA state or take long enough to need a visible item.

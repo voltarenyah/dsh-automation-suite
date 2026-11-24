@@ -11,7 +11,7 @@
  * The item format `TIA · <tool> · <object>` matches the distribution persona, so
  * a bridge list and a model list read the same way.
  *
- * @module @voltarenyah/dsh-tia-todo-bridge
+ * @module @automation-suite/tia-todo-bridge
  */
 import { randomUUID } from 'node:crypto';
 import { appendTodos, callKey, planComplete, planStart, stateFromLog, readTodos, isTracked, } from './bridge.js';

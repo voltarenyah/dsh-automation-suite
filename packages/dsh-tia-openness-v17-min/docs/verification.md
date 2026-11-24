@@ -43,7 +43,7 @@ controller\bin\TiaOpennessV17Min.Controller.exe --self-test
 
 | 已覆盖 | 证据 |
 |---|---|
-| 模块级导出齐全：`name` / `inject` / `Config` / `apply` | 宿主行 `src/index.ts`（`export const name = 'tia-openness-v17-min'`、`export const inject: readonly string[] = []`、`export function apply`）；工具行 `src/tools-entry.ts`（`name = 'tia-openness-v17-min-tools'`、`inject = ['tools', TIA_RUNTIME_SERVICE]`）。测试 `test/01-load.test.mjs` 对两行分别断言 |
+| 模块级导出齐全：`name` / `inject` / `Config` / `apply` | 宿主行 `src/index.ts`（`export const name = 'tia-openness-v17'`、`export const inject: readonly string[] = []`、`export function apply`）；工具行 `src/tools-entry.ts`（`name = 'tia-openness-v17-tools'`、`inject = ['tools', TIA_RUNTIME_SERVICE]`）。测试 `test/01-load.test.mjs` 对两行分别断言 |
 | 工具行真的会注册工具 | `src/tools.ts` 的 `registerTools`（`ctx.tools.register`）；测试 `test/01-load.test.mjs` 断言 39 个工具名与注册顺序，且断言宿主行**不注册任何工具** |
 | 生产构建产物（`lib/`）可被 Node 直接 `import` | `test/helpers/harness.mjs` 动态导入 `../../lib/index.js` 与 `../../lib/tools-entry.js`（带 cache-bust），全部 84 项测试都建立在此之上 |
 | 注册的 schema 能被**真实** registry 接受 | `test/01-load.test.mjs`（`assertSupportedJsonSchema`、`validateJsonSchemaValue` 拒绝缺参/错类型/越界枚举、返回的 canonical value 通过 output schema 校验）、`test/04-tools.test.mjs`（39 个工具全量校验） |
@@ -202,8 +202,8 @@ information keep a dry run" 双向断言：14 个工具的 params 里**没有** 
    - 或手工在 `~/.dsh/profiles/<profile>/cordis.patch.yml` 追加：
      ```yaml
      - insert:
-         - id: tia-openness-v17-min
-           name: '@voltarenyah/dsh-tia-openness-v17-min'
+         - id: tia-openness-v17
+           name: '@automation-suite/tia-openness-v17'
      ```
 2. 确认加载：重启 DSH 后
    ```powershell

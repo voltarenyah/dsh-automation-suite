@@ -55,7 +55,7 @@ auditor mount the full set (`/version`).
 
 The store is a SQLite file; a browser tab cannot read it. So after every write the
 plugin also dumps a **derived JSON projection** next to it, and the Versions tab
-(`dsh-ui-versions`) reads that file instead of the database:
+(`@automation-suite/ui-versions`) reads that file instead of the database:
 
 ```text
 .dsh/versions.db  ──buildVersionView──►  .dsh/versions-view.json  ──►  right-sidebar "Versions" tab
@@ -88,7 +88,7 @@ Three properties matter when changing it:
   problem, not a data problem. A missing or stale file is exactly what the tab's
   "no view" and "read failed" states are for.
 - **Shape is a contract with the renderer.** `VersionViewFile` in `view.ts` mirrors
-  `parseView` in `dsh-ui-versions/src/model.ts`. Add a field only on both sides, and
+  `parseView` in `@automation-suite/ui-versions/src/model.ts`. Add a field only on both sides, and
   keep old fields: the tab tolerates missing optional values (a missing fingerprint
   prints `—`) but drops versions without a `commit` and events without a `key`.
 

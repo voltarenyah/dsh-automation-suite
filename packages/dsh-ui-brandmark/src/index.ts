@@ -5,7 +5,7 @@
  * row to enable, while all behaviour ships in `lib/client.js`. This mirrors the
  * official brand plugin, whose empty `apply` is documented for the same reason.
  *
- * @module dsh-ui-brandmark
+ * @module @automation-suite/ui-brandmark
  */
 
 /** Host plugin body — this package contributes browser presentation only. */

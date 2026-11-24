@@ -4,7 +4,7 @@
  * The plugin follows the DSH global language setting; `ctx.locale.bind(NS)` selects
  * the active dictionary, so nothing here is rendered before it is translated.
  *
- * @module dsh-ui-hardware/client/locales
+ * @module @automation-suite/ui-hardware/client/locales
  */
 
 /** Locale namespace: the tab's key and the dictionaries' key. */

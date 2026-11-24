@@ -7,11 +7,11 @@
  * Only `--dsw-*` semantic tokens are used (with fallbacks), so the list follows
  * the app's light/dark themes without a second palette of its own.
  *
- * @module dsh-ui-plc-source/style
+ * @module @automation-suite/ui-plc-source/style
  */
 
 /** Identifier of the injected stylesheet, unique across the page. */
-export const TAG_ID = 'dsh-ui-plc-source/plc-blocks.css'
+export const TAG_ID = '@automation-suite/ui-plc-source/plc-blocks.css'
 
 /** Stylesheet text. Class names are prefixed to stay out of the app's way. */
 export const CSS = `

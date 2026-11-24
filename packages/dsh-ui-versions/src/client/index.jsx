@@ -10,7 +10,7 @@
  * engineering-context plugin. The tab reads it through `workspaceFiles.readBytes`
  * (one call, whole file), so no new HTTP route or remote service is involved.
  *
- * @module dsh-ui-versions/client
+ * @module @automation-suite/ui-versions/client
  */
 
 import { Panel } from './Panel.jsx'
@@ -20,7 +20,7 @@ import { ensureStyle } from './style.js'
 import { NS, en, zh } from './locales.js'
 
 /** Package name. Also the tab-type id and the body seat's key — they must agree. */
-export const ID = 'dsh-ui-versions'
+export const ID = '@automation-suite/ui-versions'
 
 /** A fresh kind, so the type cannot collide with the shipped tab types. */
 const KIND = 'versions'

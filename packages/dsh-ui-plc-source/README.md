@@ -1,11 +1,11 @@
-# dsh-ui-plc-source
+# @automation-suite/ui-plc-source
 
 DSH 插件（**浏览器半侧**）：在 dsh-web 的**右侧栏**增加一个 **PLC Blocks** 标签页，把会话工作区
 `source/` 下每个 device 导出的 PLC 源对象**平铺**成一张可筛选的表。
 
 > 本包只有 UI：宿主半侧是一个空的 `apply()`，存在的意义是让包在 Loader 里有一行——
 > `client-modules` 是**扫描已启用的 Loader 条目**才发现 `lib/client.js` 的，
-> 没有行就不会有 `/plugins/??dsh-ui-plc-source/client.js`，而且**不报错**。
+> 没有行就不会有 `/plugins/??@automation-suite/ui-plc-source/client.js`，而且**不报错**。
 
 ## 它做什么
 
@@ -93,8 +93,8 @@ content 里（内置的 `@session` 引用用的是同一个事件，见它的 `p
 
 三处（少一处就静默不生效）：
 
-1. `profile/dsh-automation-suite/package.json` 的 `dependencies` 加 `"dsh-ui-plc-source": "workspace:^"`；
-2. 同文件 `dsh.profile.bundles` **末尾**加 `"dsh-ui-plc-source"`；
+1. `profile/dsh-automation-suite/package.json` 的 `dependencies` 加 `"@automation-suite/ui-plc-source": "workspace:^"`；
+2. 同文件 `dsh.profile.bundles` **末尾**加 `"@automation-suite/ui-plc-source"`；
 3. 已物化的 profile（`<DSH_HOME>/profiles/dsh-automation-suite/package.json`）的
    `dsh.profile.bundles` 也要补这一行——`start-env.ps1` 只写依赖，CLI 只追加"本次新加的依赖"。
 

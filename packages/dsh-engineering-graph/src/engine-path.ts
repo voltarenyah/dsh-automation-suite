@@ -5,7 +5,7 @@
  * flattened to `EngineeringGraph.Engine` by docs/decisions.md D17). This module
  * is the single place that knows its packaged location, so both `apply` and the
  * tests resolve it the same way — exactly how the TIA Openness plugin resolves its controller
- * (`dsh-tia-openness-v17-min/src/controller.ts`).
+ * (`@automation-suite/tia-openness-v17/src/controller.ts`).
  *
  * @module dsh-engineering-graph/engine-path
  */

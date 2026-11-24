@@ -17,7 +17,7 @@
  * requirement would leave the whole plugin waiting for a service that never
  * appears.
  *
- * @module dsh-tia-openness-v17-min/skills
+ * @module @automation-suite/tia-openness-v17/skills
  */
 
 import { readFileSync } from 'node:fs'
@@ -30,7 +30,7 @@ import type { Context } from '@deepseek-ai/cordis'
 import type { LogSink } from './controller.js'
 
 /** Provider name registered on `ctx.skills`; every candidate must report the same one. */
-export const SKILL_PROVIDER = 'tia-openness-v17-min'
+export const SKILL_PROVIDER = 'tia-openness-v17'
 
 /** The only skill this plugin advertises to the model. */
 export const ROUTER_SKILL = 'tia-openness'

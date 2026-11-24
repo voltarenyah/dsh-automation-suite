@@ -45,7 +45,7 @@ $dsh = Join-Path $env:LOCALAPPDATA 'Programs\DeepSeek Harness\resources\runtime\
 $dshHome = if ($env:DSH_HOME -and $env:DSH_HOME.Trim().Length -gt 0) { $env:DSH_HOME } else { Join-Path $env:USERPROFILE '.dsh' }
 $profileDir = Join-Path $dshHome "profiles\$Profile"
 $logDir = Join-Path $repo 'test-profile\logs'
-$packageName = '@voltarenyah/dsh-tia-openness-v17-min'
+$packageName = '@automation-suite/tia-openness-v17'
 $controllerName = 'TiaOpennessV17Min.Controller'
 
 function Controllers {
@@ -133,7 +133,7 @@ if ($appeared) {
   Write-Host "  [OK]   控制器子进程已启动: pid=$($appeared -join ', ')" -ForegroundColor Green
   Write-Host '         → 这证明宿主行被真实 DSH 宿主加载，apply() 执行、ctx.effect 持有子进程' -ForegroundColor DarkGray
   # 两行各自的日志也会留下证据：宿主行的 host row 行、工具行注册的工具名、skill provider。
-  $registered = Select-String -Path $outLog, $errLog -Pattern 'TIA Portal V17 host row|TIA Portal V17 tools|tia-openness-v17-min' -ErrorAction SilentlyContinue | Select-Object -First 4
+  $registered = Select-String -Path $outLog, $errLog -Pattern 'TIA Portal V17 host row|TIA Portal V17 tools|tia-openness-v17' -ErrorAction SilentlyContinue | Select-Object -First 4
   foreach ($line in $registered) { Write-Host ("         插件日志: " + $line.Line.Trim()) -ForegroundColor DarkGray }
 } else {
   Write-Host '  [FAIL] 等待 60 秒未看到控制器子进程' -ForegroundColor Red

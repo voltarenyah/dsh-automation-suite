@@ -1,6 +1,6 @@
 /**
  * `git_status` — working tree state as structured data.
- * @module dsh-tool-git/tools/status
+ * @module @automation-suite/dsh-tool-git/tools/status
  */
 
 import { defineTool } from '@deepseek-ai/dsh-tools'

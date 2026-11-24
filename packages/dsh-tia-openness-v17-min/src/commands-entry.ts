@@ -20,7 +20,7 @@
  * are agent-scoped (`@deepseek-ai/dsh-commands`), which is what keeps the menu
  * and the tool surface consistent.
  *
- * @module dsh-tia-openness-v17-min/commands-entry
+ * @module @automation-suite/tia-openness-v17/commands-entry
  */
 
 import type { Context } from '@deepseek-ai/cordis'
@@ -31,11 +31,11 @@ import { TIA_RUNTIME_SERVICE, tiaOpennessRuntimeOf } from './runtime-service.js'
 /**
  * Loader entry id of the commands row.
  *
- * Distinct from the host row's `tia-openness-v17-min` and the tools row's
- * `tia-openness-v17-min-tools`, so a profile can declare, disable or move it
+ * Distinct from the host row's `tia-openness-v17` and the tools row's
+ * `tia-openness-v17-tools`, so a profile can declare, disable or move it
  * independently.
  */
-export const name = 'tia-openness-v17-min-commands'
+export const name = 'tia-openness-v17-commands'
 
 /**
  * The command registry is where the commands are registered; `tiaOpennessRuntime`

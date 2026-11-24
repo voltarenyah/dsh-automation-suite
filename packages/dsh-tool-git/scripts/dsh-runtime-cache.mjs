@@ -217,7 +217,7 @@ function extractDirectory(archive, index, archiveDir, destination) {
  * True when every {@link RUNTIME_ROOTS} package is present in the cache.
  *
  * The marker records the harness version, not the root set that produced the
- * cache: the sibling `dsh-tia-openness-v17-min` package shares this directory
+ * cache: the sibling `@automation-suite/tia-openness-v17` package shares this directory
  * through the same `DSH_HOME` and may have populated it from a smaller root set.
  * A cache whose version still matches but which lacks a package this plugin
  * imports would leave the link step with no source, so the roots are checked

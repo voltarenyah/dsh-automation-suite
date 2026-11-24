@@ -2,7 +2,7 @@
  * Tests for the first-use workspace helpers: reading the durable marker,
  * reporting whether it is still registered, and unregistering it.
  *
- * @module dsh-ui-project-dashboard/test/default-workspace
+ * @module @automation-suite/ui-project-dashboard/test/default-workspace
  */
 
 import assert from 'node:assert/strict'

@@ -13,7 +13,7 @@
  *
  * The glyph is a program block: one rounded block with a code chevron pair.
  *
- * @module dsh-ui-plc-source/client/guide-icon
+ * @module @automation-suite/ui-plc-source/client/guide-icon
  */
 
 /**

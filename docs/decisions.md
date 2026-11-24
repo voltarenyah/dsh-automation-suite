@@ -346,11 +346,11 @@ V17 子集需实测确认；该包 `docs/EXTENDED-SURFACE.md` 已在接线 `incl
 
 **决定**：
 
-1. **包名** `@voltarenyah/dsh-engineering-graph`（与工程上下文插件的 `@voltarenyah/dsh-engineering-context` 平行）。
+1. **包名** `@automation-suite/engineering-graph`（与工程上下文插件的 `@automation-suite/engineering-context` 平行）。
 2. **C# 目录** `engine/`，项目文件 `EngineeringGraph.Engine.csproj`。
 3. **`AssemblyName` = `RootNamespace` = `EngineeringGraph.Engine`** —— 规则同接口插件族的
    `<产品 PascalCase>.<角色>`：产品取自包名去掉 `dsh-` 前缀，角色取自目录名
-   （该族当前成员 = 包 `dsh-tia-openness-v17-min` + 目录 `controller/` → `TiaOpennessV17Min.Controller`，
+   （该族当前成员 = 包 `@automation-suite/tia-openness-v17` + 目录 `controller/` → `TiaOpennessV17Min.Controller`，
    见其 `.csproj` 的 `AssemblyName` / `RootNamespace`）。
 4. **12 个 vendored `.cs` 全部拍平为单一命名空间 `EngineeringGraph.Engine`** ——
    照接口插件族的**实际做法**（该族当前成员的 14 个 `.cs` 共用一个扁平命名空间，**不按子目录再分子命名空间**）。
@@ -528,11 +528,11 @@ stdio 通道实测：`ready` 帧列出三个操作，`GetSchema` 返回 34 字�
 
 1. **方案 A：把模型面工具注册拆成独立 Loader 行**（`/<pkg>/tools` 子路径导出），
    宿主行只留**资源与服务**：
-   - `dsh-tia-openness-v17-min`：宿主行 = TIA 控制器子进程 + `engineeringAccess` + 随包 skill；
+   - `@automation-suite/tia-openness-v17`：宿主行 = TIA 控制器子进程 + `engineeringAccess` + 随包 skill；
      `/tools` 行 = 26 个工具。
-   - `dsh-engineering-graph`：宿主行 = C# 引擎子进程 + `knowledgeGraph`；`/tools` 行 = 3 个工具，
+   - `@automation-suite/engineering-graph`：宿主行 = C# 引擎子进程 + `knowledgeGraph`；`/tools` 行 = 3 个工具，
      带 `includeIngest` 开关（`false` 时只给 `knowledge_schema` / `knowledge_query`）。
-   - `dsh-engineering-context`：**没有宿主面资源**，所以不拆包，只把它的行整个搬进 `leader`，
+   - `@automation-suite/engineering-context`：**没有宿主面资源**，所以不拆包，只把它的行整个搬进 `leader`，
      宿主面那份 `disabled: true`。
 2. **两个 preset**：`leader`（主 agent，内置 `standard` 的全部 + 上述三个工程工具行 + 派发政策）
    与 `expert`（子 agent）。preset id 由 `suite` 改名为 `leader`。
@@ -541,13 +541,13 @@ stdio 通道实测：`ready` 帧列出三个操作，`GetSchema` 返回 34 字�
    `send_message`/`interrupt_agent`、`time-context`、`compaction` —— **8 个**。
    **不给**：任何 TIA 工具、工程上下文工作流、`pwsh`、`jobs`、`schedule`、`goal`、`plan`、
    `web`、`todo`、`ask_user`、`skill`。
-   **仍会继承**宿主面仍是全局行的 13 个：`dsh-tool-git` 的 12 个 + `working_directory`
+   **仍会继承**宿主面仍是全局行的 13 个：`@automation-suite/dsh-tool-git` 的 12 个 + `working_directory`
    （上游本来就把 `dsh-tool-working-directory` 留在宿主面）。已知欠账，不是遗漏。
 4. **接线**：`tool-subagent` 行配 `agentPreset: expert` + `allowedAgentPresets: [expert]`；
    深度沿用宿主设置 `subagent.maxDepth`（默认 1，`expert` 不能再派孙代）。
 5. **`knowledge_ingest` 不给子 agent**（用户决定）：整库重建是重度写操作（实测 1376 个源文件约 30 s、
    库约 450 MB），属于主 agent 的建工程流程。
-6. **git 的 12 个工具本轮不拆**（用户决定）：`dsh-tool-git` 是 vendor 副本，拆 `/tools` 会成为
+6. **git 的 12 个工具本轮不拆**（用户决定）：`@automation-suite/dsh-tool-git` 是 vendor 副本，拆 `/tools` 会成为
    **第 5 处与上游的差异**（现有 4 处见该包 `AGENTS.md` §1/§5），而它只是卫生问题。
    ⇒ **已知欠账：`expert` 也看得到 git 的 12 个工具。**
 
@@ -601,7 +601,7 @@ stdio 通道实测：`ready` 帧列出三个操作，`GetSchema` 返回 34 字�
      这条**在本轮之前就存在**：`{{cwd}}` 是照抄来的，旧 `preset-suite` 同样会炸。
    - 子 agent 对"你有没有 TIA 或 git 写工具"答 **yes** —— 因为 git 的 12 个里含
      `git_commit`/`git_stage`/`git_checkout`/`git_stash`。**只读靠工具面保证这句话，
-     目前对 git 不成立**。要么把 `dsh-tool-git` 也拆成 `/tools` 行（第 5 处 vendor 偏离），
+     目前对 git 不成立**。要么把 `@automation-suite/dsh-tool-git` 也拆成 `/tools` 行（第 5 处 vendor 偏离），
      要么接受"expert 能改 git"。
 
 > **数字变更（D24，2026-10-19）**：图谱工具面新增 `knowledge_workspace`（本地工具，引擎无关），
@@ -968,7 +968,7 @@ region 上下文、以及 `test/13-scl-segmentation.test.mjs`：用真实引擎�
 
 1. **`auditor` 成为可派的子 preset**：`tool-subagent` 的 `allowedAgentPresets` = `[expert, auditor]`
    （默认仍是 `expert`）。它仍可由用户直接开成会话——两种入口共用同一份 preset。
-2. **版本工作流只有 auditor 有**：`dsh-engineering-context` 拆成三个入口——
+2. **版本工作流只有 auditor 有**：`@automation-suite/engineering-context` 拆成三个入口——
    `.`（create/status/sync/commit）只挂 `auditor`；`/diff` 挂 `auditor` + `expert`；新增
    `/status`（只有 `project_status`）只挂 `leader`。`knowledge_ingest` 随图谱行一起从 leader 移走
    （auditor 用 `includeIngest: true, includeDrilldown: none`）。leader 保留 TIA 26 + git 12 + 图谱检查面 5
@@ -1006,8 +1006,8 @@ region 上下文、以及 `test/13-scl-segmentation.test.mjs`：用真实引擎�
   `tool-subagent.allowedAgentPresets` 含 `auditor`。
 - 行数基线更新：web+patch **1863 → 2003**；物化 profile **1896 → 2036**（增量全部是 persona 文本）。
 
-> **补记（2026-11-02，`dsh-ui-versions` 落地后）**：上面这三条是 D30 当时的值，不再是最新数。
-> 上下文包的测试此后涨到 **128 项**；新增的 `dsh-ui-versions` 再加 **15 项**。现在全仓是
+> **补记（2026-11-02，`@automation-suite/ui-versions` 落地后）**：上面这三条是 D30 当时的值，不再是最新数。
+> 上下文包的测试此后涨到 **128 项**；新增的 `@automation-suite/ui-versions` 再加 **15 项**。现在全仓是
 > TIA 102（101 通过 / 1 跳过）、git 51、上下文 128、图谱 128、ui-plc-source 47、
 > ui-tia-console 22、ui-versions 15。行数基线也已重测为 **1177 / 1884 / 1912**
 > （官方 web / 叠加本蓝图政策层 / 物化 profile），权威表仍以根 `AGENTS.md` §4 为准。
@@ -1040,7 +1040,7 @@ region 上下文、以及 `test/13-scl-segmentation.test.mjs`：用真实引擎�
 
 **决定**：
 
-1. **接口插件族维持一个包**（`dsh-tia-openness-v17-min`）。在线、硬件组态等新能力**都写进这个包**，
+1. **接口插件族维持一个包**（`@automation-suite/tia-openness-v17`）。在线、硬件组态等新能力**都写进这个包**，
    不新增 `-std` / `-pro` / `-online` / `-hardware` 包。
 2. **能力的选择单位是「Loader 行 + 行内配置」，由 preset 决定**：每个新能力必须能作为独立的
    行入口（`./tools/...` 子路径导出，或同一行里的配置开关）被声明；没被某个 preset 声明，
@@ -1186,7 +1186,7 @@ MODEL_METADATA_UNAVAILABLE
    - 操作前标 `in_progress`、结果到达的**同一 assistant step** 标 `completed`；
    - 派发的版本操作在 `subagent` 前标 `in_progress`，auditor 的结果消息到达才结束；
    - 失败项只在重试期间保留 `in_progress`，否则 `（失败）` + `completed`，不许死转。
-2. **兜底层（`@voltarenyah/dsh-tia-todo-bridge`）**：宿主面一个 Loader 行，不注册工具/服务，
+2. **兜底层（`@automation-suite/tia-todo-bridge`）**：宿主面一个 Loader 行，不注册工具/服务，
    监听 `tools/execute` / `tools/post-execute` / `session/event`：
    - 模型没有清单（或清单由本插件创建）时，为 32 个**改状态或耗时**的 TIA / 版本操作补一行
      `in_progress`，工具返回改为 `completed`（失败加 `（失败）`）；
@@ -1329,9 +1329,10 @@ WebView2 与终端里起的 `dsh web`，两者都是回环，"本地有人"这�
 
 **决定**：
 
-1. **一族多包，包名带版本**：V17 保持 `@voltarenyah/dsh-tia-openness-v17-min`（历史 tarball、已装 profile、
-   归档仓库都引用它，改名属独立破坏性操作，不做）；V18 起为 `@voltarenyah/dsh-tia-openness-v18`
-   —— **`-min` 后缀不再出现在新成员上**（它是 D2 三档时代的残留，D31 后档位已不成立）。
+1. **一族多包，包名带版本**：V17 为 `@automation-suite/tia-openness-v17`（**D39 已把 scope 统一到
+   `@automation-suite` 并去掉 `-min`**；旧 tarball 与已装 profile 里的旧名不再可用，按 D39 重建）；
+   V18 起为 `@automation-suite/tia-openness-v18` —— **`-min` 后缀不再出现在任何成员上**
+   （它是 D2 三档时代的残留，D31 后档位已不成立）。
 2. **同一时刻只激活一个成员**，且**激活单位是插件页的 bundle 开关**（不是逐行开关——preset 行不可寻址）：
    关一个 bundle 保留其依赖但使其整层退出组合。切换后**必须重启客户端**（工具行只在 preset 挂载时跑一次；
    旧控制器 disposer 不停 TIA Portal 本体；配置按行读取）。
@@ -1371,7 +1372,7 @@ WebView2 与终端里起的 `dsh web`，两者都是回环，"本地有人"这�
   要并行就开两个 profile（与 `docs/distribution.md` §4 的并存先例一致）。
 - 切换后"另一个成员的工具行"会合法地注册 0 个工具；会话仍可用（消费侧对缺席的 `engineeringAccess`
   本就降级），只是没有 TIA 工具。
-- 收尾工作（做 V18 时一并做）：清掉 `dsh-engineering-context` 里 7 处"版本知识泄漏"
+- 收尾工作（做 V18 时一并做）：清掉 `@automation-suite/engineering-context` 里 7 处"版本知识泄漏"
   （`.zap17` 判定、升级到 V17 的文案、点名 V17 包名的错误信息、工具描述里的 `.ap17`/`.zap17`），
   给 `engineeringAccess` 加**可选**的 `family()` 让成员自报版本；清单见 `tia-version-members.md` §9。
 
@@ -1451,4 +1452,66 @@ WebView2 与终端里起的 `dsh web`，两者都是回环，"本地有人"这�
 **后果**：只覆盖 PLC 软件；HMI/硬件/安全设置改动不在版本视野；`handoff/` 与备份会随次数增长，
 不自动清理；真机"归档带 UserFiles marker → 另一台机器取回 → 再归档回来"的往返仍需在 app 的
 控制器上验收（本会话 shell 非提权，TIA Openness 连接失败）。
+
+---
+
+## D39 · 15 个插件统一发布到 `@automation-suite` scope，命名与 Loader id 一并收敛 ✅
+
+**背景**：使用者新建了 npm 组织 `automation-suite`，专门存放本项目的插件，要求 15 个插件全部挂在该
+scope 下并重新整理名字。改前是两种身份（6 个 `@voltarenyah/*` + 9 个裸 `dsh-*`），另有一个因上游
+占用裸名而无法发布的 vendor 副本。
+
+**决定**（逐个确认过的最终名单；目录名一律不动，只改包名与 Loader id）：
+
+| 目录 | 包名 | Loader id |
+|---|---|---|
+| `packages/dsh-tia-openness-v17-min` | `@automation-suite/tia-openness-v17` | `tia-openness-v17` |
+| `packages/dsh-plcsim-advanced` | `@automation-suite/plcsim-advanced` | `plcsim-advanced` |
+| `packages/dsh-engineering-context` | `@automation-suite/engineering-context` | `engineering-context` |
+| `packages/dsh-engineering-graph` | `@automation-suite/engineering-graph` | `engineering-graph` |
+| `packages/dsh-drawing` | `@automation-suite/pdf-drawing` | `pdf-drawing` |
+| `packages/dsh-tia-todo-bridge` | `@automation-suite/tia-todo-bridge` | `tia-todo-bridge` |
+| `packages/dsh-tool-git` | `@automation-suite/dsh-tool-git` | `tool-git` |
+| `packages/dsh-ui-plc-source` | `@automation-suite/ui-plc-source` | `ui-plc-source` |
+| `packages/dsh-ui-tia-console` | `@automation-suite/ui-tia-console` | `ui-tia-console` |
+| `packages/dsh-ui-versions` | `@automation-suite/ui-versions` | `ui-versions` |
+| `packages/dsh-ui-changes` | `@automation-suite/ui-changes` | `ui-changes` |
+| `packages/dsh-ui-hardware` | `@automation-suite/ui-hardware` | `ui-hardware` |
+| `packages/dsh-ui-prompt-guide` | `@automation-suite/ui-prompt-guide` | `ui-prompt-guide` |
+| `packages/dsh-ui-project-dashboard` | `@automation-suite/ui-project-dashboard` | `ui-project-dashboard` |
+| `packages/dsh-ui-brandmark` | `@automation-suite/ui-brandmark` | `ui-brandmark` |
+| 根包（private，不发 npm） | `@automation-suite/dsh-automation-suite` | — |
+
+1. **去掉 `dsh-` 前缀**（`dsh-tool-git` 除外）：scope 已经表明"这是 DSH 插件"，尾段只留域名/产品名。
+   `dsh-tool-git` 保留 `dsh-`，是为了与上游 `lxj808624/dsh-tool-git` 对照（它同时是 fork 身份的标记）。
+2. **V17 去掉 `-min`**（补 D36 第 1 条）：`-min` 是 D2 三档时代的残留，D31 后档位不成立；族内命名
+   统一为 `@automation-suite/tia-openness-v<版本>`，V18 起同规则。旧 tarball 仍留在磁盘上，只是新构建
+   不再产出那个名字（D36 里"V17 不改名"的理由已被本条覆盖）。
+3. **Loader id 同步收敛**：规则是"包名去掉 scope 与 `dsh-` 前缀"。两处历史偏差顺手修正：
+   `tia-openness-v17-min` → `tia-openness-v17`、`project-dashboard` → `ui-project-dashboard`；
+   `drawing` → `pdf-drawing`。技能 provider 名同步为 `tia-openness-v17`（`src/skills.ts` 的
+   `SKILL_PROVIDER`，测试一起改）。
+4. **vendor 副本以 fork 身份发布**：`@automation-suite/dsh-tool-git` 与上游 `dsh-tool-git` **不是同一个
+   npm 包**；`LICENSE` / README / `repository` 保留上游署名（MIT）。根 `AGENTS.md` 与
+   `packages/dsh-tool-git/AGENTS.md` 的"vendor 副本"节已按此改写。
+5. **发布元数据**：15 个可发布包都加 `"publishConfig": { "access": "public" }`（scoped 包默认 restricted）；
+   根包保持 `private: true`。
+
+**同步改动面**（一次改到底，避免半新半旧）：15 个 `package.json` 的 `name`、15 个 `cordis.patch.yml` 的
+`insert[].name`（改带 scope 后 YAML 必须加引号）、蓝图 `dependencies` + `dsh.profile.bundles`、preset 里的
+`/tools` `/commands` `/status` `/version` `/diff` `/handoff` 子路径行、`scripts/*.mjs`、`scripts/doctor.ps1`、
+`pnpm-lock.yaml`（重新生成）、根 README/README.en/AGENTS/CHANGELOG 之外的全部文档、`site/**`。
+历史文档（`CHANGELOG.md`、`docs/releases/**`、`docs/reviews/**`）**保持原样**，不篡改历史。
+
+**后果 / 迁移须知**：
+
+- 已物化的 profile（`~/.dsh/profiles/dsh-automation-suite`、`%USERPROFILE%\dsh-automation-suite-home`）
+  仍按旧名装依赖，必须 `start-env.ps1 -Reset`（或 `cmd /c rmdir /s /q` 后重建）才能加载新包；
+  日常 `desktop` profile 不受影响。
+- Loader id 变化会让按 id 落的状态重新开始（如 `ui-project-dashboard` 的 tags owner、各插件的 settings 行）；
+  数据文件里按包名存的 owner 字段也随包名改变。
+- `pnpm pack` 产物名变成 `automation-suite-<name>-<version>.tgz`；文档里旧的 `voltarenyah-*.tgz` 已同步。
+- **实际发布未做**：本机 `npm whoami` = `yuanheng`，`npm org ls automation-suite` 返回 403
+  （`You may not perform this action with these credentials`）。发布前需把该身份加入组织，或换用组织
+  所有者账号；随后 `npm publish --access public`（15 个包）并补发布记录。
 

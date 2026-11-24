@@ -3,7 +3,7 @@
  *
  * Data arrives through the injected `readTextFile` face (the host's
  * `workspaceFiles.readBytes`), which reads `<workspace>/.dsh/versions-view.json`.
- * That file is produced by `@voltarenyah/dsh-engineering-context` after every
+ * That file is produced by `@automation-suite/engineering-context` after every
  * commit, replay and annotation, so the panel never parses SQLite and never
  * needs the store schema.
  *
@@ -17,7 +17,7 @@
  *  - the two columns of the wide layout are split by a draggable divider,
  *    because the history column is usually the wider one but not always.
  *
- * @module dsh-ui-versions/client/Panel
+ * @module @automation-suite/ui-versions/client/Panel
  */
 
 import { useEffect, useMemo, useRef, useState } from 'react'

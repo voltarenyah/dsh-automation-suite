@@ -1,4 +1,4 @@
-# @voltarenyah/dsh-engineering-context
+# @automation-suite/engineering-context
 
 DeepSeek Harness 插件（**工程上下文插件**）：把一个 **TIA Portal 工程**领进 workspace ——
 另存进来、把源文件读出来、把块逻辑转译进知识图谱 —— 并在 TIA 改动之后，把差异同步成
@@ -154,7 +154,7 @@ node scripts/tsc.mjs -p tsconfig.json          # 只构建
 node scripts/tsc.mjs -p tsconfig.json --noEmit # 只做类型检查
 ```
 
-- **构建形态**：`tsc` 编译到 `lib/`，测试用 `node:test`（与 `dsh-tia-openness-v17-min` 一致）。
+- **构建形态**：`tsc` 编译到 `lib/`，测试用 `node:test`（与 `@automation-suite/tia-openness-v17` 一致）。
   `lib/` 不提交。
 - **依赖由 `pnpm install` 提供**（在仓库根跑一次）。`scripts/link-dsh-runtime.mjs` 只负责
   `@deepseek-ai/*`（宿主运行时）—— 它**绝不**去链 `typescript` / `@types`（实测事故见

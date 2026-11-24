@@ -6,7 +6,7 @@
  * copy this repository develops against is extracted from the *installed app's*
  * `resources/app.asar`, and that production build carries **no** `.d.ts` files at
  * all, so `tsc` reports `TS7016` for every runtime import. The sibling packages
- * (`dsh-tia-openness-v17-min`, `dsh-engineering-context`, `dsh-tool-git`) solve
+ * (`@automation-suite/tia-openness-v17`, `dsh-engineering-context`, `@automation-suite/dsh-tool-git`) solve
  * this the same way, each with its own hand-written declaration.
  *
  * The declarations mirror the runtime the local harness actually ships
@@ -36,7 +36,7 @@
  *   intent) and `defineTool` wraps it so invalid replay arguments fall back to no
  *   presentation (`dsh-tools/lib/index.js:874-877`). The built-in `run_code` uses
  *   `kind: 'execute'` (`dsh-tools/lib/index.js:1445-1449`); the sibling
- *   `dsh-tool-git` verified `'read' | 'other'` against the same runtime, so all
+ *   `@automation-suite/dsh-tool-git` verified `'read' | 'other'` against the same runtime, so all
  *   three are declared.
  * - `Schema` instance/static signatures mirror `schemastery/src/index.ts:42-100`
  *   and were checked against the shipped build: `Schema.object({...})({})`

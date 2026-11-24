@@ -8,7 +8,7 @@
  * Data path: `props.fetchStatus(signal)` → `GET /changes/api/status`, the
  * plugin's own host route. No `workspaceFiles`, no new remote, no file reads.
  *
- * @module dsh-ui-changes/client/Panel
+ * @module @automation-suite/ui-changes/client/Panel
  */
 
 import { useEffect, useRef, useState } from 'react'

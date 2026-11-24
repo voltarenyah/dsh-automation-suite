@@ -3,7 +3,7 @@
  *
  * It answers one question — "what does `git status` say for this session's
  * working tree, right now?" — by asking the `gitContext` service that
- * `dsh-tool-git` provides. The plugin never imports that package: a missing
+ * `@automation-suite/dsh-tool-git` provides. The plugin never imports that package: a missing
  * service is a visible `changes/no-git-service`, not a crash.
  *
  * The repository root always comes from the session header, never from
@@ -16,7 +16,7 @@
  * panel that refetches on every tool result would otherwise spawn four `git`
  * processes per edit.
  *
- * @module dsh-ui-changes/service
+ * @module @automation-suite/ui-changes/service
  */
 
 import { join } from 'node:path'
@@ -76,7 +76,7 @@ export const DEFAULT_LIMITS: StatusLimits = {
 
 /** Everything the service needs from its host. */
 export interface StatusDeps {
-  /** The `gitContext` service, or undefined when `dsh-tool-git` is not loaded. */
+  /** The `gitContext` service, or undefined when `@automation-suite/dsh-tool-git` is not loaded. */
   git(): GitServiceLike | undefined
   /** The session's working directory, or null when the session is unknown. */
   sessionCwd(sessionId: string): string | null | undefined

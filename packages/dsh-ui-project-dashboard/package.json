@@ -1,6 +1,9 @@
 {
-  "name": "dsh-ui-project-dashboard",
+  "name": "@automation-suite/ui-project-dashboard",
   "version": "0.1.0",
+  "publishConfig": {
+    "access": "public"
+  },
   "private": false,
   "description": "DSH plugin: a 'Project Dashboard' global panel placed above Plugins — one page summarising every workspace (sessions, engineering scale, hardware, versions, drawings) with multi-level tags, search and tag filtering.",
   "type": "module",

@@ -19,7 +19,7 @@ function registerFakeBash(ctx: Context): void {
   }))
 }
 
-describe('dsh-tool-git destructive-command gate', () => {
+describe('@automation-suite/dsh-tool-git destructive-command gate', () => {
   let repo: TempRepo
   const cleanup: Array<() => void> = []
 
@@ -41,7 +41,7 @@ describe('dsh-tool-git destructive-command gate', () => {
       const result = await callTool(ctx, 'bash', { command: 'git push --force origin main' })
       expect(result.isError).toBe(true)
       const message = (result as { error?: { message: string } }).error?.message ?? ''
-      expect(message).toMatch(/blocked by dsh-tool-git \(push-force\)/)
+      expect(message).toMatch(/blocked by @automation-suite\/dsh-tool-git \(push-force\)/)
       expect(message).toMatch(/force push/)
     })
 

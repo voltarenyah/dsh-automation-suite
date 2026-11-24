@@ -1,6 +1,6 @@
 # 真实 PLC 下载能力评估
 
-> 评估对象：`dsh-tia-openness-v17-min` 的在线/下载面，以及 agent 侧的编排面。
+> 评估对象：`@automation-suite/tia-openness-v17` 的在线/下载面，以及 agent 侧的编排面。
 > 评估日期：2026-11-04。
 > 口径：只有 **PLCSIM Advanced 上实测过** 的路径才算已验证；真实 PLC 一律按“未验证”处理。
 > 关联文档：[`HANDOFF-PLCSIM-DOWNLOAD.md`](HANDOFF-PLCSIM-DOWNLOAD.md)、[`PROTOCOL.md`](PROTOCOL.md)、

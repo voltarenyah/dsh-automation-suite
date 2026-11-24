@@ -195,7 +195,7 @@ function referencedSkills(body) {
 /** Downloads and unpacks the pinned upstream tree. */
 async function fetchUpstream() {
   const url = `https://codeload.github.com/${UPSTREAM.repo}/tar.gz/${UPSTREAM.commit}`
-  const response = await fetch(url, { headers: { 'user-agent': 'dsh-tia-openness-v17-min knowledge sync' } })
+  const response = await fetch(url, { headers: { 'user-agent': '@automation-suite/tia-openness-v17 knowledge sync' } })
   if (!response.ok) throw new Error(`GET ${url} failed: ${response.status} ${response.statusText}`)
   const archive = parseTar(gunzipSync(Buffer.from(await response.arrayBuffer())))
 

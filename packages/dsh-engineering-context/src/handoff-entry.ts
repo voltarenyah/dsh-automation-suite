@@ -8,7 +8,7 @@
  * mounted into the leader through the `/status` entry.
  *
  * The profile mounts this entry as
- * `@voltarenyah/dsh-engineering-context/handoff`.
+ * `@automation-suite/engineering-context/handoff`.
  *
  * @module dsh-engineering-context/handoff-entry
  */

@@ -1,6 +1,9 @@
 {
-  "name": "@voltarenyah/dsh-tia-openness-v17-min",
+  "name": "@automation-suite/tia-openness-v17",
   "version": "0.1.0",
+  "publishConfig": {
+    "access": "public"
+  },
   "private": false,
   "description": "DSH plugin: minimal TIA Portal V17 Openness block read/write (export/import Simatic ML, compile, verified writes) through a whitelisted C# controller subprocess.",
   "type": "module",

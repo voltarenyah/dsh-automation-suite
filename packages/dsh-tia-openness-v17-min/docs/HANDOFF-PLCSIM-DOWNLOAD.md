@@ -246,7 +246,7 @@ Security error. The operation has timed out.`），重试即通过。矩阵里
 
 ## 10. 分工与衔接（按现行工作流）
 
-### 10.1 TIA 插件侧（本包 `dsh-tia-openness-v17-min`）负责
+### 10.1 TIA 插件侧（本包 `@automation-suite/tia-openness-v17`）负责
 
 | 能力 | 工具 / 操作 | 状态 |
 |---|---|---|

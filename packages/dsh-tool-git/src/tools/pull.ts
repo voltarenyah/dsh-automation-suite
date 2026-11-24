@@ -1,6 +1,6 @@
 /**
  * `git_pull` — fetch and integrate upstream changes.
- * @module dsh-tool-git/tools/pull
+ * @module @automation-suite/dsh-tool-git/tools/pull
  */
 
 import { defineTool } from '@deepseek-ai/dsh-tools'

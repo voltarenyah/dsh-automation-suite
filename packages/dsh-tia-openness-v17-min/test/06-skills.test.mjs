@@ -36,7 +36,7 @@ test('the host row registers the knowledge base on the skill registry, through c
 
   assert.deepEqual(harness.injectedServices, [['skills']], 'the skill registry must be injected, not read directly')
   assert.equal(harness.skillProviders.length, 1, 'exactly one bundled skill provider is registered')
-  assert.equal(harness.skillProviders[0].name, 'tia-openness-v17-min')
+  assert.equal(harness.skillProviders[0].name, 'tia-openness-v17')
 
   // The knowledge base must never gate the tools: a profile without the skill
   // registry still has to load, which is why `skills` is not in the host row's
@@ -65,7 +65,7 @@ test('the provider advertises exactly one skill, sized for the session catalog',
   const [candidate] = candidates
   assert.deepEqual(candidate.invocation, { modelInvocable: true, userInvocable: true })
   assert.equal(candidate.name, 'tia-openness')
-  assert.equal(candidate.provider, 'tia-openness-v17-min')
+  assert.equal(candidate.provider, 'tia-openness-v17')
   assert.equal(candidate.source, 'bundled')
   assert.equal(candidate.rank, 600, 'packaged providers use BUNDLED_SKILL_RANK')
   assert.equal(candidate.path, ROUTER, 'the catalog path lets the UI open the SKILL.md')

@@ -13,11 +13,11 @@
  * with a fixed height, and a flex-child scroller silently clipped in the real
  * app at narrow window heights.
  *
- * @module dsh-ui-versions/client/style
+ * @module @automation-suite/ui-versions/client/style
  */
 
 /** Identifier of the injected stylesheet, unique across the page. */
-export const TAG_ID = 'dsh-ui-versions/versions.css'
+export const TAG_ID = '@automation-suite/ui-versions/versions.css'
 
 /** Stylesheet text. Class names are prefixed to stay out of the app's way. */
 export const CSS = `

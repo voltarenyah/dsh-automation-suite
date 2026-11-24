@@ -1,6 +1,6 @@
 /**
  * Test fixtures: disposable git repositories and a booted plugin context.
- * @module dsh-tool-git/tests/helpers
+ * @module @automation-suite/dsh-tool-git/tests/helpers
  */
 
 import { execFileSync } from 'node:child_process'
@@ -126,7 +126,7 @@ export interface SetupOptions extends Partial<gitPlugin.Config> {
    * for tool calls; there is no process-cwd fallback anymore.
    */
   cwd?: string
-  /** Load the `dsh-tool-git/tools` row as well as the host row (default true). */
+  /** Load the `@automation-suite/dsh-tool-git/tools` row as well as the host row (default true). */
   withTools?: boolean
 }
 

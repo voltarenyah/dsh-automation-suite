@@ -6,7 +6,7 @@
  * {@link StatusError}: it carries the dictionary code the panel renders and the
  * HTTP status the route answers. Anything else is a bug and surfaces as a 500.
  *
- * @module dsh-ui-changes/errors
+ * @module @automation-suite/ui-changes/errors
  */
 
 /** An expected failure with a stable code and an HTTP status. */

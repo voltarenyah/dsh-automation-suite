@@ -19,7 +19,7 @@
  * entries say so in `outcome`/`note` instead of implying the main agent runs
  * them directly.
  *
- * @module dsh-ui-prompt-guide/guide
+ * @module @automation-suite/ui-prompt-guide/guide
  */
 
 /** One string in both languages the app ships. */
@@ -895,7 +895,7 @@ export const TOOL_CATALOG: string[] = [
  */
 export function guideDocument(): GuideDocument {
   return {
-    plugin: 'dsh-ui-prompt-guide',
+    plugin: '@automation-suite/ui-prompt-guide',
     version: GUIDE_VERSION,
     categories: CATEGORIES.map((category) => ({ ...category })),
     entries: ENTRIES.map((entry) => ({ ...entry, tools: [...entry.tools] })),

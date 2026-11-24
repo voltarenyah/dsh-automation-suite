@@ -13,7 +13,7 @@
  * links, so the two-line fallback is the honest contract. A composition with a
  * non-default home must export `DSH_HOME` (the launcher does).
  *
- * @module dsh-ui-project-dashboard
+ * @module @automation-suite/ui-project-dashboard
  */
 
 import { homedir } from 'node:os'

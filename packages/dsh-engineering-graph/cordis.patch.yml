@@ -5,4 +5,4 @@
 # the loader treats this string as a module identifier (root AGENTS.md §1).
 - insert:
     - id: engineering-graph
-      name: '@voltarenyah/dsh-engineering-graph'
+      name: '@automation-suite/engineering-graph'

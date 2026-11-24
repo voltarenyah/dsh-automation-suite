@@ -3,7 +3,7 @@
  *
  * The plugin runs git itself — the model never does (A8/D8). Arguments are an
  * explicit array, the repository is passed with `-C`, and the environment keeps
- * git from prompting: the same rules the repository's `dsh-tool-git` runner uses.
+ * git from prompting: the same rules the repository's `@automation-suite/dsh-tool-git` runner uses.
  *
  * Only the small surface the sync workflow needs is here: locate the repository,
  * read the status of one device directory, stage that directory and commit it.

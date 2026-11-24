@@ -1,6 +1,9 @@
 {
-  "name": "dsh-ui-plc-source",
+  "name": "@automation-suite/ui-plc-source",
   "version": "0.1.0",
+  "publishConfig": {
+    "access": "public"
+  },
   "private": false,
   "description": "DSH plugin: a right-sidebar 'PLC Blocks' tab that flattens the PLC source files under the session workspace's source/ tree, filterable by device and simaticType.",
   "type": "module",

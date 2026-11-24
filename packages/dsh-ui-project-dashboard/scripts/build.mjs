@@ -10,7 +10,7 @@
  * therefore a `banner`/`footer` pair around a CJS bundle, which is also how
  * upstream's own `clientBundle()` preset does it.
  *
- * Two choices worth knowing (same as `dsh-ui-hardware`):
+ * Two choices worth knowing (same as `@automation-suite/ui-hardware`):
  *
  *  - The bundler is **esbuild from this checkout's pnpm store**, resolved by
  *    probing instead of a pinned path: the repo deliberately does not
@@ -21,7 +21,7 @@
  *    non-platform module is a runtime `missed the module table`, not a build
  *    error, so keeping the list exact is the whole safety net.
  *
- * @module dsh-ui-project-dashboard/scripts/build
+ * @module @automation-suite/ui-project-dashboard/scripts/build
  */
 
 import { existsSync, mkdirSync, readdirSync, readFileSync } from 'node:fs'

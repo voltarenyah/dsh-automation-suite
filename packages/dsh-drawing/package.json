@@ -1,6 +1,9 @@
 {
-  "name": "@voltarenyah/dsh-drawing",
+  "name": "@automation-suite/pdf-drawing",
   "version": "0.1.0",
+  "publishConfig": {
+    "access": "public"
+  },
   "private": false,
   "description": "DSH plugin: electrical drawings — ingest PDF drawing sets into a workspace index (sheets, cross-references, entities), retrieve pages and elements for the model, and show the located page in a right-sidebar 'Drawing' tab.",
   "type": "module",

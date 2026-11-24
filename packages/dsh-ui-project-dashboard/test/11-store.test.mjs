@@ -2,7 +2,7 @@
  * Tests for the durable tag file: normalization limits, revisions, conflict
  * detection, atomic replacement, backup, and corrupt-file recovery.
  *
- * @module dsh-ui-project-dashboard/test/store
+ * @module @automation-suite/ui-project-dashboard/test/store
  */
 
 import assert from 'node:assert/strict'
@@ -38,7 +38,7 @@ test('add writes the file atomically and bumps the revision', async () => {
 
   const onDisk = JSON.parse(await readFile(file, 'utf8'))
   assert.equal(onDisk.version, 1)
-  assert.equal(onDisk.owner, 'dsh-ui-project-dashboard')
+  assert.equal(onDisk.owner, '@automation-suite/ui-project-dashboard')
   assert.deepEqual(onDisk.workspaces['ws-a'].tags, ['客户/PEI'])
   assert.equal(onDisk.workspaces['ws-a'].path, 'C:\\p\\A')
   assert.equal(onDisk.revision, 1)

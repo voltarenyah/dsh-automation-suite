@@ -1,7 +1,7 @@
 /**
  * Registry of the structured git tools, bound to the host-provided
  * `gitContext` service.
- * @module dsh-tool-git/tools
+ * @module @automation-suite/dsh-tool-git/tools
  */
 
 import type { Context } from '@deepseek-ai/cordis'

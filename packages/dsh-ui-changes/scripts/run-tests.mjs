@@ -7,7 +7,7 @@
  * `test` script runs this file rather than `node --test` directly, keeping
  * `pnpm -r test` self-sufficient on a fresh checkout.
  *
- * @module dsh-ui-changes/scripts/run-tests
+ * @module @automation-suite/ui-changes/scripts/run-tests
  */
 
 import { spawnSync } from 'node:child_process'

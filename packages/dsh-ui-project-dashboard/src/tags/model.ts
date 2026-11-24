@@ -12,14 +12,14 @@
  * re-attached to a re-registered directory later, and so the file is readable by
  * a human.
  *
- * @module dsh-ui-project-dashboard/tags/model
+ * @module @automation-suite/ui-project-dashboard/tags/model
  */
 
 /** Document version; a mismatch is treated as corrupt on read. */
 export const TAGS_VERSION = 1
 
 /** Marker so the file explains its owner when found in `storages/`. */
-export const TAGS_OWNER = 'dsh-ui-project-dashboard'
+export const TAGS_OWNER = '@automation-suite/ui-project-dashboard'
 
 /** Deepest tag path the UI accepts (segments, not characters). */
 export const MAX_TAG_DEPTH = 4

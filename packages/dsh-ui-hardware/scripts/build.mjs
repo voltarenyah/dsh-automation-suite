@@ -21,7 +21,7 @@
  *    non-platform module is a runtime `missed the module table`, not a build
  *    error, so keeping the list exact is the whole safety net.
  *
- * @module dsh-ui-plc-source/scripts/build
+ * @module @automation-suite/ui-plc-source/scripts/build
  */
 
 import { existsSync, mkdirSync, readdirSync, readFileSync } from 'node:fs'

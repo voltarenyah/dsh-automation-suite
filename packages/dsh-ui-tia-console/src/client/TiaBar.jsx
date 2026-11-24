@@ -11,7 +11,7 @@
  * which is also where model tool calls and typed commands land; the refresh
  * button re-syncs with the controller via `/tia-info`.
  *
- * @module dsh-ui-tia-console/TiaBar
+ * @module @automation-suite/ui-tia-console/TiaBar
  */
 
 import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from 'react'

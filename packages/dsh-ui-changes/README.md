@@ -1,10 +1,10 @@
-# dsh-ui-changes
+# @automation-suite/ui-changes
 
 DSH 插件：右侧栏一个 **Changes（变更）** 标签页，列出当前工作区里**未提交**的文件
 （含每文件 `+N/−M`），并把「提交」做成一次带上下文的对话行为。
 
 > **状态：P1（真实 git 数据；提交区未做）。** 宿主按会话的 `header.cwd` 找仓库，经
-> `gitContext`（`dsh-tool-git`）跑 `status --porcelain=v1 -z` 与 `diff --numstat -z -M HEAD`，
+> `gitContext`（`@automation-suite/dsh-tool-git`）跑 `status --porcelain=v1 -z` 与 `diff --numstat -z -M HEAD`，
 > 面板可见时每 5 s 自刷新。**P2 的提交区尚未实现** —— 现在面板只读。
 > 设计与验收记录见仓库 [`docs/ui-changes-panel-plan.md`](../../docs/ui-changes-panel-plan.md)。
 
@@ -25,7 +25,7 @@ session id ──ctx.get('sessions').get(id)──▶ header.cwd
 | 做 | 不做 |
 |---|---|
 | 右侧栏 tab：仓库 / 分支 / HEAD + 文件清单 + 每文件 `+N/−M` | 不显示 diff 内容（v1 只做计数） |
-| 宿主一条**只读**路由 `GET /changes/api/status?session=<id>` | 不执行 `git commit`（提交由 agent 经 `dsh-tool-git` 的工具完成） |
+| 宿主一条**只读**路由 `GET /changes/api/status?session=<id>` | 不执行 `git commit`（提交由 agent 经 `@automation-suite/dsh-tool-git` 的工具完成） |
 | 失败降级成一行可见诊断（错误码 → 字典键） | 不新增模型工具、不读 SQLite、不写工作区 |
 
 数据来自**宿主现算**，不是某个落盘产物：面板要的是"此刻相对 HEAD 的状态"，
@@ -57,7 +57,7 @@ dsh plugin --profile <profile> add <tgz>
 ```
 
 蓝图（`profile/dsh-automation-suite`）里已登记：`dependencies` 一行 + `dsh.profile.bundles`
-一行，`dsh --profile dsh-automation-suite --dump-config` 应出现 `# == dsh-ui-changes`。
+一行，`dsh --profile dsh-automation-suite --dump-config` 应出现 `# == @automation-suite/ui-changes`。
 
 ## 布局
 

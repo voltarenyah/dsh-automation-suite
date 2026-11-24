@@ -11,7 +11,7 @@
  * call, whole file), so no new HTTP route or remote service is involved, and the
  * browser never parses XML.
  *
- * @module dsh-ui-hardware/client
+ * @module @automation-suite/ui-hardware/client
  */
 
 import { Panel } from './Panel.jsx'
@@ -22,7 +22,7 @@ import { NS, en, zh } from './locales.js'
 import { VIEW_FILE } from '../model.js'
 
 /** Package name. Also the tab-type id and the body seat's key — they must agree. */
-export const ID = 'dsh-ui-hardware'
+export const ID = '@automation-suite/ui-hardware'
 
 /** A fresh kind, so the type cannot collide with the shipped tab types. */
 const KIND = 'hardware'

@@ -19,7 +19,7 @@
  *     owns `import_blocks`) opens the import transaction.
  *
  * None of the three writes anything. The profile mounts this entry as
- * `@voltarenyah/dsh-engineering-context/status`.
+ * `@automation-suite/engineering-context/status`.
  *
  * @module dsh-engineering-context/status-entry
  */

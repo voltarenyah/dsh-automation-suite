@@ -6,7 +6,7 @@
  * registration the chip would keep whatever language was active at that moment.
  * Registering here makes the chip re-render with the locale, like the body does.
  *
- * @module dsh-ui-plc-source/Title
+ * @module @automation-suite/ui-plc-source/Title
  */
 
 /** Identity fallback for the translate seat; keys pass through unchanged. */

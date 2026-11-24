@@ -5,5 +5,5 @@
 #
 # `name` must equal package.json's `name` verbatim.
 - insert:
-    - id: project-dashboard
-      name: dsh-ui-project-dashboard
+    - id: ui-project-dashboard
+      name: '@automation-suite/ui-project-dashboard'

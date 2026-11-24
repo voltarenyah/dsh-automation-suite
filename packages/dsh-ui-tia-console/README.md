@@ -1,9 +1,9 @@
-# dsh-ui-tia-console
+# @automation-suite/ui-tia-console
 
 输入框上方的 **TIA 控制台**：显示 TIA Portal 的实时状态、长时间操作的已用时长，并直接提供
 打开 / 保存 / 编译 / 关闭 与刷新。
 
-它是 `dsh-automation-suite` 发行版的一个 UI 插件，和 `dsh-ui-plc-source` 同构：一个空的宿主行
+它是 `dsh-automation-suite` 发行版的一个 UI 插件，和 `@automation-suite/ui-plc-source` 同构：一个空的宿主行
 （只为让浏览器半侧有包可挂）+ 一个 `conversation.input.dock` 占位组件。
 
 ## 它解决什么
@@ -46,7 +46,7 @@ DSH 的斜线指令结果是一个**时间线节点**，而新建会话显示的
 
 ```yaml
 # profile 的 bundles 里加一行；bundle 自带的 cordis.patch.yml 会插入自己的 Loader 行
-- dsh-ui-tia-console
+- @automation-suite/ui-tia-console
 ```
 
 开发：

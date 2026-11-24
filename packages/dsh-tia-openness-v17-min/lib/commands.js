@@ -20,7 +20,7 @@
  * model-facing tools: they need a dry run and a reviewer, which a one-line
  * command cannot provide.
  *
- * @module dsh-tia-openness-v17-min/commands
+ * @module @automation-suite/tia-openness-v17/commands
  */
 import { existsSync } from 'node:fs';
 import { readFile, readdir } from 'node:fs/promises';
@@ -488,6 +488,6 @@ export function registerCommands(ctx, dependencies) {
             handler: (invocation) => guard(() => handleStatus(dependencies, invocation), invocation),
         },
     ];
-    ctx.effect(() => definitions.map((definition) => ctx.commands.register(definition)), 'tia-openness-v17-min: slash commands');
+    ctx.effect(() => definitions.map((definition) => ctx.commands.register(definition)), 'tia-openness-v17: slash commands');
     return definitions.map((definition) => definition.name);
 }

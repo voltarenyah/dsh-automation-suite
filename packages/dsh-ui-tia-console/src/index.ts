@@ -4,7 +4,7 @@
  * (`src/client/`), which reads the session's own event window through the
  * `sessions` service — no host service, no TIA polling, no model messages.
  *
- * @module dsh-ui-tia-console
+ * @module @automation-suite/ui-tia-console
  */
 
 /** Cordis plugin name, kept in step with the row id in `cordis.patch.yml`. */

@@ -22,7 +22,7 @@
  *    `..`, dotfiles and symlinks that point outside the page directory are
  *    refused rather than served.
  *
- * @module dsh-ui-prompt-guide/page
+ * @module @automation-suite/ui-prompt-guide/page
  */
 
 import { existsSync, readFileSync, realpathSync, statSync } from 'node:fs'

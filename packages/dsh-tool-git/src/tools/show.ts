@@ -1,6 +1,6 @@
 /**
  * `git_show` — a single commit: metadata, statistics, optional patch.
- * @module dsh-tool-git/tools/show
+ * @module @automation-suite/dsh-tool-git/tools/show
  */
 
 import { defineTool } from '@deepseek-ai/dsh-tools'

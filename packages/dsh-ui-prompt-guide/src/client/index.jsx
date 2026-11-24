@@ -21,7 +21,7 @@
  * only frames it. Registration failures are logged, never thrown: one broken
  * seat must not take the rest of the client down.
  *
- * @module dsh-ui-prompt-guide/client
+ * @module @automation-suite/ui-prompt-guide/client
  */
 
 import { createElement, useEffect, useRef } from 'react'
@@ -29,7 +29,7 @@ import { createElement, useEffect, useRef } from 'react'
 import { NS, zh, en } from './locales.js'
 
 /** Package name; also the panel id and the `main` seat key — they must agree. */
-export const ID = 'dsh-ui-prompt-guide'
+export const ID = '@automation-suite/ui-prompt-guide'
 
 /** Panel id used by both root seats. */
 const PANEL = 'prompt-guide'

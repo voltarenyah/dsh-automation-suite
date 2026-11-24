@@ -100,18 +100,18 @@ Note: Twelve bundles. “Work with” names the other bundles each one needs; �
 
 | Package | Role | Tools | Work with | Version |
 | --- | --- | --- | --- | --- |
-| `@voltarenyah/dsh-tia-openness-v17-min` | TIA Portal V17 access | 39 | Works alone | 0.1.0 |
-| `@voltarenyah/dsh-plcsim-advanced` | PLCSIM Advanced runtime | 4 | Works alone | 0.1.0 |
-| `@voltarenyah/dsh-engineering-graph` | Knowledge graph · SQLite + C# engine | 9 | Works alone | 0.1.0 |
-| `dsh-tool-git` | Guard-railed Git | 12 | Works alone | 0.1.3 |
-| `@voltarenyah/dsh-engineering-context` | Project scope and version workflow | core + diff + version | TIA plugin · git · graph (optional) | 0.1.0 |
-| `@voltarenyah/dsh-drawing` | PDF drawing index + sidebar | 5 | Works alone | 0.1.0 |
-| `dsh-ui-plc-source` | Sidebar · PLC Blocks | — | engineering-context | 0.1.0 |
-| `dsh-ui-tia-console` | Composer · TIA console | — | TIA plugin | 0.1.0 |
-| `dsh-ui-versions` | Sidebar · Versions | — | engineering-context | 0.1.0 |
-| `dsh-ui-hardware` | Sidebar · Hardware | — | TIA plugin | 0.1.0 |
-| `dsh-ui-prompt-guide` | Main · Prompt Guide | — | Works alone | 0.1.0 |
-| `dsh-ui-project-dashboard` | Sidebar · Project dashboard | — | Works alone | 0.1.0 |
+| `@automation-suite/tia-openness-v17` | TIA Portal V17 access | 39 | Works alone | 0.1.0 |
+| `@automation-suite/plcsim-advanced` | PLCSIM Advanced runtime | 4 | Works alone | 0.1.0 |
+| `@automation-suite/engineering-graph` | Knowledge graph · SQLite + C# engine | 9 | Works alone | 0.1.0 |
+| `@automation-suite/dsh-tool-git` | Guard-railed Git | 12 | Works alone | 0.1.3 |
+| `@automation-suite/engineering-context` | Project scope and version workflow | core + diff + version | TIA plugin · git · graph (optional) | 0.1.0 |
+| `@automation-suite/pdf-drawing` | PDF drawing index + sidebar | 5 | Works alone | 0.1.0 |
+| `@automation-suite/ui-plc-source` | Sidebar · PLC Blocks | — | engineering-context | 0.1.0 |
+| `@automation-suite/ui-tia-console` | Composer · TIA console | — | TIA plugin | 0.1.0 |
+| `@automation-suite/ui-versions` | Sidebar · Versions | — | engineering-context | 0.1.0 |
+| `@automation-suite/ui-hardware` | Sidebar · Hardware | — | TIA plugin | 0.1.0 |
+| `@automation-suite/ui-prompt-guide` | Main · Prompt Guide | — | Works alone | 0.1.0 |
+| `@automation-suite/ui-project-dashboard` | Sidebar · Project dashboard | — | Works alone | 0.1.0 |
 
 Legend: “Work with” lists the bundles this one needs; “Works alone” means no other bundle is required. Versions are package versions; the suite release is versioned separately.
 
@@ -141,11 +141,11 @@ A preset mounts an entry point:
 ```yaml
 # profile/cordis.patch.yml — a preset mounts an entry point
 - id: leader-tia-tools
-  name: '@voltarenyah/dsh-tia-openness-v17-min/tools'
+  name: '@automation-suite/tia-openness-v17/tools'
 
 # the host row is separate; it owns the controller and the service
-- id: tia-openness-v17-min
-  name: '@voltarenyah/dsh-tia-openness-v17-min'
+- id: tia-openness-v17
+  name: '@automation-suite/tia-openness-v17'
 ```
 
 Note: `leader` gets the working surface; `auditor` owns the version workflow; `expert` gets read-only drill-down. A subagent cannot inherit a tool its preset did not mount.
@@ -295,7 +295,7 @@ Image: `assets/images/tia/openness-access-dialog.webp` (dialog crop; full window
 Note: The default `requestTimeoutMs` is 300000 (5 minutes). Exporting a few hundred blocks already takes about 87 s, and compiling a large project can take more than 10 minutes. Raise it before the first large TIA or graph call.
 
 ```yaml
-- id: tia-openness-v17-min
+- id: tia-openness-v17
   config:
     requestTimeoutMs: 900000
 - id: engineering-graph

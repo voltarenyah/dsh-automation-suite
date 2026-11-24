@@ -3,11 +3,11 @@
  * `<style data-plugin …>` node. Only `--dsw-*` semantic tokens are used (with
  * fallbacks), so it follows the app's light/dark themes.
  *
- * @module dsh-ui-tia-console/style
+ * @module @automation-suite/ui-tia-console/style
  */
 
 /** Identifier of the injected stylesheet, unique across the page. */
-export const TAG_ID = 'dsh-ui-tia-console/console.css'
+export const TAG_ID = '@automation-suite/ui-tia-console/console.css'
 
 /** Stylesheet text. All class names are prefixed to stay out of the app's way. */
 export const CSS = `

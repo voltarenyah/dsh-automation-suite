@@ -12,7 +12,7 @@
  * service exposes creation/deletion but not the first-use identity, and this is
  * a one-shot cleanup, not a per-refresh scan.
  *
- * @module dsh-ui-project-dashboard/default-workspace
+ * @module @automation-suite/ui-project-dashboard/default-workspace
  */
 
 import { readFile } from 'node:fs/promises'

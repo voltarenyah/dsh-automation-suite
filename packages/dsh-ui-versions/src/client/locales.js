@@ -5,7 +5,7 @@
  * the text follow DSH's global language setting (设置 → 通用 → 语言) without a
  * reload: the slot renderer re-renders when the namespace changes.
  *
- * @module dsh-ui-versions/client/locales
+ * @module @automation-suite/ui-versions/client/locales
  */
 
 /** Namespace every key here is registered under. */

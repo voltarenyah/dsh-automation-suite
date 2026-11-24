@@ -300,7 +300,7 @@ export async function openDiffRepository(ctx: Context, root: string): Promise<Gi
     throw new EngineeringContextError(
       'git_access_unavailable',
       'This composition has no gitContext service, so revisions cannot be read. Enable the git tool plugin ' +
-        '(dsh-tool-git) — project_diff only reads history through that service and never runs git itself.',
+        '(@automation-suite/dsh-tool-git) — project_diff only reads history through that service and never runs git itself.',
       { service: 'gitContext' },
     )
   }

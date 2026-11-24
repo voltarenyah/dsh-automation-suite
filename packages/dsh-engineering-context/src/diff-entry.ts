@@ -9,7 +9,7 @@
  * tool** and nothing else; it never registers create, status, sync or commit, and
  * it opens no resource that would need disposing.
  *
- * The profile mounts it as `@voltarenyah/dsh-engineering-context/diff`.
+ * The profile mounts it as `@automation-suite/engineering-context/diff`.
  *
  * @module dsh-engineering-context/diff-entry
  */

@@ -15,7 +15,7 @@
  *  - Both slot registrations go through `ctx.slots.inject`, because a child slot
  *    only exists while its owning entry is mounted and a bare `register` throws.
  *
- * @module dsh-ui-plc-source/client
+ * @module @automation-suite/ui-plc-source/client
  */
 
 import { Panel } from './Panel.jsx'
@@ -28,7 +28,7 @@ import { NS, en, zh } from './locales.js'
 import { nextMention } from '../model'
 
 /** Package name. Also the tab-type id and the body seat's key — they must agree. */
-export const ID = 'dsh-ui-plc-source'
+export const ID = '@automation-suite/ui-plc-source'
 
 /** A fresh kind, so the type cannot collide with the shipped files/browser/terminal types. */
 const KIND = 'plc-source'

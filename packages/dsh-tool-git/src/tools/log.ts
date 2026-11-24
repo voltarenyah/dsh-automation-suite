@@ -1,6 +1,6 @@
 /**
  * `git_log` — commit history as structured records.
- * @module dsh-tool-git/tools/log
+ * @module @automation-suite/dsh-tool-git/tools/log
  */
 
 import { defineTool } from '@deepseek-ai/dsh-tools'

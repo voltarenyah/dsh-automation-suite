@@ -6,4 +6,4 @@
 # `name` must equal package.json's `name` verbatim.
 - insert:
     - id: tia-todo-bridge
-      name: '@voltarenyah/dsh-tia-todo-bridge'
+      name: '@automation-suite/tia-todo-bridge'

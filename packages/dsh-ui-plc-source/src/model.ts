@@ -13,7 +13,7 @@
  * defensive: a missing or mistyped field degrades a row, and a corrupt document
  * becomes `{ ok: false }` rather than an exception.
  *
- * @module dsh-ui-plc-source/model
+ * @module @automation-suite/ui-plc-source/model
  */
 
 /** Directory the tab reads, relative to the session workspace root. */

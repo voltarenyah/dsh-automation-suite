@@ -11,11 +11,11 @@
  * Class names stay under the `pd-` prefix and the selectors under `.pd-root`
  * so nothing leaks into the shell.
  *
- * @module dsh-ui-project-dashboard/client/style
+ * @module @automation-suite/ui-project-dashboard/client/style
  */
 
 /** Identifier of the injected stylesheet, unique across the page. */
-export const TAG_ID = 'dsh-ui-project-dashboard/page.css'
+export const TAG_ID = '@automation-suite/ui-project-dashboard/page.css'
 
 export const CSS = `
 .pd-root {

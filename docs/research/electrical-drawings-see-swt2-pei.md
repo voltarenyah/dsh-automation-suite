@@ -389,7 +389,7 @@ table         { kind: cable|terminal|channel|connector|bom, rows[] }  // §7.2 �
 
 ### 9.1 与现有插件的关系
 
-仓库里已有三块相邻能力：`dsh-engineering-context`（工程事实：TIA 项目、源树、设备）、`dsh-engineering-graph`（设备知识库：块逻辑/SQLite 图谱）、`ui-*`（界面）。这份图纸要插进去，最自然的定位是**"第四个事实源"**：
+仓库里已有三块相邻能力：`@automation-suite/engineering-context`（工程事实：TIA 项目、源树、设备）、`@automation-suite/engineering-graph`（设备知识库：块逻辑/SQLite 图谱）、`ui-*`（界面）。这份图纸要插进去，最自然的定位是**"第四个事实源"**：
 
 ```
               TIA 项目（.ap17）          电气图纸（PDF，本项目）

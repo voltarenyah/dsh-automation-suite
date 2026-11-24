@@ -16,7 +16,7 @@
 ![platform](https://img.shields.io/badge/TIA%20plugin-Windows%20only-0078D4?logo=windows&logoColor=white)
 
 > ⚠️ **非官方项目**：与 DeepSeek（DeepSeek Harness 的发行方）无关，与 Siemens 也无隶属关系。
-> `dsh-tool-git` 是上游 [`lxj808624/dsh-tool-git`](https://github.com/lxj808624/dsh-tool-git)
+> `@automation-suite/dsh-tool-git` 是上游 [`lxj808624/dsh-tool-git`](https://github.com/lxj808624/dsh-tool-git)
 > 的 vendor 副本（MIT），出处与差异见 [§15](#15-许可证与第三方)。
 
 ---
@@ -172,7 +172,7 @@ PLC 对象增删改、监视表与软件单元、F 相关服务、编译与关�
 | **工控软件接口插件族** | 把工控软件暴露的能力整体变成 LLM 的能力范围（含配套文档） | 🟡 **V17**（块·UDT·标签表）；在线/硬件组态等更多能力与 V18+ 待补（不拆包，由 preset 装配，D31）。**多成员形态已定**：一族多包、插件页 bundle 开关激活、同一时刻只激活一个、切换后重启客户端（**D36**，落地清单见 [`docs/tia-version-members.md`](docs/tia-version-members.md)） |
 | **工程上下文插件** | 管住"现在谈的是哪个工程、它在 workspace 的哪里、它和 TIA 是否一致" | 🟡 **部分实现**：10 个工具（168 项单测）—— `create_engineering_project` 把 TIA 工程接进 workspace（按 `source_project` 的类型打开 `.ap17` 或取回 `.zap17`，解包到 `tia/`）、读源文件树、经【缝 B】逐设备触发知识图谱建库；`project_status` 只读账本/清单/git/锁并给出下一步；`project_sync` 用 PLC checksum 快路径 + 逐对象指纹/归一化哈希慢路径，只把差异提升进 SOURCE，**不再提交**；`project_commit` 用调用方给的信息把这次同步提交成历史（`message` 必填、默认只给计划、插件补 trailer，可选 `reference` 记跨项目出处）；`workspace_describe` 不打开 TIA 就能描述任意 workspace（索引/清单/证据/图谱/git）；`import_preflight` 在导入前报告语言 culture、依赖顺序、同名对象。**同步与提交分两步**是为了让"变了什么"先被读到、提交信息由人确认（D30）；`project_diff` 走独立入口。图谱缺席/引擎未构建只报"图谱未建成"，不让流程失败。DRAFT/REMOTE 与变更台账未做。P0 的工程注册表与 P1 的内部 git 版本层**已删除**（该包 D22；现行版本管理见 D26）。**已登记进蓝图**（`--dump-config` 行数见根 `AGENTS.md` §4，DSH 0.2.1-rc.2） |
 | **工程知识图谱插件** | 准确翻译 XML 中的 PLC 语法，XML → 图数据库 → 按需给出工程细节 | 🟡 **部分实现**：Simatic ML → 图 → SQLite 已通（7 个真实 fixture 出 72 节点 / 153 边，覆盖 15 种节点种类），引擎协议 + 8 个工具 + `knowledgeGraph` 服务（111 项单测，含经真实引擎的端到端）；**被族 2 的 `create_engineering_project` 调用**（该包 D25）。`knowledge_workspace` 让模型自己读到库路径、`knowledge_query` 的 `db_path` 因此可省略，四个下钻工具（search / block / network / variable usage，TS 侧固定 SQL，零 C# 改动）把程序逻辑读成有界答复（**D24** 两阶段）。**新鲜度/增量、兼容层未做**。**已登记进蓝图** |
-| **TIA 操作可见性（Todo）** | 让输入框上方的 Todo 面板在 TIA/版本操作期间总有内容、结束后不残留转圈 | ✅ 2026-11-07：leader/auditor persona 写死 `TIA · <tool> · <object>` 协议 + `dsh-tia-todo-bridge` 兜底（模型没写清单时补项并自动结束）；见 [D34](docs/decisions.md) 与 profile README「TIA 操作的 Todo 清单」 |
+| **TIA 操作可见性（Todo）** | 让输入框上方的 Todo 面板在 TIA/版本操作期间总有内容、结束后不残留转圈 | ✅ 2026-11-07：leader/auditor persona 写死 `TIA · <tool> · <object>` 协议 + `@automation-suite/tia-todo-bridge` 兜底（模型没写清单时补项并自动结束）；见 [D34](docs/decisions.md) 与 profile README「TIA 操作的 Todo 清单」 |
 
 逐项进度、缺口与验收口径见 [`docs/roadmap.md`](docs/roadmap.md)；
 已定的取舍见 [`docs/decisions.md`](docs/decisions.md)，**18 条待决策问题在
@@ -185,19 +185,19 @@ PLC 对象增删改、监视表与软件单元、F 相关服务、编译与关�
 
 | 交付物 | 类型 | 版本 | 提供什么 |
 |---|---|---|---|
-| `@voltarenyah/dsh-tia-openness-v17-min` | 插件 bundle | 0.1.0 | **三个 Loader 行**：宿主行 = TIA 控制器子进程 + `engineeringAccess` 服务 + 随包 skill；`/tools` 行 = **39 个工具**：工程生命周期与工程数据 8（`create_project` / `save_project` / `archive_project` / `project_info` / `project_languages` / `project_texts` / `update_project` / `portal_settings`）、PLC 设备数据 9（`list_plc_objects` / `create_plc_objects` / `delete_plc_objects` / `write_tags` / `set_block_attributes` / `protect_blocks` / `generate_source` / `watch_and_force_tables` / `software_units`）、F 相关 3（`safety_status` / `set_safety_settings` / `safety_signatures`）、在线会话 4（`online_targets` / `online_connect` / `online_status` / `online_disconnect`）、下载 1（`download`）、接管 UI 工程 1（`adopt_open_project`）、硬件组态 5（`export_hardware_config` / `hardware_inventory` / `hardware_configuration` / `hardware_parameters` / `hardware_view`）、块编辑器 1（`show_blocks_in_editor`：在 TIA 的块编辑器里批量打开块，需要带界面的 TIA Portal）、项目库 1（`project_library`：类型/版本/主副本的浏览、导出、发布、实例化与组织）、块读写主线 5 + `controller_status`；`/commands` 行 = **7 个 `/tia-…` 斜线指令**（`open` / `save` / `compile` / `close` / `info` / `find` / `status`，绕过模型直接在对话框执行）。工具行由 preset 声明（`leader` 有、`expert` 没有）；命令行独立于工具行，只 inject `commands` + `tiaOpennessRuntime`。v0.2 的 20 个新操作**尚未在真实项目上验证**（见该包 `docs/VERIFICATION-PLAN.md`）；控制器白名单另有 2 个**服务专用**操作（`PlcChecksum` / `SyncScan`，供工程上下文插件做版本取证，不注册模型工具），操作总数 40。2026-10-22 真机验证：`PlcChecksum` 3.2 s；`SyncScan` 全量 1376 文件 / 121–231 s，同账本第二次 `unchanged` 1.6–3.0 s，1 块变化的慢路径 48.3 s（导出 1 块 + 7 标签表）；可见窗口打开工程 68–197 s（headless 会挂） |
-| `dsh-tool-git` | 插件 bundle（vendor） | 0.1.3 | **12 个工具**：`git_status` / `git_diff` / `git_log` / `git_branch` / `git_stage` / `git_commit` / `git_stash` / `git_show` / `git_fetch` / `git_pull` / `git_remote` / `git_checkout`；外加破坏性命令闸门与 **`gitContext` 服务**。模型面工具已拆到 `dsh-tool-git/tools`，**只挂 `leader`**；`auditor` / `expert` 看不到。服务按显式根目录解析，模型不再传 `repoDir` |
-| `@voltarenyah/dsh-engineering-context` | 插件 bundle | 0.1.0 | **10 个工具、四个 Loader 入口**：`.`（`create_engineering_project` 按 `source_project` 的类型打开 `.ap17` 或取回 `.zap17`（解包目标同样是 `<workspace>/tia/<workspace 名>/`），再另存/重建到 `<workspace>/tia/<workspace 名>/`、把源文件树重建到 `<workspace>/source/<device>/`、再经【缝 B】逐设备调用图谱插件的 `knowledgeGraph.ingestDevice`；`project_status` 只读：哪个 PLC、账本/清单在不在、git 状态、锁、下一步动作；`project_sync` TIA → STAGE → SOURCE，**不提交**；`project_commit` 用调用方给的信息提交设备目录，`message` 必填、默认只给计划、可选 `reference` 追加 `Reference:` trailer；`workspace_describe` 不打开 TIA 描述任意 workspace；`import_preflight` 导入前预检）、`/diff`（`project_diff`：块级结构差异，支持 `to: "WORKTREE"`）、`/status`（`project_status` + `workspace_describe` + `import_preflight` + `handoff_status`，只读）、`/handoff`（`handoff_export` / `handoff_import` / `handoff_status`，只挂 `auditor`）。同步的相等性来自 **PLC 级 checksum**（快路径）+ **逐对象指纹/归一化哈希**（慢路径）：账本 `source/<device>/_evidence.json` 是权威、`_manifest.json` 是派生清单，两份文档由**同一次 `SyncScan` 调用**写出；STAGE 与锁落在 `<workspace>/.dsh/local/`（不进 git），`.gitignore` 追加 `tia/`、`knowledge/**/*.db*`、`.dsh/local/`，交接首次导出再追加 `handoff/`。提交信息尾部由插件追加 `Tia-Op` / `Tia-Checksum` / `Tia-State` trailer（以及可选的 `Reference:`）。**同步与提交分成两步**（D30）：`project_sync` 只写树并返回 `pending.paths` + `pending.suggestedMessage`，`project_commit` 才写历史。**未实现**：DRAFT/REMOTE 与逐块指纹锁（S3）、变更台账。**已删除**：P0 的工程注册表与 P1 的内部 git 版本层，以及 `eng_status` / `eng_project` / `eng_scope` / `eng_version` 四个工具（该包 D22）。**没有宿主面资源**：`.` 只挂 `auditor`，`/diff` 挂 `auditor` + `expert`，`/status` 挂 `leader`（四个工具都只读），`/handoff` 只挂 `auditor`（导出/导入/状态） |
-| `@voltarenyah/dsh-engineering-graph` | 插件 bundle | 0.1.0 | **两个 Loader 行**：宿主行 = C# 引擎子进程 + `knowledgeGraph` 服务（供族 2 的 `create_engineering_project` 逐设备调用）；`/tools` 行 = **9 个工具**：5 个共享工具（`knowledge_workspace` / `knowledge_schema` / `knowledge_ingest` / `knowledge_update` / `knowledge_query`）+ 4 个下钻工具（`knowledge_search` / `knowledge_block` / `knowledge_network` / `knowledge_variable_usage`，TS 侧固定 SQL，零 C# 改动）。`knowledge_update` 是增量入口：按 `source_components` 替换变更组件并重扫一跳依赖闭包，整批一个事务；没有 provenance / 超上限 / 类型或标签表变化时由调用方回退全量。`includeIngest: false` 去掉两个写工具，`includeDrilldown` 三档（`none` / `inspect` / `all`）：`leader` 用 `inspect`、`expert` 用 `all`—— Simatic ML XML → 属性图 → SQLite，引擎以 net10 子进程运行（`engine/`；发布包为 self-contained 单文件，不要求用户安装 .NET）。**纯 SCL 块按 `REGION` 分段**（**D27**）。`knowledge_workspace` 不碰引擎：它读会话工作目录，报出工程身份、每台设备的库路径/大小/mtime、`device_dir` 与 **graphFreshness**（sidecar checksum vs `_evidence.json`），所以 `knowledge_query` 的 `db_path` 可以省略（单库自动解析，零库/多库拒绝并给候选，**D24**）。**未实现**：按需下钻工具（某个变量用法）、兼容层。数据库位置与目录约定见 [`docs/roadmap.md`](docs/roadmap.md) §4 |
-| `dsh-ui-plc-source` | 插件 bundle（**浏览器半侧 + 一个宿主 pre-step 监听**） | 0.1.0 | **一个 Loader 行 + 一个右侧栏 tab 类型**：在 dsh-web 右侧栏（Files / Terminal / Browser 之后）增加 **PLC Blocks**。读 `<workspace>/source/<device>/_manifest.json`，把每个对象**平铺**成一行（类型徽章 / 名称 / 编号 / 语言 / 大小 / 写后校验标记），可按 **device** 与 **simaticType** 筛选、按名称或编号搜索；TIA 拒绝导出的对象（`failures[]`）同样列成一行（标「拒绝」、可悬停看原因）。**单击是选中**（选中态暂不触发动作），**右键菜单**里才打开源文件（走既有文档预览）或「在对话里提及」（把 `@'块名'` 插进输入框；宿主半侧在 `agent/pre-step` 把该块的 device/类型/编号/语言/文件路径补进 prompt）。筛选/搜索/选中/滚动位置与已读数据放在 slot store 里，切走再切回不丢、也不重读清单。**界面文字跟随 DSH 的语言设置**（设置 → 通用 → 语言，中/英），切换时不用刷新，已打开的 tab chip 也会变。宿主半侧只做这件事（`agent/pre-step` 监听，无工具、无子进程）；清单不可读时该 device 退回目录列举。可行性与机制见 [`docs/ui-plugins.md`](docs/ui-plugins.md)，本插件的计划与验收见 [`docs/ui-plugins-plc-blocks-plan.md`](docs/ui-plugins-plc-blocks-plan.md) |
-| `dsh-ui-tia-console` | 插件 bundle（**仅浏览器半侧**） | 0.1.0 | **一个 Loader 行 + 输入框上方的 TIA 控制台**：显示「无项目 / 正在打开 / 已打开 · 项目名 / 正在保存 / 正在编译（已用时长）/ 正在关闭 / 不可用」，并直接提供 **打开 / 保存 / 编译 / 关闭 / 刷新** 五个按钮。按钮 dispatch 现有 `/tia-*` 指令，状态从会话的 `command/*`、`tool/*` 事件折叠而来 —— 模型调用、斜线指令、按钮三种触发都实时反映；空会话也可见（它挂在 `conversation.input.dock`，不依赖时间线）。刷新用 `/tia-info` 与控制器对齐。带展开面板（项目路径、最近编译、最近错误、最近结果）。**Step 1 边界**：状态按会话折叠，其他会话或外部关闭 TIA 后需点刷新校准；全局状态服务是下一步。 |
-| `@voltarenyah/dsh-tia-todo-bridge` | 插件 bundle（**宿主面兜底**） | 0.1.0 | **一个 Loader 行，不注册工具、不注册服务**：监听 `tools/execute` / `tools/post-execute` 与 `session/event`。模型没写 Todo 清单时，把 `open_project` / `export_blocks` / `import_blocks` / `compile_plc` / `project_diff` / `create_engineering_project` / `knowledge_ingest` 等 32 个 TIA 与版本操作补成 `TIA · <tool> · <object>` 的 `in_progress` 项，工具返回即改 `completed`（失败加 `（失败）`）；模型自己写了清单则**完全不改**。纯查询与 `subagent` 不自动建项。详见 [包 README](packages/dsh-tia-todo-bridge/README.md) 与 profile README「TIA 操作的 Todo 清单」 |
-| `dsh-ui-versions` | 插件 bundle（**仅浏览器半侧**） | 0.1.0 | **一个 Loader 行 + 一个右侧栏 tab 类型**：在 dsh-web 右侧栏增加 **Versions**（排在 PLC Blocks 之后）。读 `<workspace>/.dsh/versions-view.json` —— 这份派生视图由 `@voltarenyah/dsh-engineering-context` 在 `project_version_reindex`、提交、`project_version_annotate` 之后写出，插件本身不写它、不新增 HTTP 路由、也不在渲染进程里开 SQLite。上半部是 **VERSION HISTORY**：每行 10 位 sha / subject / 日期 / `checksumPrev → checksum` / `N block(s)` 或 `Baseline`；展开后列出该版本的变更事件（变更类型徽章、块 key 按钮、`+added -removed`、face 芯片、每个变更 face 一行 10 位指纹）；点块 key 在下方 **BLOCK TIMELINE** 看该块的跨版本轨迹（seq / sha / 日期 / subject / face 芯片 / 指纹 / Reason / Problem）。可按提交号、标题、意图、块名、原因搜索，并按 face、problem 过滤；缺失的指纹显示 `—`。**宽度自适应**：面板 ≥ 760px 才分两栏，< 560px 逐行堆叠（CSS 容器查询，看的是面板宽度不是窗口宽度）。颜色只用宿主语义 token，唯一的彩色是 4px 圆点（warning = modified，error = removed）。状态：无工作区 / 无视图（可重试）/ 读取失败（带 code，可重试）/ 无匹配 / 加载中。**界面文字跟随 DSH 的语言设置**（设置 → 通用 → 语言，中/英），切换不用刷新。宿主半侧只有一行空 `apply()` 打 info 日志 |
-| `dsh-ui-hardware` | 插件 bundle（**仅浏览器半侧**） | 0.1.0 | **一个 Loader 行 + 一个右侧栏 tab 类型**：在右侧栏增加 **Hardware**，把 `.dsh/hardware-view.json` 渲染成「工程机架」——设备按角色分组、槽位画成机位条、选中槽位看型号/订货号/地址窗口，另有网络与信号映射视图。数据由 TIA 插件的 `hardware_view` 工具写入 |
-| `dsh-ui-changes` | 插件 bundle（**浏览器半侧 + 一条只读路由**） | 0.1.0 | **一个 Loader 行 + 右侧栏 Changes tab**：按会话 `header.cwd` 经 `gitContext` 读真实 git 状态，列出未提交文件与每文件 `+N/−M`，面板可见时每 5 s 刷新；宿主路由 `GET /changes/api/status` 只回路径/计数，不写工作区、不提交。**P1 只读；提交区 P2 未实现** |
-| `dsh-ui-project-dashboard` | 插件 bundle（**浏览器半侧 + 标签路由**） | 0.1.0 | **一个 Loader 行 + 全局工作区面板**：在 Plugins 上方提供 workspace 行、标签/搜索/归档，宿主半侧维护 `<DSH_HOME>/storages/project-dashboard/tags.json` 并提供 loopback-only 标签路由 |
-| `dsh-ui-prompt-guide` | 插件 bundle（**浏览器半侧 + 宿主静态路由**） | 0.1.0 | **一个 Loader 行 + 主栏整页帮助页**：左侧栏「Plugins」下面增加 **提示词引导（Prompt Guide）**，点开是 9 个分类、32 条可搜索的 Prompt（中英双语，每条带「什么时候用 / 会发生什么 / 由哪个工具或子 agent 执行」）。卡片可复制，或「在新会话中使用」把 Prompt 填进输入框（不自动发送）。内容在 `src/guide.ts`，宿主经 `/prompt-guide/api/guide` 发出；页面是静态 `page/`，改文案不用重建客户端半侧。宿主路由只发自带文案、不读用户数据，并带最小 trust fence（`Sec-Fetch-Site: cross-site` 或 Origin/Host 不一致直接 403）。机制与验收见该包 README |
-| `dsh-ui-brandmark` | 插件 bundle（**仅浏览器半侧**） | 0.1.0 | **一个 Loader 行 + 首页 hero 品牌**：把 DSH 首页的「Into the Unknown / Preview / 鱼形图标」换成发行版自己的「`dsh-automation-suite` / `TIA-V17` / 桌面壳 app 图标」。文案取自 `conversation` 命名空间的 `hero.headline` / `hero.preview`，官方没有配置项；插件在客户端 locale 服务的 `translate` 上只拦这两个 key，其余原样落回字典，装/卸各 `publish` 一次触发重渲染。图标占用单座 `conversation.hero.brand.mark`，注册 occupant 即替换默认鱼形 fallback。两个字符串在 `src/model.ts`。内部 API 不是官方扩展点，失效时只告警、保留原首页 |
+| `@automation-suite/tia-openness-v17` | 插件 bundle | 0.1.0 | **三个 Loader 行**：宿主行 = TIA 控制器子进程 + `engineeringAccess` 服务 + 随包 skill；`/tools` 行 = **39 个工具**：工程生命周期与工程数据 8（`create_project` / `save_project` / `archive_project` / `project_info` / `project_languages` / `project_texts` / `update_project` / `portal_settings`）、PLC 设备数据 9（`list_plc_objects` / `create_plc_objects` / `delete_plc_objects` / `write_tags` / `set_block_attributes` / `protect_blocks` / `generate_source` / `watch_and_force_tables` / `software_units`）、F 相关 3（`safety_status` / `set_safety_settings` / `safety_signatures`）、在线会话 4（`online_targets` / `online_connect` / `online_status` / `online_disconnect`）、下载 1（`download`）、接管 UI 工程 1（`adopt_open_project`）、硬件组态 5（`export_hardware_config` / `hardware_inventory` / `hardware_configuration` / `hardware_parameters` / `hardware_view`）、块编辑器 1（`show_blocks_in_editor`：在 TIA 的块编辑器里批量打开块，需要带界面的 TIA Portal）、项目库 1（`project_library`：类型/版本/主副本的浏览、导出、发布、实例化与组织）、块读写主线 5 + `controller_status`；`/commands` 行 = **7 个 `/tia-…` 斜线指令**（`open` / `save` / `compile` / `close` / `info` / `find` / `status`，绕过模型直接在对话框执行）。工具行由 preset 声明（`leader` 有、`expert` 没有）；命令行独立于工具行，只 inject `commands` + `tiaOpennessRuntime`。v0.2 的 20 个新操作**尚未在真实项目上验证**（见该包 `docs/VERIFICATION-PLAN.md`）；控制器白名单另有 2 个**服务专用**操作（`PlcChecksum` / `SyncScan`，供工程上下文插件做版本取证，不注册模型工具），操作总数 40。2026-10-22 真机验证：`PlcChecksum` 3.2 s；`SyncScan` 全量 1376 文件 / 121–231 s，同账本第二次 `unchanged` 1.6–3.0 s，1 块变化的慢路径 48.3 s（导出 1 块 + 7 标签表）；可见窗口打开工程 68–197 s（headless 会挂） |
+| `@automation-suite/dsh-tool-git` | 插件 bundle（vendor） | 0.1.3 | **12 个工具**：`git_status` / `git_diff` / `git_log` / `git_branch` / `git_stage` / `git_commit` / `git_stash` / `git_show` / `git_fetch` / `git_pull` / `git_remote` / `git_checkout`；外加破坏性命令闸门与 **`gitContext` 服务**。模型面工具已拆到 `@automation-suite/dsh-tool-git/tools`，**只挂 `leader`**；`auditor` / `expert` 看不到。服务按显式根目录解析，模型不再传 `repoDir` |
+| `@automation-suite/engineering-context` | 插件 bundle | 0.1.0 | **10 个工具、四个 Loader 入口**：`.`（`create_engineering_project` 按 `source_project` 的类型打开 `.ap17` 或取回 `.zap17`（解包目标同样是 `<workspace>/tia/<workspace 名>/`），再另存/重建到 `<workspace>/tia/<workspace 名>/`、把源文件树重建到 `<workspace>/source/<device>/`、再经【缝 B】逐设备调用图谱插件的 `knowledgeGraph.ingestDevice`；`project_status` 只读：哪个 PLC、账本/清单在不在、git 状态、锁、下一步动作；`project_sync` TIA → STAGE → SOURCE，**不提交**；`project_commit` 用调用方给的信息提交设备目录，`message` 必填、默认只给计划、可选 `reference` 追加 `Reference:` trailer；`workspace_describe` 不打开 TIA 描述任意 workspace；`import_preflight` 导入前预检）、`/diff`（`project_diff`：块级结构差异，支持 `to: "WORKTREE"`）、`/status`（`project_status` + `workspace_describe` + `import_preflight` + `handoff_status`，只读）、`/handoff`（`handoff_export` / `handoff_import` / `handoff_status`，只挂 `auditor`）。同步的相等性来自 **PLC 级 checksum**（快路径）+ **逐对象指纹/归一化哈希**（慢路径）：账本 `source/<device>/_evidence.json` 是权威、`_manifest.json` 是派生清单，两份文档由**同一次 `SyncScan` 调用**写出；STAGE 与锁落在 `<workspace>/.dsh/local/`（不进 git），`.gitignore` 追加 `tia/`、`knowledge/**/*.db*`、`.dsh/local/`，交接首次导出再追加 `handoff/`。提交信息尾部由插件追加 `Tia-Op` / `Tia-Checksum` / `Tia-State` trailer（以及可选的 `Reference:`）。**同步与提交分成两步**（D30）：`project_sync` 只写树并返回 `pending.paths` + `pending.suggestedMessage`，`project_commit` 才写历史。**未实现**：DRAFT/REMOTE 与逐块指纹锁（S3）、变更台账。**已删除**：P0 的工程注册表与 P1 的内部 git 版本层，以及 `eng_status` / `eng_project` / `eng_scope` / `eng_version` 四个工具（该包 D22）。**没有宿主面资源**：`.` 只挂 `auditor`，`/diff` 挂 `auditor` + `expert`，`/status` 挂 `leader`（四个工具都只读），`/handoff` 只挂 `auditor`（导出/导入/状态） |
+| `@automation-suite/engineering-graph` | 插件 bundle | 0.1.0 | **两个 Loader 行**：宿主行 = C# 引擎子进程 + `knowledgeGraph` 服务（供族 2 的 `create_engineering_project` 逐设备调用）；`/tools` 行 = **9 个工具**：5 个共享工具（`knowledge_workspace` / `knowledge_schema` / `knowledge_ingest` / `knowledge_update` / `knowledge_query`）+ 4 个下钻工具（`knowledge_search` / `knowledge_block` / `knowledge_network` / `knowledge_variable_usage`，TS 侧固定 SQL，零 C# 改动）。`knowledge_update` 是增量入口：按 `source_components` 替换变更组件并重扫一跳依赖闭包，整批一个事务；没有 provenance / 超上限 / 类型或标签表变化时由调用方回退全量。`includeIngest: false` 去掉两个写工具，`includeDrilldown` 三档（`none` / `inspect` / `all`）：`leader` 用 `inspect`、`expert` 用 `all`—— Simatic ML XML → 属性图 → SQLite，引擎以 net10 子进程运行（`engine/`；发布包为 self-contained 单文件，不要求用户安装 .NET）。**纯 SCL 块按 `REGION` 分段**（**D27**）。`knowledge_workspace` 不碰引擎：它读会话工作目录，报出工程身份、每台设备的库路径/大小/mtime、`device_dir` 与 **graphFreshness**（sidecar checksum vs `_evidence.json`），所以 `knowledge_query` 的 `db_path` 可以省略（单库自动解析，零库/多库拒绝并给候选，**D24**）。**未实现**：按需下钻工具（某个变量用法）、兼容层。数据库位置与目录约定见 [`docs/roadmap.md`](docs/roadmap.md) §4 |
+| `@automation-suite/ui-plc-source` | 插件 bundle（**浏览器半侧 + 一个宿主 pre-step 监听**） | 0.1.0 | **一个 Loader 行 + 一个右侧栏 tab 类型**：在 dsh-web 右侧栏（Files / Terminal / Browser 之后）增加 **PLC Blocks**。读 `<workspace>/source/<device>/_manifest.json`，把每个对象**平铺**成一行（类型徽章 / 名称 / 编号 / 语言 / 大小 / 写后校验标记），可按 **device** 与 **simaticType** 筛选、按名称或编号搜索；TIA 拒绝导出的对象（`failures[]`）同样列成一行（标「拒绝」、可悬停看原因）。**单击是选中**（选中态暂不触发动作），**右键菜单**里才打开源文件（走既有文档预览）或「在对话里提及」（把 `@'块名'` 插进输入框；宿主半侧在 `agent/pre-step` 把该块的 device/类型/编号/语言/文件路径补进 prompt）。筛选/搜索/选中/滚动位置与已读数据放在 slot store 里，切走再切回不丢、也不重读清单。**界面文字跟随 DSH 的语言设置**（设置 → 通用 → 语言，中/英），切换时不用刷新，已打开的 tab chip 也会变。宿主半侧只做这件事（`agent/pre-step` 监听，无工具、无子进程）；清单不可读时该 device 退回目录列举。可行性与机制见 [`docs/ui-plugins.md`](docs/ui-plugins.md)，本插件的计划与验收见 [`docs/ui-plugins-plc-blocks-plan.md`](docs/ui-plugins-plc-blocks-plan.md) |
+| `@automation-suite/ui-tia-console` | 插件 bundle（**仅浏览器半侧**） | 0.1.0 | **一个 Loader 行 + 输入框上方的 TIA 控制台**：显示「无项目 / 正在打开 / 已打开 · 项目名 / 正在保存 / 正在编译（已用时长）/ 正在关闭 / 不可用」，并直接提供 **打开 / 保存 / 编译 / 关闭 / 刷新** 五个按钮。按钮 dispatch 现有 `/tia-*` 指令，状态从会话的 `command/*`、`tool/*` 事件折叠而来 —— 模型调用、斜线指令、按钮三种触发都实时反映；空会话也可见（它挂在 `conversation.input.dock`，不依赖时间线）。刷新用 `/tia-info` 与控制器对齐。带展开面板（项目路径、最近编译、最近错误、最近结果）。**Step 1 边界**：状态按会话折叠，其他会话或外部关闭 TIA 后需点刷新校准；全局状态服务是下一步。 |
+| `@automation-suite/tia-todo-bridge` | 插件 bundle（**宿主面兜底**） | 0.1.0 | **一个 Loader 行，不注册工具、不注册服务**：监听 `tools/execute` / `tools/post-execute` 与 `session/event`。模型没写 Todo 清单时，把 `open_project` / `export_blocks` / `import_blocks` / `compile_plc` / `project_diff` / `create_engineering_project` / `knowledge_ingest` 等 32 个 TIA 与版本操作补成 `TIA · <tool> · <object>` 的 `in_progress` 项，工具返回即改 `completed`（失败加 `（失败）`）；模型自己写了清单则**完全不改**。纯查询与 `subagent` 不自动建项。详见 [包 README](packages/dsh-tia-todo-bridge/README.md) 与 profile README「TIA 操作的 Todo 清单」 |
+| `@automation-suite/ui-versions` | 插件 bundle（**仅浏览器半侧**） | 0.1.0 | **一个 Loader 行 + 一个右侧栏 tab 类型**：在 dsh-web 右侧栏增加 **Versions**（排在 PLC Blocks 之后）。读 `<workspace>/.dsh/versions-view.json` —— 这份派生视图由 `@automation-suite/engineering-context` 在 `project_version_reindex`、提交、`project_version_annotate` 之后写出，插件本身不写它、不新增 HTTP 路由、也不在渲染进程里开 SQLite。上半部是 **VERSION HISTORY**：每行 10 位 sha / subject / 日期 / `checksumPrev → checksum` / `N block(s)` 或 `Baseline`；展开后列出该版本的变更事件（变更类型徽章、块 key 按钮、`+added -removed`、face 芯片、每个变更 face 一行 10 位指纹）；点块 key 在下方 **BLOCK TIMELINE** 看该块的跨版本轨迹（seq / sha / 日期 / subject / face 芯片 / 指纹 / Reason / Problem）。可按提交号、标题、意图、块名、原因搜索，并按 face、problem 过滤；缺失的指纹显示 `—`。**宽度自适应**：面板 ≥ 760px 才分两栏，< 560px 逐行堆叠（CSS 容器查询，看的是面板宽度不是窗口宽度）。颜色只用宿主语义 token，唯一的彩色是 4px 圆点（warning = modified，error = removed）。状态：无工作区 / 无视图（可重试）/ 读取失败（带 code，可重试）/ 无匹配 / 加载中。**界面文字跟随 DSH 的语言设置**（设置 → 通用 → 语言，中/英），切换不用刷新。宿主半侧只有一行空 `apply()` 打 info 日志 |
+| `@automation-suite/ui-hardware` | 插件 bundle（**仅浏览器半侧**） | 0.1.0 | **一个 Loader 行 + 一个右侧栏 tab 类型**：在右侧栏增加 **Hardware**，把 `.dsh/hardware-view.json` 渲染成「工程机架」——设备按角色分组、槽位画成机位条、选中槽位看型号/订货号/地址窗口，另有网络与信号映射视图。数据由 TIA 插件的 `hardware_view` 工具写入 |
+| `@automation-suite/ui-changes` | 插件 bundle（**浏览器半侧 + 一条只读路由**） | 0.1.0 | **一个 Loader 行 + 右侧栏 Changes tab**：按会话 `header.cwd` 经 `gitContext` 读真实 git 状态，列出未提交文件与每文件 `+N/−M`，面板可见时每 5 s 刷新；宿主路由 `GET /changes/api/status` 只回路径/计数，不写工作区、不提交。**P1 只读；提交区 P2 未实现** |
+| `@automation-suite/ui-project-dashboard` | 插件 bundle（**浏览器半侧 + 标签路由**） | 0.1.0 | **一个 Loader 行 + 全局工作区面板**：在 Plugins 上方提供 workspace 行、标签/搜索/归档，宿主半侧维护 `<DSH_HOME>/storages/project-dashboard/tags.json` 并提供 loopback-only 标签路由 |
+| `@automation-suite/ui-prompt-guide` | 插件 bundle（**浏览器半侧 + 宿主静态路由**） | 0.1.0 | **一个 Loader 行 + 主栏整页帮助页**：左侧栏「Plugins」下面增加 **提示词引导（Prompt Guide）**，点开是 9 个分类、32 条可搜索的 Prompt（中英双语，每条带「什么时候用 / 会发生什么 / 由哪个工具或子 agent 执行」）。卡片可复制，或「在新会话中使用」把 Prompt 填进输入框（不自动发送）。内容在 `src/guide.ts`，宿主经 `/prompt-guide/api/guide` 发出；页面是静态 `page/`，改文案不用重建客户端半侧。宿主路由只发自带文案、不读用户数据，并带最小 trust fence（`Sec-Fetch-Site: cross-site` 或 Origin/Host 不一致直接 403）。机制与验收见该包 README |
+| `@automation-suite/ui-brandmark` | 插件 bundle（**仅浏览器半侧**） | 0.1.0 | **一个 Loader 行 + 首页 hero 品牌**：把 DSH 首页的「Into the Unknown / Preview / 鱼形图标」换成发行版自己的「`dsh-automation-suite` / `TIA-V17` / 桌面壳 app 图标」。文案取自 `conversation` 命名空间的 `hero.headline` / `hero.preview`，官方没有配置项；插件在客户端 locale 服务的 `translate` 上只拦这两个 key，其余原样落回字典，装/卸各 `publish` 一次触发重渲染。图标占用单座 `conversation.hero.brand.mark`，注册 occupant 即替换默认鱼形 fallback。两个字符串在 `src/model.ts`。内部 API 不是官方扩展点，失效时只告警、保留原首页 |
 | `profile/dsh-automation-suite` | profile 蓝图 | 0.1.0 | 把官方 Web 组合（`dsh-base` + `dsh-web-app`）与上面的本地插件叠成一个可直接启动的 profile；并声明三个 preset：`leader`（主 agent）、`auditor`（版本管理）与 `expert`（子 agent）。另外挂一行**公共插件** `dsh-opencode-go@0.1.24`（npm 上的 OpenCode Go 提供方 + 设置页，与桌面 profile 同版本；钉死版本、`pnpm-workspace.yaml` 里为它写了 `allowBuilds`；0.1.24 起内置表里带 `deepseek-v4.1-flash`、并把 models.dev 元数据缓存到磁盘，理由见该目录 README 与 D32） |
 | `scripts/start-env.ps1` | 启动器 | — | 一条命令完成"物化 profile + 装插件 + 起服务 + 带 token 开浏览器" |
 | `scripts/clean-build.mjs` | 工具 | — | 只清理 `lib/`、`dist/`，遇链接只 unlink、不递归下降 |
@@ -222,7 +222,7 @@ PLC 对象增删改、监视表与软件单元、F 相关服务、编译与关�
 `knowledge_query` + 四个下钻工具；`project_diff`；只读文件 2：`read` / `read_image`；检索 2：`glob` / `grep`；
 通信 2：`send_message` / `interrupt_agent`；再加审批 1：`ask_user_question`（读源码前必须用它拿用户批准，D29）），
 加上**宿主面仍是全局行的 1 个**（`working_directory`）= **16 个**。
-git 的 12 个模型工具已从宿主行拆到 `dsh-tool-git/tools`，只挂 `leader`，所以 `expert` 与 `auditor`
+git 的 12 个模型工具已从宿主行拆到 `@automation-suite/dsh-tool-git/tools`，只挂 `leader`，所以 `expert` 与 `auditor`
 都看不到它们。
 
 两层 agent 的形态与理由见 [§8.1](#81-发行版政策层注入系统提示词) 与
@@ -246,19 +246,19 @@ DSH 的加载分两条独立路径，**两者都靠包名**：
 # packages/dsh-tool-git/cordis.patch.yml      （无 scope，不需要引号）
 - insert:
     - id: tool-git
-      name: dsh-tool-git
+      name: '@automation-suite/dsh-tool-git'
 
 # packages/dsh-tia-openness-v17-min/cordis.patch.yml
 - insert:
-    - id: tia-openness-v17-min
-      name: '@voltarenyah/dsh-tia-openness-v17-min'
+    - id: tia-openness-v17
+      name: '@automation-suite/tia-openness-v17'
 ```
 
 蓝图的 `dsh.profile.bundles` 决定**叠加顺序**（后面的层可以覆盖前面的层），
 profile 自己的 `cordis.patch.yml` 是**用户层**，在所有 bundle 层之后应用：
 
 ```
-dsh-base  →  dsh-web-app  →  tia-openness-v17-min  →  dsh-tool-git  →  profile/cordis.patch.yml
+dsh-base  →  dsh-web-app  →  tia-openness-v17  →  @automation-suite/dsh-tool-git  →  profile/cordis.patch.yml
 （基础层）    （Web 应用层）  （插件层，只插自己的行）    （插件层）        （环境相关设置写这里）
 ```
 
@@ -271,7 +271,7 @@ Openness 不能直接从 Node 调用，所以插件分成两层，中间是**一
 
 ```
 ┌─ DSH 宿主进程 (Node) ─────────────────────────────┐
-│  dsh-tia-openness-v17-min (TypeScript)            │
+│  @automation-suite/tia-openness-v17 (TypeScript)            │
 │   • 注册 6 个模型可见工具                          │
 │   • ctx.effect() 拥有 C# 控制器子进程              │
 │   • 请求串行化 / 排队上限 / 硬超时终止与自动重启    │
@@ -351,7 +351,7 @@ Openness 不能直接从 Node 调用，所以插件分成两层，中间是**一
 | 操作系统 | Windows（TIA 插件仅限；在其它平台能加载，但工具调用返回 `controller_not_found`）。Git 插件跨平台 |
 | Node.js | **≥ 22.19**（两个包 `engines` 都这么写）；`pnpm` 与 `dsh` 本机可不在 PATH 上 |
 | DSH | 任何能加载 bundle 的版本 |
-| TIA Portal | 当前成员绑定 **V17**（`dsh-tia-openness-v17-min` 严格绑定，不兼容 V16/V18）。V18 是**另一个族成员**（`@voltarenyah/dsh-tia-openness-v18`，尚未实现）——两个成员同一时刻只能激活一个，在插件页拨 bundle 开关并重启客户端，见 [`docs/tia-version-members.md`](docs/tia-version-members.md) / D36 |
+| TIA Portal | 当前成员绑定 **V17**（`@automation-suite/tia-openness-v17` 严格绑定，不兼容 V16/V18）。V18 是**另一个族成员**（`@automation-suite/tia-openness-v18`，尚未实现）——两个成员同一时刻只能激活一个，在插件页拨 bundle 开关并重启客户端，见 [`docs/tia-version-members.md`](docs/tia-version-members.md) / D36 |
 | Openness DLL | `C:\Program Files\Siemens\Automation\Portal V17\PublicAPI\V17\Siemens.Engineering.dll`（V18 成员对应 `Portal V18\PublicAPI\V18`） |
 | .NET Framework | 4.6.1+（控制器以 **4.8** 为目标框架构建）；进程位数必须 **x64** |
 | Windows 用户组 | 当前用户必须属于本地组 **`Siemens TIA Openness`**（`net localgroup "Siemens TIA Openness"`） |
@@ -588,7 +588,7 @@ plugin_manager(action: "install_bundle", target: "C:\\Users\\Ansel\\dsh-automati
 > **Todo 清单是这套 policy 的一部分**：leader 与 auditor 的 persona 里各有一段 “Todo protocol”——
 > 第一次 TIA 操作前用 `todo_write` 写出 `TIA · <tool_name> · <object>` 的完整计划，操作前标
 > `in_progress`、结果一到立刻标 `completed`；派发给 auditor 的版本操作在 `subagent` 前标
-> `in_progress`、结果消息到达才结束。模型漏写时由 `@voltarenyah/dsh-tia-todo-bridge` 兜底补一行并
+> `in_progress`、结果消息到达才结束。模型漏写时由 `@automation-suite/tia-todo-bridge` 兜底补一行并
 > 自动结束，模型自己写了清单则完全不改。机制、覆盖范围与验收见 profile README 的
 > 「TIA 操作的 Todo 清单」。
 
@@ -640,7 +640,7 @@ plugin_manager(action: "install_bundle", target: "C:\\Users\\Ansel\\dsh-automati
 
 ```yaml
 # ~/.dsh/profiles/dsh-automation-suite/cordis.patch.yml
-- id: tia-openness-v17-min
+- id: tia-openness-v17
   config:
     opennessDir: 'C:\Program Files\Siemens\Automation\Portal V17\PublicAPI\V17'
     requestTimeoutMs: 600000        # 大项目导入/编译实测常需 10 分钟以上，默认 300000 会超时
@@ -684,7 +684,7 @@ plugin_manager(action: "install_bundle", target: "C:\\Users\\Ansel\\dsh-automati
 
 ```
 packages/
-  dsh-tia-openness-v17-min/        TIA Portal V17 Openness 插件（MIT）
+  @automation-suite/tia-openness-v17/        TIA Portal V17 Openness 插件（MIT）
     src/                           插件与协议实现（index/config/controller/protocol/tools/skills/errors）
     controller/                    C# 控制器（x64 / .NET Framework 4.8）
       bin/                         已构建产物 TiaOpennessV17Min.Controller.exe（+ .exe.config）
@@ -692,17 +692,17 @@ packages/
     test/                          node:test 套件（62 项：61 通过 / 1 跳过）
     docs/                          协议、决策记录、真实项目实测、覆盖矩阵、功能测试指南
     test-profile/                  试跑材料：三层验证指南 + 脚本，不改默认 profile
-  dsh-tool-git/                    vendor 副本（上游 lxj808624/dsh-tool-git v0.1.3，MIT）
+  @automation-suite/dsh-tool-git/                    vendor 副本（上游 lxj808624/dsh-tool-git v0.1.3，MIT）
     src/tools/                     12 个 git 工具
     src/safety.ts                  tools/pre-execute 破坏性命令闸门
     tests/                         vitest 套件（33 项）
     README.md / README.zh.md       上游 README（英/中）
-  dsh-engineering-context/         工程上下文插件：**已登记进蓝图；10 个工具（D22 + S2 + 跨 workspace 的 workspace_describe / import_preflight / handoff_status + 交接的 handoff_export / handoff_import）+ 缝 B 的图谱建库（D25）+ 归档取回（D27）+ 交接工作流（该包 D30）**
+  @automation-suite/engineering-context/         工程上下文插件：**已登记进蓝图；10 个工具（D22 + S2 + 跨 workspace 的 workspace_describe / import_preflight / handoff_status + 交接的 handoff_export / handoff_import）+ 缝 B 的图谱建库（D25）+ 归档取回（D27）+ 交接工作流（该包 D30）**
     src/                           作用域解析、缝 A/B、证据账本、锁、shell-free git、4 个工作流工具（tsc → lib/）
     test/                          node:test 套件（168 项，假 TIA/图谱服务 + 真实运行时 schema 校验 + 真实 git 仓库）
     scripts/                       link-dsh-runtime.mjs / tsc.mjs / run-tests.mjs
     docs/                          ARCHITECTURE.md / PATH-RULES.md / decisions.md
-  dsh-engineering-graph/           工程知识图谱插件：**引擎 + 协议 + 8 个工具 + knowledgeGraph 服务，已登记进蓝图**
+  @automation-suite/engineering-graph/           工程知识图谱插件：**引擎 + 协议 + 8 个工具 + knowledgeGraph 服务，已登记进蓝图**
     src/                           NDJSON 协议客户端、4 个知识工具（含本地发现工具）、knowledgeGraph 服务（tsc → lib/）
     test/                          node:test 套件（128 项，含经真实引擎的端到端与传输层故障注入）
     engine/                        C# 引擎（net10 + Microsoft.Data.Sqlite 10；发布时自包含）：Simatic ML → 图 → SQLite
@@ -710,30 +710,30 @@ packages/
                                    build.ps1 构建到 engine/bin（**进 git**：引擎缺席时插件仍加载但每次调用报
                                    engine_not_found，所以随包出货才是"checkout 开箱可用"），fixtures/ 是 7 个真实 V17 导出物
     scripts/                       link-dsh-runtime.mjs / tsc.mjs / run-tests.mjs
-  dsh-ui-plc-source/               右侧栏「PLC Blocks」标签页 + 宿主 pre-step 监听（提及注入），已登记进蓝图
+  @automation-suite/ui-plc-source/               右侧栏「PLC Blocks」标签页 + 宿主 pre-step 监听（提及注入），已登记进蓝图
     src/index.ts                   宿主半侧：agent/pre-step 把 @'块名' 解析成引用信息（tsc → lib/）
     src/model.ts                   纯模型：清单解析/平铺/筛选/排序/资源地址/文案/提及语法（tsc → lib/）
     src/client/                    apply(ctx) + 面板组件 + 样式（esbuild → lib/client.js，宿主认的 loader 包装）
     test/                          node:test 套件（47 项，纯模型）
     scripts/                       tsc.mjs / build.mjs / run-tests.mjs
-  dsh-ui-tia-console/              输入框上方「TIA 控制台」：状态 + 打开/保存/编译/关闭/刷新（仅浏览器半侧）
+  @automation-suite/ui-tia-console/              输入框上方「TIA 控制台」：状态 + 打开/保存/编译/关闭/刷新（仅浏览器半侧）
     src/index.ts                   宿主半侧：空 apply()，只为让包在 Loader 里有一行
     src/client/model.js            纯事件折叠：command/tool 事件 → 控制台状态（可单测）
     src/client/TiaBar.jsx          控制台组件（状态、按钮、展开详情、秒表）
     src/client/index.jsx           注册 conversation.input.dock 占位
     test/                          node:test 套件（22 项，纯折叠 + 字典）
     scripts/                       tsc.mjs / build.mjs / run-tests.mjs
-  dsh-tia-todo-bridge/             Todo 兜底：模型没写清单时把 TIA/版本操作补进会话 todos（宿主面一行）
+  @automation-suite/tia-todo-bridge/             Todo 兜底：模型没写清单时把 TIA/版本操作补进会话 todos（宿主面一行）
     src/bridge.ts                  纯状态机：所有权、任务命名、开始/结束计划、日志重建（tsc → lib/）
     src/index.ts                   接线：session/event + tools/execute + tools/post-execute
     test/                          node:test 套件（18 项：纯状态机 16 + manifest 2）
-  dsh-ui-versions/                 右侧栏「Versions」标签页：版本历史 + 块级轨迹（仅浏览器半侧）
+  @automation-suite/ui-versions/                 右侧栏「Versions」标签页：版本历史 + 块级轨迹（仅浏览器半侧）
     src/index.ts                   宿主半侧：空 apply()，只为让包在 Loader 里有一行
     src/model.ts                   纯模型：视图解析/筛选/时间线/短 sha 与日期格式化（tsc → lib/）
     src/client/                    apply(ctx) + 面板组件 + 样式（esbuild → lib/client.js，宿主认的 loader 包装）
     test/                          node:test 套件（15 项，纯模型 10 + 字典 5）
     scripts/                       tsc.mjs / build.mjs / run-tests.mjs
-  dsh-ui-prompt-guide/             主栏「提示词引导」整页：9 分类 / 32 条 Prompt，可搜索、复制、开新会话
+  @automation-suite/ui-prompt-guide/             主栏「提示词引导」整页：9 分类 / 32 条 Prompt，可搜索、复制、开新会话
     src/guide.ts                   内容数据（分类、条目、工具白名单；中英双语）
     src/page.ts                    纯函数：路径安全、MIME、trust fence、answer()
     src/index.ts                   宿主半侧：/prompt-guide 前缀路由（静态页 + /api/guide）
@@ -741,7 +741,7 @@ packages/
     page/                          静态页 index.html / app.js / style.css（不经构建，改文案刷新即生效）
     test/                          node:test 套件（25 项：数据 / 路由 / 产物 / 字典）
     scripts/                       tsc.mjs / build.mjs / run-tests.mjs
-  dsh-ui-brandmark/               首页 hero 品牌：标题 / 徽标 / 桌面图标（仅浏览器半侧）
+  @automation-suite/ui-brandmark/               首页 hero 品牌：标题 / 徽标 / 桌面图标（仅浏览器半侧）
     src/model.ts                  纯模型：conversation 命名空间两个 key 的文案映射（tsc → lib/）
     src/index.ts                  宿主半侧：空 apply()，只为让包在 Loader 里有一行
     src/client/                   locale.translate 包装 + 单座 brand.mark（esbuild → lib/client.js）
@@ -780,30 +780,30 @@ pnpm test                 # 全仓测试
 pnpm run clean:build      # 清构建产物（只碰 lib/ dist/）
 ```
 
-本地十四个插件加 vendor 的 `dsh-tool-git` 用**两种测试运行器**，`pnpm -r test` 会把十五者都跑到：
+本地十四个插件加 vendor 的 `@automation-suite/dsh-tool-git` 用**两种测试运行器**，`pnpm -r test` 会把十五者都跑到：
 
 | 包 | 运行器 | 测试规模 |
 |---|---|---|
-| `dsh-tia-openness-v17-min` | `node:test`（`node --test test/*.test.mjs`） | 112 项：111 通过 / 1 跳过（跳过项是"控制器未构建"的降级路径） |
-| `dsh-tool-git` | `vitest`（`vitest run`） | 51 项全通过 |
-| `@voltarenyah/dsh-engineering-context` | `node:test`（`node scripts/run-tests.mjs`，先构建再跑） | 168 项全通过（含经假 `engineeringAccess` / 假 `knowledgeGraph` 服务的契约用例，以及 10 项交接工作流用例） |
-| `@voltarenyah/dsh-engineering-graph` | `node:test`（`node scripts/run-tests.mjs`，先构建再跑） | 128 项全通过（含经真实引擎的端到端；引擎没构建时该项 skip 并打印构建命令） |
-| `@voltarenyah/dsh-drawing` | `node:test`（`node scripts/run-tests.mjs`，先构建再跑） | 23 项全通过（PDF 索引/检索模型 + 字典；浏览器半侧靠真实图纸验收） |
-| `@voltarenyah/dsh-plcsim-advanced` | `node:test`（`node --test --test-reporter=spec`） | 24 项全通过（纯协议与工具面：转发、工作区存档根、证书规则、渲染事实行、快照来源/stale/清理） |
-| `dsh-ui-plc-source` | `node:test`（`node scripts/run-tests.mjs`，先构建再跑；浏览器半侧 `.jsx` 不进 `tsc`） | 47 项全通过（纯模型 33 + 宿主 9 + 字典 5） |
-| `dsh-ui-tia-console` | `node:test`（`node scripts/run-tests.mjs`，先构建再跑） | 22 项全通过（纯事件折叠 + 字典） |
-| `@voltarenyah/dsh-tia-todo-bridge` | `node:test`（`node --test test/*.test.mjs`） | 18 项全通过（纯状态机 16 + manifest 2；不依赖真实 TIA） |
-| `dsh-ui-versions` | `node:test`（`node scripts/run-tests.mjs`，先构建再跑） | 15 项全通过（纯模型 10 + 字典 5；浏览器半侧靠真实 dev-env 验收） |
-| `dsh-ui-hardware` | `node:test`（`node scripts/run-tests.mjs`，先构建再跑） | 9 项全通过（视图解析/筛选/槽位/机位面/格式化；浏览器半侧靠真实 `.dsh/hardware-view.json` 验收） |
-| `dsh-ui-prompt-guide` | `node:test`（`node scripts/run-tests.mjs`，先构建再跑） | 25 项全通过（数据完整性/工具白名单 7 + 路由与 fence 10 + 产物与座位 6 + 字典 2；浏览器半侧靠真实 dev-env 验收） |
-| `dsh-ui-brandmark` | `node:test`（`node scripts/run-tests.mjs`，先构建再跑） | 5 项全通过（文案映射与字典落回 + 128px 图标 + manifest/行一致性；浏览器半侧靠真实 dev-env 验收） |
+| `@automation-suite/tia-openness-v17` | `node:test`（`node --test test/*.test.mjs`） | 112 项：111 通过 / 1 跳过（跳过项是"控制器未构建"的降级路径） |
+| `@automation-suite/dsh-tool-git` | `vitest`（`vitest run`） | 51 项全通过 |
+| `@automation-suite/engineering-context` | `node:test`（`node scripts/run-tests.mjs`，先构建再跑） | 168 项全通过（含经假 `engineeringAccess` / 假 `knowledgeGraph` 服务的契约用例，以及 10 项交接工作流用例） |
+| `@automation-suite/engineering-graph` | `node:test`（`node scripts/run-tests.mjs`，先构建再跑） | 128 项全通过（含经真实引擎的端到端；引擎没构建时该项 skip 并打印构建命令） |
+| `@automation-suite/pdf-drawing` | `node:test`（`node scripts/run-tests.mjs`，先构建再跑） | 23 项全通过（PDF 索引/检索模型 + 字典；浏览器半侧靠真实图纸验收） |
+| `@automation-suite/plcsim-advanced` | `node:test`（`node --test --test-reporter=spec`） | 24 项全通过（纯协议与工具面：转发、工作区存档根、证书规则、渲染事实行、快照来源/stale/清理） |
+| `@automation-suite/ui-plc-source` | `node:test`（`node scripts/run-tests.mjs`，先构建再跑；浏览器半侧 `.jsx` 不进 `tsc`） | 47 项全通过（纯模型 33 + 宿主 9 + 字典 5） |
+| `@automation-suite/ui-tia-console` | `node:test`（`node scripts/run-tests.mjs`，先构建再跑） | 22 项全通过（纯事件折叠 + 字典） |
+| `@automation-suite/tia-todo-bridge` | `node:test`（`node --test test/*.test.mjs`） | 18 项全通过（纯状态机 16 + manifest 2；不依赖真实 TIA） |
+| `@automation-suite/ui-versions` | `node:test`（`node scripts/run-tests.mjs`，先构建再跑） | 15 项全通过（纯模型 10 + 字典 5；浏览器半侧靠真实 dev-env 验收） |
+| `@automation-suite/ui-hardware` | `node:test`（`node scripts/run-tests.mjs`，先构建再跑） | 9 项全通过（视图解析/筛选/槽位/机位面/格式化；浏览器半侧靠真实 `.dsh/hardware-view.json` 验收） |
+| `@automation-suite/ui-prompt-guide` | `node:test`（`node scripts/run-tests.mjs`，先构建再跑） | 25 项全通过（数据完整性/工具白名单 7 + 路由与 fence 10 + 产物与座位 6 + 字典 2；浏览器半侧靠真实 dev-env 验收） |
+| `@automation-suite/ui-brandmark` | `node:test`（`node scripts/run-tests.mjs`，先构建再跑） | 5 项全通过（文案映射与字典落回 + 128px 图标 + manifest/行一致性；浏览器半侧靠真实 dev-env 验收） |
 
 单测都需要**真实的** `@deepseek-ai/*` 运行时（不是 stub）。裸 checkout 首次运行时，
 两个包的测试自举会各自自动触发抽取；也可以手动：
 
 ```powershell
-pnpm --filter @voltarenyah/dsh-tia-openness-v17-min run link:runtime
-pnpm --filter dsh-tool-git run link:runtime
+pnpm --filter @automation-suite/tia-openness-v17 run link:runtime
+pnpm --filter @automation-suite/dsh-tool-git run link:runtime
 ```
 
 包内另有针对性的命令（在包目录里跑）：
@@ -820,7 +820,7 @@ npm run skills:build     # TIA：按 pinned commit 重新取上游知识库
 
 - **不要手改生成物**：TIA 包的 `docs/coverage-matrix.html`、`skills/<上游名>/SKILL.md`、
   `skills/UPSTREAM.json` 都是生成物，改 `src/` 或控制器后要跑对应的 `:build`，否则 `:check` 会失败。
-- **`tsdown` 会把能解析到的包打进产物**，所以 `dsh-tool-git` 的两个 tsdown 配置里
+- **`tsdown` 会把能解析到的包打进产物**，所以 `@automation-suite/dsh-tool-git` 的两个 tsdown 配置里
   `deps: { neverBundle: true }` 不能删：否则链接过运行时之后，产物会把整个宿主运行时内联进去
   （57.78 kB → 391.40 kB），插件会拿到一份私有的 `dsh-tools`。**验收口径**：`lib/index.mjs` 应约 57.78 kB。
 - **`clean` 这个名字不能用**：pnpm 11 有内置子命令会遮蔽脚本，本仓叫 `clean:build`。
@@ -840,48 +840,48 @@ dsh --profile dsh-automation-suite --dump-config
 预期结尾出现（每个插件 3 行："# ==" 注释 + `id` + `name`，**15 个插件行** = 14 个本地插件 + 公共的 `dsh-opencode-go`）：
 
 ```yaml
-# == @voltarenyah/dsh-tia-openness-v17-min
-- id: tia-openness-v17-min
-  name: '@voltarenyah/dsh-tia-openness-v17-min'
-# == @voltarenyah/dsh-plcsim-advanced
+# == @automation-suite/tia-openness-v17
+- id: tia-openness-v17
+  name: '@automation-suite/tia-openness-v17'
+# == @automation-suite/plcsim-advanced
 - id: plcsim-advanced
-  name: '@voltarenyah/dsh-plcsim-advanced'
-# == @voltarenyah/dsh-engineering-context
+  name: '@automation-suite/plcsim-advanced'
+# == @automation-suite/engineering-context
 - id: engineering-context
-  name: '@voltarenyah/dsh-engineering-context'
-# == @voltarenyah/dsh-engineering-graph
+  name: '@automation-suite/engineering-context'
+# == @automation-suite/engineering-graph
 - id: engineering-graph
-  name: '@voltarenyah/dsh-engineering-graph'
-# == @voltarenyah/dsh-drawing
-- id: drawing
-  name: '@voltarenyah/dsh-drawing'
-# == dsh-tool-git
+  name: '@automation-suite/engineering-graph'
+# == @automation-suite/pdf-drawing
+- id: pdf-drawing
+  name: '@automation-suite/pdf-drawing'
+# == @automation-suite/dsh-tool-git
 - id: tool-git
-  name: dsh-tool-git
-# == dsh-ui-plc-source
+  name: '@automation-suite/dsh-tool-git'
+# == @automation-suite/ui-plc-source
 - id: ui-plc-source
-  name: dsh-ui-plc-source
-# == dsh-ui-tia-console
+  name: '@automation-suite/ui-plc-source'
+# == @automation-suite/ui-tia-console
 - id: ui-tia-console
-  name: dsh-ui-tia-console
-# == @voltarenyah/dsh-tia-todo-bridge
+  name: '@automation-suite/ui-tia-console'
+# == @automation-suite/tia-todo-bridge
 - id: tia-todo-bridge
-  name: '@voltarenyah/dsh-tia-todo-bridge'
-# == dsh-ui-versions
+  name: '@automation-suite/tia-todo-bridge'
+# == @automation-suite/ui-versions
 - id: ui-versions
-  name: dsh-ui-versions
-# == dsh-ui-changes
+  name: '@automation-suite/ui-versions'
+# == @automation-suite/ui-changes
 - id: ui-changes
-  name: dsh-ui-changes
-# == dsh-ui-hardware
+  name: '@automation-suite/ui-changes'
+# == @automation-suite/ui-hardware
 - id: ui-hardware
-  name: dsh-ui-hardware
-# == dsh-ui-prompt-guide
+  name: '@automation-suite/ui-hardware'
+# == @automation-suite/ui-prompt-guide
 - id: ui-prompt-guide
-  name: dsh-ui-prompt-guide
-# == dsh-ui-project-dashboard
-- id: project-dashboard
-  name: dsh-ui-project-dashboard
+  name: '@automation-suite/ui-prompt-guide'
+# == @automation-suite/ui-project-dashboard
+- id: ui-project-dashboard
+  name: '@automation-suite/ui-project-dashboard'
 # == dsh-opencode-go
 - id: opencode-go
   name: dsh-opencode-go
@@ -1014,12 +1014,12 @@ TIA 排障第一步永远是让模型调：
 | 组件 | 许可证 | 说明 |
 |---|---|---|
 | `dsh-automation-suite`（本仓） | MIT（根 [`LICENSE`](LICENSE)） | 蓝图、Monorepo 脚本、文档；根 `package.json` 已声明 `"license": "MIT"` |
-| `@voltarenyah/dsh-tia-openness-v17-min` | MIT（包内 `LICENSE`） | 本仓原创代码 |
-| `dsh-tool-git` | MIT（包内 `LICENSE`） | 上游 [`lxj808624/dsh-tool-git`](https://github.com/lxj808624/dsh-tool-git) `v0.1.3`（commit `2347e3d`）的**压平 vendor 副本**；包名刻意保持上游的 `dsh-tool-git`（不加 scope），因此**不能以同名发布到 npm** |
+| `@automation-suite/tia-openness-v17` | MIT（包内 `LICENSE`） | 本仓原创代码 |
+| `@automation-suite/dsh-tool-git` | MIT（包内 `LICENSE`） | 上游 [`lxj808624/dsh-tool-git`](https://github.com/lxj808624/dsh-tool-git) `v0.1.3`（commit `2347e3d`）的**压平 vendor 副本**，以 **fork 身份**发布在本仓 scope 下（上游裸名 `dsh-tool-git` 已被占用）；与上游不是同一个 npm 包，`LICENSE` / README / `repository` 保留上游署名 |
 | Siemens Openness skill 集 | MIT | 上游 [`siemens/tia-portal-ai-extensions`](https://github.com/siemens/tia-portal-ai-extensions) commit `b5c7041` 的**逐字文档副本**（31 个文件，已改代码一行未取），附上游许可证全文与逐文件 sha256 |
 | Siemens NuGet 运行库 | Siemens 自有条款 | `controller/bin/` 随插件分发 **Siemens 解析器及其 5 个依赖**（约 889 KB，未做任何修改）；`Siemens.Engineering.dll` **从不被本仓分发**（引用包 `CopyLocal=false`），始终来自用户自己的 TIA Portal 安装。完整清单与合规姿态见 `packages/dsh-tia-openness-v17-min/THIRD_PARTY_NOTICES.md` |
 
-`dsh-tool-git` 与本仓的差异（包名策略、运行期链接方式、`neverBundle`、新增脚本）记录在
+`@automation-suite/dsh-tool-git` 与本仓的差异（包名策略、运行期链接方式、`neverBundle`、新增脚本）记录在
 `packages/dsh-tool-git/AGENTS.md`，与上游同步时的"四处保留差异"也在那里。
 
 ---
@@ -1036,7 +1036,7 @@ TIA 排障第一步永远是让模型调：
 | [`docs/tia-version-members.md`](docs/tia-version-members.md) | **接口插件族的多成员形态（V17 / V18 如何共存与替换）**：为什么同一时刻只能激活一个、为什么激活单位是 bundle 开关而不是逐行开关、先到先占互斥、内部缝的 `version` 比对、工具行「认错就空转」、跨版本契约清单、重启原因、`doctor` 三条检查、V18 落地清单与待实测项（D36） |
 | [`docs/tool-surface.md`](docs/tool-surface.md) | **工具面重设计（调研 + 提案）**：现状体检（26 工具 1:1、20 行渲染上限、~14k tokens 常驻目录）、用户工作流清单、目标工具面与返回契约、从哪一步开始 |
 | [`docs/ui-plugins.md`](docs/ui-plugins.md) | **Web GUI UI 插件**：客户端插件加载机制（含端到端实测）、基座模块表、座位目录、`source/` 数据面、以「工程块树」为例的落地设计与客户端打包配方 |
-| [`docs/ui-plugins-plc-blocks-plan.md`](docs/ui-plugins-plc-blocks-plan.md) | **`dsh-ui-plc-source` 的实施计划与验收记录**：规格、数据面（清单平铺 + device/类型筛选）、降级、构建、接线、实测结果 |
+| [`docs/ui-plugins-plc-blocks-plan.md`](docs/ui-plugins-plc-blocks-plan.md) | **`@automation-suite/ui-plc-source` 的实施计划与验收记录**：规格、数据面（清单平铺 + device/类型筛选）、降级、构建、接线、实测结果 |
 | [`docs/ui-changes-panel-plan.md`](docs/ui-changes-panel-plan.md) | **Changes 面板（P1 已落地：真实 git 状态，提交区未做）**：右侧栏未提交变更视图 + 提交工作流；数据路线对比（只读路由 / 派生快照 / 新 Remote）、git 解析边界、提示词模板、安全红线、分阶段验收与 P0/P1 实测记录 |
 | [`packages/dsh-ui-changes/README.md`](packages/dsh-ui-changes/README.md) | 右侧栏 **Changes** 标签页：状态、只读路由与 trust fence、数据链路（会话 → cwd → gitContext）、构建与接线 |
 | [`packages/dsh-ui-plc-source/README.md`](packages/dsh-ui-plc-source/README.md) | 右侧栏 **PLC Blocks** 标签页的用法、构建（tsc + esbuild）与安装位置 |

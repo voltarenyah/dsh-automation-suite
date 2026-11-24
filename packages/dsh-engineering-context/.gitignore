@@ -1,7 +1,7 @@
 # Build output of src/. Deliberately NOT committed at this stage: the plugin is
 # not reachable from any profile yet (its bundle name is not in the blueprint
 # `dsh.profile.bundles`, on purpose — see docs/decisions.md N1), so there is
-# nothing that would load lib/. Flip to the `dsh-tia-openness-v17-min` convention
+# nothing that would load lib/. Flip to the `@automation-suite/tia-openness-v17` convention
 # (commit lib/, ignore nothing here) when the blueprint entry lands.
 lib/
 

@@ -22,7 +22,7 @@ import { EngineeringContextError } from './errors.js'
 
 /** The message for an interface plugin that predates the versioning workflow. */
 const NO_SYNC_SCAN =
-  'The installed TIA interface plugin has no syncScan method. Update dsh-tia-openness-v17-min to a build that has ' +
+  'The installed TIA interface plugin has no syncScan method. Update @automation-suite/tia-openness-v17 to a build that has ' +
   'PlcChecksum and SyncScan.'
 
 /**

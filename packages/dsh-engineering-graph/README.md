@@ -1,4 +1,4 @@
-# @voltarenyah/dsh-engineering-graph
+# @automation-suite/engineering-graph
 
 DeepSeek Harness 插件（**工程知识图谱插件**）：在工程产物（块逻辑、交叉引用等）之上
 建立可查询的知识图谱。
@@ -37,8 +37,8 @@ DeepSeek Harness 插件（**工程知识图谱插件**）：在工程产物（�
 工具名刻意保留来源库（`Tools/KnowledgeTools.cs`）的 `knowledge_*` 命名，而不是本仓
 verb_noun 风格：改名会静默打断按旧名字写的提示词与调用方。
 
-与接口插件族/工程上下文插件的分工：接口插件族（`dsh-tia-openness-v17-min`）是唯一允许打开 TIA Portal 的插件；
-工程上下文插件（`dsh-engineering-context`）管"现在谈的是哪个工程、哪一版"，并在导出完成后
+与接口插件族/工程上下文插件的分工：接口插件族（`@automation-suite/tia-openness-v17`）是唯一允许打开 TIA Portal 的插件；
+工程上下文插件（`@automation-suite/engineering-context`）管"现在谈的是哪个工程、哪一版"，并在导出完成后
 经 `knowledgeGraph` 服务触发本包建库；本包只消费导出的工程产物，
 不直接调用 Openness、不启动 TIA Portal。
 
@@ -155,8 +155,8 @@ DSH 按**声明作用域**解析工具可见性：一行插件注册的工具会
 
 | preset | 声明哪几行 | 工具面 |
 |---|---|---|
-| `leader`（主 agent） | 宿主行 `@voltarenyah/dsh-engineering-graph` + 工具行 `@voltarenyah/dsh-engineering-graph/tools`（`includeDrilldown: inspect`） | 共享四个 + `knowledge_block` / `knowledge_network`（写 brief 用；深读派 `expert`） |
-| `expert`（子 agent） | 工具行 `@voltarenyah/dsh-engineering-graph/tools` + `includeIngest: false, includeDrilldown: all` | 上面四个（去掉 ingest）+ 四个下钻工具 = **7 个** |
+| `leader`（主 agent） | 宿主行 `@automation-suite/engineering-graph` + 工具行 `@automation-suite/engineering-graph/tools`（`includeDrilldown: inspect`） | 共享四个 + `knowledge_block` / `knowledge_network`（写 brief 用；深读派 `expert`） |
+| `expert`（子 agent） | 工具行 `@automation-suite/engineering-graph/tools` + `includeIngest: false, includeDrilldown: all` | 上面四个（去掉 ingest）+ 四个下钻工具 = **7 个** |
 
 两行都必须声明宿主行（`leader` 在 bundle 层，`expert` 由 composition 的宿主行提供）——工具行的
 `inject: ['tools', 'knowledgeEngine']` 让 loader 等宿主行发布 `knowledgeEngine` 之后才调 `apply`，
@@ -173,7 +173,7 @@ DSH 按**声明作用域**解析工具可见性：一行插件注册的工具会
 ```yaml
 # expert preset 里的那一行
 - id: expert-graph-tools
-  name: '@voltarenyah/dsh-engineering-graph/tools'
+  name: '@automation-suite/engineering-graph/tools'
   config:
     includeIngest: false
     includeDrilldown: all
@@ -257,10 +257,10 @@ packages/dsh-engineering-graph/
 # 0.2.0-rc.2 在 runtime\pnpm\bin\）；脚本里按候选列表探测，别写死一个。
 $pnpm = "$env:LOCALAPPDATA\Programs\DeepSeek Harness\resources\runtime\primary-runtime\dependencies\pnpm\bin\pnpm.mjs"
 
-node $pnpm --filter @voltarenyah/dsh-engineering-graph run link:runtime   # 裸 checkout 首次
-node $pnpm --filter @voltarenyah/dsh-engineering-graph run build
-node $pnpm --filter @voltarenyah/dsh-engineering-graph run typecheck
-node $pnpm --filter @voltarenyah/dsh-engineering-graph run test          # 先构建再跑
+node $pnpm --filter @automation-suite/engineering-graph run link:runtime   # 裸 checkout 首次
+node $pnpm --filter @automation-suite/engineering-graph run build
+node $pnpm --filter @automation-suite/engineering-graph run typecheck
+node $pnpm --filter @automation-suite/engineering-graph run test          # 先构建再跑
 ```
 
 - **构建形态**：`tsc` → `lib/`，测试 `node:test`，`lib/` **不提交**（与工程上下文插件一致；

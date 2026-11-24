@@ -148,11 +148,11 @@ drawing_status ──(缺/未索引)──> drawing_open ──> profile 卡
 
 | 步骤 | API | 对应样例 |
 |---|---|---|
-| 注册 tab 类型 | `ctx.inject(['sidebarRightTabs'], …)` → `tabs.register({id, kind, title, guide})` | `dsh-ui-versions` |
-| 注册 tab 正文 | `slots.register({name:'sidebar.right.pane.tab', key:ID, store, locale, inject}, Panel)` | `dsh-ui-plc-source`（用 `store` 让页面状态跨 tab 切换存活） |
+| 注册 tab 类型 | `ctx.inject(['sidebarRightTabs'], …)` → `tabs.register({id, kind, title, guide})` | `@automation-suite/ui-versions` |
+| 注册 tab 正文 | `slots.register({name:'sidebar.right.pane.tab', key:ID, store, locale, inject}, Panel)` | `@automation-suite/ui-plc-source`（用 `store` 让页面状态跨 tab 切换存活） |
 | 注册 tab 标题 | `slots.register({name:'sidebar.right.pane.tab.title', key:ID, locale, inject}, Title)` | 两者一致做法 |
-| 读文件 | `ctx.remote.workspaceFiles.readBytes(sessionId, path)` | `dsh-ui-versions` |
-| 读本会话事件 | `ctx.sessions.binding(sessionId).eventSource`（`{getSnapshot, subscribe}`） | `dsh-ui-tia-console` |
+| 读文件 | `ctx.remote.workspaceFiles.readBytes(sessionId, path)` | `@automation-suite/ui-versions` |
+| 读本会话事件 | `ctx.sessions.binding(sessionId).eventSource`（`{getSnapshot, subscribe}`） | `@automation-suite/ui-tia-console` |
 
 > 三个坑（README 里都有记录，直接复用）：`sidebarRightTabs` 在 `apply` 时还不可读，必须 `ctx.inject`；子 slot 必须走 `ctx.slots.inject`，裸 `register` 会抛；tab 标题要单独 seat，否则切语言不跟随。
 
@@ -191,12 +191,12 @@ Agent 侧（宿主）                            浏览器侧（Drawing 插件�
                                              └─ 折叠出"看哪一页/哪块"
 
 ② 打开通道：客户端 decide→open
-   right.openTab('dsh-drawing')  ◄────────── sidebarRight 服务面
+   right.openTab('@automation-suite/pdf-drawing')  ◄────────── sidebarRight 服务面
    right.focus(tabId)
    right.toggleExpanded()（若收起）
 ```
 
-- **数据通道**：`ctx.sessions.binding(sessionId).eventSource`，`dsh-ui-tia-console` 用的同一条，不需要宿主服务、不需要轮询、不需要新路由。
+- **数据通道**：`ctx.sessions.binding(sessionId).eventSource`，`@automation-suite/ui-tia-console` 用的同一条，不需要宿主服务、不需要轮询、不需要新路由。
 - **打开通道**：`sidebarRight` 服务面（`openTab/focus/isExpanded/toggleExpanded/mounted/openTabs`），完整调用序列与三个"别抢屏"的礼貌规则见 **§6.5**（`dsh-better-sidebar` 的 Tasks 页就是这么做的）。
 - 两条通道的**分工**：事件窗决定"看哪一页"，`sidebarRight` 决定"把列打开"。用户手工操作与 agent 操作共用同一个 `store`（当前页/当前高亮），不会打架。
 
@@ -396,13 +396,13 @@ packages/dsh-drawing/
 
 ## 11 实现状态（P0 + P1 已落地，2026-11-03）
 
-代码在 `packages/dsh-drawing`（`@voltarenyah/dsh-drawing`），已进蓝图 `profile/dsh-automation-suite`。
+代码在 `packages/dsh-drawing`（`@automation-suite/pdf-drawing`），已进蓝图 `profile/dsh-automation-suite`。
 
 ### 11.1 交付
 
 | 计划项 | 状态 | 证据 |
 |---|---|---|
-| P0 包骨架 + 5 个工具 + 右侧栏 tab + 蓝图注册 | ✅ | `dsh plugin add voltarenyah-dsh-drawing-0.1.0.tgz` → `--dump-config` 出现 `# == @voltarenyah/dsh-drawing` / `- id: drawing`；`--dump-config-schema` 出现 `dir` 字段且 `status: "schema"`、`diagnostics: []` |
+| P0 包骨架 + 5 个工具 + 右侧栏 tab + 蓝图注册 | ✅ | `dsh plugin add automation-suite-pdf-drawing-0.1.0.tgz` → `--dump-config` 出现 `# == @automation-suite/pdf-drawing` / `- id: pdf-drawing`；`--dump-config-schema` 出现 `dir` 字段且 `status: "schema"`、`diagnostics: []` |
 | P1 解析 + 三类索引 + 档案卡 | ✅ | 353 页 **2.4 s**；图号 350/353；交叉引用 1,794 条、解析 1,750（97.5%）；实体 1,521；二次调用 `cached: true` |
 | 电柜划分与命名 | ✅ | `1:AG` / `2:COF-BASE-A` / `3:COF-BASE-B`，页界 1–81 / 82–216 / 217–353 与实测一致 |
 | 工程身份 | ✅ | `SINO ARP PEI MANUAL CROSSING FLOW` / `19126-17800-MPE` / `D` / `2019/10/28` / `SEE Electrical 4.80` |
@@ -434,7 +434,7 @@ packages/dsh-drawing/
 | P3 页面渲染 | ✅ | `@hyzyla/pdfium`（MIT，wasm）+ `pngjs`（MIT）在宿主侧栅格化：page 25 → **1684×1190 PNG / 292 KB**，约 120 ms，按 `页面+scale+mtime` 缓存在 `drawing/<名>/render/`；坐标与文本框同源（display 842×595），所以命中框 2× 后直接落在元件上（已用渲染图核对 W015 位置） |
 | P3 面板查阅 | ✅ | 左侧图号列表点击 → 浏览器自带 PDF 阅读器 `#page=N`；agent 定位时显示渲染图 + 蓝框高亮 + 当前定位说明 |
 | P4 联动 | ✅（宿主+客户端代码已通，真机点验待做） | 宿主 `drawing_show` 栅格化该页并写 `.dsh/drawing-view.json`；客户端在 `conversation.input.dock` 挂一个渲染为 null 的 controller，折叠 `tool/call`+`tool/result`（按 callId 认 `drawing_show`）→ 读 view 文件 → 共享 store → `sidebarRight.openTab/focus/toggleExpanded`（§6.5 序列，含"不抢用户页面"与切会话重试） |
-| 客户端装配 | ✅ | 实际启动的 shell 里 `__DSH_BOOT__.entries` 含 `{"id":"@voltarenyah/dsh-drawing","url":"plugins/??@voltarenyah/dsh-drawing/client.js&rev=dfabc4992f8c"}`；bundle 28,142 B，含 `sidebar.right.pane.tab` / `conversation.input.dock` / `drawing-controller` / `drawing-view.json` 标记 |
+| 客户端装配 | ✅ | 实际启动的 shell 里 `__DSH_BOOT__.entries` 含 `{"id":"@automation-suite/pdf-drawing","url":"plugins/??@automation-suite/pdf-drawing/client.js&rev=dfabc4992f8c"}`；bundle 28,142 B，含 `sidebar.right.pane.tab` / `conversation.input.dock` / `drawing-controller` / `drawing-view.json` 标记 |
 | 测试 | ✅ | 23 项：10 规则+基线（含 PNG 尺寸/签名/缓存）、7 工具契约、6 客户端联动逻辑（store 去重、openTab 顺序、不抢屏、切会话重试） |
 
 **尚未验证**：真机点验（点 tab chip、看图片渲染、agent 调用后侧栏自动翻开）。本轮环境没有浏览器自动化工具，只能验到"bundle 被 shell 加载、宿主文件与调用序列正确"。验收路径：`pwsh -NoProfile -File scripts\start-env.ps1 -Restart` → 打开右侧栏 Drawing → 在对话里让 agent `drawing_show`。

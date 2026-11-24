@@ -1,6 +1,6 @@
 /**
  * `git_stage` — stage paths (or everything) into the index.
- * @module dsh-tool-git/tools/stage
+ * @module @automation-suite/dsh-tool-git/tools/stage
  */
 
 import { defineTool } from '@deepseek-ai/dsh-tools'

@@ -11,11 +11,11 @@
  * Versions tab: the seat above us is `overflow: hidden` with a fixed height, so
  * a flex-child scroller would be silently clipped at small window heights.
  *
- * @module dsh-ui-changes/client/style
+ * @module @automation-suite/ui-changes/client/style
  */
 
 /** Identifier of the injected stylesheet, unique across the page. */
-export const TAG_ID = 'dsh-ui-changes/changes.css'
+export const TAG_ID = '@automation-suite/ui-changes/changes.css'
 
 /** Stylesheet text. Class names are prefixed to stay out of the app's way. */
 export const CSS = `

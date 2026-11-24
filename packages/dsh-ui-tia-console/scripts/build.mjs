@@ -8,12 +8,12 @@
  * module system executes a bundle as a classic script that must do nothing but
  * register a closure factory, then materialise it on first use. The wrapper is
  * therefore a `banner`/`footer` pair around a CJS bundle, the same shape as the
- * sibling `dsh-ui-plc-source` package.
+ * sibling `@automation-suite/ui-plc-source` package.
  *
  * Only the host's frozen platform table stays external; the client imports
  * nothing else.
  *
- * @module dsh-ui-tia-console/scripts/build
+ * @module @automation-suite/ui-tia-console/scripts/build
  */
 
 import { existsSync, mkdirSync, readdirSync, readFileSync } from 'node:fs'

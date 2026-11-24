@@ -1,7 +1,7 @@
 /**
  * Split a unified diff body (`git diff` / `git show` output) into per-file
  * blocks and derive each file's change status from its header.
- * @module dsh-tool-git/diff-blocks
+ * @module @automation-suite/dsh-tool-git/diff-blocks
  */
 
 /** One per-file block of a unified diff. */

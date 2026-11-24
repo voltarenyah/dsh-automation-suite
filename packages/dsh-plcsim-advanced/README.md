@@ -1,4 +1,4 @@
-# @voltarenyah/dsh-plcsim-advanced
+# @automation-suite/plcsim-advanced
 
 DSH plugin for **S7-PLCSIM Advanced**: manage local simulated PLC instances and
 exchange tags through the PLCSIM Advanced runtime API. It is the runtime half of

@@ -1,11 +1,11 @@
-# 实施计划：`dsh-ui-plc-source` —— 右侧栏「PLC Blocks」标签页
+# 实施计划：`@automation-suite/ui-plc-source` —— 右侧栏「PLC Blocks」标签页
 
 > **状态：P0 + P1 已实现并验收（2026-10-19）**，实测记录见 §10；P2/P3 仍未做。
 > 通用机制（客户端插件怎么被加载、座位目录、构建配方、接线规则）见 [`ui-plugins.md`](ui-plugins.md)；
 > 本文只写这一个插件的落地。
 >
 > **已锁定的规格**（2026-10-19 与使用者确认）：
-> 插件名 `dsh-ui-plc-source`（**不带 scope**）、装进 `dsh-automation-suite` 那个发行版的 profile；
+> 插件名 `@automation-suite/ui-plc-source`（D39 起全部插件发布在自有 scope 下，directory 名仍是 `packages/dsh-ui-plc-source`）、装进 `dsh-automation-suite` 那个发行版的 profile；
 > 数据源 = 每个 workspace 根下的 `source/`；**平铺**、不保留源路径的分组层级；
 > 可按 **device** 与 **simaticType** 筛选；点文件用既有预览打开；折叠状态放组件内；
 > 引导页入口排在**最后**；不做命令与快捷键。
@@ -44,9 +44,9 @@
 
 **验收（五层）**
 
-1. `dsh --profile dsh-automation-suite --dump-config` 出现 `- id: ui-plc-source` / `name: dsh-ui-plc-source`；
-2. 重启后启动图里有 `{"id":"dsh-ui-plc-source","url":"plugins/??dsh-ui-plc-source/client.js&rev=…"}`；
-3. `GET /plugins/??dsh-ui-plc-source/client.js&rev=<rev>` → 200；
+1. `dsh --profile dsh-automation-suite --dump-config` 出现 `- id: ui-plc-source` / `name: '@automation-suite/ui-plc-source'`；
+2. 重启后启动图里有 `{"id":"@automation-suite/ui-plc-source","url":"plugins/??@automation-suite/ui-plc-source/client.js&rev=…"}`；
+3. `GET /plugins/??@automation-suite/ui-plc-source/client.js&rev=<rev>` → 200；
 4. 浏览器：引导页最后一项是 **PLC Blocks**；打开后 `device=Sino_PEI`、`类型=全部` 时应约 1154 行
    （实测 `category:blocks` 1154 + `types` 215 + `tag_tables` 7 = 1376 条，见下）；
 5. 切 simaticType=FB → 218 行；点一行 → 预览打开；截图存档。
@@ -60,8 +60,8 @@
 
 ```
 packages/dsh-ui-plc-source/
-├── package.json          # name: dsh-ui-plc-source
-├── cordis.patch.yml      # insert: { id: ui-plc-source, name: dsh-ui-plc-source }   ← 无 scope，不加引号
+├── package.json          # name: '@automation-suite/ui-plc-source'
+├── cordis.patch.yml      # insert: { id: ui-plc-source, name: '@automation-suite/ui-plc-source' }   ← 无 scope，不加引号
 ├── tsconfig.json         # 只覆盖 src/**/*.ts
 ├── .gitignore            # lib/、*.tgz
 ├── README.md
@@ -77,18 +77,18 @@ packages/dsh-ui-plc-source/
 ```
 
 **名字与 patch 必须逐字一致**（仓库强制）：`package.json` 的 `name` 与 `cordis.patch.yml` 的
-`insert[].name` 都是 `dsh-ui-plc-source`；因为它不以 `@` 开头，YAML 里**不需要**引号
+`insert[].name` 都是 `@automation-suite/ui-plc-source`；因为它不以 `@` 开头，YAML 里**不需要**引号
 （对比：带 scope 的包必须写成 `'@scope/name'`）。
 
 **蓝图三处**（`profile/dsh-automation-suite/package.json`）：
 
 ```jsonc
-"dependencies": { "dsh-ui-plc-source": "workspace:^", … },
-"dsh": { "profile": { "bundles": [ …现有 6 条…, "dsh-ui-plc-source" ] } }   // ← 放最后（层序）
+"dependencies": { "@automation-suite/ui-plc-source": "workspace:^", … },
+"dsh": { "profile": { "bundles": [ …现有 6 条…, "@automation-suite/ui-plc-source" ] } }   // ← 放最后（层序）
 ```
 
 **已物化环境**（3092 实际在跑的是 `C:\Users\Ansel\dsh-eng-v17`）：它的
-`profiles/dsh-automation-suite/package.json` 里 `dsh.profile.bundles` 要**手工补一行** `dsh-ui-plc-source`
+`profiles/dsh-automation-suite/package.json` 里 `dsh.profile.bundles` 要**手工补一行** `@automation-suite/ui-plc-source`
 —— `start-env.ps1` 只写 `dependencies`，CLI 的 `reconcile()` 只追加"本次 pnpm 运行新加的依赖"，
 所以蓝图加插件**不会**进已物化 profile（`ui-plugins.md` §9.2）。然后：
 
@@ -158,7 +158,7 @@ interface Row {
 ### 4.1 注册（`src/client/index.jsx`）
 
 ```jsx
-const ID = 'dsh-ui-plc-source'          // = 包名；也是正文座位的 key
+const ID = '@automation-suite/ui-plc-source'          // = 包名；也是正文座位的 key
 const KIND = 'plc-source'               // 新 kind，不与 files/browser/terminal 撞
 
 export const inject = ['slots', 'sessions', 'remote', 'remote.workspaceFiles']
@@ -284,21 +284,21 @@ actions.openResource(resourceAddress(sessionId, relativeUnder(cwd, row.file)))
 
 ## 10. 实施记录（P0 + P1，2026-10-19）
 
-**产物**：`packages/dsh-ui-plc-source/`（`dsh-ui-plc-source`，无 scope），
+**产物**：`packages/dsh-ui-plc-source/`（`@automation-suite/ui-plc-source`，无 scope），
 `lib/client.js` **26 755 字节**，包装为 `window.__ModuleLoader__.load({ id, factory })`，
 产物里只有 `require("react")` 与 `require("react/jsx-runtime")` 两条外部请求（都在基座表内）。
 
 **宿主与接线**：宿主 0.2.1-rc.2；蓝图与已物化 profile（`C:\Users\Ansel\dsh-eng-v17`）的
-`dsh.profile.bundles` 都已加入 `dsh-ui-plc-source`（blueprint 备份：`package.json.bak-before-plc-source`）。
+`dsh.profile.bundles` 都已加入 `@automation-suite/ui-plc-source`（blueprint 备份：`package.json.bak-before-plc-source`）。
 
 **验收实测**（`http://127.0.0.1:3092/`，`-Mode link`，由 Playwright 驱动真实页面）：
 
 | 检查 | 结果 |
 |---|---|
-| `--dump-config` 行 | 通过（`- id: ui-plc-source` / `name: dsh-ui-plc-source`） |
-| 启动图行 | 通过（`plugins/??dsh-ui-plc-source/client.js&rev=3ba77de7fa86`） |
+| `--dump-config` 行 | 通过（`- id: ui-plc-source` / `name: '@automation-suite/ui-plc-source'`） |
+| 启动图行 | 通过（`plugins/??@automation-suite/ui-plc-source/client.js&rev=3ba77de7fa86`） |
 | 组合 URL 取回产物 | **200**，26 794 字节 |
-| 浏览器半侧真的执行 | 通过（页面里存在 `style[data-plugin-css="dsh-ui-plc-source/plc-blocks.css"]`，无 console 警告） |
+| 浏览器半侧真的执行 | 通过（页面里存在 `style[data-plugin-css="@automation-suite/ui-plc-source/plc-blocks.css"]`，无 console 警告） |
 | 引导页入口 | 通过（右侧栏出现 **PLC Blocks**，点击后打开面板） |
 | 平铺行数 | **1376 / 1376**（与清单对象总数一致） |
 | device 筛选 | `Sino_PEI（1376）` |

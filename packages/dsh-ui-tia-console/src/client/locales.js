@@ -4,7 +4,7 @@
  * Registered through `ctx.locale.register(NS, { zh, en })`; both locales must
  * carry the same key set, and `test/locales.test.mjs` fails if they drift.
  *
- * @module dsh-ui-tia-console/locales
+ * @module @automation-suite/ui-tia-console/locales
  */
 
 /** Namespace every key here is registered under. */

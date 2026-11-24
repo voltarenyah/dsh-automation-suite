@@ -1,6 +1,6 @@
 # Changes 面板功能清单（对齐 better-sidebar 的 Git 页）
 
-> **用途**：以 `dsh-better-sidebar@0.28.0` 的 Git 页为参照，列出「我们的 `dsh-ui-changes` 可以做哪些功能」，
+> **用途**：以 `dsh-better-sidebar@0.28.0` 的 Git 页为参照，列出「我们的 `@automation-suite/ui-changes` 可以做哪些功能」，
 > 供逐条取舍。编号稳定，答复时按 `A03 / C02 …` 点选即可。
 >
 > **状态**：清单本身是**待拍板**；当前已实现的是 P1（只读列表 + 计数 + 5 s 轮询），P2 未做。
@@ -83,7 +83,7 @@
 
 | ID | 功能 | better-sidebar 怎么做 | 我们的成本 | 建议 |
 |---|---|---|---|---|
-| F01 | **Session lens**：本轮 AI 读/写/编辑过哪些文件（按 `tool/*` 事件折叠） | `changes.ops` 路由 + 客户端折叠 | L | 🤔 与 DSH 自带 deliverables 卡片重叠；我们用 `dsh-tool-git` 视角更准 |
+| F01 | **Session lens**：本轮 AI 读/写/编辑过哪些文件（按 `tool/*` 事件折叠） | `changes.ops` 路由 + 客户端折叠 | L | 🤔 与 DSH 自带 deliverables 卡片重叠；我们用 `@automation-suite/dsh-tool-git` 视角更准 |
 | F02 | 读操作无 diff、写操作看 before/after | 同上 | L | ⛔ 随 F01 |
 | F03 | Session lens 与 git lens 共用一个底部预览面板 | 共享 pane | M | ⛔ 随 F01 |
 | F04 | 把文件以 `@` 引用插进对话草稿 | `conversation.input` + 结构化插入事件 | S | ✅ 简单且契合"结合上下文"，可和 P2 一起做 |

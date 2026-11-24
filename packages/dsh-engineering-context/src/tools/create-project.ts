@@ -236,7 +236,7 @@ async function retrieveIntoWorkspace(
     throw new EngineeringContextError(
       'retrieve_unsupported',
       `The TIA interface plugin in this composition has no retrieveProject method, so the archive ${source.raw} cannot be ` +
-        'retrieved. Install a build of @voltarenyah/dsh-tia-openness-v17-min that provides it, or pass the path of an .ap17 ' +
+        'retrieved. Install a build of @automation-suite/tia-openness-v17 that provides it, or pass the path of an .ap17 ' +
         'project instead.',
       { method: 'engineeringAccess.retrieveProject' },
     )
@@ -465,7 +465,7 @@ async function applyIgnoreRules(ignore: IgnoreFile): Promise<IgnoreAction> {
 
   if (!ignore.exists) {
     const header = [
-      '# Written by @voltarenyah/dsh-engineering-context (create_engineering_project).',
+      '# Written by @automation-suite/engineering-context (create_engineering_project).',
       '# The TIA project directory holds the projects this workspace saved into it: binary, and',
       '# edited in TIA Portal rather than here, so it is not versioned. The rebuilt source tree',
       '# beside it is the text artifact that belongs in version control.',
@@ -708,7 +708,7 @@ async function readCompiledChecksums(
     throw new EngineeringContextError(
       'tia_access_unavailable',
       'The installed TIA interface plugin has no readPlcChecksum method, so this tool cannot tell whether the PLC is compiled. ' +
-        'Update dsh-tia-openness-v17-min to a build that has PlcChecksum and SyncScan.',
+        'Update @automation-suite/tia-openness-v17 to a build that has PlcChecksum and SyncScan.',
       { service: 'engineeringAccess', method: 'readPlcChecksum' },
     )
   }
@@ -922,7 +922,7 @@ async function readAttributesFile(root: string, sourceDirName: string): Promise<
 async function applyAttributesRule(attributes: AttributesFile): Promise<'created' | 'appended' | 'unchanged'> {
   if (attributes.present) return 'unchanged'
   const header = [
-    '# Written by @voltarenyah/dsh-engineering-context (create_engineering_project).',
+    '# Written by @automation-suite/engineering-context (create_engineering_project).',
     '# TIA exports XML with the line endings of the machine that wrote it; -text keeps git',
     '# from normalizing them, so re-exporting an unchanged object stays byte-identical.',
   ]
@@ -1104,7 +1104,7 @@ export function createProjectTool(dependencies: ToolDependencies): ToolDefinitio
           throw new EngineeringContextError(
             'tia_access_unavailable',
             'This composition has no engineeringAccess service, so TIA Portal cannot be reached. Install the TIA interface plugin ' +
-              '(dsh-tia-openness-v17-min) in this profile — this plugin never talks to TIA itself.',
+              '(@automation-suite/tia-openness-v17) in this profile — this plugin never talks to TIA itself.',
             { service: 'engineeringAccess' },
           )
         }
@@ -1116,7 +1116,7 @@ export function createProjectTool(dependencies: ToolDependencies): ToolDefinitio
           throw new EngineeringContextError(
             'git_access_unavailable',
             'This composition has no gitContext service, so the workspace repository state cannot be established. Install the ' +
-              'dsh-tool-git plugin (its host row) in this profile — this tool initializes and commits the workspace only through it.',
+              '@automation-suite/dsh-tool-git plugin (its host row) in this profile — this tool initializes and commits the workspace only through it.',
             { service: 'gitContext' },
           )
         }

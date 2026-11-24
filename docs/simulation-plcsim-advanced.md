@@ -2,7 +2,7 @@
 
 > **状态**：评估报告（2026-10-24 定稿）· **全链路已跑通** · 需要两次一次性人工前置 · 未改路线图状态
 > **已拍板（用户，2026-10-24）**：独立插件 · 默认 **Softbus** · 范围只做「PLC 程序动态下载执行」。
-> **API 兼容结论**：PLCSIM API 不存在「V7 排他」——V7 Runtime 能驱动 API 3.0–7.0 的客户端；按 **API 4.0** 编译可覆盖 PLCSIM Advanced **4.0–7.0**。因此包名**不带版本号**，推荐 `@voltarenyah/dsh-plcsim-advanced`。
+> **API 兼容结论**：PLCSIM API 不存在「V7 排他」——V7 Runtime 能驱动 API 3.0–7.0 的客户端；按 **API 4.0** 编译可覆盖 PLCSIM Advanced **4.0–7.0**。因此包名**不带版本号**，推荐 `@automation-suite/plcsim-advanced`。
 > **定稿更新（2026-10-24）**：V17 控制器 + PLCSIM Advanced V7（**TCP/IP**）+ TIA V17 工程的下载已实测跑通；根因不是 API 缺失，而是**工程 PLC 未配子网/IP** + **首次连接未在 TIA UI 接受自签名证书**。V17/V18 确实没有 `TargetForSoftware`，但 V17 路径不需要它；V20 路径也已由另一个会话验证。**§10.7/§10.8 的“Openness 失败”结论作废**，以 §10.9 + 交接文档为准。
 > **一句话（定稿）**：程序能通过 Openness 下载到 PLCSIM，但**不是全无人工**——项目级配一次子网/IP，设备级在 TIA UI 接受一次证书，之后 `adopt_open_project` + `download` 可重复执行。
 
@@ -18,7 +18,7 @@
    - **设备级**：首次连接在 TIA UI 接受自签名证书（Openness 无该委托，headless 必败）；
    - 之后用 `adopt_open_project` 接管 UI 打开的工程，`online_disconnect(force=true)` 清残留在线态，再 `download`。
    - 因此这不是“全自动无人值守”，但**每次下载不需要人工**。
-3. **已定：独立插件；名字不带版本号。** V7 Runtime 对 API 3.0–7.0 全部可用（本轮实测）；按 API 4.0 编译覆盖 4.0–7.0。推荐 `@voltarenyah/dsh-plcsim-advanced`；只有将来出现真正不兼容的 API 代际，才加 `-vN` 或拆第二构建。
+3. **已定：独立插件；名字不带版本号。** V7 Runtime 对 API 3.0–7.0 全部可用（本轮实测）；按 API 4.0 编译覆盖 4.0–7.0。推荐 `@automation-suite/plcsim-advanced`；只有将来出现真正不兼容的 API 代际，才加 `-vN` 或拆第二构建。
 4. **工作量（定稿）**：Phase 0 与运行侧 MVP 均已落地；本轮补齐 PLCSIM 插件的 **TCP/IP + 指定 IP + Control Panel + 坐标查询**。剩余：把工作流写成随包 skill/E2E 回归、硬件下载与真实 PLC 仍属未验范围。
 5. **已定范围**：只做「PLC 程序动态下载执行」；HMI/SCADA、SIMIT、工艺仿真、真实硬件、F 程序、S7-1200 均排除。
 
@@ -179,7 +179,7 @@
 | `online_targets` 的接口枚举与 `kind` 判定 | `controller/OperationsOnline.cs:110-235`、`:1048` | 直接复用；`PLCSIM` 已被判为 `virtual` |
 | `download` 工具与门禁 | `src/tools.ts:2333`、`controller/OperationsOnline.cs:617` | 保留；Phase 0 增加「无会话直连下载」分支 |
 | `update_project` 写「编译时支持仿真」 | 包 README §4.2；`OperationsProject.cs` | 若工程未开仿真支持，先写属性再重编译 |
-| 服务缝模式（按名取、不 import） | `src/access.ts:39`、`dsh-engineering-context/src/knowledge-graph.ts:43` | 新插件按同一模式暴露 `simulationAccess` |
+| 服务缝模式（按名取、不 import） | `src/access.ts:39`、`@automation-suite/engineering-context/src/knowledge-graph.ts:43` | 新插件按同一模式暴露 `simulationAccess` |
 | 工具按 preset 分发 | `docs/decisions.md:506`（D23）、`:1018`（D31） | 宿主行放控制器/服务；`/tools` 行只给 `leader` |
 
 ### 2.7 API 跨版本兼容矩阵（本轮新增实测）
@@ -211,7 +211,7 @@
 
 | 方案 | 做法 | 优点 | 代价/风险 | 结论 |
 |---|---|---|---|---|
-| **A. 独立仿真插件（已定）** | 新包 `dsh-plcsim-advanced`：自己的 C# 控制器、PLCSIM API、工具行；TIA 插件仍是工程写入/下载者 | 失败域隔离；PLCSIM 版本/许可独立；可按 preset 单独授权；未来可加 SIMIT/其它仿真器 | 跨插件编排；需要 `simulationAccess` 缝；多一个包/控制器 | ✅ 已定 |
+| **A. 独立仿真插件（已定）** | 新包 `@automation-suite/plcsim-advanced`：自己的 C# 控制器、PLCSIM API、工具行；TIA 插件仍是工程写入/下载者 | 失败域隔离；PLCSIM 版本/许可独立；可按 preset 单独授权；未来可加 SIMIT/其它仿真器 | 跨插件编排；需要 `simulationAccess` 缝；多一个包/控制器 | ✅ 已定 |
 | B. 塞进 TIA 控制器 | 在 `TiaOpennessV17Min.Controller` 里引用 PLCSIM API，新增操作 | 一个进程、编排简单、无需跨插件 | 耦合 TIA 会话与 PLCSIM 运行时；一个崩溃全挂；控制器更大；构建同时依赖两套 SDK；D31 的「一个包」是**TIA 能力**不拆包，不是把第二个产品塞进来 | ❌ 不推荐 |
 | C. 每次调用起一次性 CLI | 小 exe：建实例→上电→退出 | 实现最简单 | 最后一个 API 客户端退出后 Runtime Manager/实例会结束；无法保持仿真会话；归档/取回太慢 | ❌ 只适合一次性诊断 |
 | D. 用 S7/OPC UA 客户端（如 Snap7）替代 API | 只读写标签，不碰实例 | 语言/平台无关；可接外部 HMI | 不能建实例/上电/时间控制/冻结；Softbus 不可达；仍需 TCP/IP | ❌ 只能做补充，不能做底座 |
@@ -223,11 +223,11 @@
 
 | 候选 | 评价 | 结论 |
 |---|---|---|
-| `@voltarenyah/dsh-plcsim-advanced` | 产品名完整、不带运行时版本；4.0 基线覆盖 4.0–7.0，不需要版本后缀 | ✅ **推荐** |
-| `@voltarenyah/dsh-simulation-plcsim-advanced` | 显式「simulation 域」，将来可并列 `dsh-simulation-simit`；但过长，且产品名已含 simulation | 🟡 备选 |
-| `@voltarenyah/dsh-plcsim-advanced-v7` | 只在 V7 可用时诚实；但会误导 TIA V17/4.x 用户，且实测 4.0 基线覆盖 4.0–7.0 | ❌ 不推荐 |
-| `@voltarenyah/dsh-plcsim` | 与经典 S7-PLCSIM 混淆，且不是 Advanced API | ❌ |
-| `@voltarenyah/dsh-simulation` | 过宽；未来 SIMIT/HMI 无法区分 | ❌ |
+| `@automation-suite/plcsim-advanced` | 产品名完整、不带运行时版本；4.0 基线覆盖 4.0–7.0，不需要版本后缀 | ✅ **推荐** |
+| `@automation-suite/dsh-simulation-plcsim-advanced` | 显式「simulation 域」，将来可并列 `dsh-simulation-simit`；但过长，且产品名已含 simulation | 🟡 备选 |
+| `@automation-suite/plcsim-advanced-v7` | 只在 V7 可用时诚实；但会误导 TIA V17/4.x 用户，且实测 4.0 基线覆盖 4.0–7.0 | ❌ 不推荐 |
+| `@automation-suite/plcsim` | 与经典 S7-PLCSIM 混淆，且不是 Advanced API | ❌ |
+| `@automation-suite/simulation` | 过宽；未来 SIMIT/HMI 无法区分 | ❌ |
 
 **规则**
 
@@ -277,7 +277,7 @@
 - **运行时解析**：必须找到 **`API\4.0`** 的程序集（编译期程序集身份固定为 `4.0.0.4303`）；V7/4.1/5.0/6.0 安装通常都带旧 API 目录，本机 V7 即带 3.0–7.0。找不到时返回 `plcsim_not_installed`，而不是回退到 3.0（3.0 的程序集身份不同，不能直接替换 4.0 的引用；要支持 3.0-only 安装需另做 3.0 基线构建或反射适配）。
 - **运行前检查**：`simulation_status` 读 API 程序集版本、`SimulationRuntimeManager.Version`（Runtime 版本）与 `LicenseStatus`；三者一起构成「这台机器能跑哪个范围」的证据。
 - **不重新分发 API DLL**：`CopyLocal=false`；`controller/bin` 只放我们自己的 exe/依赖，Siemens API 由用户安装提供（与 TIA 插件对 `Siemens.Engineering.dll` 的处理一致）。
-- **构建机要求**：开发机需装 PLCSIM Advanced；CI 不构建控制器，直接用仓库里提交的 `controller/bin`（与 `dsh-tia-openness-v17-min` 的做法一致）。若将来 CI 要构建，再引入一个 `IPlcsimRuntime` 接口 + 编译期 stub，避免 CI 装 PLCSIM。
+- **构建机要求**：开发机需装 PLCSIM Advanced；CI 不构建控制器，直接用仓库里提交的 `controller/bin`（与 `@automation-suite/tia-openness-v17` 的做法一致）。若将来 CI 要构建，再引入一个 `IPlcsimRuntime` 接口 + 编译期 stub，避免 CI 装 PLCSIM。
 
 ### 4.4 包结构（建议）
 
@@ -285,7 +285,7 @@
 packages/dsh-plcsim-advanced/
   AGENTS.md
   README.md
-  package.json                     @voltarenyah/dsh-plcsim-advanced
+  package.json                     @automation-suite/plcsim-advanced
   cordis.patch.yml                 宿主行 + /tools 行
   src/
     index.ts                       宿主行：控制器 + simulationAccess + skill
@@ -454,7 +454,7 @@ packages/dsh-plcsim-advanced/
 | 1 | simulation 的范围 | **只做 PLC 程序动态下载执行**；SIMIT/HMI/工艺仿真另立 | ✅ 已定（用户） |
 | 2 | 插件边界 | **独立插件**，不塞进 TIA 控制器 | ✅ 已定（用户） |
 | 3 | 默认网络模式 | **默认 Softbus**；Openness 下载工作流显式 `tcpip` + 工程 IP，不做物理网卡映射 | ✅ 已定（用户 + 实测） |
-| 4 | 包名 | **`@voltarenyah/dsh-plcsim-advanced`**；不带版本号；备选 `dsh-simulation-plcsim-advanced` | ✅ 已按此创建 |
+| 4 | 包名 | **`@automation-suite/plcsim-advanced`**；不带版本号；备选 `dsh-simulation-plcsim-advanced` | ✅ 已按此创建 |
 | 5 | 标签写入 | **默认只读；写需 `confirm=true`** | ✅ 已实现 |
 | 6 | 实例持久化 | **不持久化；DSH 重启即重建**；`keepInstancesOnUnload` 只在插件卸载时保留 | ⬜ 待定（跨重启归档留 v2） |
 | 7 | F / S7-1200 | **明确排除** | ✅ 技术排除（PLCSIM 不支持 S7-1200；Openness 不支持 F 下载） |

@@ -10,7 +10,7 @@
  *
  * Everything here is pure so `test/model.test.mjs` can drive it with fixtures.
  *
- * @module dsh-ui-tia-console/model
+ * @module @automation-suite/ui-tia-console/model
  */
 
 /** Slash commands that touch TIA Portal. */

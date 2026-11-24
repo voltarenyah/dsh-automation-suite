@@ -1,5 +1,5 @@
 /**
- * The `gitContext` seam: the workspace repository, as the `dsh-tool-git` plugin
+ * The `gitContext` seam: the workspace repository, as the `@automation-suite/dsh-tool-git` plugin
  * exposes it.
  *
  * This plugin runs git itself for the sync workflow (`git.ts`), but it does not

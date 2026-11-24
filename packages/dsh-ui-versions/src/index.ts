@@ -3,7 +3,7 @@
  *
  * The browser half is a right-sidebar tab that renders a **pre-built view** of
  * the version store: `<workspace>/.dsh/versions-view.json`. That file is written
- * by `@voltarenyah/dsh-engineering-context` after every commit, replay and
+ * by `@automation-suite/engineering-context` after every commit, replay and
  * annotation, so this plugin never reads SQLite itself and never needs the
  * store's schema.
  *
@@ -11,7 +11,7 @@
  * for `lib/client.js` when an enabled entry declares the package (see
  * `cordis.patch.yml`). It owns no resource and does no work.
  *
- * @module dsh-ui-versions
+ * @module @automation-suite/ui-versions
  */
 
 /** Cordis plugin name, kept in step with the row id in `cordis.patch.yml`. */
@@ -33,6 +33,6 @@ export interface HostContext {
 export function apply(ctx: HostContext): void {
   ctx.logger?.info?.(
     'ui-versions: right-sidebar tab registered; reads <workspace>/.dsh/versions-view.json ' +
-      '(written by @voltarenyah/dsh-engineering-context)',
+      '(written by @automation-suite/engineering-context)',
   )
 }

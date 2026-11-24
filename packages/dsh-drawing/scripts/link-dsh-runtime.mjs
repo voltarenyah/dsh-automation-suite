@@ -35,7 +35,7 @@ if (!existsSync(source)) {
   console.error(
     `runtime cache not found at ${source}\n` +
       'Run the extractor from a sibling package first, e.g.\n' +
-      '  pnpm --filter @voltarenyah/dsh-engineering-context run link:runtime',
+      '  pnpm --filter @automation-suite/engineering-context run link:runtime',
   )
   process.exit(1)
 }

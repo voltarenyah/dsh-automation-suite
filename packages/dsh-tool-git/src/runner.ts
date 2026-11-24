@@ -6,7 +6,7 @@
  * never inject shell syntax. Machine output is kept deterministic with
  * `-c core.quotepath=false` (non-ASCII paths stay unquoted UTF-8) and
  * `--no-optional-locks` (read-only commands never take advisory locks).
- * @module dsh-tool-git/runner
+ * @module @automation-suite/dsh-tool-git/runner
  */
 
 import { execFile } from 'node:child_process'

@@ -26,7 +26,7 @@ export function plcsimRuntimeOf(ctx) {
     const runtime = ctx.get(PLCSIM_RUNTIME_SERVICE);
     if (runtime === undefined) {
         throw new Error(`The ${PLCSIM_RUNTIME_SERVICE} service is not in this composition: the /tools row needs the host row ` +
-            `('@voltarenyah/dsh-plcsim-advanced') to be declared too.`);
+            `('@automation-suite/plcsim-advanced') to be declared too.`);
     }
     return runtime;
 }

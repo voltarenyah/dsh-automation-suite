@@ -8,7 +8,7 @@
  * Data-sheet micro-labels (column heads, SEARCH/TAGS caps) stay English in both
  * locales: they are part of the instrument look, not UI copy.
  *
- * @module dsh-ui-project-dashboard/client/locales
+ * @module @automation-suite/ui-project-dashboard/client/locales
  */
 
 /** Locale namespace used by both seats. */

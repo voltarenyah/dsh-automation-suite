@@ -12,7 +12,7 @@
  * wrong API surface. `scripts/link-dsh-runtime.mjs` instead links the packages
  * extracted from the *installed app's own* `resources/app.asar`, so the tests run
  * against exactly the runtime the app loads — the same rule the sibling
- * `dsh-tia-openness-v17-min` package follows.
+ * `@automation-suite/tia-openness-v17` package follows.
  */
 
 import { linkRuntime, unresolvedRuntimePackages } from '../scripts/link-dsh-runtime.mjs'

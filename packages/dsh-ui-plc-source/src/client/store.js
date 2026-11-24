@@ -14,7 +14,7 @@
  * disguised singleton across plugin reloads), so the handle is created in
  * `apply` and passed to the registration.
  *
- * @module dsh-ui-plc-source/store
+ * @module @automation-suite/ui-plc-source/store
  */
 
 import { defineStore } from '@deepseek-ai/dsh-client-store'

@@ -7,7 +7,7 @@
  * fail to open). The chip is deliberately not interactive: the block already has
  * a row in the tab, and a second navigation path would need its own failure UI.
  *
- * @module dsh-ui-plc-source/Mention
+ * @module @automation-suite/ui-plc-source/Mention
  */
 
 /**

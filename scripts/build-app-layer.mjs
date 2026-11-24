@@ -356,7 +356,7 @@ function verifyLayer(finalManifest, locals) {
   // directories; that is expected (the installer rewrites it after copying), and
   // the runtime check below proves the rewrite yields a profile pnpm accepts.
 
-  const engine = join(nodeModules, '@voltarenyah', 'dsh-engineering-graph', 'engine', 'bin', 'EngineeringGraph.Engine.exe')
+  const engine = join(nodeModules, '@automation-suite', 'engineering-graph', 'engine', 'bin', 'EngineeringGraph.Engine.exe')
   if (!existsSync(engine)) throw new Error(`graph engine missing: ${engine}`)
   // The published engine is a self-contained single file: it unpacks native
   // libraries into %TEMP% and opens its self-test database there. Point both at

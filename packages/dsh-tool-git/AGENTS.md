@@ -1,4 +1,4 @@
-# AGENTS.md — dsh-tool-git（本仓内的 vendor 副本）
+# AGENTS.md — @automation-suite/dsh-tool-git（本仓内的 vendor 副本）
 
 本文件是给在本目录工作的 agent 的项目级约定。仓库级约定见根 `AGENTS.md`；用户级见 `~/.dsh/AGENTS.md`。
 
@@ -15,26 +15,29 @@
 
 **压平导入时丢掉、且不要从上游带回来的东西**：
 
-- `.git/` —— 上游历史不进本仓（与 `dsh-tia-openness-v17-min` 的迁移方式一致：压平为单提交）。
+- `.git/` —— 上游历史不进本仓（与 `@automation-suite/tia-openness-v17` 的迁移方式一致：压平为单提交）。
 - `.github/workflows/ci.yml` —— GitHub 只读仓库根的 `.github/`，放在包目录里是死文件。
 - `pnpm-lock.yaml`、`pnpm-workspace.yaml`、`.npmrc` —— 这三者归 monorepo 根所有。
   上游那份 `pnpm-workspace.yaml` 只有 `allowBuilds` / `minimumReleaseAge` 两个键，是
   **pnpm 11 专有**配置；本机实际跑的是 pnpm 9.12.0（根 `packageManager` 触发自动切换，
   锁文件 `lockfileVersion: 9.0`），这两个键在本仓没有意义，不要搬进根配置。
 
-### 包名保持上游的 `dsh-tool-git`（不加 scope）
+### 发布身份：`@automation-suite/dsh-tool-git`（自有 scope 下的 fork）
 
-刻意的决定。理由：它是第三方插件的 vendor 副本，改名会把上游的包名与文档一起改掉，
-也让将来与上游 diff 变得困难。
+上游的裸名 `dsh-tool-git` 已被 npm 占用，所以本仓不沿用裸名，而是以 **fork 身份**发布在自有 scope 下：
+包名 `@automation-suite/dsh-tool-git`（尾段保持 `dsh-tool-git`，便于与上游对照）。理由：
+
+- 裸名 `dsh-tool-git` 不可用（上游占用），而改名也不该抹掉"这是哪个上游"的信息；
+- MIT 允许 fork 发布，条件是保留版权与署名：`LICENSE`、README 与 `repository` 字段继续指向上游；
+- 它与上游**不是同一个 npm 包**：`npm i dsh-tool-git` 是上游原版，`npm i @automation-suite/dsh-tool-git`
+  是本仓这份带 B1 改造（服务化 + `/tools` 拆分 + `neverBundle`）的 fork。
 
 因此根 `AGENTS.md` 里那条"包名与 patch 名必须逐字一致"落在本包上是：
-`package.json` 的 `name` 与 `cordis.patch.yml` 里 `insert[].name` **都**是 `dsh-tool-git`（无引号，
-不以 `@` 开头，不需要 YAML 引号）。**改任一处必须同步另一处。**
+`package.json` 的 `name` 与 `cordis.patch.yml` 里 `insert[].name` **都**是 `@automation-suite/dsh-tool-git`，
+YAML 里**必须加引号**（`@` 是保留起始字符）。**改任一处必须同步另一处。**
 
-⚠️ 连带后果：**不能把本包以同名发布到 npm**（`dsh-tool-git` 已被上游占用）。若要发布，
-要么改用本仓 scope（`@voltarenyah/dsh-tool-git`，需同步改 patch 的 name），要么只走
-`pnpm pack` 出 tarball 内部分发。本包目前没有 `private: true`，所以 `pnpm -r publish`
-**不会**自动跳过它 —— 发布前必须先决定这件事。
+本包已声明 `"publishConfig": { "access": "public" }`（scoped 包默认 restricted）。`pnpm -r publish`
+会把 15 个包一起发布；与上游同名无关，互不覆盖。
 
 ## 2. 本仓相对上游的行为差异（B1：服务化 + `/tools` 拆分）
 
@@ -44,8 +47,8 @@
 1. **宿主行不注册模型工具**。`src/index.ts` 的 `apply` 只做两件事：
    `ctx.provide('gitContext', …)` 与 `installSafetyGate(ctx, …)`。
    模型工具搬到新入口 `src/tools-entry.ts`，由 `package.json` 的
-   `"./tools"` 子路径导出，profile 里用单独一行 `name: dsh-tool-git/tools` 挂载。
-   宿主行名仍是 `dsh-tool-git`；**不要**把工具塞回宿主行（那会让它们被所有 agent 继承，
+   `"./tools"` 子路径导出，profile 里用单独一行 `name: '@automation-suite/dsh-tool-git/tools'` 挂载。
+   宿主行名仍是 `@automation-suite/dsh-tool-git`；**不要**把工具塞回宿主行（那会让它们被所有 agent 继承，
    正是 D23 要拆的形态）。
 2. **`gitContext` 是稳定服务 API**（`src/service.ts`）。兄弟插件经
    `ctx.get('gitContext')` 消费，**不 import 本包**。完整签名见该文件与 README：
@@ -75,8 +78,8 @@
    三者都只按包名 import `@deepseek-ai/*`，不得内联运行时（验收口径见第 5 节）。
 6. **`exports["./tools"]` 指向 `./lib/tools-entry.mjs`**。计划文本写的是
    `lib/tools-entry.js`，但 tsdown 在 `"type": "module"` 下输出 `.mjs`（`main` 也是
-   `lib/index.mjs`）；写成 `.js` 会让 `dsh-tool-git/tools` 解析失败。
-   `Node` 自引用验证：`node -e "import('dsh-tool-git/tools')"` 在包目录下应成功。
+   `lib/index.mjs`）；写成 `.js` 会让 `@automation-suite/dsh-tool-git/tools` 解析失败。
+   `Node` 自引用验证：`node -e "import('@automation-suite/dsh-tool-git/tools')"` 在包目录下应成功。
 
 随行为差异一起维护的地方：`src/dsh-runtime.d.ts` 补了 `ctx.get` / `ctx.provide`、
 `ToolRunContext.agent` / `ToolExecuteRequest.agent` 的声明（`ToolAgent` 只建模
@@ -93,7 +96,7 @@ README / README.zh 的工具参数说明与配置示例已同步。
 改为复用本仓既有机制（与 `packages/dsh-tia-openness-v17-min` 同一套）：
 
 ```powershell
-pnpm --filter dsh-tool-git run link:runtime
+pnpm --filter @automation-suite/dsh-tool-git run link:runtime
 ```
 
 `scripts/link-dsh-runtime.mjs` 把 `<DSH_HOME>/plugin-runtime/node_modules/@deepseek-ai/*`
@@ -108,13 +111,13 @@ junction 进本包的 `node_modules/@deepseek-ai/`。抽取缓存由 `scripts/ds
   `plugin-runtime/node_modules` 这个扁平树向上找。
 - `plugin-runtime` 由本仓所有插件**共享**（同一个 `DSH_HOME`）。`ensureRuntimeCache()` 光比对
   版本号不足以判断缓存可用，所以本包的副本额外用 `cachedRootsPresent()` 校验根包齐全 ——
-  这是相对 `dsh-tia-openness-v17-min` 那份的**有意改进**，不要"对齐"回去。
+  这是相对 `@automation-suite/tia-openness-v17` 那份的**有意改进**，不要"对齐"回去。
 
 ## 4. `src/dsh-runtime.d.ts` 必须与用到的 API 面同步（强制）
 
 抽取出来的运行时**一个 `.d.ts` 都没有**（app 的生产构建剥掉了类型声明），但每个包的
 `package.json` 仍声明 `"types": "./lib/types/index.d.ts"`，于是 `tsc` 报 `TS7016`。
-本包的解法与 `dsh-tia-openness-v17-min` 一致：手写环境声明 `src/dsh-runtime.d.ts`。
+本包的解法与 `@automation-suite/tia-openness-v17` 一致：手写环境声明 `src/dsh-runtime.d.ts`。
 
 维护规则：
 
@@ -134,10 +137,10 @@ junction 进本包的 `node_modules/@deepseek-ai/`。抽取缓存由 `scripts/ds
 # 0.2.0-rc.2：resources\runtime\pnpm\bin\）—— 脚本里按候选列表探测，别写死。
 $pnpm = "$env:LOCALAPPDATA\Programs\DeepSeek Harness\resources\runtime\primary-runtime\dependencies\pnpm\bin\pnpm.mjs"
 
-node $pnpm --filter dsh-tool-git run link:runtime   # 裸 checkout 首次
-node $pnpm --filter dsh-tool-git run build          # tsc 声明 + tsdown → lib/
-node $pnpm --filter dsh-tool-git run typecheck      # tsc -p tsconfig.json && tsc -p tsconfig.test.json --noEmit
-node $pnpm --filter dsh-tool-git run test           # vitest（对真实运行时 + 真实 git 临时仓库）
+node $pnpm --filter @automation-suite/dsh-tool-git run link:runtime   # 裸 checkout 首次
+node $pnpm --filter @automation-suite/dsh-tool-git run build          # tsc 声明 + tsdown → lib/
+node $pnpm --filter @automation-suite/dsh-tool-git run typecheck      # tsc -p tsconfig.json && tsc -p tsconfig.test.json --noEmit
+node $pnpm --filter @automation-suite/dsh-tool-git run test           # vitest（对真实运行时 + 真实 git 临时仓库）
 ```
 
 本机 `pnpm` 不在 PATH 上，且根 `package.json` 的 `packageManager` 会让随 DSH 分发的 pnpm（0.2.1-rc.2 上是
@@ -174,7 +177,7 @@ node $pnpm --filter dsh-tool-git run test           # vitest（对真实运行�
 ## 6. 与上游同步
 
 ```powershell
-$tmp = Join-Path $env:TEMP 'dsh-tool-git-src'
+$tmp = Join-Path $env:TEMP '@automation-suite/dsh-tool-git-src'
 cmd /c rmdir /s /q "$tmp"    # 若存在
 git clone --quiet --branch v<新版本> --depth 1 https://github.com/lxj808624/dsh-tool-git.git "$tmp"
 ```
@@ -200,4 +203,4 @@ git clone --quiet --branch v<新版本> --depth 1 https://github.com/lxj808624/d
   里面 `@deepseek-ai/*` 是指向 `<DSH_HOME>/plugin-runtime` 的 junction，跟进式删除会毁掉缓存
   （同类事故见 `packages/dsh-tia-openness-v17-min/docs/ECOSYSTEM-COMPAT.md`）。
   拆链接只用 `Remove-Item -Force`（不加 `-Recurse`）或 `cmd /c rmdir "<路径>"`。
-- ✅ 重新链接用 `pnpm --filter dsh-tool-git run link:runtime -- --force`：目标若是链接只 `unlink`，不下降。
+- ✅ 重新链接用 `pnpm --filter @automation-suite/dsh-tool-git run link:runtime -- --force`：目标若是链接只 `unlink`，不下降。

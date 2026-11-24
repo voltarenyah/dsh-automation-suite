@@ -7,7 +7,7 @@
  * binary is resolved explicitly: the repository root's copy, which exists
  * because the root package depends on typescript.
  *
- * @module dsh-ui-project-dashboard/scripts/tsc
+ * @module @automation-suite/ui-project-dashboard/scripts/tsc
  */
 
 import { spawnSync } from 'node:child_process'

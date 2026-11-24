@@ -21,7 +21,7 @@
  * Copy goes through the framework's `t` seat, which means every string is
  * resolved during render and therefore follows the app's language setting.
  *
- * @module dsh-ui-plc-source/Panel
+ * @module @automation-suite/ui-plc-source/Panel
  */
 
 import { useEffect, useMemo, useRef, useState } from 'react'

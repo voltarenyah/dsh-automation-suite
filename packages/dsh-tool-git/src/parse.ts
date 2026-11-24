@@ -2,7 +2,7 @@
  * Parsers for the machine-readable `git` output formats the tools rely on:
  * `--porcelain=v2` (status), `--numstat` (diff/show stats), `--format` records
  * (log/show), and `for-each-ref` (branch).
- * @module dsh-tool-git/parse
+ * @module @automation-suite/dsh-tool-git/parse
  */
 
 /** A changed file's status letter as git reports it. */

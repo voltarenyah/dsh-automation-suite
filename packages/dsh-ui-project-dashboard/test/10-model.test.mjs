@@ -3,7 +3,7 @@
  * the tag tree, and the ledger totals. The module is plain ESM, so the tests
  * import the source directly (the browser bundle is not needed here).
  *
- * @module dsh-ui-project-dashboard/test/model
+ * @module @automation-suite/ui-project-dashboard/test/model
  */
 
 import assert from 'node:assert/strict'

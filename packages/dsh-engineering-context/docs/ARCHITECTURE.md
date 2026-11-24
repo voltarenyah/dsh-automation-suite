@@ -750,9 +750,9 @@ TIA（权威，二进制，不进 git）
 
 ```
 packages/dsh-engineering-context/
-├── package.json          name: @voltarenyah/dsh-engineering-context, dsh.bundle.patch
+├── package.json          name: @automation-suite/engineering-context, dsh.bundle.patch
 ├── cordis.patch.yml      - insert: - id: engineering-context
-│                                    name: '@voltarenyah/dsh-engineering-context'   ← 引号必须有
+│                                    name: '@automation-suite/engineering-context'   ← 引号必须有
 ├── tsconfig.json         tsc → lib/（**不用** tsdown/vitest，见 decisions.md P0-1）
 ├── .gitignore            lib/ 与 node_modules/（lib/ 暂不提交，见 P0-2）
 ├── src/
@@ -833,7 +833,7 @@ packages/dsh-engineering-context/
 | **图谱可缺席** | 无 `knowledgeGraph` 服务 / 引擎未构建 / 引擎超时 → 工作流仍 `ok:true`，只报"图谱未建成"并给出原因；引擎拒绝 → 逐设备 `error.code` + remediation | ✅ | ✅ 已测（`test/02` 工具级 + `test/04` 缝 B 级） |
 | 上下文预算 | 每个工具结果 ≤4KB；工具目录开销可复算 | ✅ | ✅ 列表封顶 20 行、细节封顶 40 行 |
 
-测试形态：**`node:test`**（与 `dsh-tia-openness-v17-min` 一致），断言跑在**真实**运行时上 ——
+测试形态：**`node:test`**（与 `@automation-suite/tia-openness-v17` 一致），断言跑在**真实**运行时上 ——
 工具的 schema 由 `defineTool` 真的编译，结果也由运行时的 `validateJsonSchemaValue` 真的校验。
 
 ---

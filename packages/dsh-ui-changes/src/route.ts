@@ -10,8 +10,8 @@
  * and no diff hunks cross this route** — the panel's whole job is to say what is
  * dirty, and a "what changed" view is out of scope for v1.
  *
- * Security posture (same shape as `dsh-ui-prompt-guide` and
- * `dsh-ui-project-dashboard`): `ctx.webServer` routes carry **no
+ * Security posture (same shape as `@automation-suite/ui-prompt-guide` and
+ * `@automation-suite/ui-project-dashboard`): `ctx.webServer` routes carry **no
  * authentication** — only `/api` does — so this route copies the minimal trust
  * fence: reject `Sec-Fetch-Site: cross-site`, require `Host` to be a loopback
  * name (or an explicitly trusted one), and when an `Origin` is present require
@@ -22,7 +22,7 @@
  * through the session store. That is what keeps this route from being a
  * directory oracle.
  *
- * @module dsh-ui-changes/route
+ * @module @automation-suite/ui-changes/route
  */
 
 import { StatusError } from './errors.js'

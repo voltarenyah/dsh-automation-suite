@@ -1,4 +1,4 @@
-# @voltarenyah/dsh-tia-todo-bridge
+# @automation-suite/tia-todo-bridge
 
 输入框上方的 Todo 列表在 TIA 操作期间**一直有内容、状态会自己结束**的兜底插件。
 
@@ -52,7 +52,7 @@ leader 的清单由 persona 规定“派发时标 in_progress、auditor 结果�
 
 ```yaml
 # profile 的 bundles 里加一行；bundle 自带的 cordis.patch.yml 会插入自己的 Loader 行
-- '@voltarenyah/dsh-tia-todo-bridge'
+- '@automation-suite/tia-todo-bridge'
 ```
 
 插件不注册工具、不注册服务，**宿主面一行即可**，所有 agent 共享同一套监听；没有 `todos`

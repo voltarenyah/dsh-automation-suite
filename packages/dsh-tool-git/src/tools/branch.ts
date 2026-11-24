@@ -1,6 +1,6 @@
 /**
  * `git_branch` — local (or all) branches with upstream tracking state.
- * @module dsh-tool-git/tools/branch
+ * @module @automation-suite/dsh-tool-git/tools/branch
  */
 
 import { defineTool } from '@deepseek-ai/dsh-tools'

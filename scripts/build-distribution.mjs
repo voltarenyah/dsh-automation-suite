@@ -267,7 +267,7 @@ if (doPack) {
   for (const [name, local] of localPackages) {
     process.stdout.write(`packing ${name} ... `)
     const filename =
-      doSelfContained && name === '@voltarenyah/dsh-engineering-graph'
+      doSelfContained && name === '@automation-suite/engineering-graph'
         ? packGraphSelfContained(local)
         : packDirectory(local.dir)
     tarballs.set(name, filename)

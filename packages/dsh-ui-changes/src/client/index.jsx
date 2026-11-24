@@ -14,7 +14,7 @@
  * P0: the route answers with a stub payload, so the panel shows a "sample data"
  * banner. P1 replaces the provider behind the route and nothing here changes.
  *
- * @module dsh-ui-changes/client
+ * @module @automation-suite/ui-changes/client
  */
 
 import { Panel } from './Panel.jsx'
@@ -24,7 +24,7 @@ import { ensureStyle } from './style.js'
 import { NS, en, zh } from './locales.js'
 
 /** Package name. Also the tab-type id and the body seat's key — they must agree. */
-export const ID = 'dsh-ui-changes'
+export const ID = '@automation-suite/ui-changes'
 
 /** A fresh kind, so the type cannot collide with the shipped tab types. */
 const KIND = 'changes'

@@ -13,7 +13,7 @@
  *
  * The glyph is a CPU module: a die in its socket with four pin pairs.
  *
- * @module dsh-ui-hardware/client/guide-icon
+ * @module @automation-suite/ui-hardware/client/guide-icon
  */
 
 /**

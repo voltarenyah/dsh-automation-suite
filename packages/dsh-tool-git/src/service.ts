@@ -11,7 +11,7 @@
  * `process.cwd()` may be a directory the user never chose and silently
  * operating there is exactly the trap this service exists to remove.
  *
- * @module dsh-tool-git/service
+ * @module @automation-suite/dsh-tool-git/service
  */
 
 import { stat } from 'node:fs/promises'

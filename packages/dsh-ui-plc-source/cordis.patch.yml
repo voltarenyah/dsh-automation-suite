@@ -7,4 +7,4 @@
 # because the name does not start with `@`; a scoped name would need them.
 - insert:
     - id: ui-plc-source
-      name: dsh-ui-plc-source
+      name: '@automation-suite/ui-plc-source'

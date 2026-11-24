@@ -10,7 +10,7 @@
  * Layout follows the host theme through the `--dsw-*` tokens in `style.js`;
  * the page never forces a light or dark palette of its own.
  *
- * @module dsh-ui-project-dashboard/client/dashboard
+ * @module @automation-suite/ui-project-dashboard/client/dashboard
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'

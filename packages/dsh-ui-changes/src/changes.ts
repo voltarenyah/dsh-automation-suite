@@ -13,7 +13,7 @@
  * Paths are normalised to forward slashes so a Windows backslash never splits
  * one file into two rows (`git` itself always reports `/`).
  *
- * @module dsh-ui-changes/changes
+ * @module @automation-suite/ui-changes/changes
  */
 
 import type { ChangedFile, ChangesTotals } from './types.js'

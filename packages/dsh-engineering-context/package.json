@@ -1,6 +1,9 @@
 {
-  "name": "@voltarenyah/dsh-engineering-context",
+  "name": "@automation-suite/engineering-context",
   "version": "0.1.0",
+  "publishConfig": {
+    "access": "public"
+  },
   "private": false,
   "description": "DSH plugin: engineering project context — saves the project TIA Portal has open into the workspace and rebuilds its source tree, through the TIA interface plugin's service seam (it never talks to TIA Portal itself).",
   "type": "module",

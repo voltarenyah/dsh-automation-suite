@@ -32,7 +32,7 @@ import {
 test('the host row exports name, inject, Config and apply at module level', async () => {
   const plugin = await loadPlugin()
 
-  assert.equal(plugin.name, 'tia-openness-v17-min')
+  assert.equal(plugin.name, 'tia-openness-v17')
   // The host row registers no tool now, so it has nothing to wait for: `skills`
   // stays optional through `ctx.inject` inside `apply`.
   assert.deepEqual(plugin.inject, [], 'the host row waits for no service')
@@ -44,7 +44,7 @@ test('the /tools row exports its own name, inject and apply at module level', as
   const entry = await loadToolsEntry()
   const { TIA_RUNTIME_SERVICE } = await loadRuntimeModule()
 
-  assert.equal(entry.name, 'tia-openness-v17-min-tools')
+  assert.equal(entry.name, 'tia-openness-v17-tools')
   // The tool registry is where the tools go; the runtime seam is the host row's
   // controller. Declaring both is what makes the loader wait for them.
   assert.deepEqual(entry.inject, ['tools', TIA_RUNTIME_SERVICE])

@@ -5,7 +5,7 @@
  *
  * The repository root is **never** `process.cwd()` and never a model-supplied
  * path: it is the session cwd recorded on the tool call's agent.
- * @module dsh-tool-git/tools/context
+ * @module @automation-suite/dsh-tool-git/tools/context
  */
 
 import type { ToolRunContext } from '@deepseek-ai/dsh-tools'
@@ -35,7 +35,7 @@ export function sessionCwd(exec: ToolRunContext): string {
   const cwd = exec.agent?.session.header.cwd
   if (typeof cwd !== 'string' || cwd.length === 0) {
     throw new Error(
-      'dsh-tool-git: no session working directory (exec.agent.session.header.cwd); '
+      '@automation-suite/dsh-tool-git: no session working directory (exec.agent.session.header.cwd); '
       + 'refusing to fall back to process.cwd()',
     )
   }

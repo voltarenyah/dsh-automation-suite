@@ -18,14 +18,14 @@
  * Both pieces fail soft: a missing locale method or an unavailable slot warns
  * once and leaves the stock hero alone instead of breaking the page.
  *
- * @module dsh-ui-brandmark/client
+ * @module @automation-suite/ui-brandmark/client
  */
 
 import { BrandMark } from './BrandMark.jsx'
 import { heroCopy } from '../model'
 
 /** Package name; also the slot key this plugin occupies. */
-export const ID = 'dsh-ui-brandmark'
+export const ID = '@automation-suite/ui-brandmark'
 
 /** Cordis services the body needs (`slots` for the mark, `locale` for the copy). */
 export const inject = ['slots', 'locale']

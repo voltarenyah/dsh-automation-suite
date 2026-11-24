@@ -4,7 +4,7 @@
  * A tab record freezes the title text it was opened with, so the chip needs a seat
  * of its own to keep following the active locale.
  *
- * @module dsh-ui-hardware/client/Title
+ * @module @automation-suite/ui-hardware/client/Title
  */
 
 /**

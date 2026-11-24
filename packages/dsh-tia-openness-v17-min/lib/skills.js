@@ -17,14 +17,14 @@
  * requirement would leave the whole plugin waiting for a service that never
  * appears.
  *
- * @module dsh-tia-openness-v17-min/skills
+ * @module @automation-suite/tia-openness-v17/skills
  */
 import { readFileSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { join } from 'node:path';
 /** Provider name registered on `ctx.skills`; every candidate must report the same one. */
-export const SKILL_PROVIDER = 'tia-openness-v17-min';
+export const SKILL_PROVIDER = 'tia-openness-v17';
 /** The only skill this plugin advertises to the model. */
 export const ROUTER_SKILL = 'tia-openness';
 /** Standard precedence rank for packaged providers (`BUNDLED_SKILL_RANK`). */

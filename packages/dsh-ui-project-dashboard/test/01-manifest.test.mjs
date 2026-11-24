@@ -11,7 +11,7 @@
  *  3. the built bundle declares the two seats this plugin owns and the negative
  *     order that puts it above Plugins (the sidebar only sorts by `order`).
  *
- * @module dsh-ui-project-dashboard/test/manifest
+ * @module @automation-suite/ui-project-dashboard/test/manifest
  */
 
 import assert from 'node:assert/strict'
@@ -26,8 +26,8 @@ const manifest = JSON.parse(read('package.json'))
 
 test('the Loader row name equals the package name verbatim', () => {
   const patch = read('cordis.patch.yml')
-  assert.match(patch, /- id: project-dashboard/)
-  assert.match(patch, new RegExp(`name: ${manifest.name}`))
+  assert.match(patch, /- id: ui-project-dashboard/)
+  assert.match(patch, new RegExp(`name: '?${manifest.name.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&')}'?`))
 })
 
 test('the package declares the browser half correctly', () => {

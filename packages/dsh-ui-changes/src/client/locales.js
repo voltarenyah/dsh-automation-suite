@@ -9,7 +9,7 @@
  * `error.failed` / `error.http` and interpolates the code, so a new host-side
  * failure needs one dictionary entry, not a new string in the component.
  *
- * @module dsh-ui-changes/client/locales
+ * @module @automation-suite/ui-changes/client/locales
  */
 
 /** Namespace every key here is registered under. */
@@ -31,7 +31,7 @@ export const zh = {
   clean: '工作区干净：没有未提交的改动',
 
   'error.notRepo': '这个工作区不在 git 仓库里，没有变更可列',
-  'error.noService': 'git 插件（dsh-tool-git）没有加载，变更不可用',
+  'error.noService': 'git 插件（@automation-suite/dsh-tool-git）没有加载，变更不可用',
   'error.sessionUnknown': '找不到这个会话的工作目录',
   'error.timeout': '读取变更超时，稍后再试',
   'error.failed': '读取变更失败（{code}）',
@@ -55,7 +55,7 @@ export const en = {
   clean: 'Nothing to commit: the working tree is clean',
 
   'error.notRepo': 'This workspace is not inside a git repository',
-  'error.noService': 'The git plugin (dsh-tool-git) is not loaded; changes are unavailable',
+  'error.noService': 'The git plugin (@automation-suite/dsh-tool-git) is not loaded; changes are unavailable',
   'error.sessionUnknown': 'This session has no working directory',
   'error.timeout': 'Reading the changes timed out; try again',
   'error.failed': 'Could not read the changes ({code})',

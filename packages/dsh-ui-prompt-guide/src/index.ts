@@ -14,7 +14,7 @@
  * posture in `page.ts`; it serves no user data, only the text shipped in the
  * package.
  *
- * @module dsh-ui-prompt-guide
+ * @module @automation-suite/ui-prompt-guide
  */
 
 import { answer, PAGE_ROOT, ROUTE_BASE, type PageRequest, type PageResponse } from './page.js'

@@ -4,7 +4,7 @@
  * `engineeringAccess` is deliberately read-mostly (D12): it exports blocks and
  * reads fingerprints, but it does not import project texts, activate languages,
  * archive or save the project. The translation workflow in
- * `@voltarenyah/dsh-engineering-context` needs exactly those writes, so they live
+ * `@automation-suite/engineering-context` needs exactly those writes, so they live
  * here instead of widening the read seam.
  *
  * Everything in this file goes through `runOperation`, the same path the
@@ -15,7 +15,7 @@
  * import inside a transaction). Callers must archive/roll back on failure; this
  * service only reports the controller's `state` and log path.
  *
- * @module dsh-tia-openness-v17-min/project-text-access
+ * @module @automation-suite/tia-openness-v17/project-text-access
  */
 
 import { Service } from '@deepseek-ai/cordis'

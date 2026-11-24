@@ -94,7 +94,7 @@ export function knowledgeEngineOf(ctx: Context): KnowledgeEngine {
   if (runtime === undefined) {
     throw new Error(
       `The ${KNOWLEDGE_ENGINE_SERVICE} service is not in this composition: the /tools row needs the host row ` +
-        `('@voltarenyah/dsh-engineering-graph') loaded first, in the same agent preset and ahead of the tools row.`,
+        `('@automation-suite/engineering-graph') loaded first, in the same agent preset and ahead of the tools row.`,
     )
   }
   return runtime

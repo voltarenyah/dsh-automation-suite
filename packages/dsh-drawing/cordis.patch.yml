@@ -4,5 +4,5 @@
 # start character in YAML. It must match package.json's `name` byte for byte —
 # the loader treats this string as a module identifier (root AGENTS.md §1).
 - insert:
-    - id: drawing
-      name: '@voltarenyah/dsh-drawing'
+    - id: pdf-drawing
+      name: '@automation-suite/pdf-drawing'

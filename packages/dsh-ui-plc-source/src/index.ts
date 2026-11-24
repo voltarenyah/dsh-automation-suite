@@ -19,7 +19,7 @@
  * exported since the last read is still found. Failures are contained: a plugin
  * must never turn a broken manifest into a failed turn.
  *
- * @module dsh-ui-plc-source
+ * @module @automation-suite/ui-plc-source
  */
 
 import { readdir, readFile } from 'node:fs/promises'

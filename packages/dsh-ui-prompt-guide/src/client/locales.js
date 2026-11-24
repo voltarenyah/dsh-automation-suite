@@ -5,7 +5,7 @@
  * looks up `dict[key]`, so a nested object would fall back to printing the key
  * itself. The rail label is re-resolved whenever the app language changes.
  *
- * @module dsh-ui-prompt-guide/client/locales
+ * @module @automation-suite/ui-prompt-guide/client/locales
  */
 
 /** Locale namespace used by the rail row and the panel seat. */

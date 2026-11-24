@@ -149,7 +149,7 @@
 
 ## 11. 静态可达性分析（下载前就能给判定）
 
-现有 `dsh-engineering-graph` 的图谱已含：`CALLS`、`CONNECTED_TO`、`READS`、`WRITES`、
+现有 `@automation-suite/engineering-graph` 的图谱已含：`CALLS`、`CONNECTED_TO`、`READS`、`WRITES`、
 `EXECUTES_BEFORE/AFTER`、`REFERS_TO`，以及渲染后的调用语句（含实参绑定）。
 `knowledge_variable_usage` 给出变量全部读写点，`knowledge_network` 给出网段读写与调用语句。
 

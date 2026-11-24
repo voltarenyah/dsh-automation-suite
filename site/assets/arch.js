@@ -12,7 +12,7 @@
   var COMPONENTS = [
     {
       group: "host",
-      name: "@voltarenyah/dsh-tia-openness-v17-min",
+      name: "@automation-suite/tia-openness-v17",
       role: { en: "TIA Portal V17 access", zh: "TIA Portal V17 读写" },
       tools: "39",
       version: "0.1.0",
@@ -20,7 +20,7 @@
     },
     {
       group: "host",
-      name: "@voltarenyah/dsh-plcsim-advanced",
+      name: "@automation-suite/plcsim-advanced",
       role: { en: "PLCSIM Advanced runtime", zh: "PLCSIM Advanced 运行时" },
       tools: "4",
       version: "0.1.0",
@@ -28,7 +28,7 @@
     },
     {
       group: "host",
-      name: "@voltarenyah/dsh-engineering-graph",
+      name: "@automation-suite/engineering-graph",
       role: { en: "Knowledge graph · SQLite + C# engine", zh: "知识图谱 · SQLite + C# 引擎" },
       tools: "9",
       version: "0.1.0",
@@ -36,7 +36,7 @@
     },
     {
       group: "host",
-      name: "dsh-tool-git",
+      name: "@automation-suite/dsh-tool-git",
       role: { en: "Guard-railed Git", zh: "受控 Git" },
       tools: "12",
       version: "0.1.3",
@@ -44,7 +44,7 @@
     },
     {
       group: "workflow",
-      name: "@voltarenyah/dsh-engineering-context",
+      name: "@automation-suite/engineering-context",
       role: { en: "Project scope and version workflow", zh: "工程作用域与版本工作流" },
       tools: { en: "core + diff + version", zh: "核心 + diff + 版本" },
       version: "0.1.0",
@@ -55,7 +55,7 @@
     },
     {
       group: "standalone",
-      name: "@voltarenyah/dsh-drawing",
+      name: "@automation-suite/pdf-drawing",
       role: { en: "PDF drawing index + sidebar", zh: "PDF 图纸索引 + 侧栏" },
       tools: "5",
       version: "0.1.0",
@@ -63,7 +63,7 @@
     },
     {
       group: "view",
-      name: "dsh-ui-plc-source",
+      name: "@automation-suite/ui-plc-source",
       role: { en: "Sidebar · PLC Blocks", zh: "右侧栏 · PLC Blocks" },
       tools: "—",
       version: "0.1.0",
@@ -74,7 +74,7 @@
     },
     {
       group: "view",
-      name: "dsh-ui-tia-console",
+      name: "@automation-suite/ui-tia-console",
       role: { en: "Composer · TIA console", zh: "输入框 · TIA 控制台" },
       tools: "—",
       version: "0.1.0",
@@ -85,7 +85,7 @@
     },
     {
       group: "view",
-      name: "dsh-ui-versions",
+      name: "@automation-suite/ui-versions",
       role: { en: "Sidebar · Versions", zh: "右侧栏 · Versions" },
       tools: "—",
       version: "0.1.0",
@@ -96,7 +96,7 @@
     },
     {
       group: "view",
-      name: "dsh-ui-hardware",
+      name: "@automation-suite/ui-hardware",
       role: { en: "Sidebar · Hardware", zh: "右侧栏 · Hardware" },
       tools: "—",
       version: "0.1.0",
@@ -107,7 +107,7 @@
     },
     {
       group: "standalone",
-      name: "dsh-ui-prompt-guide",
+      name: "@automation-suite/ui-prompt-guide",
       role: { en: "Main · Prompt Guide", zh: "主栏 · Prompt Guide" },
       tools: "—",
       version: "0.1.0",
@@ -115,7 +115,7 @@
     },
     {
       group: "standalone",
-      name: "dsh-ui-project-dashboard",
+      name: "@automation-suite/ui-project-dashboard",
       role: { en: "Sidebar · Project dashboard", zh: "侧栏 · 工程看板" },
       tools: "—",
       version: "0.1.0",
@@ -171,7 +171,7 @@
       "arch.c.foot": "The profile blueprint is not a component: it is the assembly layer above these packages. Package versions are independent of the suite release.",
       "arch.s.title": "Preset surfaces",
       "arch.s.note": "The package is not the unit of visibility; the row is.",
-      "arch.s.example": "<pre><span class=\"c\"># profile/cordis.patch.yml — a preset mounts an entry point</span>\n- id: leader-tia-tools\n  name: '@voltarenyah/dsh-tia-openness-v17-min/tools'\n\n<span class=\"c\"># the host row is separate; it owns the controller and the service</span>\n- id: tia-openness-v17-min\n  name: '@voltarenyah/dsh-tia-openness-v17-min'</pre>",
+      "arch.s.example": "<pre><span class=\"c\"># profile/cordis.patch.yml — a preset mounts an entry point</span>\n- id: leader-tia-tools\n  name: '@automation-suite/tia-openness-v17/tools'\n\n<span class=\"c\"># the host row is separate; it owns the controller and the service</span>\n- id: tia-openness-v17\n  name: '@automation-suite/tia-openness-v17'</pre>",
       "arch.s.foot": "<code>leader</code> gets the working surface; <code>auditor</code> owns the version workflow; <code>expert</code> gets read-only drill-down. A subagent cannot inherit a tool its preset did not mount.",
       "arch.r.title": "How it runs",
       "arch.r.note": "One process boundary, because Openness demands it.",
@@ -209,7 +209,7 @@
       "arch.c.foot": "profile 蓝图不是一个组件，而是这些包之上的组装层。各包版本与发行版版本相互独立。",
       "arch.s.title": "Preset 工具面",
       "arch.s.note": "可见性的单位不是包，而是行。",
-      "arch.s.example": "<pre><span class=\"c\"># profile/cordis.patch.yml — preset 挂载一个入口行</span>\n- id: leader-tia-tools\n  name: '@voltarenyah/dsh-tia-openness-v17-min/tools'\n\n<span class=\"c\"># 宿主行是另一行；它持有控制器与服务</span>\n- id: tia-openness-v17-min\n  name: '@voltarenyah/dsh-tia-openness-v17-min'</pre>",
+      "arch.s.example": "<pre><span class=\"c\"># profile/cordis.patch.yml — preset 挂载一个入口行</span>\n- id: leader-tia-tools\n  name: '@automation-suite/tia-openness-v17/tools'\n\n<span class=\"c\"># 宿主行是另一行；它持有控制器与服务</span>\n- id: tia-openness-v17\n  name: '@automation-suite/tia-openness-v17'</pre>",
       "arch.s.foot": "<code>leader</code> 拿工作工具面；<code>auditor</code> 拿版本工作流；<code>expert</code> 只拿只读下钻。preset 没挂的行，子 agent 不会继承。",
       "arch.r.title": "它怎么运行",
       "arch.r.note": "一个进程边界，因为 Openness 只能这么调用。",

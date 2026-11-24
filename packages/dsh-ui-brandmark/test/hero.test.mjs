@@ -7,7 +7,7 @@
  * translation keeps falling through, and that the desktop icon really is the
  * artwork that ships.
  *
- * @module dsh-ui-brandmark/test/hero
+ * @module @automation-suite/ui-brandmark/test/hero
  */
 
 import assert from 'node:assert/strict'
@@ -54,11 +54,11 @@ test('the shipped mark is the 128px square desktop icon', () => {
 
 test('the manifest exposes the browser half and its Loader row', () => {
   const manifest = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8'))
-  assert.equal(manifest.name, 'dsh-ui-brandmark')
+  assert.equal(manifest.name, '@automation-suite/ui-brandmark')
   assert.equal(manifest.exports['./client'].default, './lib/client.js')
   assert.equal(manifest.dsh.client.platform, 'web')
   assert.ok(manifest.dsh.client.inject.includes('@deepseek-ai/dsh-client-ui-conversation'))
 
   const patch = readFileSync(join(root, 'cordis.patch.yml'), 'utf8')
-  assert.match(patch, new RegExp(`name: ${manifest.name}\\b`))
+  assert.match(patch, new RegExp(`name: '?${manifest.name.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&')}'?\\b`))
 })

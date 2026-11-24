@@ -57,11 +57,11 @@
 | 2 | **一个 TIA 实例只持有一个打开的工程** | `controller/OpennessHost.cs:200` 的 `_project != null` 直接拒绝 | 导出参照必须先让出主工程，或改成多句柄（未验证，见 §12-C） |
 | 3 | **`source/_dsh-engineering-context.json` 的 project 就是"本 workspace 的工程"** | `tools/create-project.ts` 的 `SourceIndex` | 每个根一份索引，且要能区分角色 |
 | 4 | **所有写入都发生在 workspace 根下固定的三处** | `scope.ts` + `config.ts` 的四个目录名 | 参照根同样是写入目标（attach/refresh 时），但**只允许这两条路径写** |
-| 5 | **知识库发现只看 `<workspace>/knowledge`，且"唯一库才自动解析"** | `dsh-engineering-graph/src/workspace.ts` | 要按项目根发现；自动解析规则会被多库打破 |
+| 5 | **知识库发现只看 `<workspace>/knowledge`，且"唯一库才自动解析"** | `@automation-suite/engineering-graph/src/workspace.ts` | 要按项目根发现；自动解析规则会被多库打破 |
 
 顺带受影响的还有三处（不是不变量，但会立刻踩）：
 
-- **UI**：`dsh-ui-plc-source` 只读 `<workspace>/source`（`model.ts` 的 `SOURCE_DIRECTORY`），
+- **UI**：`@automation-suite/ui-plc-source` 只读 `<workspace>/source`（`model.ts` 的 `SOURCE_DIRECTORY`），
   参照块在面板上默认不可见；
 - **版本/差异**：`diff.ts` 的 `sourceDirectoryPath(config, root)` 钉死在 workspace 根，
   参照树的 diff 需要传不同的根；
@@ -116,7 +116,7 @@
 
 **为什么主工程不搬家**：主工程留在 `<workspace>/source` 与 `<workspace>/knowledge`，所有既有
 路径、UI、git 规则、测试、文档全部继续成立。如果为了"整齐"把主工程也挪进
-`projects/primary/`，要改的知识面远大于收益（`dsh-ui-plc-source` 的 `SOURCE_DIRECTORY`、
+`projects/primary/`，要改的知识面远大于收益（`@automation-suite/ui-plc-source` 的 `SOURCE_DIRECTORY`、
 `versions-view.json` 的位置、`.gitignore` 的三条规则、PATH-RULES 的整棵树、全部既有测试）。
 **兼容优先，参照放边上。**
 
@@ -179,8 +179,8 @@ D22 把"workspace 里有哪些工程"交给目录布局本身。参照沿用这�
 | 今天的东西 | 参照工程引入后 |
 |---|---|
 | `create_engineering_project` / `project_status` / `project_sync` / `project_commit` 的参数与落点 | 不变（只作用主工程） |
-| `dsh-ui-plc-source` 的 `source/<device>/_manifest.json` | 不变（面板默认只看主工程，见 §7.2） |
-| `dsh-ui-versions` 的 `.dsh/versions-view.json` | 不变（参照不进版本时间线） |
+| `@automation-suite/ui-plc-source` 的 `source/<device>/_manifest.json` | 不变（面板默认只看主工程，见 §7.2） |
+| `@automation-suite/ui-versions` 的 `.dsh/versions-view.json` | 不变（参照不进版本时间线） |
 | `.gitignore` 三条规则 | 追加两条（参照的 `tia/` 与 `*.db*`），不重写 |
 | `refs/` 不存在时的一切行为 | 与今天完全一致 |
 
@@ -373,7 +373,7 @@ P1 **不做自动闭包**：只复制点名的对象，TIA 的 `import_failed` �
 block(CALLS|INSTANCE_OF|HAS_TYPE|READS|WRITES)* → 需要一起带的对象
 ```
 
-- 边来自 `dsh-engineering-graph` 已解析的 XML（D15：只解析 XML，不取 TIA 交叉引用），
+- 边来自 `@automation-suite/engineering-graph` 已解析的 XML（D15：只解析 XML，不取 TIA 交叉引用），
   所以闭包**可能少算**，结果是"TIA 说还缺 X"，而不是"悄悄带错"；
 - 标签表是工程级对象，带过去可能与主工程撞名 —— 默认不进闭包，只在结果里提示。
 
@@ -413,7 +413,7 @@ P1 只落在这里（不提交、不进 `versions-view.json`）；"变更台账"
 
 ## 7. 知识图谱、UI 与版本
 
-### 7.1 图谱插件（`dsh-engineering-graph`）
+### 7.1 图谱插件（`@automation-suite/engineering-graph`）
 
 | 改动 | 位置 | 说明 |
 |---|---|---|
@@ -435,9 +435,9 @@ refs/Line3  Line3 — 1 device (PLC_1) · graph missing (attach with knowledge:f
 
 | 插件 | P1 | P2 |
 |---|---|---|
-| `dsh-ui-plc-source` | 不变：只显示主工程；面板没有"参照块"入口（模型用 `read` / `knowledge_*` 查参照） | 顶部加 **Primary / refs/<slug>** 切换器：数据路径 `<root>/source/<device>/_manifest.json`，`dsh-resource://file/session/...` 地址本来就是 workspace 相对，可直接复用 |
-| `dsh-ui-versions` | 不变：参照没有版本时间线 | 可选：把 attach/refresh 作为一类"参照快照"事件展示（读 git，不新增视图契约） |
-| `dsh-ui-tia-console` | 不变（只多了几个工具名） | — |
+| `@automation-suite/ui-plc-source` | 不变：只显示主工程；面板没有"参照块"入口（模型用 `read` / `knowledge_*` 查参照） | 顶部加 **Primary / refs/<slug>** 切换器：数据路径 `<root>/source/<device>/_manifest.json`，`dsh-resource://file/session/...` 地址本来就是 workspace 相对，可直接复用 |
+| `@automation-suite/ui-versions` | 不变：参照没有版本时间线 | 可选：把 attach/refresh 作为一类"参照快照"事件展示（读 git，不新增视图契约） |
+| `@automation-suite/ui-tia-console` | 不变（只多了几个工具名） | — |
 
 **P1 不改 UI 是刻意的**：面板的写边界是"只读、不改变任何落盘的东西"（`architecture.md` §1.1），
 加项目切换器要新增一个"当前查看哪个根"的客户端状态，属于新交互，先让工具面跑通。
@@ -469,7 +469,7 @@ Tia-Ref-Source: C:\Projects\Line2\Line2.ap17
 | **`project_references`** | 同上 | 无 | —（只读） | `scope_unavailable` |
 | **`reference_refresh`** | 同上 | `refs/<slug>/source`、`refs/<slug>/knowledge` | `reference`（必填）、`dry_run: true`、`with_window`、`knowledge: true` | `reference_not_found`、`primary_modified`、`sync_failed`、`reopen_failed` |
 | **`copy_from_reference`** | 同上 | `.dsh/local/transfer/` + **主工程**（导入/编译） | `reference`（必填）、`object`（必填）、`kind: block`、`device`（多设备时必填）、`import_options: none`、`compile: true`、`dry_run: true` | `reference_not_found`、`copy_source_missing`、`copy_source_stale`、`primary_not_created`、`copy_target_mismatch`、`import_failed`、`compile_failed`、`project_read_only` |
-| **`open_project`（改）** | `tia-openness-v17-min/tools` / `leader` | 工程会话状态 | 新增 `role: "primary" | "reference"`（默认 primary） | 失败码不变；新增 `project_read_only` 在外层 |
+| **`open_project`（改）** | `tia-openness-v17/tools` / `leader` | 工程会话状态 | 新增 `role: "primary" | "reference"`（默认 primary） | 失败码不变；新增 `project_read_only` 在外层 |
 | **`project_status`（改）** | 同上 | 无 | 不变 | 结果加 `references[]` 摘要 |
 | **（P2）`compare_with_reference`** | 同上 | 无（只读 diff） | `reference`、`object` / `device` | — |
 
@@ -627,7 +627,7 @@ refs/*/knowledge/**/*.db*
 - [ ] 依赖闭包（§6.3）+ `include_dependencies`；
 - [ ] `compare_with_reference`：参照块 vs 主工程块（复用 `diff.ts` 的归一化，把"根"变成参数）；
 - [ ] `knowledge_query` / 下钻的 `project` 参数；
-- [ ] `dsh-ui-plc-source` 的项目切换器；
+- [ ] `@automation-suite/ui-plc-source` 的项目切换器；
 - [ ] 真实大工程（437 MB / 1155 块）上的端到端实测与成本记录。
 
 ### P3 · 可选
@@ -673,7 +673,7 @@ refs/*/knowledge/**/*.db*
 | 动作 | 怎么做 | 依据 |
 |---|---|---|
 | 读 B 的源文件 | `read` / `glob` / `grep` / `pwsh` 接受**绝对路径**（相对路径才从 workspace 解析） | 本会话从仓库根读 `~/.dsh/AGENTS.md` 成功 |
-| 查 B 的图谱 | `knowledge_query` 与四个下钻工具的 `db_path`：**绝对路径原样使用** | `dsh-engineering-graph/src/workspace.ts:454` 的 `chooseDatabase`；引擎 `SqliteConnection(DataSource = dbPath)` |
+| 查 B 的图谱 | `knowledge_query` 与四个下钻工具的 `db_path`：**绝对路径原样使用** | `@automation-suite/engineering-graph/src/workspace.ts:454` 的 `chooseDatabase`；引擎 `SqliteConnection(DataSource = dbPath)` |
 | 实测 | 对 `SWT1_HF48e_Pilot\knowledge\PEI_1\PEI_1_knowledge.db` 跑 `SELECT COUNT(*) FROM graph_nodes` | **85,967 个节点 / 38 ms**（`--call Query`，从本仓库目录执行） |
 | 复制到主工程 | `import_blocks(import_paths: [B 的绝对文件/目录])` | 控制器只校验存在（`controller/OperationsPlc.cs:1446-1464`），没有 workspace 概念 |
 
@@ -800,7 +800,7 @@ refs/*/knowledge/**/*.db*
 
 **状态（2026-11-04，已实现）**：三项都已落地 ——
 
-- `workspace_describe(workspace_path)`（`@voltarenyah/dsh-engineering-context`，主入口 + `/status` 入口）；
+- `workspace_describe(workspace_path)`（`@automation-suite/engineering-context`，主入口 + `/status` 入口）；
 - `import_preflight`（同一插件；经接口插件新增的 `readProjectLanguages` 缝读目标语言，`listObjects` 读目标对象）；
 - `import_blocks(reference=...)` 回显出处、`project_commit(reference=...)` 追加 `Reference:` trailer；
 - `project_status` 在没有 TIA 工程时不再把"没检查"说成"没有"（`Evidence/Manifest/Git` 都改为 `not checked (no open project)`，`git.repository` 为 `null`）。

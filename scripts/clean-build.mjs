@@ -4,7 +4,7 @@
  * Deliberately NOT `rm -rf` / `Directory.Delete`: `packages/*\/node_modules`
  * can hold junctions created by `pnpm run link:runtime` that point into the
  * DeepSeek Harness installation. A recursive delete that follows such a link
- * destroys the *target* — see dsh-tia-openness-v17-min `docs/ECOSYSTEM-COMPAT.md`,
+ * destroys the *target* — see @automation-suite/tia-openness-v17 `docs/ECOSYSTEM-COMPAT.md`,
  * where exactly that incident cost a repository its `.git` metadata.
  *
  * This script only ever inspects `lib/` and `dist/` directly inside the

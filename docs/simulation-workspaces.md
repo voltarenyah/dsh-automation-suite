@@ -40,7 +40,7 @@
 | 首次证书问题 | ✅ `resume` 沿用原设备身份，跳过证书与重新下载 | `AGENTS.md` §7.2 |
 | 先扫描再新建 | ✅ 工作区有快照时 `create` 拒绝，要求用户选"旧快照 or 新实例" | `controller/Program.cs:127-139` |
 | 列出快照 | ✅ `simulation_instance(action="snapshots")` / `simulation_status` | `src/tools.ts:231-247,252-367` |
-| git 隔离 | ✅ `.dsh/` 已被工作区 `.gitignore` 覆盖 | `dsh-engineering-context/src/config.ts:223-225` |
+| git 隔离 | ✅ `.dsh/` 已被工作区 `.gitignore` 覆盖 | `@automation-suite/engineering-context/src/config.ts:223-225` |
 
 **结论：不需要另起一套存储。** 需要补的是"快照的身份"和"快照的生命周期"。
 

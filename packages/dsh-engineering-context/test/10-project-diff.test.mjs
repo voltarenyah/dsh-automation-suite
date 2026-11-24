@@ -682,9 +682,9 @@ test('the presets mount project_diff for the Auditor and Expert, never for the L
   assert.ok(auditorStart > leaderStart, 'the leader block precedes the auditor block')
   assert.ok(expertStart > auditorStart, 'the auditor block precedes the expert block')
 
-  const diffRow = '@voltarenyah/dsh-engineering-context/diff'
-  const handoffRow = '@voltarenyah/dsh-engineering-context/handoff'
-  const mainRow = /name:\s*'@voltarenyah\/dsh-engineering-context'/u
+  const diffRow = '@automation-suite/engineering-context/diff'
+  const handoffRow = '@automation-suite/engineering-context/handoff'
+  const mainRow = /name:\s*'@automation-suite\/engineering-context'/u
   const leaderBlock = yaml.slice(leaderStart, auditorStart)
   assert.equal(leaderBlock.includes(diffRow), false, 'the Leader must not mount the diff entry')
   assert.match(leaderBlock, /- id: leader-engineering-status/u)

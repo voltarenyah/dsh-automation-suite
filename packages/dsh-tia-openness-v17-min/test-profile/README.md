@@ -163,7 +163,7 @@ Select-String -Path "$env:USERPROFILE\.dsh\profiles\desktop\cordis.patch.yml" -P
 # ~/.dsh/profiles/desktop/cordis.patch.yml，然后重启 DSH
 ```
 
-卸载同样干净：`dsh plugin --profile desktop remove @voltarenyah/dsh-tia-openness-v17-min` + 删掉那段 patch。
+卸载同样干净：`dsh plugin --profile desktop remove @automation-suite/tia-openness-v17` + 删掉那段 patch。
 
 ---
 
@@ -173,7 +173,7 @@ Select-String -Path "$env:USERPROFILE\.dsh\profiles\desktop\cordis.patch.yml" -P
 |---|---|
 | `test-controller.ps1` 全流程 | ✅ 本机实跑通过（输出见上） |
 | `test-dsh-load.ps1 -PlanOnly` 前置检查 | ✅ 本机实跑通过（正确报出缺 profile / 缺 link） |
-| `--patch` 叠加层被接受、顺序正确（插在最后）、不写 profile | ✅ 用 `--dump-config` 验证：exit 0，组合树末尾出现 `id: tia-openness-v17-min`（宿主行；`./tools` 工具行是拆分之后才加的，尚未重跑这条手工验收） |
+| `--patch` 叠加层被接受、顺序正确（插在最后）、不写 profile | ✅ 用 `--dump-config` 验证：exit 0，组合树末尾出现 `id: tia-openness-v17`（宿主行；`./tools` 工具行是拆分之后才加的，尚未重跑这条手工验收） |
 | `dsh web --help` 不监听端口、`--port` / `--no-open` 可用 | ✅ 实测（无新增监听端口） |
 | `dsh plugin --profile X add ...` 是 pnpm 直通 | ✅ 实测（打印 pnpm 帮助；0.2.0-rc.2 上是 11.7.0，0.2.1-rc.2 上是 11.28.5） |
 | **`--from-default-profile` + `--dump-config` 是否"创建后立即退出"** | ⚠️ **未验证**（我没有创建你的 profile）。若它直接启动了服务，`Ctrl+C` 即可，profile 已建好；再用 `-PlanOnly` 复核 |

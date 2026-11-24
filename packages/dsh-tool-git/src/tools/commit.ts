@@ -1,6 +1,6 @@
 /**
  * `git_commit` — create a commit from the staged index.
- * @module dsh-tool-git/tools/commit
+ * @module @automation-suite/dsh-tool-git/tools/commit
  */
 
 import { defineTool } from '@deepseek-ai/dsh-tools'

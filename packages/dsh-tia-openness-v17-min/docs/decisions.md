@@ -681,7 +681,7 @@ Openness 用户组 `isMember: true`）；`npm run matrix:build` + `matrix:check`
 | | 宿主行 | 工具行 |
 |---|---|---|
 | 入口 | `src/index.ts` → `lib/index.js`（`exports["."]`） | `src/tools-entry.ts` → `lib/tools-entry.js`（`exports["./tools"]`） |
-| `name` | `tia-openness-v17-min` | `tia-openness-v17-min-tools` |
+| `name` | `tia-openness-v17` | `tia-openness-v17-tools` |
 | `inject` | `[]` | `['tools', 'tiaOpennessRuntime']` |
 | 内容 | `ControllerProcess` + `ctx.effect` 所有权、`engineeringAccess`（公开缝，D20）、`tiaOpennessRuntime`（**内部**缝）、bundled skill provider | 26 个模型可见工具（`src/tools.ts`，两份行共用） |
 
@@ -1084,7 +1084,7 @@ pilot 会话 `/tia-open` 打开的可见 TIA 实例，11:44:43 被使用者直�
 **验证**：`dotnet build`（net48/x64）0 warning / 0 error；`--self-test` **22 项全过**（新增
 `disposed_session_is_classified`：包装前后的 disposed 都被识别，无关异常不误判）；`npm test`
 **121 项全过**（新增 `/tia-info` 对"外部关闭"返回状态文案、不再渲染 `ProjectInfo FAILED.` 的断言）；
-`dsh-ui-tia-console` **23 项全过**（新增 refresh 清空旧工程、Open 恢复的折叠断言）；
+`@automation-suite/ui-tia-console` **23 项全过**（新增 refresh 清空旧工程、Open 恢复的折叠断言）；
 `npm run matrix:build` 后 `matrix:check`、`skills:check` 通过。真机未复测：需要再走一次
 "开可见窗口 → 直接关 TIA → 在另一个工作区点刷新 → 打开工程"，环境恢复后补。
 

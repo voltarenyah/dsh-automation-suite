@@ -369,7 +369,7 @@ remote.workspaceFiles.changes(sessionId, path, signal)                 // 变更
 | 选项 | 优点 | 缺点 |
 |---|---|---|
 | **A. 新建 `packages/dsh-engineering-context-ui`（推荐）** | UI 与宿主插件各自独立发版/启停；宿主插件保持"纯 Node、tsc + node:test"的干净面；符合官方"一个 UI 特性 = 一个插件包"的口径 📖 | 多一个包、多一条 bundle 行（`start-env.ps1` 会自动带上）；需要一条跨包**类型**契约 |
-| B. 把浏览器半侧加进现有 `@voltarenyah/dsh-engineering-context` | 少一个包、少一条行；路径与清单类型就在手边 | 该包要同时长出浏览器构建面（tsconfig face、打包器、CSS 打包），它现在只有 `tsc`；一旦 `dsh.client` 声明了但 `lib/client.js` 没构建出来，web 侧启动审计会报错（`client bundle not found`） |
+| B. 把浏览器半侧加进现有 `@automation-suite/engineering-context` | 少一个包、少一条行；路径与清单类型就在手边 | 该包要同时长出浏览器构建面（tsconfig face、打包器、CSS 打包），它现在只有 `tsc`；一旦 `dsh.client` 声明了但 `lib/client.js` 没构建出来，web 侧启动审计会报错（`client bundle not found`） |
 
 选 A。类型契约不共享运行时：UI 包自己对清单/索引写一份 `interface`（`import type` 不算运行时依赖），
 再用**真实清单 fixture** 做单测钉住形状。
@@ -385,7 +385,7 @@ remote.workspaceFiles.changes(sessionId, path, signal)                 // 变更
 ```
 packages/dsh-engineering-context-ui/
 ├── package.json                 # name/exports(./client)/dsh.bundle.patch + dsh.client
-├── cordis.patch.yml             # insert: { id: engineering-context-ui, name: '@voltarenyah/dsh-engineering-context-ui' }
+├── cordis.patch.yml             # insert: { id: engineering-context-ui, name: '@automation-suite/engineering-context-ui' }
 ├── tsconfig.json                # host face
 ├── tsconfig.client.json         # browser face（jsx: react-jsx）
 ├── tsdown.config.ts             # 两个入口：lib/index.js（宿主）+ lib/client.js（浏览器，见 §5）
@@ -410,7 +410,7 @@ packages/dsh-engineering-context-ui/
 
 ```tsx
 // src/client/definition.tsx
-export const BLOCKS_ID = '@voltarenyah/dsh-engineering-context-ui'  // 全局唯一；**就是 slot key**
+export const BLOCKS_ID = '@automation-suite/engineering-context-ui'  // 全局唯一；**就是 slot key**
 export const BLOCKS_KIND = 'engineering-blocks'                     // 新 kind，别撞 files/browser/terminal
 export function blocksDefinition(t: TranslateNS<'engBlocks'>): SidebarRightTabDefinition {
   return {
@@ -571,7 +571,7 @@ export default {
   entry: { client: 'src/client/index.tsx' },
   outDir: 'lib', format: 'cjs', platform: 'browser',
   dts: false, sourcemap: true, clean: false,
-  deps: {                                   // ← 与 dsh-tool-git 的 neverBundle 同理，别内联宿主
+  deps: {                                   // ← 与 @automation-suite/dsh-tool-git 的 neverBundle 同理，别内联宿主
     neverBundle: (s) => external.has(s),    //   external = §2.3 基座表 ∪ dsh.client.external
     alwaysBundle: (s) => !external.has(s),
   },

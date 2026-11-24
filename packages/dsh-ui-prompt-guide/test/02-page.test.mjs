@@ -15,7 +15,7 @@ import { test } from 'node:test'
 import { answer, contentTypeOf, fenceFailure, PAGE_ROOT, ROUTE_BASE, safePageFile } from '../lib/page.js'
 import { packageRoot } from '../scripts/tsc.mjs'
 
-const guideJson = () => JSON.stringify({ plugin: 'dsh-ui-prompt-guide', entries: [] })
+const guideJson = () => JSON.stringify({ plugin: '@automation-suite/ui-prompt-guide', entries: [] })
 
 test('content types are explicit and never guessed as HTML', () => {
   assert.match(contentTypeOf('index.html'), /^text\/html/)
@@ -72,7 +72,7 @@ test('the JSON endpoint serialises the guide and is never cached', () => {
   assert.equal(response.status, 200)
   assert.match(response.headers['content-type'], /^application\/json/)
   assert.equal(response.headers['cache-control'], 'no-store')
-  assert.deepEqual(JSON.parse(String(response.body)), { plugin: 'dsh-ui-prompt-guide', entries: [] })
+  assert.deepEqual(JSON.parse(String(response.body)), { plugin: '@automation-suite/ui-prompt-guide', entries: [] })
 })
 
 test('writes, traversal and cross-site requests are refused', () => {

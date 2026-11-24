@@ -6,7 +6,7 @@
  * channel comes up and any number of `progress` frames in between. This module is
  * the TypeScript view of that contract, plus the tolerant readers used to validate
  * frames that arrive from the child process. It mirrors the TIA Openness plugin's
- * `dsh-tia-openness-v17-min/src/protocol.ts`, with two deliberate differences:
+ * `@automation-suite/tia-openness-v17/src/protocol.ts`, with two deliberate differences:
  *
  * - Failures carry `remediation` as its own field, because that is what the
  *   engine's `EngineException` serializes (`engine/Protocol.cs`) and what the

@@ -14,7 +14,7 @@
  * The glyph is a two-row diff: a removed line in blue and an added one in
  * amber.
  *
- * @module dsh-ui-changes/client/guide-icon
+ * @module @automation-suite/ui-changes/client/guide-icon
  */
 
 /**

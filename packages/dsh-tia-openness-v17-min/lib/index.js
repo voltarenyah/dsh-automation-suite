@@ -35,7 +35,7 @@
  * effect disposer when the host row unloads — so unloading never leaves the
  * subprocess behind.
  *
- * @module dsh-tia-openness-v17-min
+ * @module @automation-suite/tia-openness-v17
  */
 import { existsSync } from 'node:fs';
 import { Config, resolveConfig } from './config.js';
@@ -45,7 +45,7 @@ import { ProjectTextAccess, PROJECT_TEXT_ACCESS_SERVICE } from './project-text-a
 import { TiaOpennessRuntime, TIA_RUNTIME_SERVICE } from './runtime-service.js';
 import { registerSkillProvider } from './skills.js';
 /** Plugin identity; the loader uses it as the entry id in the profile tree. */
-export const name = 'tia-openness-v17-min';
+export const name = 'tia-openness-v17';
 /**
  * The host row needs no service before `apply` runs.
  *

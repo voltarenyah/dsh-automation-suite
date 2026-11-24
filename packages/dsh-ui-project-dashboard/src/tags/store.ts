@@ -16,7 +16,7 @@
  *  - a caller that supplies `expectedRevision` gets `TagConflictError` when the
  *    file moved on, which the route turns into a 409.
  *
- * @module dsh-ui-project-dashboard/tags/store
+ * @module @automation-suite/ui-project-dashboard/tags/store
  */
 
 import { randomBytes } from 'node:crypto'

@@ -17,7 +17,7 @@
  * scripting). The gate exists to make accidental destructive calls fail
  * loudly with an explanation — deliberate, informed destructive work is
  * authorized through the configured policy, not by bypassing the gate.
- * @module dsh-tool-git/safety
+ * @module @automation-suite/dsh-tool-git/safety
  */
 
 import type { Context } from '@deepseek-ai/cordis'
@@ -226,7 +226,7 @@ export function installSafetyGate(ctx: Context, config: SafetyGateConfig): void 
     const match = findDestructiveGit(exec.name, exec.arguments, extra)
     if (!match) return next()
     const reason =
-      `Destructive git operation blocked by dsh-tool-git (${match.pattern}): `
+      `Destructive git operation blocked by @automation-suite/dsh-tool-git (${match.pattern}): `
       + `${match.description}. `
       + `Set destructivePolicy to "ask" or "allow" to permit it.`
     switch (config.destructivePolicy) {

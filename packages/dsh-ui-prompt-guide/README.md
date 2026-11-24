@@ -1,4 +1,4 @@
-# dsh-ui-prompt-guide
+# @automation-suite/ui-prompt-guide
 
 **Prompt Guide**：`dsh-automation-suite` 发行版的主栏整页帮助页。左侧栏「Plugins」下面多一个入口，
 点开是一页可搜索的功能地图——**每张卡片是一句可以直接发出去的 Prompt**，附「什么时候用」「会发生什么」

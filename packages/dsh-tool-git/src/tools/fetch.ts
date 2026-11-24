@@ -1,6 +1,6 @@
 /**
  * `git_fetch` — download refs from a remote without touching the worktree.
- * @module dsh-tool-git/tools/fetch
+ * @module @automation-suite/dsh-tool-git/tools/fetch
  */
 
 import { defineTool } from '@deepseek-ai/dsh-tools'

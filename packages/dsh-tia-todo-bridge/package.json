@@ -1,6 +1,9 @@
 {
-  "name": "@voltarenyah/dsh-tia-todo-bridge",
+  "name": "@automation-suite/tia-todo-bridge",
   "version": "0.1.0",
+  "publishConfig": {
+    "access": "public"
+  },
   "private": false,
   "description": "DSH plugin: keeps TIA and version-workflow operations visible in the session todo list when the model has not created a list, and settles each item when the operation returns.",
   "type": "module",

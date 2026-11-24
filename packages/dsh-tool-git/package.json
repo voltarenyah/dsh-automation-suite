@@ -1,7 +1,10 @@
 {
-  "name": "dsh-tool-git",
+  "name": "@automation-suite/dsh-tool-git",
   "description": "Structured, safe Git tool family for DeepSeek Harness: status/diff/log/branch/stage/commit/stash/show/fetch/pull/remote/checkout with a destructive-command guard.",
   "version": "0.1.3",
+  "publishConfig": {
+    "access": "public"
+  },
   "type": "module",
   "repository": {
     "type": "git",

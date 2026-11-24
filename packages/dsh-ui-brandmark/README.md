@@ -1,4 +1,4 @@
-# dsh-ui-brandmark
+# @automation-suite/ui-brandmark
 
 Home-page hero branding for the **dsh-automation-suite** desktop distribution.
 

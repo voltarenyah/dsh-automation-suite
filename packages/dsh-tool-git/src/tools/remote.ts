@@ -1,6 +1,6 @@
 /**
  * `git_remote` — list configured remotes.
- * @module dsh-tool-git/tools/remote
+ * @module @automation-suite/dsh-tool-git/tools/remote
  */
 
 import { defineTool } from '@deepseek-ai/dsh-tools'

@@ -5,7 +5,7 @@ import { callTool, makeBareRepo, makeClone, makeTempRepo, setupPlugin, type Temp
 type Result = Awaited<ReturnType<typeof callTool>>
 const value = (result: Result): Record<string, unknown> => result.value as Record<string, unknown>
 
-describe('dsh-tool-git network & branch tools', () => {
+describe('@automation-suite/dsh-tool-git network & branch tools', () => {
   const cleanup: Array<() => void> = []
 
   afterEach(() => {

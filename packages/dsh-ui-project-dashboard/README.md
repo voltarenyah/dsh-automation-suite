@@ -1,4 +1,4 @@
-# dsh-ui-project-dashboard
+# @automation-suite/ui-project-dashboard
 
 DSH 客户端的**全局面板**：在左侧栏最上面（Plugins 之上）加一行 **Project Dashboard**，
 把当前所有 Workspace 汇总到一页——会话计数、最后活动，加上**多级标签**、顶部搜索与标签筛选。
@@ -13,7 +13,7 @@ DSH 客户端的**全局面板**：在左侧栏最上面（Plugins 之上）加�
 
 | 座位 | 声明方 | 这份代码怎么用 |
 |---|---|---|
-| `sidebar.panellist`（root **list**） | `@deepseek-ai/dsh-client-ui-sidebar` | 一行：`id: project-dashboard`、`order: -10`、`label` thunk（跟随语言） |
+| `sidebar.panellist`（root **list**） | `@deepseek-ai/dsh-client-ui-sidebar` | 一行：`id: ui-project-dashboard`、`order: -10`、`label` thunk（跟随语言） |
 | `main`（root **keyed**） | `@deepseek-ai/dsh-client-ui-layout` | 整页：`key: project-dashboard`，与左侧栏行同一个 id |
 
 **为什么是 `order: -10`**：左侧栏的 `syncPanels()` 只按 `order` 升序排序（不看 `priority`）。
@@ -31,7 +31,7 @@ DSH 客户端的**全局面板**：在左侧栏最上面（Plugins 之上）加�
 {
   "version": 1,
   "revision": 12,
-  "owner": "dsh-ui-project-dashboard",
+  "owner": "@automation-suite/ui-project-dashboard",
   "workspaces": {
     "<workspaceId>": {
       "path": "C:\\...\\SWT1_HF48e_Pilot",  // 宿主从 workspaceRegistry 反查的 canonical path

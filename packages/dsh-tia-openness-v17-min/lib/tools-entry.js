@@ -20,17 +20,17 @@
  * registry and the runtime seam before calling `apply`, so this row may be
  * declared before the host row in a composition without racing it.
  *
- * @module dsh-tia-openness-v17-min/tools-entry
+ * @module @automation-suite/tia-openness-v17/tools-entry
  */
 import { registerTools } from './tools.js';
 import { tiaOpennessRuntimeOf, TIA_RUNTIME_SERVICE } from './runtime-service.js';
 /**
  * Loader entry id of the tools row.
  *
- * Distinct from the host row's `tia-openness-v17-min`, so a profile can declare,
+ * Distinct from the host row's `tia-openness-v17`, so a profile can declare,
  * disable or move the two rows independently.
  */
-export const name = 'tia-openness-v17-min-tools';
+export const name = 'tia-openness-v17-tools';
 /**
  * The tool registry is where the tools are registered; `tiaOpennessRuntime` is
  * the host row's seam to the controller. Declaring both makes the loader wait
