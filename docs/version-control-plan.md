@@ -184,10 +184,19 @@ interface VersionControlLike {
 | 步 | 做什么 | 验收 | 回退 |
 |---|---|---|---|
 | **S0** ✅ | context 里做 R1a/R1b/R1c（device 解析脱 TIA；`resolveDevice` 拆成「磁盘 / TIA」两个入口） | 新增"无 engineeringAccess"用例；断网不装 TIA 也能 commit 一个现有工作区 | 单 commit 回滚 |
-| **S1** | 建包骨架：`package.json`（含 `dsh.client`? 否）、`cordis.patch.yml`、build/test 脚手架、`dsh-runtime.d.ts`、插件卡片 | `pnpm -r build && pnpm -r typecheck` 绿；新包 `test` 能跑 | 删目录 |
-| **S2** | 搬文件 + 服务 `versionControl` + create 改软调用 + `repo.json` 归属 | 两边测试全绿；`create` 在无版本包时仍成功并报"未建版本库" | 恢复到 S1 |
-| **S3** | preset 重排；`dsh --profile … --dump-config` 对行数与顺序；确认 leader 工具数 9 | dump-config 行数落在新基线；三个 preset 的工具名逐个核对 | 改回 6 条旧行 |
-| **S4** | 文档与清单：`architecture.md` §8 对照表、`roadmap.md` §1、根 README/AGENTS 的包数与期望、`releases.md`、`version-store.md` 的归属、`tia-todo-bridge` 工具名核对 | `pnpm test` 全仓；`--dump-config-schema` 能看到新包 Config | 文档回滚 |
+| **S1** ✅ | 建包骨架：`package.json`、`cordis.patch.yml`（宿主行 0 工具）、build/test 脚手架、`dsh-runtime.d.ts`、Config | `tsc --noEmit` 绿；5 项骨架测试 | 删目录 |
+| **S2a** ✅ | 把 10 个工具（commit / diff / version 全套）与它们需要的支撑模块搬进新包；拆成 `/record`(4) `/read`(5) `/diff`(1) 三条行 | 新包 46 项全绿、`tsc` 干净；`engineering-context` 177 项不受影响 | `git revert 62a69c9` |
+| **S2b** ⬜ | `versionControl` 服务（`planBaseline` / `recordBaseline`）+ `create_engineering_project` 改为软调用 + `repo.json` 归属 + 删掉 context 的副本 + 改编 `02` 里 10 个 git 断言 | 两边全绿；无版本包时 create 仍成功并报"未建版本库" | 恢复到 S2a |
+| **S3** ⬜ | preset 重排（6 条行换归属）+ 蓝图 bundle 行；`dsh --profile … --dump-config` 对行数与顺序；确认 leader 工具数 12 → 9 | dump-config 行数落在新基线；三个 preset 的工具名逐个核对 | 改回 6 条旧行 |
+| **S4** ⬜ | 文档与清单：`architecture.md` §8、`roadmap.md` §1、根 README/AGENTS 的包数与期望、`releases.md`、`tia-todo-bridge` 工具名核对、把 `10-project-diff` 里的 preset 守卫搬到合适的位置 | `pnpm test` 全仓；`--dump-config-schema` 能看到新包 Config | 文档回滚 |
+
+> **S2b 为什么单独列出来（2026-11-24 实测更正）**：原估"3–4 h 一口气做完"，实际卡在**基线提交归谁**这一个决定上。
+> `create_engineering_project` 的 baseline 逻辑（`preflightRepository` 的三种拒绝、`createBaseline` 的 marker-先写、
+> trailer 文案、`git_failed` 的 details）与 `02-create-project.test.mjs` 里**10 个 git 断言**（虚拟 `gitContext`、
+> `data.plan.git` 的形状、三种 `workspace_is_repository`）绑在一起。把 baseline 交给 `version-control` 意味着
+> 这些断言要改成"驱动假 `versionControl` 服务"，而不是小改。
+> **S2a 的中间态是刻意的**：新包自成一体并全绿，context 仍持有自己的副本、蓝图也没动，所以**运行时零变化**——
+> 这样在 S2b 完成前停下是安全的（`git revert 62a69c9` 即可回到 S1）。
 
 **S3 之后才动工作流合并**（见 §8），不要同一轮做两件事。
 
