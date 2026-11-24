@@ -33,6 +33,11 @@ export interface PluginConfig {
   sourceDirName: string
   /** File name of the creation index, inside the source directory. */
   sourceIndexFile: string
+  /**
+   * When true (the default) any path outside the workspace root is refused.
+   * Only a test harness has a reason to set it to false.
+   */
+  requireWorkspace: boolean
 }
 
 /** Default values, applied both by the schema and by {@link resolveConfig}. */
@@ -40,6 +45,7 @@ export const configDefaults: PluginConfig = {
   stateDirName: '.dsh',
   sourceDirName: 'source',
   sourceIndexFile: '_dsh-engineering-context.json',
+  requireWorkspace: true,
 }
 
 /** Schemastery configuration schema for the plugin consumer. */
@@ -47,6 +53,7 @@ export const Config = Schema.object({
   stateDirName: Schema.string().default(configDefaults.stateDirName),
   sourceDirName: Schema.string().default(configDefaults.sourceDirName),
   sourceIndexFile: Schema.string().default(configDefaults.sourceIndexFile),
+  requireWorkspace: Schema.boolean().default(configDefaults.requireWorkspace),
 })
 
 /** Device names Windows reserves in every directory, with or without an extension. */
@@ -97,6 +104,7 @@ export function resolveConfig(config?: Partial<PluginConfig>): PluginConfig {
     stateDirName: directoryName(raw.stateDirName, configDefaults.stateDirName),
     sourceDirName: directoryName(raw.sourceDirName, configDefaults.sourceDirName),
     sourceIndexFile: fileName(raw.sourceIndexFile, configDefaults.sourceIndexFile),
+    requireWorkspace: typeof raw.requireWorkspace === 'boolean' ? raw.requireWorkspace : configDefaults.requireWorkspace,
   }
 }
 

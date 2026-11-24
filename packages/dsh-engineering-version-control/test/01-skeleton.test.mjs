@@ -75,7 +75,12 @@ test('a name that could move writes out of the workspace falls back to the defau
     assert.equal(resolved.sourceDirName, configDefaults.sourceDirName, `sourceDirName "${bad}" must fall back`)
   }
   const kept = resolveConfig({ stateDirName: '.state', sourceDirName: 'src', sourceIndexFile: 'index.json' })
-  assert.deepEqual(kept, { stateDirName: '.state', sourceDirName: 'src', sourceIndexFile: 'index.json' })
+  assert.deepEqual(kept, {
+    stateDirName: '.state',
+    sourceDirName: 'src',
+    sourceIndexFile: 'index.json',
+    requireWorkspace: true,
+  })
 })
 
 test('the bundle patch names the package exactly (loader contract)', async () => {
