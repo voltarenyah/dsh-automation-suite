@@ -50,9 +50,9 @@ persona 政策文本、TIA 控制台按钮全部要按版本分叉）。
 1. **互斥可见**：两个都开着时，只有一个真正工作，另一个在日志里明确报错，并且 `doctor` 会报；
 2. **名字不变**：39 个工具名、7 个 `/tia-*` 命令名、`tia-openness` 路由 skill 名**跨版本逐字相同**；
 3. **后端零改动**：除成员包自己，其余插件**一行不改** —— `@automation-suite/engineering-context`、`@automation-suite/engineering-graph`、
-   `@automation-suite/pdf-drawing`、`@automation-suite/plcsim-advanced`、`@automation-suite/dsh-tool-git`、`@automation-suite/tia-todo-bridge`，以及 8 个 UI 插件
+   `@automation-suite/pdf-drawing`、`@automation-suite/plcsim-advanced`、`@automation-suite/dsh-tool-git`、`@automation-suite/tia-todo-bridge`，以及 7 个 UI 插件
    （`ui-plc-source` / `ui-tia-console` / `ui-versions` / `ui-changes` / `ui-hardware` / `ui-prompt-guide` /
-   `ui-project-dashboard` / `ui-brandmark`）。
+   `ui-project-dashboard`；`ui-brandmark` 已于 2026-11-24 下线，见 D40）。
    > 唯一的**例外**是 §9 那张表：`@automation-suite/engineering-context` 里的 V17 硬编码文案与包名要在做 V18 时一并清掉
    > ——但那属于"说错话"的问题，不是"接不上"的问题，V18 成员本身不需要它们改动就能工作。
 

@@ -8,6 +8,14 @@ GitHub Releases 与 git tag `v<version>` 对齐（发布流程见 [`docs/release
 
 ## [Unreleased]
 
+### Removed
+
+- **`@automation-suite/ui-brandmark` 下线（D40）**：首页 hero 的品牌不再由插件改。原实现要包装客户端的
+  `locale.translate`（非文档 API）才生效，DSH 一改名就静默失效，而它只交付 3 个视觉元素。现在由桌面壳
+  `desktop/DshSuite.Shell/BrandScript.js` 在 document-created 时注入（纯 DOM，与 `TitleBarScript.js`
+  同一条通道）：标题 `dsh-automation-suite`、徽标 `TIA-V17`、128 px 品牌图。**Web 版 profile 因此
+  不再有首页品牌**；可发布的包从 15 个减到 14 个。
+
 ### Changed
 
 - **15 个插件统一到 npm 组织 `automation-suite` 的 scope 下，并重新整理名字**（D39）：`@voltarenyah/*`

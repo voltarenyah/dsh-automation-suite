@@ -1,3 +1,0 @@
-# Build output (the loader reads lib/, not src/) and the tarballs pnpm pack leaves.
-lib/
-*.tgz

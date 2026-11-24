@@ -105,7 +105,17 @@
 模型自己写清单后做 `export_blocks`，清单不被插件改写。见
 [`packages/dsh-tia-todo-bridge/README.md`](../packages/dsh-tia-todo-bridge/README.md)。
 
-### 1.4 首页 Hero 品牌（✅ 2026-11-08）
+### 1.4 首页 Hero 品牌（✅ 2026-11-08 → 2026-11-24 改为桌面壳注入，**D40**）
+
+**现状（2026-11-24）**：不再有 `ui-brandmark` 插件。首页 hero 的标题 `dsh-automation-suite` /
+徽标 `TIA-V17` / 128 px 图标由 `desktop/DshSuite.Shell/BrandScript.js` 在 document-created 时注入
+（`AddScriptToExecuteOnDocumentCreatedAsync`），纯 DOM：按文本匹配（en + zh 两套字面量），
+mark 走稳定钩子 `data-slot="conversation.hero.brand.mark"`，保留原生 `<svg>` 只置 `display:none`。
+**Web 版（`--profile web`）不再有这套品牌**；DSH 若改了字面量或槽位，脚本什么都不做、首页保持原样。
+
+验收：桌面壳里启动 → 首页三处均为上述值、控制台无错误；切到 Plugins 视图再回来仍生效。
+
+<details><summary>原实现（已删除，留作背景）</summary>
 
 `packages/dsh-ui-brandmark`（仅浏览器半侧）把 DSH 首页 hero 的 `Into the Unknown` / `Preview` /
 鱼形图标换成发行版自己的品牌：标题 `dsh-automation-suite`、徽标 `TIA-V17`、图标 = 桌面壳的
@@ -119,8 +129,7 @@
 - 两个字符串在 `src/model.ts`，图标在 `assets/brandmark.png`；改完重建。`translate` / `publish` 是
   DSH 0.2.1-rc.2 的内部方法，不是官方扩展点 —— 宿主升级要复核；失效时插件只告警，首页保持原样。
 
-验收：隔离 profile 里启动 → 首页标题 / 徽标 / 图标均为上述值，控制台无错误；包内 5 项单测覆盖
-文案映射、字典落回、128px 图标与 manifest / Loader 行一致性。
+</details>
 
 ---
 

@@ -29,6 +29,11 @@
 
   <ItemGroup>
     <EmbeddedResource Include="TitleBarScript.js" LogicalName="DshSuite.Shell.TitleBarScript.js" />
+    <!-- Landing-hero branding (the former `@automation-suite/ui-brandmark`
+         plugin). The script is injected at document creation; the mark travels
+         with it as a data URL because the injected script has no asset route. -->
+    <EmbeddedResource Include="BrandScript.js" LogicalName="DshSuite.Shell.BrandScript.js" />
+    <EmbeddedResource Include="brandmark.png" LogicalName="DshSuite.Shell.brandmark.png" />
   </ItemGroup>
 
 </Project>

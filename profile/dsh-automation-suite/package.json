@@ -18,8 +18,7 @@
     "@automation-suite/ui-changes": "workspace:^",
     "@automation-suite/ui-hardware": "workspace:^",
     "@automation-suite/ui-prompt-guide": "workspace:^",
-    "@automation-suite/ui-project-dashboard": "workspace:^",
-    "@automation-suite/ui-brandmark": "workspace:^"
+    "@automation-suite/ui-project-dashboard": "workspace:^"
   },
   "dsh": {
     "profile": {
@@ -39,7 +38,6 @@
         "@automation-suite/ui-hardware",
         "@automation-suite/ui-prompt-guide",
         "@automation-suite/ui-project-dashboard",
-        "@automation-suite/ui-brandmark",
         "@automation-suite/tia-todo-bridge",
         "dsh-opencode-go"
       ]

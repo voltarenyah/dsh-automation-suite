@@ -71,7 +71,7 @@ Note: Six families, one profile. Statuses follow the repository roadmap — noth
 ### Footer
 - Columns: Product (Architecture · Roadmap · Get started · Releases) · Repository (GitHub · README · MIT license) · Notes (Unofficial project. Not affiliated with DeepSeek or Siemens. / TIA Portal and SIMATIC are trademarks of Siemens AG, named here for reference only.)
 - Bottom: © 2026 dsh-automation-suite · MIT / Last checked 2026-11-09
-- Mark: the desktop shell's app icon (`assets/logo/app.png`, copied from `packages/dsh-ui-brandmark/assets/brandmark.png`; favicon is `assets/logo/app.ico` from `desktop/DshSuite.Shell/app.ico`)
+- Mark: the desktop shell's brand image (`assets/logo/app.png`, copied from `desktop/DshSuite.Shell/brandmark.png` — injected into the DSH landing hero by the shell since D40; favicon is `assets/logo/app.ico` from `desktop/DshSuite.Shell/app.ico`)
 
 ## Architecture
 

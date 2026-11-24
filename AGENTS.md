@@ -155,7 +155,7 @@ pnpm run clean:build      # 清构建产物（只碰 lib/ dist/）
 ## 4. 测试与验收
 
 ```powershell
-pnpm test          # 全仓：TIA 112 项（111 通过 / 1 跳过）+ @automation-suite/dsh-tool-git 51 项 + engineering-context 168 项 + engineering-graph 128 项 + drawing 23 项 + plcsim-advanced 24 项 + ui-plc-source 47 项 + ui-tia-console 22 项 + ui-versions 15 项 + ui-hardware 9 项 + ui-prompt-guide 25 项 + ui-brandmark 5 项 + tia-todo-bridge 18 项
+pnpm test          # 全仓（2026-11-24 实测：全部通过，需先设 DOTNET_ROOT 见下）：TIA 121 项（120 通过 / 1 跳过）+ @automation-suite/dsh-tool-git 51 项 + engineering-context 168 项 + engineering-graph 128 项 + pdf-drawing 38 项 + plcsim-advanced 24 项 + ui-plc-source 47 项 + ui-tia-console 23 项 + ui-versions 15 项 + ui-hardware 9 项 + ui-prompt-guide 25 项 + ui-changes 48 项 + ui-project-dashboard 35 项 + tia-todo-bridge 18 项
 pnpm -r build
 pnpm -r typecheck
 ```
@@ -175,7 +175,6 @@ pnpm -r typecheck
 | `@automation-suite/ui-versions` | `node:test` | `node scripts/run-tests.mjs`（**先构建再跑**；纯视图解析/筛选/时间线 + 字典，浏览器半侧靠真实 `.dsh/versions-view.json` 验收） |
 | `@automation-suite/ui-hardware` | `node:test` | `node scripts/run-tests.mjs`（**先构建再跑**；视图解析/筛选/机位面 + 字典，浏览器半侧靠真实 `.dsh/hardware-view.json` 验收） |
 | `@automation-suite/ui-prompt-guide` | `node:test` | `node scripts/run-tests.mjs`（**先构建再跑**；内容数据完整性 + 工具白名单、路径安全/trust fence/路由响应、产物包装与 seat 名；浏览器半侧靠真实 dev-env 验收） |
-| `@automation-suite/ui-brandmark` | `node:test` | `node scripts/run-tests.mjs`（**先构建再跑**；文案映射/字典落回 + 128px 桌面图标 + manifest 与 Loader 行一致性，5 项；浏览器半侧靠真实 dev-env 验收） |
 | `@automation-suite/ui-changes` | `node:test` | `node scripts/run-tests.mjs`（**先构建再跑**；Changes 面板 P1：git 状态路由/服务/字典 + 客户端折叠，48 项） |
 | `@automation-suite/tia-todo-bridge` | `node:test` | `node --test --test-reporter=spec "test/*.test.mjs"`（纯状态机 + manifest，18 项；不依赖 TIA） |
 
@@ -184,6 +183,17 @@ pnpm -r typecheck
 **发布包里的引擎是 self-contained win-x64 单文件**：`scripts/build-distribution.mjs` 在打包时用 .NET 10 SDK 生成到临时 staging，用户不需要安装 .NET；仓库里的 `engine/bin/` 仍是 framework-dependent 的开发/测试构建（跑测试要有 .NET 10 runtime，或设 `DOTNET_ROOT`）。
 它有一项测试**驱动该引擎**（跑 `--self-test`：原生 SQLite 加载 + 真实导出物解析 + 只读闸门），
 引擎没构建时那条测试会 **skip 并打印构建命令**，而不是失败 —— 所以"全绿"不等于"引擎也验过了"。
+
+⚠️ **反过来也有坑（2026-11-24 实测）**：引擎**已构建、但 .NET 10 不在 apphost 能找到的位置**时，
+这 10 项是 **fail 而不是 skip** —— 报 `engine_exited` / `You must install or update .NET`，因为
+`engine/bin` 是 framework-dependent 构建，apphost 默认找 `C:\Program Files\dotnet`（本机只有 8.0.34）。
+本机的 .NET 10 在 `%USERPROFILE%\.dotnet10`，所以跑这套测试要：
+
+```powershell
+$env:DOTNET_ROOT = "$env:USERPROFILE\.dotnet10"
+```
+
+（`desktop/build-shell.ps1` 与 `scripts/build-distribution.mjs` 自己会找那个目录，只有裸跑 `node:test` 要手动设。）
 
 单测都需要**真实的** `@deepseek-ai/*` 运行时（不是 stub）。裸 checkout 首次运行时，
 各包的测试自举会各自自动触发抽取；也可以手动：
@@ -222,7 +232,7 @@ profile 组合的端到端验收：
 dsh --profile dsh-automation-suite --dump-config
 ```
 
-预期结尾出现 **16 个插件行**（15 个本地插件 + 公共的 `dsh-opencode-go`），顺序与蓝图的
+预期结尾出现 **15 个插件行**（14 个本地插件 + 公共的 `dsh-opencode-go`），顺序与蓝图的
 `dsh.profile.bundles` 一致；其中 `engineering-context` 带 `disabled: true`（它整行搬进了 `leader` preset）：
 
 ```yaml
@@ -266,9 +276,6 @@ dsh --profile dsh-automation-suite --dump-config
 # == @automation-suite/ui-project-dashboard
 - id: ui-project-dashboard
   name: '@automation-suite/ui-project-dashboard'
-# == @automation-suite/ui-brandmark
-- id: ui-brandmark
-  name: '@automation-suite/ui-brandmark'
 # == @automation-suite/tia-todo-bridge
 - id: tia-todo-bridge
   name: '@automation-suite/tia-todo-bridge'
@@ -278,19 +285,24 @@ dsh --profile dsh-automation-suite --dump-config
 ```
 
 行数基线（**DSH 0.2.1-rc.2 实测，2026-11-08（加入 `@automation-suite/ui-changes`、`@automation-suite/ui-project-dashboard`、
-`@automation-suite/tia-todo-bridge`、`@automation-suite/ui-brandmark` 与目录选择器 pin 之后）**；换宿主版本、改蓝图或增减插件后必须重测）：
+`@automation-suite/tia-todo-bridge` 与目录选择器 pin 之后；2026-11-24 起 `ui-brandmark` 已下线，见 D40）**；换宿主版本、改蓝图或增减插件后必须重测）：
 
 | 命令 | 行数 |
 |---|---|
 | `dsh --profile web --dump-config`（官方组合，全新 `DSH_HOME`） | **1229** |
 | `dsh --profile web --patch profile/dsh-automation-suite/cordis.patch.yml --dump-config`（全新 `DSH_HOME`） | **2098** |
-| 按蓝图物化的 profile（link 模式，当前工作树）：`dsh --profile dsh-automation-suite --dump-config` | **2162**（2026-11-08 在全新临时 `DSH_HOME` 里实测，16 个插件行；比政策层多出的行来自物化目录里应用回写的设置行 —— `ui-settings-general` 与调大过的 `requestTimeoutMs`） |
+| 按蓝图物化的 profile（link 模式，当前工作树）：`dsh --profile dsh-automation-suite --dump-config` | **2159**（2026-11-08 的 2162 减掉 `ui-brandmark` 的 3 行；2026-11-24 未重测这一条，下次 `start-env` 时确认。比政策层多出的行来自物化目录里应用回写的设置行 —— `ui-settings-general` 与调大过的 `requestTimeoutMs`） |
 
 > ⚠️ 上一版基线 **1183 / 2099 / 2155**（2026-11-08 早些时候，同日重测已不重现）作废：同一条命令、同一宿主
 > 版本，2026-11-08 晚上重测得到 **1229 / 2098 / 2162**（前两条在**全新** `DSH_HOME` 里跑；日常 `~/.dsh` 里
 > 同样的前两条各多 6 行 = 1235 / 2104，那 6 行来自应用回写/装过的 bundle）。更早的 1235 / 2003 / 2036
 > （2026-10-20）同样作废。别拿新旧数值互相解释，用**同一次**跑出来的三个数一起看。行数只用来发现
 > 「整行消失」这类事故，别把它当精确断言。**要证明插件真的被 import 过，用下面的 `--dump-config-schema`。**
+
+> 🔁 **2026-11-24 在当前宿主（DSH 0.2.2-rc.3）上重测**（`ui-brandmark` 已下线）：
+> 前两条为 **1236 / 2117**。**不要拿它们去减上表的 1229 / 2098** —— 宿主已从 0.2.1-rc.2 升到
+> 0.2.2-rc.3，官方 `web` 组合本身就多了 7 行。**去掉 `ui-brandmark` 这一个 bundle 行的净效果是 −3 行**
+> （`# ==` 注释 + `id` + `name`），可用 `--dump-config | Select-String ui-brandmark` 应为 0 条来验证。
 
 装 tarball 的验收链路：
 

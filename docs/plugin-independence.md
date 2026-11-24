@@ -157,7 +157,6 @@
 | `@automation-suite/engineering-context` | 工程上下文 / 版本工作流 | **主行直接在宿主面注册 7 个工具** | 无 `/tools`；另有 `./status`、`./version`、`./diff`、`./handoff`、`./version-read` 子入口 | — | 写 `tia/`、`source/_dsh-engineering-context.json`、`source/<device>/_evidence.json`、`.dsh/local/**`、`handoff/`；读 TIA 服务、git 服务、图谱服务 | `engineeringAccess`（TIA）+ `gitContext`（git）为硬依赖；`knowledgeGraph` 为软依赖 | **7 个工具全部出现在宿主面**（所有 agent 继承）；`create_engineering_project` 缺 TIA 或缺 git 都会在调用时失败 |
 | `@automation-suite/pdf-drawing` | 电气图纸 | 工具 + `/drawing` 查看路由 + 客户端 | 主行直接注册工具 | 右侧栏 Drawing | 写 `drawing/**` 索引；读 PDF | `@hyzyla/pdfium`、`unpdf`、`pngjs` | **完整可用**（工具 + 面板都在宿主/客户端） |
 | `@automation-suite/tia-todo-bridge` | TIA 操作 Todo 兜底 | 事件监听，无服务/工具 | — | — | 只读会话事件 | 无 | **可加载但完全惰性**（没有 TIA 工具就什么都不做） |
-| `@automation-suite/ui-brandmark` | 首页品牌 | 无（纯客户端） | — | 首页 hero | — | 无 | **完整可用** |
 | `@automation-suite/ui-changes` | 变更面板 | 只读状态路由 | — | 右侧栏 Changes | 通过 `gitContext` 现算 | git 插件（软） | **可加载**；没有 git 时面板显示“git 插件未加载” |
 | `@automation-suite/ui-hardware` | 硬件面板 | 无（纯客户端） | — | 右侧栏 Hardware | 读 `.dsh/hardware-view.json` | TIA 插件（软） | **可加载但空态**；“跑 `export_hardware_config`”这句指引此时是死路 |
 | `@automation-suite/ui-plc-source` | PLC 块面板 | 无（纯客户端） | — | 右侧栏 PLC Blocks | 读 `source/**` | `engineering-context` / TIA（软） | **可加载但空态**；指引会让人去跑不存在的工具 |
@@ -527,7 +526,8 @@
 
 **证据**：各 UI 包 README 记录了依赖的宿主内部面：
 `ctx.slots.inject`、`ctx.locale.register` / `translate`、`ctx.webServer.register`、
-`uiWorkspace.startSession`、会话事件形状；`@automation-suite/ui-brandmark` 甚至包了 `translate`。
+`uiWorkspace.startSession`、会话事件形状（原 `@automation-suite/ui-brandmark` 连 `translate` 都包过，
+已于 2026-11-24 移除，见 D40 —— 这类"包装内部方法"的形态本来就不该保留）。
 这些不是官方扩展点，宿主升级要复核。
 
 **影响**：发行版靠 lockstep 验一套；独立安装后用户可能先升级 DSH 再升级插件，
@@ -1165,8 +1165,8 @@ pwsh -NoProfile -File desktop/build-installer.ps1 -Version X.Y.Z
 ### 15.6 `@automation-suite/pdf-drawing` 与 UI 插件
 
 - **打包**：`@automation-suite/pdf-drawing` 的 `files: lib` 已包含 `lib/viewer`（pdf.js、字体、viewer.html/css/js）；
-  `@automation-suite/ui-prompt-guide` 的 `files` 含 `page`；`@automation-suite/ui-brandmark` 的图标在构建期内联进 `lib/client.js`。
-  这几项目前是完整的，但发布门禁应加“tarball 内容断言”，防止以后改 `files` 时漏掉。
+  `@automation-suite/ui-prompt-guide` 的 `files` 含 `page`。这几项目前是完整的，但发布门禁应加
+  “tarball 内容断言”，防止以后改 `files` 时漏掉。（首页品牌的内联图标已随 `ui-brandmark` 一起移除，见 D40。）
 - **UI 座位**：所有 UI 包依赖 `@deepseek-ai/dsh-client-*` 座位；doctor 不检查目标 profile 是否含这些行。
   建议加一个“UI seat smoke”（真实 web profile 里断言面板出现）。
 - **展示元数据**：所有 UI 包都没有 `locale`/`icon`/`detail`；`@automation-suite/ui-hardware` 连 README 都没有。

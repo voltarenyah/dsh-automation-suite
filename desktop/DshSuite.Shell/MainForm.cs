@@ -20,6 +20,15 @@ internal sealed class MainForm : Form
 {
     private const string TitleBarResource = "DshSuite.Shell.TitleBarScript.js";
 
+    /// <summary>Landing-hero branding, injected at document creation.</summary>
+    private const string BrandScriptResource = "DshSuite.Shell.BrandScript.js";
+
+    /// <summary>
+    /// The 128 px brand mark. Injected as a data URL ahead of
+    /// <see cref="BrandScriptResource"/>: the script has no asset route of its own.
+    /// </summary>
+    private const string BrandMarkResource = "DshSuite.Shell.brandmark.png";
+
     /// <summary>Where "Report Issues…" sends the user (default browser).</summary>
     private const string IssuesUrl = "https://github.com/voltarenyah/dsh-automation-suite/issues";
 
@@ -239,6 +248,13 @@ internal sealed class MainForm : Form
 
         await core.AddScriptToExecuteOnDocumentCreatedAsync(LoadTitleBarScript());
 
+        // Landing-hero branding. The DSH conversation client hard-codes its hero
+        // copy (`conversation` namespace: `hero.headline` / `hero.preview`) and the
+        // official brand plugin leaves it alone, so the shell patches the rendered
+        // DOM. The mark is handed over as a data URL first, then the script reads it.
+        await core.AddScriptToExecuteOnDocumentCreatedAsync(LoadBrandMarkPrelude());
+        await core.AddScriptToExecuteOnDocumentCreatedAsync(LoadEmbeddedText(BrandScriptResource));
+
         core.WebMessageReceived += OnWebMessageReceived;
         core.NewWindowRequested += (_, args) =>
         {
@@ -262,13 +278,30 @@ internal sealed class MainForm : Form
         _webView.Source = new Uri(url);
     }
 
-    private static string LoadTitleBarScript()
+    private static string LoadTitleBarScript() => LoadEmbeddedText(TitleBarResource);
+
+    /// <summary>
+    /// The <c>window.__DSH_SUITE_MARK__</c> assignment that precedes
+    /// <see cref="BrandScriptResource"/>. JSON-encoding keeps the literal safe.
+    /// </summary>
+    private static string LoadBrandMarkPrelude()
     {
-        using var stream = typeof(MainForm).Assembly.GetManifestResourceStream(TitleBarResource)
-            ?? throw new InvalidOperationException($"missing embedded resource {TitleBarResource}");
-        using var reader = new StreamReader(stream);
+        using var stream = OpenResource(BrandMarkResource);
+        using var buffer = new MemoryStream();
+        stream.CopyTo(buffer);
+        var dataUrl = "data:image/png;base64," + Convert.ToBase64String(buffer.ToArray());
+        return "window.__DSH_SUITE_MARK__ = " + JsonSerializer.Serialize(dataUrl) + ";";
+    }
+
+    private static string LoadEmbeddedText(string name)
+    {
+        using var reader = new StreamReader(OpenResource(name));
         return reader.ReadToEnd();
     }
+
+    private static Stream OpenResource(string name) =>
+        typeof(MainForm).Assembly.GetManifestResourceStream(name)
+            ?? throw new InvalidOperationException($"missing embedded resource {name}");
 
     private void OnWebMessageReceived(object? sender, CoreWebView2WebMessageReceivedEventArgs e)
     {

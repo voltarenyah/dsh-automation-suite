@@ -1479,8 +1479,10 @@ scope 下并重新整理名字。改前是两种身份（6 个 `@voltarenyah/*` 
 | `packages/dsh-ui-hardware` | `@automation-suite/ui-hardware` | `ui-hardware` |
 | `packages/dsh-ui-prompt-guide` | `@automation-suite/ui-prompt-guide` | `ui-prompt-guide` |
 | `packages/dsh-ui-project-dashboard` | `@automation-suite/ui-project-dashboard` | `ui-project-dashboard` |
-| `packages/dsh-ui-brandmark` | `@automation-suite/ui-brandmark` | `ui-brandmark` |
 | 根包（private，不发 npm） | `@automation-suite/dsh-automation-suite` | — |
+
+> **2026-11-24 更新**：本表最后那个 `ui-brandmark` 行**已作废**（该包已下线，见 **D40**）。
+> 其余 14 个包的目录/包名/Loader id 不变；这张表保留为 D39 当时的记录，不重写历史。
 
 1. **去掉 `dsh-` 前缀**（`dsh-tool-git` 除外）：scope 已经表明"这是 DSH 插件"，尾段只留域名/产品名。
    `dsh-tool-git` 保留 `dsh-`，是为了与上游 `lxj808624/dsh-tool-git` 对照（它同时是 fork 身份的标记）。
@@ -1514,4 +1516,41 @@ scope 下并重新整理名字。改前是两种身份（6 个 `@voltarenyah/*` 
 - **实际发布未做**：本机 `npm whoami` = `yuanheng`，`npm org ls automation-suite` 返回 403
   （`You may not perform this action with these credentials`）。发布前需把该身份加入组织，或换用组织
   所有者账号；随后 `npm publish --access public`（15 个包）并补发布记录。
+
+---
+
+## D40 · 首页品牌移出插件：删 `ui-brandmark`，改由桌面壳在 document-created 时注入 ✅
+
+**决定**：删除 `@automation-suite/ui-brandmark`（发布单元 15 → 14）。首页 hero 的三项
+（headline、`Preview` 徽章、鱼形 mark）改由 `desktop/DshSuite.Shell/BrandScript.js` 注入：
+`CoreWebView2.AddScriptToExecuteOnDocumentCreatedAsync` —— 与 `TitleBarScript.js` **同一条通道**，
+**纯 DOM，不注册 Cordis 插件、不依赖客户端内部 API**。文案与图标不变：
+`dsh-automation-suite` / `TIA-V17` / 128 px 品牌图（`desktop/DshSuite.Shell/brandmark.png`，
+从被删包搬来，由 C# 以 data URL 注入）。
+
+**为什么**：
+
+1. 原实现要包装客户端 `locale.translate`（**非文档 API**）并占一个 slot，DSH 一改名就静默失效；
+   而它交付的只是 3 个视觉元素。为一个 npm 包 + 一条 Loader 行背这个升级风险不划算。
+2. 桌面壳本来就承担**页面之外**的全部品牌（窗口标题、托盘、关于对话框、Doctor 标题、可执行文件
+   图标），首页 hero 是唯一漏在插件里的那部分；移进去之后品牌只有一处实现。
+3. 纯 DOM 方案在**真页面**上验过（本机 Edge 158 + 临时 `--profile web`，13 项检查全过）：
+   三项替换；resize 风暴（1100→760→1440）后仍生效；外部把文本改回原生后自愈；
+   空闲 3 s 内 **0 次重写**（观察者收敛）；无 console/page error；整页 reload 后仍生效；
+   **hero 卸载（切到 Plugins 视图）不报错**，回来自动重新上色。
+4. **失效即降级**：DSH 若改了字面量或把 mark 槽位移走，脚本什么都不做、首页显示原生 hero，
+   不报错 —— 与"删掉插件"是同一种失败形态。
+5. Web 版（`--profile web` / 开发环境）因此**不再有**这套品牌。可接受：它不是交付形态。
+
+**实现要点（改之前先读这三条）**：
+
+- 只按**文本**匹配（en + zh 两套字面量）。hero 的 class 是构建哈希（`WOwLGG_*` / `an3WzG_*`），
+  按 class 选必然跨版本碎；唯一稳定钩子是 `data-slot="conversation.hero.brand.mark"`。
+- **保留原生 `<svg>` 只置 `display:none`**，把自己的 `<img>` 追加进 slot。直接 `innerHTML` 覆盖
+  会让 React 在卸载 hero 时对已被移除的节点调 `removeChild` 而抛错（spike 专门验过这一条）。
+- 修复排在 `MutationObserver` 微任务之后的 `requestAnimationFrame` 里 —— 落在同一帧绘制前，首屏不闪。
+
+**代价**：品牌只能在桌面壳里改（改完重启 App 生效）；Web 版没有 hero 品牌；
+`brandmark.png` 与安装器图标仍是两份、不联动。
+
 
