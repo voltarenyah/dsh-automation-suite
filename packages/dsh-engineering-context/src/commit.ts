@@ -191,8 +191,14 @@ export async function planCommit(
   const relative = gitPath(root, device.directory)
   const paths = porcelainPaths(await statusPaths(root, [relative]))
 
+  // A device resolved by scanning `source/` has no software name (the directory
+  // only carries one for the index); the ledger does, and the ledger is also the
+  // reason this commit exists, so it fills the gap instead of printing a blank.
+  const described: DeviceInfo =
+    device.software.length > 0 ? device : { ...device, software: evidence.software ?? '' }
+
   return {
-    device,
+    device: described,
     relative,
     paths,
     evidence: {

@@ -18,11 +18,9 @@
 
 import type { ToolDefinition } from '@deepseek-ai/dsh-tools'
 
-import { engineeringAccess, type EngineeringAccessLike } from '../access.js'
+import { engineeringAccess } from '../access.js'
 import { normalizeCommitReference, planCommit, runCommit } from '../commit.js'
-import type { DeviceInfo } from '../device.js'
-import { resolveDevice } from '../device.js'
-import { EngineeringContextError } from '../errors.js'
+import { crossCheckDeviceWithTia, resolveDeviceFromDisk, type DeviceInfo } from '../device.js'
 import { commitMeta } from '../git.js'
 import { resolveScope, type ResolvedScope } from '../scope.js'
 import { recordCommitAfterWrite } from '../version/write.js'
@@ -51,8 +49,8 @@ const PARAMETERS = {
   device: {
     type: 'string',
     description:
-      'Optional device name. Required only when the workspace holds more than one device directory under source/; the tool never ' +
-      'guesses which PLC to commit.',
+      'Optional device name. Needed when source/ holds more than one device tree; the tool never guesses. Matches the TIA device name ' +
+      'or the source folder name, case-insensitively.',
   },
   reference: {
     type: 'string',
@@ -74,23 +72,32 @@ export function commitTool(dependencies: ToolDependencies): ToolDefinition {
     description:
       'Commit the engineering source tree that project_sync just updated, with a message that says why the change exists. It commits ' +
       'exactly the device directory (never unrelated staged files), refuses an empty message, and refuses to run when there is no ' +
-      'evidence ledger to describe (sync first). Returns the paths, the ledger facts, the final message and the commit hash. Defaults to ' +
-      'a plan: pass dry_run=false to create the commit — do that only after the user has seen the plan.',
+      'evidence ledger to describe (sync first). The device is read from the workspace (the source index, then source/<device>), so ' +
+      'TIA does not have to be open; when the interface plugin is present, a different project being open is reported as a warning. ' +
+      'Returns the paths, the ledger facts, the final message and the commit hash. Defaults to a plan: pass dry_run=false to create ' +
+      'the commit — do that only after the user has seen the plan.',
     parameters: PARAMETERS,
     async execute(args, exec) {
       let scope: ResolvedScope | null = null
       let device: DeviceInfo | null = null
       try {
         scope = await resolveScope(dependencies.ctx, exec, dependencies.config)
-        const service: EngineeringAccessLike | undefined = engineeringAccess(dependencies.ctx)
-        if (service === undefined) {
-          throw new EngineeringContextError(
-            'tia_access_unavailable',
-            'This composition has no engineeringAccess service, so TIA cannot be described. Install the TIA interface plugin.',
-            { service: 'engineeringAccess' },
-          )
+        // R1: the device comes from the workspace, not from TIA. Recording history
+        // must keep working with TIA closed — or with the interface plugin not
+        // installed at all, which is how this workflow runs in CI.
+        const requested = typeof args.device === 'string' ? args.device.trim() : ''
+        const resolved = await resolveDeviceFromDisk(
+          dependencies.config,
+          scope.workspace.path,
+          requested.length > 0 ? requested : undefined,
+        )
+        device = resolved.device
+        const warnings: string[] = [...resolved.warnings]
+        const service = engineeringAccess(dependencies.ctx)
+        if (service !== undefined) {
+          // Optional cross-check: TIA disagreeing is news, never a refusal.
+          warnings.push(...(await crossCheckDeviceWithTia(service, resolved.device, exec.signal)))
         }
-        device = await resolveDevice(scope, service, exec)
         const message = typeof args.message === 'string' ? args.message : ''
         const reference = normalizeCommitReference(args.reference)
 
@@ -105,6 +112,7 @@ export function commitTool(dependencies: ToolDependencies): ToolDefinition {
               : `Dry run: would commit ${plan.paths.length} path(s) under ${plan.relative}.`,
             {
               device: plan.device,
+              deviceOrigin: resolved.origin,
               paths: plan.paths,
               relative: plan.relative,
               evidence: plan.evidence,
@@ -113,6 +121,7 @@ export function commitTool(dependencies: ToolDependencies): ToolDefinition {
             },
             {
               dryRun: true,
+              warnings,
               details: [
                 `PLC: ${plan.device.device} / ${plan.device.software} → ${plan.device.directory}`,
                 nothing
@@ -164,6 +173,7 @@ export function commitTool(dependencies: ToolDependencies): ToolDefinition {
             : 'Nothing to commit: the device directory already matched HEAD.',
           {
             device: result.device,
+            deviceOrigin: resolved.origin,
             paths: result.paths,
             relative: result.relative,
             evidence: result.evidence,
@@ -174,7 +184,7 @@ export function commitTool(dependencies: ToolDependencies): ToolDefinition {
           },
           {
             dryRun: false,
-            warnings: versionWarnings,
+            warnings: [...warnings, ...versionWarnings],
             details: [
               `PLC: ${result.device.device} / ${result.device.software} → ${result.device.directory}`,
               result.commit.committed

@@ -1,0 +1,750 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>工具接口迁移 · tia-openness / engineering-context / versionControl</title>
+<style>
+  :root{
+    --bg:#f7f8fa; --card:#fff; --line:#e3e6ec; --line-strong:#cdd3dd;
+    --ink:#16181d; --muted:#69707d; --faint:#9aa1ad;
+    --accent:#2f6fed; --accent-soft:#eaf0ff;
+    --moved:#b45309; --moved-soft:#fdf3e3;
+    --stay:#0f766e; --stay-soft:#e7f5f2;
+    --new:#6d28d9; --new-soft:#f1ecfe;
+    --gone:#9aa1ad; --gone-soft:#f0f1f4;
+    --mono:ui-monospace,"Cascadia Code","SF Mono",Consolas,monospace;
+  }
+  *{box-sizing:border-box}
+  html{-webkit-text-size-adjust:100%}
+  body{
+    margin:0; background:var(--bg); color:var(--ink);
+    font:15px/1.65 -apple-system,BlinkMacSystemFont,"Segoe UI","Microsoft YaHei",system-ui,sans-serif;
+  }
+  a{color:var(--accent);text-decoration:none}
+  a:hover{text-decoration:underline}
+  code,.mono{font-family:var(--mono);font-size:.92em}
+
+  .wrap{max-width:1200px;margin:0 auto;padding:0 22px}
+
+  header.hero{
+    background:linear-gradient(160deg,#10131a 0%,#1d2635 55%,#253244 100%);
+    color:#eef2f8; padding:38px 0 30px; border-bottom:1px solid #0b0e13;
+  }
+  header.hero h1{margin:0 0 10px;font-size:26px;letter-spacing:-.2px;line-height:1.35}
+  header.hero h1 small{display:block;font-size:13px;font-weight:400;color:#93a1b5;letter-spacing:0;margin-top:8px}
+  .meta{display:flex;flex-wrap:wrap;gap:8px;margin-top:18px;font-size:12.5px;color:#a9b6c8}
+  .meta span{background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.12);padding:3px 10px;border-radius:999px}
+  .banner{
+    margin-top:18px;font-size:13px;color:#ffd9a8;background:rgba(255,180,80,.10);
+    border:1px solid rgba(255,180,80,.32);border-radius:9px;padding:9px 13px;
+  }
+
+  section{padding:34px 0 6px}
+  h2{font-size:18px;margin:0 0 6px;letter-spacing:-.1px}
+  .lead{color:var(--muted);font-size:13.5px;margin:0 0 18px;max-width:88ch}
+  h3{font-size:14px;margin:22px 0 10px;color:var(--ink)}
+
+  .cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(168px,1fr));gap:12px}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px 16px}
+  .card .k{font-size:11.5px;text-transform:uppercase;letter-spacing:.08em;color:var(--faint)}
+  .card .v{font-size:24px;font-weight:650;margin:6px 0 2px;letter-spacing:-.5px}
+  .card .v small{font-size:13px;font-weight:400;color:var(--muted)}
+  .card .n{font-size:12px;color:var(--muted)}
+  .card.up .v{color:var(--moved)} .card.down .v{color:var(--stay)}
+
+  .legend{display:flex;flex-wrap:wrap;gap:14px;font-size:12.5px;color:var(--muted);margin:14px 0 4px}
+  .legend i{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:6px;vertical-align:1px}
+
+  .filters{display:flex;gap:8px;flex-wrap:wrap;margin:16px 0 12px}
+  .chip{
+    border:1px solid var(--line-strong);background:#fff;color:var(--muted);
+    padding:5px 12px;border-radius:999px;font-size:12.5px;cursor:pointer;font-family:inherit;
+  }
+  .chip:hover{border-color:var(--accent);color:var(--accent)}
+  .chip[aria-pressed="true"]{background:var(--ink);border-color:var(--ink);color:#fff}
+
+  .tablewrap{background:var(--card);border:1px solid var(--line);border-radius:12px;overflow:hidden}
+  table{width:100%;border-collapse:collapse;font-size:13.5px}
+  thead th{
+    text-align:left;font-size:11.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--faint);
+    font-weight:600;padding:11px 14px;border-bottom:1px solid var(--line);background:#fafbfc;white-space:nowrap;
+  }
+  tbody td{padding:9px 14px;border-bottom:1px solid #f0f2f5;vertical-align:top}
+  tbody tr:last-child td{border-bottom:none}
+  tbody tr:hover{background:#fafbff}
+  tbody tr.dim{display:none}
+  .tool{font-family:var(--mono);font-size:12.5px;white-space:nowrap}
+
+  .badge{display:inline-block;font-size:11px;padding:1px 7px;border-radius:5px;border:1px solid;line-height:1.6;white-space:nowrap}
+  .b-tia{color:#1d4ed8;border-color:#c7d7fe;background:#eef4ff}
+  .b-ctx{color:#0f766e;border-color:#b7e3da;background:#eaf7f4}
+  .b-vc{color:#6d28d9;border-color:#d9cdfb;background:#f4effe}
+  .b-entry{font-family:var(--mono);font-size:11px;color:var(--muted);background:#f4f5f7;border:1px solid var(--line);border-radius:5px;padding:1px 6px}
+
+  .st{font-size:11.5px;font-weight:600;padding:2px 8px;border-radius:999px;white-space:nowrap}
+  .st.moved{color:var(--moved);background:var(--moved-soft)}
+  .st.stay{color:var(--stay);background:var(--stay-soft)}
+  .st.new{color:var(--new);background:var(--new-soft)}
+  .st.gone{color:var(--gone);background:var(--gone-soft)}
+
+  .arrow{color:var(--faint);margin:0 6px}
+
+  .cols{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+  @media (max-width:860px){.cols{grid-template-columns:1fr}}
+  .panel{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px 18px}
+  .panel h4{margin:0 0 4px;font-size:13px;letter-spacing:.02em}
+  .panel h4 span{font-weight:400;color:var(--faint);font-size:11.5px;margin-left:6px}
+  .entry{margin:12px 0 0;padding:10px 0 0;border-top:1px dashed var(--line)}
+  .entry:first-of-type{border-top:none;padding-top:2px}
+  .entry .hd{display:flex;justify-content:space-between;align-items:baseline;gap:10px;margin-bottom:7px}
+  .entry .hd b{font-family:var(--mono);font-size:12.5px;font-weight:600}
+  .entry .hd .cnt{font-size:11.5px;color:var(--faint);white-space:nowrap}
+  .pills{display:flex;flex-wrap:wrap;gap:5px}
+  .pill{font-family:var(--mono);font-size:11px;padding:2px 6px;border-radius:4px;background:#f4f5f7;border:1px solid #e9ebef;color:#4b5563}
+  .pill.mv{background:var(--moved-soft);border-color:#f3ddba;color:#8a4708}
+  .pill.nw{background:var(--new-soft);border-color:#ddd0fb;color:#5b21b6}
+  .pill.dim2{opacity:.45;text-decoration:line-through}
+
+  .grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:14px}
+  .group{background:var(--card);border:1px solid var(--line);border-radius:11px;padding:13px 15px}
+  .group .hd{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:8px}
+  .group .hd b{font-size:12.5px}
+  .group .hd span{font-size:11.5px;color:var(--faint)}
+
+  .bars{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:6px 18px 18px}
+  .brow{display:grid;grid-template-columns:120px 1fr 96px;align-items:center;gap:14px;padding:11px 0;border-bottom:1px solid #f0f2f5}
+  .brow:last-child{border-bottom:none}
+  .brow .pk{font-size:13px}
+  .brow .pk small{display:block;color:var(--faint);font-size:11px}
+  .track{display:flex;flex-direction:column;gap:5px}
+  .bar{height:9px;border-radius:5px;background:#e9ecf1;position:relative;overflow:hidden}
+  .bar i{position:absolute;left:0;top:0;bottom:0;border-radius:5px}
+  .bar.before i{background:#b9c3d3}
+  .bar.after i{background:var(--accent)}
+  .brow .num{font-size:12px;color:var(--muted);text-align:right;font-variant-numeric:tabular-nums}
+
+  .callout{border-left:3px solid var(--accent);background:var(--accent-soft);padding:11px 14px;border-radius:0 8px 8px 0;font-size:13px;margin:14px 0}
+  .callout.warn{border-color:#d97706;background:var(--moved-soft)}
+  .callout b{font-weight:650}
+
+  ol.flow{margin:10px 0 0;padding-left:0;list-style:none;counter-reset:s}
+  ol.flow li{position:relative;padding:7px 0 7px 34px;font-size:13px;border-bottom:1px dashed #eef0f4}
+  ol.flow li:last-child{border-bottom:none}
+  ol.flow li::before{
+    counter-increment:s;content:counter(s);position:absolute;left:0;top:7px;
+    width:21px;height:21px;border-radius:50%;background:#eef1f6;color:var(--muted);
+    font-size:11px;display:flex;align-items:center;justify-content:center;font-weight:600;
+  }
+  ol.flow li.bad::before{background:#fdecec;color:#b91c1c}
+  ol.flow li.ok::before{background:var(--stay-soft);color:var(--stay)}
+  ol.flow code{background:#fff;border:1px solid var(--line);border-radius:4px;padding:0 4px}
+
+  ul.clean{margin:8px 0 0;padding-left:18px;font-size:13px;color:#374151}
+  ul.clean li{margin:5px 0}
+  ul.clean code{background:#f4f5f7;border-radius:4px;padding:0 4px;border:1px solid #eceef2}
+
+  footer{padding:34px 0 46px;color:var(--faint);font-size:12px}
+  footer p{margin:4px 0}
+</style>
+</head>
+<body>
+
+<header class="hero">
+  <div class="wrap">
+    <h1>工具接口迁移：<span class="mono">tia-openness</span> · <span class="mono">engineering-context</span> · <span class="mono">versionControl</span>
+      <small>把一个包里的 10 个版本工具，搬到恢复出来的 ③ 管理与协作层</small>
+    </h1>
+    <div class="meta">
+      <span>2026-11-24</span>
+      <span>依据 docs/version-control-plan.md</span>
+      <span>S0 已落地（2026-11-24）</span>
+      <span>工具名全部不变</span>
+      <span>ui-versions 零改动</span>
+    </div>
+    <div class="banner">
+      <b>读法：</b>「改动前」是当前工作树的真实状态（静态审计自源码）；「改动后」是 <b>规划状态</b>，
+      按 S0–S4 五步落地。唯一的行为变化是 <b>leader 少 3 个写工具</b>，其余只是归属变化。
+    </div>
+  </div>
+</header>
+
+<div class="wrap">
+
+<!-- ============ 概览 ============ -->
+<section id="summary">
+  <h2>0 · 概览</h2>
+  <p class="lead">工具面（模型看得见什么）不变；变的是「这些工具归谁、由哪个 preset 授权、依赖谁」。</p>
+  <div class="cards">
+    <div class="card up"><div class="k">包</div><div class="v">2 → 3</div><div class="n">新增 <code>version-control</code></div></div>
+    <div class="card up"><div class="k">Loader 行</div><div class="v">9 → 10</div><div class="n">context 6→3，vc 新增 4</div></div>
+    <div class="card"><div class="k">不同工具</div><div class="v">19 → 19</div><div class="n">TIA 39 亦不变</div></div>
+    <div class="card down"><div class="k">工具注册条数</div><div class="v">28 → 23</div><div class="n">去掉重复注册</div></div>
+    <div class="card down"><div class="k">leader 可见工具</div><div class="v">12 → 9</div><div class="n">−3 个写工具</div></div>
+    <div class="card down"><div class="k">git 实现</div><div class="v">3 → 1</div><div class="n">只剩 <code>gitContext</code></div></div>
+  </div>
+
+  <div class="legend">
+    <span><i style="background:var(--stay)"></i>保留在 engineering-context</span>
+    <span><i style="background:var(--moved)"></i>搬到 version-control</span>
+    <span><i style="background:var(--new)"></i>新增入口</span>
+    <span><i style="background:var(--gone)"></i>入口消失</span>
+  </div>
+</section>
+
+<!-- ============ 迁移主表 ============ -->
+<section id="map">
+  <h2>1 · 19 个工具的去向</h2>
+  <p class="lead">
+    三列读法：工具名 →（改动前）包·入口 →（改动后）包·入口。带 <span class="badge b-entry">/entry</span>
+    的是它当前被挂在哪个 Loader 行；同一个工具出现在多行 = 那个工具会被多个 preset 看到。
+  </p>
+
+  <div class="filters" role="group" aria-label="筛选">
+    <button class="chip" data-filter="all" aria-pressed="true">全部 19</button>
+    <button class="chip" data-filter="moved" aria-pressed="false">搬到 version-control 10</button>
+    <button class="chip" data-filter="stay" aria-pressed="false">留在 context 9</button>
+    <button class="chip" data-filter="multi" aria-pressed="false">被多个入口注册 9</button>
+  </div>
+
+  <div class="tablewrap">
+    <table id="mig">
+      <thead>
+        <tr><th style="width:250px">工具</th><th style="width:300px">改动前</th><th style="width:300px">改动后</th><th>状态</th></tr>
+      </thead>
+      <tbody>
+        <tr data-k="stay">
+          <td class="tool">create_engineering_project</td>
+          <td><span class="badge b-ctx">context</span> <span class="b-entry">.</span></td>
+          <td><span class="badge b-ctx">context</span> <span class="b-entry">.</span></td>
+          <td><span class="st stay">保留</span></td>
+        </tr>
+        <tr data-k="stay multi">
+          <td class="tool">project_status</td>
+          <td><span class="badge b-ctx">context</span> <span class="b-entry">.</span> <span class="b-entry">/status</span></td>
+          <td><span class="badge b-ctx">context</span> <span class="b-entry">.</span> <span class="b-entry">/status</span></td>
+          <td><span class="st stay">保留</span></td>
+        </tr>
+        <tr data-k="stay">
+          <td class="tool">project_sync</td>
+          <td><span class="badge b-ctx">context</span> <span class="b-entry">.</span></td>
+          <td><span class="badge b-ctx">context</span> <span class="b-entry">.</span></td>
+          <td><span class="st stay">保留</span></td>
+        </tr>
+        <tr data-k="moved">
+          <td class="tool">project_commit</td>
+          <td><span class="badge b-ctx">context</span> <span class="b-entry">.</span></td>
+          <td><span class="badge b-vc">version-control</span> <span class="b-entry">/record</span></td>
+          <td><span class="st moved">搬走</span></td>
+        </tr>
+        <tr data-k="stay multi">
+          <td class="tool">workspace_describe</td>
+          <td><span class="badge b-ctx">context</span> <span class="b-entry">.</span> <span class="b-entry">/status</span></td>
+          <td><span class="badge b-ctx">context</span> <span class="b-entry">.</span> <span class="b-entry">/status</span></td>
+          <td><span class="st stay">保留</span></td>
+        </tr>
+        <tr data-k="stay multi">
+          <td class="tool">import_preflight</td>
+          <td><span class="badge b-ctx">context</span> <span class="b-entry">.</span> <span class="b-entry">/status</span></td>
+          <td><span class="badge b-ctx">context</span> <span class="b-entry">.</span> <span class="b-entry">/status</span></td>
+          <td><span class="st stay">保留</span></td>
+        </tr>
+        <tr data-k="stay">
+          <td class="tool">project_translate</td>
+          <td><span class="badge b-ctx">context</span> <span class="b-entry">.</span></td>
+          <td><span class="badge b-ctx">context</span> <span class="b-entry">.</span></td>
+          <td><span class="st stay">保留</span></td>
+        </tr>
+        <tr data-k="stay">
+          <td class="tool">handoff_export</td>
+          <td><span class="badge b-ctx">context</span> <span class="b-entry">/handoff</span></td>
+          <td><span class="badge b-ctx">context</span> <span class="b-entry">/handoff</span></td>
+          <td><span class="st stay">保留</span></td>
+        </tr>
+        <tr data-k="stay">
+          <td class="tool">handoff_import</td>
+          <td><span class="badge b-ctx">context</span> <span class="b-entry">/handoff</span></td>
+          <td><span class="badge b-ctx">context</span> <span class="b-entry">/handoff</span></td>
+          <td><span class="st stay">保留</span></td>
+        </tr>
+        <tr data-k="stay multi">
+          <td class="tool">handoff_status</td>
+          <td><span class="badge b-ctx">context</span> <span class="b-entry">/handoff</span> <span class="b-entry">/status</span></td>
+          <td><span class="badge b-ctx">context</span> <span class="b-entry">/handoff</span> <span class="b-entry">/status</span></td>
+          <td><span class="st stay">保留</span></td>
+        </tr>
+        <tr data-k="moved">
+          <td class="tool">project_diff</td>
+          <td><span class="badge b-ctx">context</span> <span class="b-entry">/diff</span></td>
+          <td><span class="badge b-vc">version-control</span> <span class="b-entry">/diff</span></td>
+          <td><span class="st moved">搬走</span></td>
+        </tr>
+        <tr data-k="moved multi">
+          <td class="tool">project_history</td>
+          <td><span class="badge b-ctx">context</span> <span class="b-entry">/version</span> <span class="b-entry">/version-read</span></td>
+          <td><span class="badge b-vc">version-control</span> <span class="b-entry">/read</span></td>
+          <td><span class="st moved">搬走 · 合并入口</span></td>
+        </tr>
+        <tr data-k="moved">
+          <td class="tool">project_version_reindex</td>
+          <td><span class="badge b-ctx">context</span> <span class="b-entry">/version</span></td>
+          <td><span class="badge b-vc">version-control</span> <span class="b-entry">/record</span></td>
+          <td><span class="st moved">搬走</span></td>
+        </tr>
+        <tr data-k="moved multi">
+          <td class="tool">project_version_verify</td>
+          <td><span class="badge b-ctx">context</span> <span class="b-entry">/version</span> <span class="b-entry">/version-read</span></td>
+          <td><span class="badge b-vc">version-control</span> <span class="b-entry">/read</span></td>
+          <td><span class="st moved">搬走 · 合并入口</span></td>
+        </tr>
+        <tr data-k="moved">
+          <td class="tool">project_doc_index</td>
+          <td><span class="badge b-ctx">context</span> <span class="b-entry">/version</span></td>
+          <td><span class="badge b-vc">version-control</span> <span class="b-entry">/record</span></td>
+          <td><span class="st moved">搬走</span></td>
+        </tr>
+        <tr data-k="moved multi">
+          <td class="tool">project_doc_search</td>
+          <td><span class="badge b-ctx">context</span> <span class="b-entry">/version</span> <span class="b-entry">/version-read</span></td>
+          <td><span class="badge b-vc">version-control</span> <span class="b-entry">/read</span></td>
+          <td><span class="st moved">搬走 · 合并入口</span></td>
+        </tr>
+        <tr data-k="moved">
+          <td class="tool">project_version_annotate</td>
+          <td><span class="badge b-ctx">context</span> <span class="b-entry">/version</span></td>
+          <td><span class="badge b-vc">version-control</span> <span class="b-entry">/record</span></td>
+          <td><span class="st moved">搬走</span></td>
+        </tr>
+        <tr data-k="moved multi">
+          <td class="tool">project_problem</td>
+          <td><span class="badge b-ctx">context</span> <span class="b-entry">/version</span> <span class="b-entry">/version-read</span></td>
+          <td><span class="badge b-vc">version-control</span> <span class="b-entry">/read</span></td>
+          <td><span class="st moved">搬走 · 合并入口</span></td>
+        </tr>
+        <tr data-k="moved multi">
+          <td class="tool">project_version_query</td>
+          <td><span class="badge b-ctx">context</span> <span class="b-entry">/version</span> <span class="b-entry">/version-read</span></td>
+          <td><span class="badge b-vc">version-control</span> <span class="b-entry">/read</span></td>
+          <td><span class="st moved">搬走 · 合并入口</span></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+  <div class="callout">
+    <b>注册条数为什么 28 → 23：</b>改动前 <code>/version</code>(8) 与 <code>/version-read</code>(5) 把 5 个只读工具注册了两次，
+    而 <code>project_commit</code> 躺在主入口里；改动后按「读 / 写」分成 <code>/read</code>(5) 与 <code>/record</code>(4)，
+    每个工具只注册一次，<code>commit</code> 只出现在 <code>/record</code>。
+  </div>
+</section>
+
+<!-- ============ 入口对照 ============ -->
+<section id="entries">
+  <h2>2 · 入口（Loader 行）对照</h2>
+  <p class="lead">
+    行名必须与 <code>package.json</code> 的 <code>name</code> 逐字一致（含 scope），preset 里以
+    <code>@automation-suite/&lt;包&gt;/&lt;子路径&gt;</code> 形式挂载。
+  </p>
+  <div class="cols">
+    <div class="panel">
+      <h4>改动前 <span>2 个包 · 9 条行 · 28 条注册</span></h4>
+
+      <div class="entry">
+        <div class="hd"><b>engineering-context <span class="b-entry">.</span></b><span class="cnt">7 工具</span></div>
+        <div class="pills">
+          <span class="pill">create_engineering_project</span><span class="pill">project_status</span>
+          <span class="pill">project_sync</span><span class="pill mv">project_commit</span>
+          <span class="pill">workspace_describe</span><span class="pill">import_preflight</span>
+          <span class="pill">project_translate</span>
+        </div>
+      </div>
+      <div class="entry">
+        <div class="hd"><b>engineering-context <span class="b-entry">/status</span></b><span class="cnt">4 工具</span></div>
+        <div class="pills">
+          <span class="pill">project_status</span><span class="pill">workspace_describe</span>
+          <span class="pill">import_preflight</span><span class="pill">handoff_status</span>
+        </div>
+      </div>
+      <div class="entry">
+        <div class="hd"><b>engineering-context <span class="b-entry">/diff</span></b><span class="cnt">1 工具</span></div>
+        <div class="pills"><span class="pill mv">project_diff</span></div>
+      </div>
+      <div class="entry">
+        <div class="hd"><b>engineering-context <span class="b-entry">/handoff</span></b><span class="cnt">3 工具</span></div>
+        <div class="pills">
+          <span class="pill">handoff_export</span><span class="pill">handoff_import</span><span class="pill">handoff_status</span>
+        </div>
+      </div>
+      <div class="entry">
+        <div class="hd"><b>engineering-context <span class="b-entry">/version</span></b><span class="cnt">8 工具</span></div>
+        <div class="pills">
+          <span class="pill mv">project_history</span><span class="pill mv">project_version_reindex</span>
+          <span class="pill mv">project_version_verify</span><span class="pill mv">project_doc_index</span>
+          <span class="pill mv">project_doc_search</span><span class="pill mv">project_version_annotate</span>
+          <span class="pill mv">project_problem</span><span class="pill mv">project_version_query</span>
+        </div>
+      </div>
+      <div class="entry">
+        <div class="hd"><b>engineering-context <span class="b-entry">/version-read</span></b><span class="cnt">5 工具</span></div>
+        <div class="pills">
+          <span class="pill mv">project_history</span><span class="pill mv">project_version_verify</span>
+          <span class="pill mv">project_doc_search</span><span class="pill mv">project_problem</span>
+          <span class="pill mv">project_version_query</span>
+        </div>
+      </div>
+      <div class="callout warn" style="margin-bottom:0">
+        同一个包既管「工程作用域」又管「版本历史 / SQLite / diff」，所以它 19 个工具讲不清自己是什么。
+      </div>
+    </div>
+
+    <div class="panel">
+      <h4>改动后 <span>3 个包 · 10 条行 · 23 条注册</span></h4>
+
+      <div class="entry">
+        <div class="hd"><b>engineering-context <span class="b-entry">.</span></b><span class="cnt">6 工具</span></div>
+        <div class="pills">
+          <span class="pill">create_engineering_project</span><span class="pill">project_status</span>
+          <span class="pill">project_sync</span><span class="pill">workspace_describe</span>
+          <span class="pill">import_preflight</span><span class="pill">project_translate</span>
+        </div>
+      </div>
+      <div class="entry">
+        <div class="hd"><b>engineering-context <span class="b-entry">/status</span></b><span class="cnt">4 工具</span></div>
+        <div class="pills">
+          <span class="pill">project_status</span><span class="pill">workspace_describe</span>
+          <span class="pill">import_preflight</span><span class="pill">handoff_status</span>
+        </div>
+      </div>
+      <div class="entry">
+        <div class="hd"><b>engineering-context <span class="b-entry">/handoff</span></b><span class="cnt">3 工具</span></div>
+        <div class="pills">
+          <span class="pill">handoff_export</span><span class="pill">handoff_import</span><span class="pill">handoff_status</span>
+        </div>
+      </div>
+      <div class="entry">
+        <div class="hd"><b>version-control <span class="b-entry">.</span></b><span class="cnt">0 工具 · 只提供服务</span></div>
+        <div class="pills"><span class="pill nw">versionControl.recordBaseline()</span><span class="pill nw">versionControl.status()</span></div>
+      </div>
+      <div class="entry">
+        <div class="hd"><b>version-control <span class="b-entry">/record</span> 新</b><span class="cnt">4 工具 · 写</span></div>
+        <div class="pills">
+          <span class="pill nw">project_commit</span><span class="pill nw">project_version_reindex</span>
+          <span class="pill nw">project_version_annotate</span><span class="pill nw">project_doc_index</span>
+        </div>
+      </div>
+      <div class="entry">
+        <div class="hd"><b>version-control <span class="b-entry">/read</span> 新</b><span class="cnt">5 工具 · 只读</span></div>
+        <div class="pills">
+          <span class="pill nw">project_history</span><span class="pill nw">project_version_verify</span>
+          <span class="pill nw">project_doc_search</span><span class="pill nw">project_problem</span>
+          <span class="pill nw">project_version_query</span>
+        </div>
+      </div>
+      <div class="entry">
+        <div class="hd"><b>version-control <span class="b-entry">/diff</span> 新</b><span class="cnt">1 工具</span></div>
+        <div class="pills"><span class="pill nw">project_diff</span></div>
+      </div>
+      <div class="entry">
+        <div class="hd"><b>消失的入口</b><span class="cnt">3 条</span></div>
+        <div class="pills">
+          <span class="pill dim2">/diff</span><span class="pill dim2">/version</span><span class="pill dim2">/version-read</span>
+        </div>
+      </div>
+      <div class="callout" style="margin-bottom:0">
+        context 的新自我描述：<b>「把工程领进 workspace，管作用域，管交接，管工程文本翻译」</b> —— 没有历史、没有 diff、没有 SQLite。
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ TIA ============ -->
+<section id="tia">
+  <h2>3 · TIA 接口：39 个工具一个不动</h2>
+  <p class="lead">
+    这一轮 <code>@automation-suite/tia-openness-v17</code> <b>不加、不减、不改名</b>（3 条 Loader 行、39 个工具、40 个白名单操作）。
+    它变的是<b>被别人依赖的方式</b>：R1 之后「提交」不再需要它。
+  </p>
+  <div class="grid2">
+    <div class="group">
+      <div class="hd"><b>块与工程主线</b><span>6</span></div>
+      <div class="pills">
+        <span class="pill">open_project</span><span class="pill">export_blocks</span><span class="pill">import_blocks</span>
+        <span class="pill">compile_plc</span><span class="pill">close_project</span><span class="pill">controller_status</span>
+      </div>
+    </div>
+    <div class="group">
+      <div class="hd"><b>工程数据</b><span>9</span></div>
+      <div class="pills">
+        <span class="pill">create_project</span><span class="pill">save_project</span><span class="pill">archive_project</span>
+        <span class="pill">project_info</span><span class="pill">project_languages</span><span class="pill">project_texts</span>
+        <span class="pill">update_project</span><span class="pill">portal_settings</span><span class="pill">project_library</span>
+      </div>
+    </div>
+    <div class="group">
+      <div class="hd"><b>PLC 设备数据</b><span>9</span></div>
+      <div class="pills">
+        <span class="pill">list_plc_objects</span><span class="pill">create_plc_objects</span><span class="pill">delete_plc_objects</span>
+        <span class="pill">write_tags</span><span class="pill">set_block_attributes</span><span class="pill">protect_blocks</span>
+        <span class="pill">generate_source</span><span class="pill">watch_and_force_tables</span><span class="pill">software_units</span>
+      </div>
+    </div>
+    <div class="group">
+      <div class="hd"><b>块编辑器 / 库</b><span>1 + 1</span></div>
+      <div class="pills"><span class="pill">show_blocks_in_editor</span><span class="pill">project_library</span></div>
+    </div>
+    <div class="group">
+      <div class="hd"><b>F 安全</b><span>3</span></div>
+      <div class="pills"><span class="pill">safety_status</span><span class="pill">set_safety_settings</span><span class="pill">safety_signatures</span></div>
+    </div>
+    <div class="group">
+      <div class="hd"><b>在线 / 下载</b><span>6</span></div>
+      <div class="pills">
+        <span class="pill">adopt_open_project</span><span class="pill">online_targets</span><span class="pill">online_connect</span>
+        <span class="pill">online_status</span><span class="pill">online_disconnect</span><span class="pill">download</span>
+      </div>
+    </div>
+    <div class="group">
+      <div class="hd"><b>硬件组态</b><span>5</span></div>
+      <div class="pills">
+        <span class="pill">export_hardware_config</span><span class="pill">hardware_inventory</span>
+        <span class="pill">hardware_configuration</span><span class="pill">hardware_parameters</span><span class="pill">hardware_view</span>
+      </div>
+    </div>
+  </div>
+  <div class="callout" style="margin-top:16px">
+    它对外仍是两个服务：<code>engineeringAccess</code>（12 个只读方法）与 <code>projectTextAccess</code>（7 个写缝方法）。
+    这两个名字是跨版本成员（V17 / V18…）必须逐字一致的契约。
+  </div>
+</section>
+
+<!-- ============ preset ============ -->
+<section id="preset">
+  <h2>4 · preset 重排：leader 少 3 个写工具</h2>
+  <p class="lead">
+    preset 决定「哪个 agent 看得到哪些工具」。拆分后 6 条行换成 6 条行（归属变了），
+    auditor 与 expert 的工具数不变，leader 从 12 降到 9。
+  </p>
+  <div class="bars">
+    <div class="brow">
+      <div class="pk">leader<small>主 agent</small></div>
+      <div class="track">
+        <div class="bar before" title="12"><i style="width:63%"></i></div>
+        <div class="bar after" title="9"><i style="width:47%"></i></div>
+      </div>
+      <div class="num">12 → <b>9</b></div>
+    </div>
+    <div class="brow">
+      <div class="pk">auditor<small>版本慢活</small></div>
+      <div class="track">
+        <div class="bar before" title="19"><i style="width:100%"></i></div>
+        <div class="bar after" title="19"><i style="width:100%"></i></div>
+      </div>
+      <div class="num">19 → <b>19</b></div>
+    </div>
+    <div class="brow">
+      <div class="pk">expert<small>子 agent</small></div>
+      <div class="track">
+        <div class="bar before" title="6"><i style="width:32%"></i></div>
+        <div class="bar after" title="6"><i style="width:32%"></i></div>
+      </div>
+      <div class="num">6 → <b>6</b></div>
+    </div>
+  </div>
+
+  <div class="tablewrap" style="margin-top:14px">
+    <table>
+      <thead><tr><th style="width:110px">preset</th><th>改动前挂载</th><th>改动后挂载</th><th style="width:120px">工具数</th></tr></thead>
+      <tbody>
+        <tr>
+          <td><b>leader</b></td>
+          <td class="mono" style="font-size:12px">context/status(4) + context/version(8)</td>
+          <td class="mono" style="font-size:12px">context/status(4) + <b>vc/read(5)</b></td>
+          <td>12 → <b>9</b></td>
+        </tr>
+        <tr>
+          <td><b>auditor</b></td>
+          <td class="mono" style="font-size:12px">context(7) + context/version(8) + context/diff(1) + context/handoff(3)</td>
+          <td class="mono" style="font-size:12px">context(6) + <b>vc/record(4)</b> + <b>vc/read(5)</b> + <b>vc/diff(1)</b> + context/handoff(3)</td>
+          <td>19 → <b>19</b></td>
+        </tr>
+        <tr>
+          <td><b>expert</b></td>
+          <td class="mono" style="font-size:12px">context/version-read(5) + context/diff(1)</td>
+          <td class="mono" style="font-size:12px"><b>vc/read(5)</b> + <b>vc/diff(1)</b></td>
+          <td>6 → <b>6</b></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+  <div class="callout">
+    <b>leader 失去的 3 个工具</b>：<code>project_version_reindex</code>、<code>project_version_annotate</code>、
+    <code>project_doc_index</code> —— 全是写工具。这与 D30「慢活交给 auditor」一致，是拆分时顺手修掉的错配，不是新功能。
+  </div>
+</section>
+
+<!-- ============ 契约 ============ -->
+<section id="contracts">
+  <h2>5 · 服务、依赖与落盘物的归属变化</h2>
+  <p class="lead">这一节是拆分真正的工作量：工具搬家只是文件移动，契约才是要守住的东西。</p>
+  <div class="tablewrap">
+    <table>
+      <thead><tr><th style="width:230px">契约 / 落盘物</th><th>改动前</th><th>改动后</th></tr></thead>
+      <tbody>
+        <tr>
+          <td><code>engineeringAccess</code><br><span style="color:var(--faint);font-size:11.5px">TIA 提供的只读服务</span></td>
+          <td>context 的 create / sync / status / <b>commit</b> / diff 都取它；取不到 → <code>tia_access_unavailable</code></td>
+          <td>create / sync / status / translate 仍取它；<b>commit / diff / history 这条线不再需要</b>，交叉校验只告警</td>
+        </tr>
+        <tr>
+          <td><code>projectTextAccess</code><br><span style="color:var(--faint);font-size:11.5px">TIA 提供的写缝服务</span></td>
+          <td>context（<code>project_translate</code> / <code>handoff_export</code>）</td>
+          <td>不变</td>
+        </tr>
+        <tr>
+          <td><code>knowledgeGraph</code><br><span style="color:var(--faint);font-size:11.5px">图谱插件的软依赖</span></td>
+          <td>context 的 create / sync 调 <code>ingestKnowledgeGraph</code> / <code>refreshKnowledgeGraph</code></td>
+          <td>不变（这 28 KB 编排胶水留在 context）</td>
+        </tr>
+        <tr>
+          <td><code>gitContext</code><br><span style="color:var(--faint);font-size:11.5px">dsh-tool-git 宿主行提供</span></td>
+          <td>只有 <code>project_diff</code> 用；<b>commit 走 context 自带的 <code>src/git.ts</code>（294 行 execFile）</b></td>
+          <td><b>version-control 全部经它</b>；context 的 <code>src/git.ts</code> 删除</td>
+        </tr>
+        <tr>
+          <td><code>versionControl</code><br><span style="color:var(--faint);font-size:11.5px">新增软服务</span></td>
+          <td>—</td>
+          <td>context 的 create 调 <code>recordBaseline()</code>；缺失时 create <b>仍成功</b>，只报「未建版本库」</td>
+        </tr>
+        <tr>
+          <td><code>source/_dsh-engineering-context.json</code></td>
+          <td>context 写；device 解析只拿它当"目录提示"</td>
+          <td>context 写；<b>version-control 拿它当设备来源</b>（R1 的核心）</td>
+        </tr>
+        <tr>
+          <td><code>source/&lt;device&gt;/_evidence.json</code></td>
+          <td>TIA 写；context 读</td>
+          <td>不变（vc 读同一份，文件格式不得改）</td>
+        </tr>
+        <tr>
+          <td><code>.dsh/local/repo.json</code><br><span style="color:var(--faint);font-size:11.5px">"允许在此提交"的标记</span></td>
+          <td>context 的 <code>writeRepoMarker</code></td>
+          <td><b>version-control 写</b>（谁提交谁写标记）</td>
+        </tr>
+        <tr>
+          <td><code>.dsh/versions.db</code></td>
+          <td>context（<code>src/version/*</code>，node:sqlite）</td>
+          <td>version-control（schema_version 1 不变）</td>
+        </tr>
+        <tr>
+          <td><code>.dsh/versions-view.json</code></td>
+          <td>context 写</td>
+          <td>version-control 写，<b>格式不变 → ui-versions 零改动</b></td>
+        </tr>
+        <tr>
+          <td>git trailer<br><span style="color:var(--faint);font-size:11.5px"><code>Tia-Op</code> / <code>Tia-Checksum</code> / <code>Tia-State</code></span></td>
+          <td>context 写</td>
+          <td>version-control 写（格式不变）</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<!-- ============ R1 ============ -->
+<section id="r1">
+  <h2>6 · R1：为什么「提交」现在离不开 TIA</h2>
+  <p class="lead">
+    这是拆包的第一块砖，必须先在 context 里做（<code>resolveDevice</code> 同时被 sync 和 commit 用）。
+    左边是今天的真实链路，右边是 R1 之后的链路。
+  </p>
+  <div class="cols">
+    <div class="panel">
+      <h4>改动前的 <code>project_commit</code> <span>大半个流程在问 TIA</span></h4>
+      <ol class="flow">
+        <li class="ok"><code>resolveScope()</code> —— 定位 workspace</li>
+        <li class="bad"><code>engineeringAccess(ctx)</code>，取不到抛 <code>tia_access_unavailable</code><br><span style="color:var(--faint);font-size:11.5px">commit.ts:85-92</span></li>
+        <li class="bad"><code>access.readTiaSession()</code> —— 必须有 TIA 控制器<br><span style="color:var(--faint);font-size:11.5px">device.ts:81</span></li>
+        <li class="bad">闸门：控制器没跑 / 工程没开<br><span style="color:var(--faint);font-size:11.5px">device.ts:90-103</span></li>
+        <li class="bad">闸门：0 个 PLC 报错；<b>&gt;1 个 PLC 直接拒绝</b><br><span style="color:var(--faint);font-size:11.5px">device.ts:104-117 · <code>multiple_plc_unsupported</code></span></li>
+        <li class="ok">到这里<b>才</b>读索引 <code>devices[]</code> 拿目录<br><span style="color:var(--faint);font-size:11.5px">device.ts:126</span></li>
+        <li class="ok">git add + commit（context 自己的 runner）</li>
+      </ol>
+      <div class="callout warn">
+        不装 TIA 的组合里，<code>project_commit</code> <b>永远跑不了</b>——尽管 source 树、evidence、git 都在磁盘上。
+      </div>
+    </div>
+
+    <div class="panel">
+      <h4>R1 之后的 <code>project_commit</code> <span>磁盘优先，TIA 只做交叉校验</span></h4>
+      <ol class="flow">
+        <li class="ok"><code>resolveScope()</code> —— 定位 workspace</li>
+        <li class="ok"><b>读索引</b> <code>source/_dsh-engineering-context.json</code> 的 <code>devices[]</code></li>
+        <li class="ok">没有索引 → 列 <code>source/*/_evidence.json</code> 推断</li>
+        <li class="ok">0 个 → <code>device_not_found</code>；<b>多个 → 要求显式 <code>device</code> 参数</b>（不再拒绝）</li>
+        <li class="ok">（可选）<code>engineeringAccess</code> 在时比对会话，不一致 <b>只告警</b></li>
+        <li class="ok">git add + commit <b>经 <code>gitContext</code></b></li>
+      </ol>
+      <div class="callout">
+        <b>R1c：</b><code>project_sync</code> / <code>project_status</code> 保留 TIA 依赖（它们本来就要开工程）——
+        只有 commit / diff / history 这条线脱离。
+      </div>
+      <div class="callout" style="margin-bottom:0">
+        <b>验收：</b>断网 + 不装 TIA + TIA 未开工程，三种情况下都能对一个已有 source 树与 evidence 的仓库做
+        <code>project_commit</code> 的 plan 与 commit。
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 落地顺序 ============ -->
+<section id="checklist">
+  <h2>7 · 落地顺序与验收</h2>
+  <div class="tablewrap">
+    <table>
+      <thead><tr><th style="width:64px">步</th><th>做什么</th><th>验收</th></tr></thead>
+      <tbody>
+        <tr><td><b>S0</b> ✅</td><td>context 里做 R1a/R1b/R1c：<code>resolveDevice</code> 拆成「磁盘 / TIA」两个入口 <span style="color:var(--stay);font-weight:600">（已完成，177 项测试）</span></td><td>新增「无 engineeringAccess」用例；断网不装 TIA 也能 commit</td></tr>
+        <tr><td><b>S1</b></td><td>建 <code>version-control</code> 包骨架（package.json / cordis.patch.yml / 构建测试脚手架 / dsh-runtime.d.ts）</td><td><code>pnpm -r build &amp;&amp; pnpm -r typecheck</code> 绿</td></tr>
+        <tr><td><b>S2</b></td><td>搬文件 + <code>versionControl</code> 服务 + create 改软调用 + <code>repo.json</code> 归属</td><td>两边测试全绿；无版本包时 create 成功并报「未建版本库」</td></tr>
+        <tr><td><b>S3</b></td><td>preset 6 条行换归属</td><td><code>--dump-config</code> 行数与顺序；leader 工具数 = 9</td></tr>
+        <tr><td><b>S4</b></td><td>文档与清单（architecture §8 / roadmap §1 / README / AGENTS / releases）</td><td><code>pnpm test</code> 全仓；<code>--dump-config-schema</code> 能看到新包 Config</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <div class="callout warn">
+    <b>本轮明确不做：</b>工具改名（会打到 <code>tia-todo-bridge</code> 的 32 个硬编码工具名与 prompt-guide 文案）。
+    工作流合并（10 → 7：<code>version_record</code> / <code>version_rebuild</code> / <code>version_history</code> /
+    <code>version_verify</code> / <code>version_docs</code> / <code>version_query</code> / <code>version_compare</code>）
+    单开一轮，与 TIA 的工作流化一起做，避免模型学两套新名字。
+  </div>
+</section>
+
+<footer>
+  <p>数据来源：<code>packages/dsh-engineering-context/src/tools/*.ts</code>（工具名常量 + <code>defineTool</code>）、
+     <code>src/*-entry.ts</code>（入口）、<code>packages/dsh-tia-openness-v17-min/src/tools.ts</code>（39 个工具）、
+     <code>profile/dsh-automation-suite/cordis.patch.yml</code>（preset 挂载）。</p>
+  <p>规划细节见 <a href="version-control-plan.md">docs/version-control-plan.md</a>；
+     拆包动因与其它重叠项见 <a href="plugin-consolidation-audit.md">docs/plugin-consolidation-audit.md</a>。</p>
+  <p>本页是静态说明，不参与构建、不进发布物。</p>
+</footer>
+
+</div>
+
+<script>
+(function(){
+  var chips = document.querySelectorAll('.chip[data-filter]');
+  var rows = document.querySelectorAll('#mig tbody tr');
+  chips.forEach(function(chip){
+    chip.addEventListener('click', function(){
+      chips.forEach(function(c){ c.setAttribute('aria-pressed', String(c === chip)); });
+      var key = chip.getAttribute('data-filter');
+      rows.forEach(function(row){
+        var tags = (row.getAttribute('data-k') || '').split(/\s+/);
+        var show = key === 'all' || tags.indexOf(key) !== -1;
+        row.classList.toggle('dim', !show);
+      });
+    });
+  });
+})();
+</script>
+</body>
+</html>

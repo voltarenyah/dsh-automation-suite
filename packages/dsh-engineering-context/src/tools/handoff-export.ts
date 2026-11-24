@@ -24,7 +24,7 @@ import type { ToolDefinition } from '@deepseek-ai/dsh-tools'
 
 import { engineeringAccess, normalizeCall, normalizeSession, projectArchiveAccess } from '../access.js'
 import { projectDirectoryPath } from '../config.js'
-import { resolveDevice } from '../device.js'
+import { resolveDeviceFromTia } from '../device.js'
 import { EngineeringContextError } from '../errors.js'
 import { canonicalizeLoose, folderName, isInside, toPortable } from '../paths.js'
 import { resolveScope, type ResolvedScope } from '../scope.js'
@@ -207,7 +207,7 @@ export function handoffExportTool(dependencies: ToolDependencies): ToolDefinitio
         if (head === null) {
           throw new EngineeringContextError('repository_not_found', 'The workspace repository has no commit yet; create and commit the project first.')
         }
-        const device = await resolveDevice(scope, service, exec)
+        const device = await resolveDeviceFromTia(scope, service, exec)
         const deviceRelative = gitPath(root, device.directory)
         const dirty = await statusPaths(root, [deviceRelative])
         if (dirty.length > 0) {

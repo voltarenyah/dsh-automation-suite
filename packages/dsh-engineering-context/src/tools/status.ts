@@ -27,7 +27,7 @@ import {
   type PluginConfig,
 } from '../config.js'
 import type { DeviceInfo } from '../device.js'
-import { resolveDevice } from '../device.js'
+import { resolveDeviceFromTia } from '../device.js'
 import { EngineeringContextError } from '../errors.js'
 import { presentObjects, readEvidence, type EvidenceDocument } from '../evidence.js'
 import { gitPath, runGit, statusPaths } from '../git.js'
@@ -278,7 +278,7 @@ export function statusTool(dependencies: ToolDependencies): ToolDefinition {
         let device: DeviceInfo | null = null
         let tia: Record<string, unknown> = { projectOpen: false }
         try {
-          device = await resolveDevice(scope, service, exec)
+          device = await resolveDeviceFromTia(scope, service, exec)
           tia = { projectOpen: true, device: device.device, software: device.software }
         } catch (error) {
           if (!(error instanceof EngineeringContextError)) throw error

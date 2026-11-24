@@ -1553,4 +1553,56 @@ scope 下并重新整理名字。改前是两种身份（6 个 `@voltarenyah/*` 
 **代价**：品牌只能在桌面壳里改（改完重启 App 生效）；Web 版没有 hero 品牌；
 `brandmark.png` 与安装器图标仍是两份、不联动。
 
+---
+
+## D41 · 记录历史不再要求 TIA 开着：device 解析拆成「磁盘优先」与「TIA-only」，TIA 只做交叉校验 ✅
+
+**决定**：`project_commit`（以及它背后的 `project_diff` / `project_history` 只读历史线）**不再需要
+`engineeringAccess` 服务**。`packages/dsh-engineering-context/src/device.ts` 的 `resolveDevice` 拆成三个出口：
+
+| 出口 | 谁用 | 行为 |
+|---|---|---|
+| `resolveDeviceFromDisk(config, root, device?)` | `project_commit` | 读创世索引 `source/_dsh-engineering-context.json` 的 `devices[]`；没有索引就扫 `source/*/_evidence.json`；0 个 → `device_not_found`；多个 → `multiple_plc_unsupported`（提示传 `device`） |
+| `resolveDeviceFromTia(scope, access, exec)` | `project_sync` / `project_status` / `handoff_export` / `handoff_import` | **行为不变**：开着的工程是"正在编辑哪个设备"的权威 |
+| `crossCheckDeviceWithTia(access, device, signal)` | `project_commit`（**仅当服务存在**） | 比对索引与 TIA 会话；不一致 / TIA 没跑 / 工程没开 / 多 PLC → **一句话警告**，然后照常提交 |
+
+**为什么**（三条都是读代码读出来的，不是设想）：
+
+1. 旧链路里 `project_commit` 前 6 步有 4 步在问 TIA（`src/tools/commit.ts:85-92` 取服务、
+   `src/device.ts:81-117` 读会话 + 四道闸门），走到第 7 步才读磁盘上的索引 —— 而设备清单本来就在那个
+   索引里。后果是**不装 TIA 的组合里提交永远失败**，尽管 source 树、`_evidence.json`、git 全在磁盘上。
+2. `multiple_plc_unsupported` 是 **TIA 会话**的限制，不是 git 的：工程里有两个 PLC 时，一个磁盘上完全
+   合法的工作区被拒绝提交。现在传 `device` 就能提交。
+3. 下一步把版本管理整体拆成 `version-control`（`version-control-plan.md`）。照搬旧链路会把"记历史"绑在
+   "TIA Portal 必须开着"上，新包就无法离线/在 CI 里跑。
+
+**错误码分工**（唯一的行为变化，两个码都有用）：
+`device_not_found` = 工作区里没有可用源树（没索引也没账本）；
+`not_synced` = 源树在、设备也解析出来了，但**缺账本**（提交会引用未知出处）。
+
+**索引提示是 hint，不是 authority**：`devices[].directory` 必须落在 `source/` 之内**且真的含
+`_evidence.json`**，否则回退到 `source/<folderName(device)>` 并告警 —— 拷贝过的工作区会带着别的机器
+的绝对路径（旧代码只查 `isInside`，会把 `source/source/<device>` 这种无效路径当真）。
+
+**影响面**：`project_commit` 的 `data` 多一个 `deviceOrigin: 'index' | 'evidence'`；设备由扫描得到时
+`software` 由账本补齐（`planCommit`）。其余 9 个工具行为不变，`project_status` 的"没开工程"分支照旧。
+
+**验证**：新增 `packages/dsh-engineering-context/test/22-commit-without-tia.test.mjs` 9 项（无服务可计划、
+无服务可真提交并移动 HEAD、索引优先、坏 hint 回退、TIA 没跑/换工程/多 PLC 三种告警、双设备靠 `device`
+解决、无源树 → `device_not_found`），连同原有 168 项，本包 **177 项全通过**。
+**离线已验（2026-11-24，真实工作区 `…\dsh-automation-suite\0.2.5\pilot`，只读 dry_run）**：
+真实索引（`directory` 是绝对路径、`device = PEI_1`）解析为 `origin = index`、零警告；
+`planCommit` 读到真实的 934 对象账本与 checksum（`64 97 BC 17 …`）并生成正确的 trailer；
+**整条链路不提供 `engineeringAccess`** 仍然 `ok: true`。所以"真实数据形状 / 真实 git"这一层
+已经证过，不再依赖真机。
+
+**仍未验**：应用里的端到端（服务在、TIA 关着，经 preset 派 auditor 跑）。它的风险已按代码核实：
+控制器对"TIA 窗口被外部关闭"有专门恢复路径（`controller/Operations.cs:141-145` 回 `project_not_open`
+而不是 `internal_error`），且该分类被 `--self-test` 覆盖（`controller/SelfTest.cs:195-215`），
+所以不会挂到 `requestTimeoutMs` 才失败。**真机那条挪到拆包（S2）之后做一次**——届时一次同时验
+"新包 + 关 TIA"，比现在验拆包前的状态更有价值。
+
+**重审条件**：`version-control` 拆包时，`resolveDeviceFromDisk` 与 `commit.ts` 一起搬走，`engineering-context`
+只剩 `resolveDeviceFromTia`；届时 `project_commit` 的 TIA 交叉校验应当变成跨包调用（或随包消失）。
+
 

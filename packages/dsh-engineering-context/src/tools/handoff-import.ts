@@ -39,7 +39,7 @@ import {
   type PluginConfig,
 } from '../config.js'
 import type { DeviceInfo } from '../device.js'
-import { resolveDevice } from '../device.js'
+import { resolveDeviceFromTia } from '../device.js'
 import { EngineeringContextError } from '../errors.js'
 import { canonicalizeLoose, folderName, isInside, toPortable } from '../paths.js'
 import { resolveScope, type ResolvedScope } from '../scope.js'
@@ -654,7 +654,7 @@ export function handoffImportTool(dependencies: ToolDependencies): ToolDefinitio
           // the project is not usable for the workflow; restore the old one.
           let nextDevice: DeviceInfo
           try {
-            nextDevice = await resolveDevice(resolvedScope, service, exec)
+            nextDevice = await resolveDeviceFromTia(resolvedScope, service, exec)
           } catch (error) {
             await restoreOld(indexFile, indexBackup)
             throw error

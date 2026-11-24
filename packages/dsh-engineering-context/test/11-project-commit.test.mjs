@@ -243,10 +243,17 @@ test('an empty message is refused and nothing is committed', async (t) => {
   assert.equal((await git(root, ['rev-parse', 'HEAD'])).stdout.trim(), head)
 })
 
-test('a workspace with no evidence ledger refuses to commit an unknown provenance', async (t) => {
+test('a workspace whose device has no evidence ledger refuses to commit an unknown provenance', async (t) => {
   const root = await gitWorkspace(t)
   const device = deviceDirectory(root)
   await makeFile(join(device, 'blocks', '010', 'FB1.xml'), '<xml>new</xml>')
+  // The creation index names the device, so the device itself resolves from disk
+  // (R1). What is missing is the ledger the commit would quote, and that is the
+  // distinction `not_synced` exists for: a tree with no provenance.
+  await makeFile(
+    join(root, 'source', '_dsh-engineering-context.json'),
+    `${JSON.stringify({ schemaVersion: 1, devices: [{ device: DEVICE, software: SOFTWARE }] }, null, 2)}\n`,
+  )
   await git(root, ['add', '--', 'source/PLC1'])
   await git(root, ['commit', '-q', '-m', 'import'])
   await makeFile(join(device, 'blocks', '010', 'FB1.xml'), '<xml>changed</xml>')
@@ -256,6 +263,17 @@ test('a workspace with no evidence ledger refuses to commit an unknown provenanc
   assert.equal(outcome.ok, false)
   assert.equal(outcome.error.code, 'not_synced')
   assert.match(outcome.error.message, /project_sync/u)
+})
+
+test('a workspace with no source tree at all is device_not_found, not not_synced', async (t) => {
+  const root = await gitWorkspace(t)
+  await makeFile(join(root, 'notes.txt'), 'nothing imported yet\n')
+
+  const outcome = assertEnvelope(await executeTool(commitTool(), { message: 'chore: something' }, fakeExec(root)))
+
+  assert.equal(outcome.ok, false)
+  assert.equal(outcome.error.code, 'device_not_found')
+  assert.match(outcome.error.message, /create_engineering_project/u)
 })
 
 test('a clean device directory reports nothing to commit instead of failing', async (t) => {

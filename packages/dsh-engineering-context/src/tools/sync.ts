@@ -21,7 +21,7 @@ import { engineeringAccess, normalizeChecksum, type EngineeringAccessLike } from
 import { checksumCacheKey, readCachedChecksum, writeCachedChecksum } from '../checksum-cache.js'
 import { evidencePathForDevice, manifestPathForDevice } from '../config.js'
 import type { DeviceInfo } from '../device.js'
-import { resolveDevice } from '../device.js'
+import { resolveDeviceFromTia } from '../device.js'
 import { EngineeringContextError } from '../errors.js'
 import { readEvidence, type EvidenceDocument } from '../evidence.js'
 import { refreshKnowledgeGraph, type KnowledgeRefreshReport } from '../knowledge-refresh.js'
@@ -88,7 +88,7 @@ export function syncTool(dependencies: ToolDependencies): ToolDefinition {
             { service: 'engineeringAccess' },
           )
         }
-        const device = await resolveDevice(scope, service, exec)
+        const device = await resolveDeviceFromTia(scope, service, exec)
         const evidenceFile = evidencePathForDevice(device.directory)
         const manifestFile = manifestPathForDevice(device.directory)
         const cacheKey = checksumCacheKey(scope.workspace.path, device.device, device.software)

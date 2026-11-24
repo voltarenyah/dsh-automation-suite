@@ -2,20 +2,17 @@
  * Which device a version-store question is about, resolved **without TIA**.
  *
  * The version store must answer history questions while TIA is closed, so it
- * cannot go through `resolveDevice` (which asks the open project). The source
- * tree already names its device directories: `source/<device>/_evidence.json`.
+ * cannot go through `resolveDeviceFromTia` (which asks the open project). This
+ * module is a thin, stable alias for {@link resolveDeviceFromDisk}: the version
+ * tools keep their own import path and error wording, while the device logic
+ * lives in one place (`src/device.ts`) so `project_commit` reads the workspace
+ * exactly the same way a history query does.
  *
  * @module dsh-engineering-context/version/device
  */
 
-import { existsSync } from 'node:fs'
-import { readdir } from 'node:fs/promises'
-import { join } from 'node:path'
-
 import type { PluginConfig } from '../config.js'
-import type { DeviceInfo } from '../device.js'
-import { EngineeringContextError } from '../errors.js'
-import { canonicalizeLoose, folderName } from '../paths.js'
+import { resolveDeviceFromDisk, type DeviceInfo } from '../device.js'
 
 /**
  * Resolve the device directory from the source tree.
@@ -32,58 +29,6 @@ export async function resolveSourceDevice(
   root: string,
   requested?: string,
 ): Promise<DeviceInfo> {
-  const sourceRoot = await canonicalizeLoose(join(root, config.sourceDirName))
-  let entries: string[] = []
-  try {
-    const dirents = await readdir(sourceRoot, { withFileTypes: true })
-    entries = dirents.filter((entry) => entry.isDirectory()).map((entry) => entry.name)
-  } catch {
-    entries = []
-  }
-
-  const candidates = entries
-    .filter((name) => existsSync(join(sourceRoot, name, '_evidence.json')))
-    .sort((left, right) => left.localeCompare(right))
-
-  if (candidates.length === 0) {
-    throw new EngineeringContextError(
-      'device_not_found',
-      `No device source tree with an evidence ledger under ${sourceRoot}. Run create_engineering_project (or a sync) first, or check ${config.sourceDirName}/.`,
-      { sourceRoot },
-    )
-  }
-
-  if (requested !== undefined && requested.length > 0) {
-    const wanted = folderName(requested)
-    const match = candidates.find((name) => name.toLowerCase() === wanted.toLowerCase())
-    if (match === undefined) {
-      throw new EngineeringContextError(
-        'device_not_found',
-        `No source tree for device "${requested}" under ${sourceRoot}; found: ${candidates.join(', ')}.`,
-        { sourceRoot, found: candidates },
-      )
-    }
-    return {
-      device: match,
-      software: '',
-      directory: join(sourceRoot, match),
-      sourceRoot,
-    }
-  }
-
-  if (candidates.length > 1) {
-    throw new EngineeringContextError(
-      'multiple_plc_unsupported',
-      `The workspace holds ${candidates.length} device source trees (${candidates.join(', ')}). Pass the device name.`,
-      { devices: candidates },
-    )
-  }
-
-  const only = candidates[0] as string
-  return {
-    device: only,
-    software: '',
-    directory: join(sourceRoot, only),
-    sourceRoot,
-  }
+  const resolved = await resolveDeviceFromDisk(config, root, requested)
+  return resolved.device
 }

@@ -155,7 +155,7 @@ pnpm run clean:build      # 清构建产物（只碰 lib/ dist/）
 ## 4. 测试与验收
 
 ```powershell
-pnpm test          # 全仓（2026-11-24 实测：全部通过，需先设 DOTNET_ROOT 见下）：TIA 121 项（120 通过 / 1 跳过）+ @automation-suite/dsh-tool-git 51 项 + engineering-context 168 项 + engineering-graph 128 项 + pdf-drawing 38 项 + plcsim-advanced 24 项 + ui-plc-source 47 项 + ui-tia-console 23 项 + ui-versions 15 项 + ui-hardware 9 项 + ui-prompt-guide 25 项 + ui-changes 48 项 + ui-project-dashboard 35 项 + tia-todo-bridge 18 项
+pnpm test          # 全仓（2026-11-24 实测：全部通过，需先设 DOTNET_ROOT 见下）：TIA 121 项（120 通过 / 1 跳过）+ @automation-suite/dsh-tool-git 51 项 + engineering-context 177 项 + engineering-graph 128 项 + pdf-drawing 38 项 + plcsim-advanced 24 项 + ui-plc-source 47 项 + ui-tia-console 23 项 + ui-versions 15 项 + ui-hardware 9 项 + ui-prompt-guide 25 项 + ui-changes 48 项 + ui-project-dashboard 35 项 + tia-todo-bridge 18 项
 pnpm -r build
 pnpm -r typecheck
 ```
