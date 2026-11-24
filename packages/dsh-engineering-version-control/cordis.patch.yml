@@ -1,0 +1,13 @@
+# dsh-engineering-version-control bundle layer: insert the plugin row when this
+# bundle is active.
+#
+# The package name is scoped, so the scalar MUST be quoted: `@` is a reserved
+# start character in YAML. It must match package.json's `name` byte for byte —
+# the loader treats this string as a module identifier (root AGENTS.md §1).
+#
+# This row owns resources and services only. The model-facing tools live on the
+# `/record`, `/read` and `/diff` rows (added in the same release), because a tool
+# registered here would be inherited by every agent, including subagents.
+- insert:
+    - id: version-control
+      name: '@automation-suite/version-control'

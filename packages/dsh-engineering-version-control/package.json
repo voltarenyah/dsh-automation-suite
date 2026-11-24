@@ -1,0 +1,62 @@
+{
+  "name": "@automation-suite/version-control",
+  "version": "0.1.0",
+  "publishConfig": {
+    "access": "public"
+  },
+  "private": false,
+  "description": "DSH plugin: engineering version history — records the exported source tree as git commits with an evidence ledger and answers which block changed, in which version, and why. It never talks to TIA Portal.",
+  "type": "module",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/voltarenyah/dsh-automation-suite.git",
+    "directory": "packages/dsh-engineering-version-control"
+  },
+  "homepage": "https://github.com/voltarenyah/dsh-automation-suite#readme",
+  "bugs": {
+    "url": "https://github.com/voltarenyah/dsh-automation-suite/issues"
+  },
+  "engines": {
+    "node": ">=22.19.0"
+  },
+  "main": "./lib/index.js",
+  "exports": {
+    ".": {
+      "default": "./lib/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "lib",
+    "cordis.patch.yml",
+    "README.md",
+    "docs"
+  ],
+  "dsh": {
+    "manifestVersion": 1,
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  },
+  "keywords": [
+    "deepseek-harness",
+    "dsh-plugin",
+    "dsh",
+    "cordis",
+    "version-control",
+    "git",
+    "plc"
+  ],
+  "scripts": {
+    "build": "node scripts/tsc.mjs -p tsconfig.json",
+    "typecheck": "node scripts/tsc.mjs -p tsconfig.json --noEmit",
+    "link:runtime": "node scripts/link-dsh-runtime.mjs",
+    "test": "node scripts/run-tests.mjs",
+    "check": "node scripts/run-tests.mjs"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "typescript": "^5.6.0"
+  }
+}
