@@ -77,9 +77,10 @@
 > 新测试 `test/22-commit-without-tia.test.mjs` 9 项，本包 **177 项全通过**。
 > **离线已验（真实工作区 `0.2.5\pilot`，只读 dry_run）**：`origin=index`、零警告、读到真实 934 对象账本，
 > 不提供服务也 `ok:true` —— "真实数据形状"不再依赖真机。
-> **仍未验**：应用内端到端（服务在、TIA 关着、经 preset 派 auditor）。风险已按代码核实：控制器对
-> "TIA 被外部关闭"回 `project_not_open` 而非 `internal_error`（`Operations.cs:141-145`，`SelfTest.cs:195-215`
-> 覆盖），不会挂到超时。**这条挪到 S2 之后做一次**，一次同时验"新包 + 关 TIA"。
+> **✅ 真机已验（2026-11-25）**：TIA 退出后 `project_commit` 计划 619 ms、真提交 1677 ms，
+> 设备从 `source/` 索引解析、只附 warning；trailer 与账本一致，账本记 1 条变更（Code + Comments）。
+> 见 [`reviews/2026-11-25-commit-without-tia.md`](reviews/2026-11-25-commit-without-tia.md)。
+> 未覆盖：换工程告警、无 vc 的 fail-soft、多设备工作区。
 
 > **R1 在 context 里做，不随包走。** 理由：它是 `resolveDevice` 的改造，而 `resolveDevice` 同时被
 > `project_sync`（要 TIA）和 `project_commit`（不该要 TIA）用。先把它拆成两个入口函数

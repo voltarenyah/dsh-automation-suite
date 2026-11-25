@@ -1596,11 +1596,11 @@ scope 下并重新整理名字。改前是两种身份（6 个 `@voltarenyah/*` 
 **整条链路不提供 `engineeringAccess`** 仍然 `ok: true`。所以"真实数据形状 / 真实 git"这一层
 已经证过，不再依赖真机。
 
-**仍未验**：应用里的端到端（服务在、TIA 关着，经 preset 派 auditor 跑）。它的风险已按代码核实：
-控制器对"TIA 窗口被外部关闭"有专门恢复路径（`controller/Operations.cs:141-145` 回 `project_not_open`
-而不是 `internal_error`），且该分类被 `--self-test` 覆盖（`controller/SelfTest.cs:195-215`），
-所以不会挂到 `requestTimeoutMs` 才失败。**真机那条挪到拆包（S2）之后做一次**——届时一次同时验
-"新包 + 关 TIA"，比现在验拆包前的状态更有价值。
+**真机已验（2026-11-25，TIA V17 + 真实 workspace）**：TIA 退出后 `project_commit` 先出计划（619 ms）
+再真提交（1677 ms），设备由 `source/` 索引解析，结果只带一句警告；提交后 trailer 与账本 checksum 一致，
+版本库记下 1 条变更事件（faces = Code + Comments）。证据、耗时与三个未覆盖分支见
+[`reviews/2026-11-25-commit-without-tia.md`](reviews/2026-11-25-commit-without-tia.md)。
+**仍未验**：TIA 开着别的工程时的 mismatch 告警、`version-control` 缺席时的 fail-soft、多设备工作区。
 
 **重审条件**：`version-control` 拆包时，`resolveDeviceFromDisk` 与 `commit.ts` 一起搬走，`engineering-context`
 只剩 `resolveDeviceFromTia`；届时 `project_commit` 的 TIA 交叉校验应当变成跨包调用（或随包消失）。
