@@ -60,24 +60,11 @@ import {
   type PluginConfig,
 } from '../config.js'
 import { EngineeringContextError } from '../errors.js'
-import {
-  gitContextService,
-  hasCreateTrailer,
-  lastCommitBody,
-  readRepoMarker,
-  repoMarkerPath,
-  writeRepoMarker,
-  type GitContextLike,
-  type GitContextServiceLike,
-} from '../git-context.js'
 import { ingestKnowledgeGraph, type KnowledgeIngestReport } from '../knowledge-graph.js'
 import { canonicalizeLoose, folderName, isInside, toPortable } from '../paths.js'
-import { commitMeta } from '../git.js'
-import { indexDocuments } from '../version/docs.js'
-import { openVersionStore } from '../version/store.js'
-import { recordCommitAfterWrite } from '../version/write.js'
 import { callSyncScan } from '../scan.js'
 import { assertInsideWith, describePath, resolveScope, type ResolvedScope } from '../scope.js'
+import { versionControl, type BaselinePlan } from '../version-control.js'
 import type { ToolDependencies } from './deps.js'
 import { cappedList, defineOutcomeTool, failedOutcome, okOutcome, type EngineeringOutcome } from './outcome.js'
 
@@ -584,82 +571,20 @@ async function callService<T>(what: string, body: () => Promise<T>): Promise<T> 
   }
 }
 
-// ---------------------------------------------------------------------------
-// git preflight: where may this call initialize a repository and commit?
-// ---------------------------------------------------------------------------
-
-/** The repository state found before anything is opened or written. */
-interface RepositoryPreflight {
-  /** `none`: no repository at the workspace; this call will initialize one. */
-  state: 'none' | 'reuse'
-  /** The repository root git reported, or null when there is none. */
-  repoRoot: string | null
-}
-
-/** Path comparison that treats the spellings Windows reports as the same directory. */
-function sameDirectory(left: string, right: string): boolean {
-  const normalize = (value: string): string => value.replace(/\//gu, '\\').replace(/\\+$/u, '').toLowerCase()
-  return normalize(left) === normalize(right)
-}
 
 /**
- * Decide whether this workspace may be initialized and committed into.
+ * Distinct values joined for a trailer, or `unknown` when there are none.
  *
- * Three answers, and only one of them allows the call to proceed:
+ * The trailer carries one line, so several devices' checksums become `a,b`; an
+ * empty set is `unknown` rather than an empty string, because a missing value must
+ * be visible in the history.
  *
- *   - **no repository** — allowed; the import initializes one afterwards.
- *   - **a repository rooted here that this plugin created** — allowed; recognizable
- *     by the local marker (written before the baseline commit) or by the
- *     `Tia-Op: create` trailer in the history.
- *   - **anything else** — refused with `workspace_is_repository`. That covers a
- *     workspace nested inside somebody else's repository (the case that would
- *     silently add 1000 files to their history) and a repository rooted here that
- *     this plugin cannot attribute. The plugin never initializes inside a foreign
- *     repository and never appends a baseline to history it did not create.
- *
- * @param service - the `gitContext` service.
- * @param root - the canonical workspace root.
- * @param config - the resolved configuration (for the marker's location).
- * @returns what the repository state is.
- * @throws {EngineeringContextError} `workspace_is_repository` when it is not ours.
+ * @param values - the per-device values, any of which may be missing.
+ * @returns the trailer value.
  */
-async function preflightRepository(
-  service: GitContextServiceLike,
-  root: string,
-  config: PluginConfig,
-): Promise<RepositoryPreflight> {
-  const repoRoot = await service.repoRoot(root)
-  if (repoRoot === null) return { state: 'none', repoRoot: null }
-  if (!sameDirectory(repoRoot, root)) {
-    throw new EngineeringContextError(
-      'workspace_is_repository',
-      `The workspace ${root} is inside the git repository at ${repoRoot}. Use a standalone directory: this plugin never ` +
-        'initializes inside a foreign repository, and it will not add a baseline commit to a history it did not create.',
-      { workspace: root, repoRoot },
-    )
-  }
-  if ((await readRepoMarker(config, root)) !== null) return { state: 'reuse', repoRoot }
-  if (hasCreateTrailer(await lastCommitBody(service, root))) return { state: 'reuse', repoRoot }
-  throw new EngineeringContextError(
-    'workspace_is_repository',
-    `The workspace ${root} is already a git repository, but this plugin cannot attribute it: its last commit carries no ` +
-      `"Tia-Op: create" trailer and there is no ${toPortable(root, repoMarkerPath(config, root))} marker. Use a standalone ` +
-      'directory: this plugin never initializes inside a foreign repository, and it will not append a baseline to a history ' +
-      'it did not create.',
-    { workspace: root, repoRoot, marker: toPortable(root, repoMarkerPath(config, root)) },
-  )
-}
-
-/** What the plan says about git, before anything is written. */
-function describeRepositoryPlan(root: string, config: PluginConfig, preflight: RepositoryPreflight): string {
-  const paths = `${config.sourceDirName}/, .gitignore and .gitattributes`
-  if (preflight.state === 'none') {
-    return (
-      `Git: ${root} is not a repository yet — it will be initialized (git init -b main) after the import, and a baseline ` +
-      `commit will be created for ${paths}.`
-    )
-  }
-  return `Git: reusing this plugin's repository at ${root} — a baseline commit will be created for ${paths}.`
+function trailerValue(values: readonly (string | null)[]): string {
+  const unique = [...new Set(values.filter((value): value is string => value !== null && value.length > 0))]
+  return unique.length === 0 ? 'unknown' : unique.join(',')
 }
 
 // ---------------------------------------------------------------------------
@@ -950,114 +875,16 @@ function describeAttributesAction(
   )
 }
 
-// ---------------------------------------------------------------------------
-// git baseline: the import becomes one commit
-// ---------------------------------------------------------------------------
-
-/** What the baseline commit did. */
-interface BaselineResult {
-  root: string
-  initialized: boolean
-  committed: boolean
-  hash: string | null
-}
-
-/** The commit message: one summary line plus the four trailers the workflow reads. */
-function baselineMessage(label: string, checksum: string, stateId: string): string {
-  return [
-    `create: ${label} — baseline import of the exported source tree`,
-    '',
-    'Tia-Op: create',
-    `Tia-Checksum: ${checksum}`,
-    `Tia-State: ${stateId}`,
-    'Tia-Manifest: rebuilt',
-  ].join('\n')
-}
-
-/** Distinct values joined for a trailer, or `unknown` when there are none. */
-function trailerValue(values: readonly (string | null)[]): string {
-  const unique = [...new Set(values.filter((value): value is string => value !== null && value.length > 0))]
-  return unique.length === 0 ? 'unknown' : unique.join(',')
-}
-
-/**
- * Create the baseline commit of the import.
- *
- * Order matters: the ownership marker is written **before** `git init`/the
- * commit, so a failure in the middle still leaves a repository the next call
- * recognizes as this plugin's. Commit paths are exactly `.gitignore`,
- * `.gitattributes` and the source directory — the index was written just before,
- * so it is included; the marker itself is inside the ignored local state.
- *
- * @param service - the `gitContext` service.
- * @param options - the workspace, the preflight result and what the trailers say.
- * @returns what was committed.
- * @throws {EngineeringContextError} `git_failed` when init or commit fails, with
- *   the source and evidence paths already on disk in the details.
- */
-async function createBaseline(
-  service: GitContextServiceLike,
-  options: {
-    root: string
-    config: PluginConfig
-    preflight: RepositoryPreflight
-    label: string
-    checksum: string
-    stateId: string
-    sourceRoot: string
-    evidence: readonly EvidenceEntry[]
-  },
-): Promise<BaselineResult> {
-  const { root, config, preflight } = options
-  const paths = ['.gitignore', '.gitattributes', config.sourceDirName]
-  const marker = toPortable(root, repoMarkerPath(config, root))
-  const ledgers = options.evidence.map((entry) => toPortable(root, entry.evidence))
-  const failure = (cause: unknown, initialized: boolean): EngineeringContextError => {
-    const message = cause instanceof Error ? cause.message : String(cause)
-    return new EngineeringContextError(
-      'git_failed',
-      `The project was imported, but the git baseline could not be created: ${message}. In this workspace the source tree ` +
-        `(${toPortable(root, options.sourceRoot)}/) and its evidence ledgers (${ledgers.join(', ') || 'none'}) are already ` +
-        `written. Fix the git problem and call this tool again — the marker ${marker} lets the retry recognize the ` +
-        "repository as this plugin's instead of refusing it as foreign.",
-      {
-        root,
-        paths,
-        sourceRoot: toPortable(root, options.sourceRoot),
-        evidence: ledgers,
-        marker,
-        initialized,
-        cause: message,
-      },
-    )
-  }
-
-  // First, on purpose: a half-finished commit must not make the repository look
-  // foreign to the next call.
-  await writeRepoMarker(config, root)
-
-  const initialized = preflight.state === 'none'
-  let git: GitContextLike
-  try {
-    git = initialized ? await service.init(root) : await service.create(root)
-  } catch (error) {
-    throw failure(error, initialized)
-  }
-
-  let commit: { committed: boolean; hash: string | null }
-  try {
-    commit = await git.commit(paths, baselineMessage(options.label, options.checksum, options.stateId))
-  } catch (error) {
-    throw failure(error, initialized)
-  }
-
-  return { root: git.repoDir, initialized, committed: commit.committed, hash: commit.hash }
-}
 
 /**
  * Build the `create_engineering_project` tool.
  * @param dependencies - the plugin dependencies.
  */
+/** What the report says when history cannot be recorded at all. */
+const NO_VERSION_CONTROL =
+  'Git: the version-control plugin is not installed, so the import creates no baseline commit and no version history. ' +
+  'Install @automation-suite/version-control (and its git plugin) and run project_commit to record the tree.'
+
 export function createProjectTool(dependencies: ToolDependencies): ToolDefinition {
   return defineOutcomeTool({
     name: CREATE_PROJECT_TOOL,
@@ -1109,18 +936,19 @@ export function createProjectTool(dependencies: ToolDependencies): ToolDefinitio
           )
         }
 
-        // Git before TIA, and in a plan too: a workspace inside somebody else's
+        // History before TIA, and in a plan too: a workspace inside somebody else's
         // repository has to be refused before anything is opened, saved or written.
-        const gitService = gitContextService(dependencies.ctx)
-        if (gitService === undefined) {
-          throw new EngineeringContextError(
-            'git_access_unavailable',
-            'This composition has no gitContext service, so the workspace repository state cannot be established. Install the ' +
-              '@automation-suite/dsh-tool-git plugin (its host row) in this profile — this tool initializes and commits the workspace only through it.',
-            { service: 'gitContext' },
-          )
-        }
-        const repository = await preflightRepository(gitService, root, config)
+        // The version-control plugin owns that preflight (it owns the repository),
+        // so asking it here keeps one rule in one place.
+        const history = versionControl(dependencies.ctx)
+        const baselinePlan: BaselinePlan | null =
+          history === undefined
+            ? null
+            : await history.planBaseline({
+                workspace: root,
+                stateDirName: config.stateDirName,
+                sourceDirName: config.sourceDirName,
+              })
 
         const session = normalizeSession(
           await callService('readTiaSession', () => service.readTiaSession({ signal: exec.signal })),
@@ -1440,7 +1268,7 @@ export function createProjectTool(dependencies: ToolDependencies): ToolDefinitio
             `(${KNOWLEDGE_DIR_NAME}/<device>/<device>_knowledge.db); skipped, and reported as not built, when that plugin or its engine is absent.`,
           'Compile: every PLC must carry a compiled checksum; an uncompiled PLC stops the call before anything is saved or exported.',
           ignoreLine,
-          describeRepositoryPlan(root, config, repository),
+          baselinePlan?.description ?? NO_VERSION_CONTROL,
         ]
 
         if (dryRun) {
@@ -1471,12 +1299,15 @@ export function createProjectTool(dependencies: ToolDependencies): ToolDefinitio
                 skipSave,
                 projectPath,
                 devices: software,
-                git: {
-                  state: repository.state,
-                  initialize: repository.state === 'none',
-                  repoRoot: repository.repoRoot,
-                  baselineCommit: true,
-                },
+                git:
+                  baselinePlan === null
+                    ? { state: 'absent', initialize: false, repoRoot: null, baselineCommit: false }
+                    : {
+                        state: baselinePlan.state,
+                        initialize: baselinePlan.initialize,
+                        repoRoot: baselinePlan.repoRoot,
+                        baselineCommit: true,
+                      },
               },
               ignore: ignorePayload(ignore, 'none (dry run)', []),
               rebuild: null,
@@ -1684,82 +1515,56 @@ export function createProjectTool(dependencies: ToolDependencies): ToolDefinitio
         const attributesAction = await applyAttributesRule(attributes)
         details.push(describeAttributesAction(attributes, attributesAction))
 
-        // The baseline is the version: one commit for the whole import, written
-        // after the index so the index is part of it. The commit paths are exactly
-        // .gitignore, .gitattributes and the source directory.
-        const baseline = await createBaseline(gitService, {
-          root,
-          config,
-          preflight: repository,
-          label: name ?? 'unknown',
-          checksum: trailerValue(compiled.map((entry) => entry.checksum)),
-          stateId: trailerValue(evidence.map((entry) => entry.stateId)),
-          sourceRoot,
-          evidence,
-        })
-        const gitAction = baseline.initialized
-          ? 'initialized a repository (git init -b main)'
-          : 'reused this plugin\'s repository'
-        details.push(
-          baseline.committed
-            ? `Git: ${gitAction} and committed the baseline ${baseline.hash ?? ''}`.trimEnd() + '.'
-            : `Git: ${gitAction}; there was nothing to commit (the tree already matched HEAD).`,
-        )
-        if (!baseline.committed) {
-          warnings.push(
-            'The baseline commit reported nothing to commit, so no commit was created — the tree already matched HEAD. ' +
-              'The import itself is complete.',
+        // History: the version-control plugin owns the repository, the marker and
+        // the version store. One call records the import — or explains why it
+        // cannot. Without that plugin the import still completes: the project, the
+        // source tree and the evidence ledger are on disk.
+        const firstEvidence = evidence[0]
+        const firstSoftware = software[0]
+        const baseline =
+          history === undefined
+            ? null
+            : await history.recordBaseline({
+                workspace: root,
+                sourceRoot,
+                stateDirName: config.stateDirName,
+                sourceDirName: config.sourceDirName,
+                device:
+                  firstEvidence !== undefined
+                    ? {
+                        device: firstEvidence.device,
+                        software: firstEvidence.software,
+                        directory: firstEvidence.directory,
+                      }
+                    : {
+                        device: firstSoftware?.device ?? 'unknown',
+                        software: firstSoftware?.software ?? 'unknown',
+                        directory: join(sourceRoot, folderName(firstSoftware?.device ?? 'unknown')),
+                      },
+                label: name ?? 'unknown',
+                checksum: trailerValue(compiled.map((entry) => entry.checksum)),
+                stateId: trailerValue(evidence.map((entry) => entry.stateId)),
+              })
+        if (baseline === null) {
+          warnings.push(NO_VERSION_CONTROL)
+        } else {
+          warnings.push(...baseline.warnings)
+          const gitAction = baseline.initialized
+            ? 'initialized a repository (git init -b main)'
+            : "reused this workflow's repository"
+          details.push(
+            baseline.committed
+              ? `Git: ${gitAction} and committed the baseline ${baseline.hash ?? ''}`.trimEnd() + '.'
+              : `Git: ${gitAction}; there was nothing to commit (the tree already matched HEAD).`,
           )
-        }
-
-        // Version store: replay the baseline so "show me this block's history"
-        // works right after the import, and index any documents already present.
-        // Both are derived indexes; a failure is a warning, never a failed import.
-        let versionNote: string | null = null
-        if (baseline.committed && baseline.hash !== null && evidence.length > 0) {
-          const first = evidence[0]
-          if (first !== undefined) {
-            try {
-              const meta = await commitMeta(root, baseline.hash)
-              if (meta !== null) {
-                const written = await recordCommitAfterWrite({
-                  root,
-                  config,
-                  device: {
-                    device: first.device,
-                    software: first.software,
-                    directory: first.directory,
-                    sourceRoot,
-                  },
-                  commit: meta,
-                  sessionId: null,
-                  bundleDir: null,
-                  log: dependencies.log,
-                })
-                versionNote =
-                  written === null
-                    ? 'already recorded'
-                    : written.replayed === true
-                      ? 'history replayed'
-                      : `${written.events} change event(s)`
-              }
-              const store = openVersionStore(config, root)
-              try {
-                const docs = await indexDocuments({ store, config, root })
-                if (docs.indexed > 0) {
-                  versionNote = `${versionNote ?? 'recorded'}; ${docs.indexed} document(s) indexed`
-                }
-              } finally {
-                store.close()
-              }
-            } catch (error) {
-              warnings.push(
-                `The version store was not initialized (the import itself is complete): ${error instanceof Error ? error.message : String(error)}`,
-              )
-            }
+          if (!baseline.committed) {
+            warnings.push(
+              'The baseline commit reported nothing to commit, so no commit was created — the tree already matched HEAD. ' +
+                'The import itself is complete.',
+            )
           }
+          if (baseline.versionNote !== null) details.push(`Version store: ${baseline.versionNote}.`)
         }
-        if (versionNote !== null) details.push(`Version store: ${versionNote}.`)
 
         return okOutcome(
           CREATE_PROJECT_TOOL,
@@ -1769,9 +1574,11 @@ export function createProjectTool(dependencies: ToolDependencies): ToolDefinitio
             : `${retrieves ? 'Retrieved' : 'Saved'} ${name} into ${toPortable(root, projectDir)}/ and wrote ${totals.written} object(s) into ${toPortable(root, sourceRoot)}/` +
               `${totals.skipped === 0 ? '' : `, ${totals.skipped} already present`}${totals.refused === 0 ? '' : `, ${totals.refused} refused by TIA`}.`) +
             describeKnowledgeSummary(knowledge) +
-            (baseline.committed
+            (baseline !== null && baseline.committed
               ? ' The import is committed as the git baseline.'
-              : ' The import is complete; the git baseline had nothing to commit.'),
+              : baseline !== null
+                ? ' The import is complete; the git baseline had nothing to commit.'
+                : ' The import is complete; no version history was created (the version-control plugin is not installed).'),
           {
             project: {
               name,
@@ -1806,12 +1613,14 @@ export function createProjectTool(dependencies: ToolDependencies): ToolDefinitio
               exported: entry.exported,
               adopted: entry.adopted,
             })),
-            git: {
-              root: baseline.root,
-              initialized: baseline.initialized,
-              committed: baseline.committed,
-              hash: baseline.hash,
-            },
+            git: baseline === null
+              ? { root: null, initialized: false, committed: false, hash: null }
+              : {
+                  root: baseline.root,
+                  initialized: baseline.initialized,
+                  committed: baseline.committed,
+                  hash: baseline.hash,
+                },
             rebuild: {
               sourceRoot: rebuilt.sourceRoot,
               devices: rebuilt.devices,
