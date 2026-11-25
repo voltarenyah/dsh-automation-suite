@@ -31,14 +31,19 @@
 #        dsh-engineering-graph 提供 `knowledgeGraph` + C# 引擎；
 #        它们的**模型面工具**已经拆到各自的 `/tools` 子路径行，由 preset 声明。
 #      • `dsh-engineering-context` 没有宿主面资源，所以宿主面这一行显式 `disabled: true`；
-#        它的四个入口由 preset 分开挂：
-#          - `.`（create/status/sync/commit）→ 只给 `auditor`；
-#          - `/diff`（project_diff）        → 给 `auditor` 与 `expert`；
+#        它的三个入口由 preset 分开挂：
+#          - `.`（create/status/sync）      → 只给 `auditor`；
 #          - `/status`（project_status 等）  → 只给 `leader`（只读的派发前检查）；
 #          - `/handoff`（导出/导入/状态）     → 只给 `auditor`（要动 TIA 与百 MB 目录）。
+#      • `@automation-suite/version-control` 的宿主行**保持启用**：它不注册模型工具，只提供
+#        `versionControl` 服务（`create_engineering_project` 用它记基线提交）。工具分三条行：
+#          - `/record`（commit/reindex/annotate/doc_index）→ 只给 `auditor`（唯一写历史的地方）；
+#          - `/read`（history/verify/doc_search/problem/query）→ `leader` + `auditor` + `expert`；
+#          - `/diff`（project_diff）→ `auditor` + `expert`。
 #      ⇒ 后果（有意为之）：一个会话能用哪些工程工具，取决于它的 preset。切到没有
 #        声明这些行的内置 preset（standard / minimal / …）时，这些工具**不存在**。
-#      ⇒ 版本工作流**只有 auditor 有**：leader 想创建工程、同步、看差异、提交，都只能派发。
+#      ⇒ 版本工作流的**写**面只有 `auditor` 有：leader 想创建工程、同步、提交，都只能派发。
+#        它自己只有只读的历史面（`/read`），用来判断该不该派这个活。
 #        这是 2026-10-23 复盘的直接结论——审计角色当时"新增了但从未被调用"，因为
 #        调用它的路径不存在、而 leader 自己握着全部工具（D30）。
 #      ✅ git 的 12 个模型工具已拆成 `@automation-suite/dsh-tool-git/tools` 行，只挂在 `leader`；
@@ -514,8 +519,8 @@
           # 不声明任何工具，所以没有 `/tools` 行的 preset 也能单独挂它。
           - id: leader-engineering-status
             name: '@automation-suite/engineering-context/status'
-          - id: leader-version-store
-            name: '@automation-suite/engineering-context/version'
+          - id: leader-version-history
+            name: '@automation-suite/version-control/read'
           - id: leader-tia-tools
             name: '@automation-suite/tia-openness-v17/tools'
           - id: leader-plcsim-tools
@@ -722,10 +727,12 @@
             name: '@deepseek-ai/dsh-time-context'
           - id: auditor-engineering-context
             name: '@automation-suite/engineering-context'
-          - id: auditor-version-store
-            name: '@automation-suite/engineering-context/version'
+          - id: auditor-version-record
+            name: '@automation-suite/version-control/record'
+          - id: auditor-version-history
+            name: '@automation-suite/version-control/read'
           - id: auditor-project-diff
-            name: '@automation-suite/engineering-context/diff'
+            name: '@automation-suite/version-control/diff'
           - id: auditor-handoff
             name: '@automation-suite/engineering-context/handoff'
           - id: auditor-graph-tools
@@ -883,9 +890,9 @@
               includeIngest: false
               includeDrilldown: all
           - id: expert-project-diff
-            name: '@automation-suite/engineering-context/diff'
+            name: '@automation-suite/version-control/diff'
           - id: expert-version-store-read
-            name: '@automation-suite/engineering-context/version-read'
+            name: '@automation-suite/version-control/read'
           - id: expert-fs-readonly
             name: '@deepseek-ai/dsh-tool-fs'
             config:

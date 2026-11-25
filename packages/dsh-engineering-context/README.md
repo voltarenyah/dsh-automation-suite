@@ -1,15 +1,14 @@
 # @automation-suite/engineering-context
 
 DeepSeek Harness 插件（**工程上下文插件**）：把一个 **TIA Portal 工程**领进 workspace ——
-另存进来、把源文件读出来、把块逻辑转译进知识图谱 —— 并在 TIA 改动之后，把差异同步成
-**SOURCE 树的一次 git 提交**。会话因此有三个确定的事实："现在谈的是哪个工程、它在哪、它和 TIA 是否一致"。
+另存进来、把源文件读出来、把块逻辑转译进知识图谱 —— 并在 TIA 改动之后，把差异同步进
+**SOURCE 树**（提交与历史交给 `@automation-suite/version-control`）。会话因此有三个确定的事实："现在谈的是哪个工程、它在哪、它和 TIA 是否一致"。
 
-> **实现状态（2026-11，版本库 P0–P5 完成）。** 四个版本工作流工具、三个入口
-> （`.` / `/diff` / `/status`），外加**版本库**：`/version` 挂 8 个工具、`/version-read`
-> 挂只读子集。`.dsh/versions.db` 是 git 之上的工程历史索引——图（version/event/object/
-> session/problem/doc）+ 变更事件表 + 块时间线投影；`project_commit` 提交后自动记录，
-> `create_engineering_project` 建基线后回放。设计见 [`docs/version-store.md`](docs/version-store.md)。
-> 版本管理的口径见 [`docs/decisions.md`](decisions.md) **D26** 与发行版的 **D30**，路径规则见
+> **实现状态（2026-11）。** 9 个工具、三个入口（`.` / `/status` / `/handoff`）：把工程领进 workspace、
+> 管作用域、管交接、管工程文本翻译。**版本历史不在这个包里**：提交 / 差异 / 历史 / 版本库已搬到
+> `@automation-suite/version-control`（D41/D42）——`create_engineering_project` 通过它的 `versionControl`
+> 服务记录基线提交，那个插件缺席时**导入照常成功**，只报"没有历史"。
+> 版本管理的口径见发行版 `docs/decisions.md` **D41/D42**，路径规则见
 > [`docs/PATH-RULES.md`](docs/PATH-RULES.md)（**现行布局以它为准**），核心架构见
 > [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)。
 > **未实现**：DRAFT / REMOTE 与逐块指纹锁（S3）。
@@ -34,14 +33,13 @@ DeepSeek Harness 插件（**工程上下文插件**）：把一个 **TIA Portal 
 **不再有注册表**：workspace 里"有哪些工程"由目录布局本身回答（`tia/` 与 `source/` 下有什么），
 没有 `_dsh-eng/projects.json`，也没有"当前工程"指针（D22 的刻意取舍）。
 
-## 2. 工具（主入口 7 个 + 独立的 `/diff`、`/handoff`，外加版本库的 8 个工具）
+## 2. 工具（主入口 6 个 + 独立的 `/status`、`/handoff`）
 
 | 工具 | 干什么 | 写？ |
 |---|---|---|
-| `create_engineering_project` | 把工程带进工作区并重建源文件树：TIA 没开工程时按 `source_project` 的**文件类型**处理 —— `.ap17` 走打开，`.zap17`（或更早版本的 `.zap*`，需要 `allow_upgrade`）走 Openness 取回，解包进 `<workspace>/tia/<workspace 名>/` 并打开其中工程；随后把源文件树重建到 `<workspace>/source/<device>/`，逐设备写 `_evidence.json` + `_manifest.json`（`adoptExisting`：校验已有文件并收编，不再导出第二遍），逐设备重建知识图谱库，最后写入基线提交；默认 `dry_run: true`（只给计划）。工程已经在 workspace 里时跳过另存/取回，只刷新源文件树与图谱。取回保留归档里的工程名（另存则用目录名给工程命名），源归档不被修改 | 是（TIA 写工程、接口插件写源文件、图谱插件写 `.db`、本插件维护 `.gitignore`/`.gitattributes`、必要时的 `git init` 与基线提交） |
+| `create_engineering_project` | 把工程带进工作区并重建源文件树：TIA 没开工程时按 `source_project` 的**文件类型**处理 —— `.ap17` 走打开，`.zap17`（或更早版本的 `.zap*`，需要 `allow_upgrade`）走 Openness 取回，解包进 `<workspace>/tia/<workspace 名>/` 并打开其中工程；随后把源文件树重建到 `<workspace>/source/<device>/`，逐设备写 `_evidence.json` + `_manifest.json`（`adoptExisting`：校验已有文件并收编，不再导出第二遍），逐设备重建知识图谱库，最后经 `versionControl.recordBaseline` 写基线提交（插件缺席时跳过并警告）；默认 `dry_run: true`（只给计划）。工程已经在 workspace 里时跳过另存/取回，只刷新源文件树与图谱。取回保留归档里的工程名（另存则用目录名给工程命名），源归档不被修改 | 是（TIA 写工程、接口插件写源文件、图谱插件写 `.db`、本插件维护 `.gitignore`/`.gitattributes`；git 的 init/提交由 version-control 服务执行） |
 | `project_status` | 只读报告：哪个 PLC、账本/清单在不在、git 看到什么、锁有没有被占，并给出 `nextAction`（`create` / `open_project` / `compile` / `sync` / `commit` / `git_init` / `clean`；空 workspace 报 `create`，有源树但 TIA 没开工程才是 `open_project`）。`verify: true` 才读 checksum（约 3 s），否则明确标 **NOT CHECKED**；`data.wouldSync` / `data.syncReason` 只在真的读到 checksum 时下结论（`no-evidence` / `no-manifest` / `checksum-differs` / `checksum-matches`，读不到时 `null` / `unavailable`，未验证时 `null` / `not-checked`）；`checksum-matches` **不等于"已同步"**——checksum 覆盖不到安全程序，所以它同时打印一行 "Safety program: NOT compared"，只有 `project_sync(force: true)` 才会比对 F 签名。成功读到的 checksum 同时写入 30 s 进程内缓存；并读 `handoff/` 给出交接摘要（outstanding / awaiting compile / 最新包） | 否 |
 | `project_sync` | 让 SOURCE 与 TIA 对齐：checksum 快路径 → 需要时慢路径扫描 → 只把差异提升进 SOURCE → 写账本/清单，**然后停下**：返回 `pending.paths` 与 `pending.suggestedMessage`，不提交。默认只读 checksum 并报告 `wouldSync`；计划命中上一个只读调用写入的缓存时不再读 TIA，并标 `checksumCached: true`；`dry_run: false` 永不用缓存做决定、总是重新扫描。**checksum 不覆盖安全程序**：只改 F 块时它不动，快路径会跳过扫描（`data.scanSkipped: true`），F 改动看不见——`force: true` 强制枚举并按 F 签名比对（工程没变时幂等，提交仍为空）。`refresh_knowledge: true` 时导出后刷新图谱：块级小改动走增量，类型/标签表或超过 20 个文件走全量；图谱失败只警告。写盘必须 `dry_run: false` | 是（SOURCE + `.dsh/local/stage`；可选图谱刷新） |
-| `project_commit` | 提交 `source/<device>`。**设备从磁盘解析**（创世索引 `source/_dsh-engineering-context.json` → 退到 `source/*/_evidence.json` 扫描），所以 **TIA 不必开着**；接口插件在时会把开着的工程与磁盘比对，不一致只给警告（`data.deviceOrigin` 说明来源是 `index` 还是 `evidence`；多设备靠 `device` 参数，不需要改工程）。`message` 必填（空消息 → `invalid_commit_message`，超 8000 字符同样拒绝），默认只给计划——列出会提交的路径、账本事实与**最终信息全文**；`dry_run: false` 才写历史。插件在信息末尾追加 `Tia-Op` / `Tia-Checksum` / `Tia-State` trailer（信息里已有 trailer 块时不重复）；可选的 `reference`（单行）追加一条 `Reference:` trailer，用来记"这批对象引自哪个 workspace 的哪个提交"。没有可读账本时以 `not_synced` 拒绝（工作区里连源树都没有则是 `device_not_found`）；工作树干净时返回"无需提交"而不是报错。提交路径限定在该 device 目录，别处的脏文件不会被带走 | 是（一次 git commit） |
 | `workspace_describe` | 只读描述**任意** workspace（默认当前会话工作区，也可传 `workspace_path`）：索引里的工程身份与角色、每台设备的 XML 数、清单/账本、知识库大小与新鲜度、硬件 AML、git HEAD 与未提交改动。**不打开 TIA、不启动控制器、不写任何东西** —— 所以能描述一个正在被别的会话使用、或根本没开 TIA 的参照工程（发行版 [`reference-project.md`](../../docs/reference-project.md) §15） | 否 |
 | `import_preflight` | 导入前预检一批 Simatic ML XML：语言 culture 是否在目标工程激活、批次内重名、目标里已存在的同名对象、依赖是否在批次/目标里（含类型先后顺序），并给出建议导入顺序。读 XML + 读目标工程的**语言设置与对象清单**（经接口插件的 `readProjectLanguages` / `listObjects` 缝）；TIA 没开工程时退化为只查 XML 并说明跳过了哪些检查。**不查块号**（TIA 导入时自动分配）、**不查网络里的调用**、不导入 | 否 |
 | `project_translate` | 项目文本翻译工作流：`plan` 按 source/target 导出官方 project-texts XLSX、筛选/去重并写 `jobs.jsonl`/`selected.jsonl`；模型翻译后 `apply` 只写 target 列、归档、导入、再导出验证，并比较块指纹（只允许 `Comments` 变）。F 块按 `programmingLanguage=F_*` 排除。导入不可回滚，`archive` 默认开；本工具**不激活语言**，target 未激活时返回 `target_language_inactive`，需用户许可后由 `project_languages` 激活。依赖 `@e965/xlsx`（SheetJS fork，读取 TIA 的非标准 OOXML） | 是（导入 + 归档；`apply` 默认不保存） |
@@ -56,21 +54,9 @@ DeepSeek Harness 插件（**工程上下文插件**）：把一个 **TIA Portal 
 
 **交接的硬约束**：只支持 TIA V17 的 `compressed` 归档（`None` / `DiscardRestorableData` 产出的是文件夹，Openness 取不回）；marker 不是防篡改签名，真正的校验是“marker 内嵌账本 == 本仓该 commit 的账本”；v1 不合并本机在交接期间的新提交，遇到就拒绝（`handoff_workspace_advanced`）。
 
-**版本库（`/version` 挂全部 8 个；`/version-read` 只挂只读的 5 个）**：
-
-| 工具 | 干什么 | 写？ |
-|---|---|---|
-| `project_history` | `block=` 出一条块的时间线（第几次改、commit、指纹前后、原因）；`commit=` 出一个版本的详情；`checksum=` 出所有携带该 checksum 的版本（重复 checksum 是正常场景）；`face=` / `since=` 过滤 | 否 |
-| `project_version_reindex` | 从 git 历史与每个提交的 `_evidence.json` 重建版本库 | 是（本地库） |
-| `project_version_verify` | 校验 commit/parent/时间线连续性；`deep` 再核对账本 checksum | 否 |
-| `project_doc_index` | 索引 `.dsh/docs/**`：front matter 的 `affects`/`problems`、标题锚点、全文 | 是（本地库） |
-| `project_doc_search` | 全文搜索（FTS5 trigram；短词回退 LIKE） | 否 |
-| `project_version_annotate` | 给版本补原因/问题/验收/引用，图与投影一起更新 | 是（本地库） |
-| `project_problem` | 一个问题影响了哪些块、会话、提交 | 否 |
-| `project_version_query` | 只读 SELECT/WITH（其他工具覆盖不到时） | 否 |
-
-库在 `.dsh/versions.db`（git 忽略），删掉可用 `reindex` 随时重建；TIA 关闭时也能查询。
-
+**版本库与历史查询已搬走**：`project_history` / `project_version_*` / `project_doc_*` / `project_problem`
+与 `project_diff` 现在属 `@automation-suite/version-control`（`.dsh/versions.db` 与 `.dsh/versions-view.json`
+也在那里，仍然 git 忽略，删掉可 reindex 重建）。
 **版本管理怎么判断"变没变"**：
 
 1. **PLC 级 checksum**（`PlcChecksumProvider.Software`）是快路径：与账本一致、且账本/清单可用 →
@@ -81,19 +67,16 @@ DeepSeek Harness 插件（**工程上下文插件**）：把一个 **TIA Portal 
 4. 清单 `_manifest.json` 是**派生**：只描述磁盘上的文件（bytes / sha256 / 类型元数据），
    **绝不拿它的 sha256 当变更键**（TIA 导出的 XML 带 `<Created>`，重新导出就会变）。
 
-**提交**：提交只发生在 `project_commit`，路径限定 `source/<device>`，信息由调用方给、插件追加
-`Tia-Op: sync` / `Tia-Checksum` / `Tia-State` / `Tia-Manifest` trailer（D30 把"写树"和"写历史"
-分成两步：`project_sync` 只写树，`project_commit` 才写历史）。`project_sync` / `project_commit` /
-`project_status` **从不 `git init`**：仓库不存在时 `repository_not_found` 并让用户自己建。
-`create_engineering_project` 是唯一的例外：workspace 没有仓库时它初始化一个（`git init -b main`）
-并提交一次基线（`Tia-Op: create`，路径恰好 `.gitignore` / `.gitattributes` / `source`）；
-但 workspace 位于别人的仓库里、或根目录的仓库不是本插件建的（无 `Tia-Op: create` trailer 且无
-`.dsh/local/repo.json` 标记）时，它以 `workspace_is_repository` 拒绝。任何工具都从不
-`push` / `reset` / `--force`。
-
-**dry-run 规则**：三个写工具（create / sync / commit）都默认只给计划。`create_engineering_project`
+**提交**：`project_sync` 只把 TIA 的差异写进 SOURCE 并停下（返回 `pending.paths` 与
+`pending.suggestedMessage`），**从不提交**。提交与历史归 `@automation-suite/version-control`：
+它经 `gitContext` 提交，并追加 `Tia-Op` / `Tia-Checksum` / `Tia-State` / `Tia-Manifest` trailer。
+本包唯一的 git 写入是 `create_engineering_project` 的基线提交——而它现在是**服务调用**：
+`versionControl.planBaseline` 在计划阶段就拒绝"工作区在别人的仓库里"或"仓库无法归属"
+（`workspace_is_repository`），`versionControl.recordBaseline` 才写标记、init/reuse 与那一次提交。
+任何工具都从不 `push` / `reset` / `--force`。
+**dry-run 规则**：两个写工具（create / sync）都默认只给计划。`create_engineering_project`
 的打开/取回与另存是本插件唯一难以撤销的动作（计划连工程都不打开）；`project_sync` 会写 SOURCE；
-`project_commit` 会写历史。要真做必须显式 `dry_run: false`。
+要真做必须显式 `dry_run: false`。
 
 **checksum 缓存（30 s，仅进程内）**：`project_status(verify: true)` 成功后把 checksum 写进一份
 按 **workspace + device + software** 键控的内存缓存；紧随其后的 `project_sync` 默认计划直接复用，
@@ -149,7 +132,7 @@ DeepSeek Harness 插件（**工程上下文插件**）：把一个 **TIA Portal 
 # 裸 checkout 首次：链接宿主运行时（本包只读缓存，从不抽取）
 node scripts/link-dsh-runtime.mjs
 
-node scripts/run-tests.mjs     # 构建 + 跑 77 项测试
+node scripts/run-tests.mjs     # 构建 + 跑 133 项测试
 node scripts/tsc.mjs -p tsconfig.json          # 只构建
 node scripts/tsc.mjs -p tsconfig.json --noEmit # 只做类型检查
 ```
@@ -172,5 +155,6 @@ node scripts/tsc.mjs -p tsconfig.json --noEmit # 只做类型检查
 不做：解析 XML / 建图本身（工程知识图谱插件的 C# 引擎；本插件只经缝 B 触发它的 `ingestDevice`，
 不读它的库、不解析它的输出）、直接调用 Openness 或起控制器（TIA 接口插件）、agent 的会话计划清单
 （`dsh-tool-todo`）、按轮次的文件级变更记录（宿主已有 `dsh-workspace-changes`）。
-**版本管理交给用户自己的 git**：本插件只保证 SOURCE 与 TIA 一致、并为每次同步做一次可审阅的提交，
-不发明版本号、不建远端、不推分支。
+**版本历史归 `@automation-suite/version-control`**：本插件只保证 SOURCE 与 TIA 一致、并在导入时调一次
+`versionControl.recordBaseline`；记录历史、差异与查询都在那个包里（D41/D42）。两者都从不发明版本号、
+不建远端、不推分支。

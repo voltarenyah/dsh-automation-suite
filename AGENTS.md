@@ -74,7 +74,7 @@ DSH 的解析机制有两条独立路径，**两者都靠包名**：
 
 | 位置 | 是什么 |
 |---|---|
-| `profile/dsh-automation-suite/cordis.patch.yml` | 政策层本体：`- id: system-prompt`（全局 persona）、`- id: agent-preset-registry`（默认 preset = `leader`）、`- insert: - id: preset-leader`（主 agent preset，政策文本在它的 persona 行里）、`- insert: - id: preset-auditor`（版本管理 preset；`subagent.allowedAgentPresets` 含它，所以 leader 能派它跑慢活）、`- insert: - id: preset-expert`（子 agent preset）、`- id: engineering-context`（`disabled: true`；四个入口分开挂：`.`→`auditor`、`/diff`→`auditor`+`expert`、`/status`→`leader`、`/handoff`→`auditor`，见 D30） |
+| `profile/dsh-automation-suite/cordis.patch.yml` | 政策层本体：`- id: system-prompt`（全局 persona）、`- id: agent-preset-registry`（默认 preset = `leader`）、`- insert: - id: preset-leader`（主 agent preset，政策文本在它的 persona 行里）、`- insert: - id: preset-auditor`（版本管理 preset；`subagent.allowedAgentPresets` 含它，所以 leader 能派它跑慢活）、`- insert: - id: preset-expert`（子 agent preset）、`- id: engineering-context`（`disabled: true`）与 `- id: version-control`（**启用**，只提供 `versionControl` 服务）：入口分开挂 —— `.`→`auditor`、`/status`→`leader`、`/handoff`→`auditor`；`version-control` 的 `/record`→`auditor`、`/read`→leader+auditor+expert、`/diff`→`auditor`+`expert`（见 D30、D41） |
 | 同上文件头部注释 | 为什么必须整份重述 preset、工具面为什么按 preset 分发、升级 DSH 后怎么重新生成 |
 | `profile/dsh-automation-suite/README.md` | 「发行版政策层」「三个 preset：`leader`、`auditor` 与 `expert`」两节：机理、验收、演示命令 |
 | 根 `README.md` §8.1 / §11 | 用户向说明与验收行数 |
@@ -155,7 +155,7 @@ pnpm run clean:build      # 清构建产物（只碰 lib/ dist/）
 ## 4. 测试与验收
 
 ```powershell
-pnpm test          # 全仓（2026-11-24 实测：全部通过，需先设 DOTNET_ROOT 见下）：TIA 121 项（120 通过 / 1 跳过）+ @automation-suite/dsh-tool-git 51 项 + engineering-context 177 项 + engineering-graph 128 项 + pdf-drawing 38 项 + plcsim-advanced 24 项 + ui-plc-source 47 项 + ui-tia-console 23 项 + ui-versions 15 项 + ui-hardware 9 项 + ui-prompt-guide 25 项 + ui-changes 48 项 + ui-project-dashboard 35 项 + tia-todo-bridge 18 项
+pnpm test          # 全仓（2026-11-24 实测：全部通过，需先设 DOTNET_ROOT 见下）：TIA 121 项（120 通过 / 1 跳过）+ @automation-suite/dsh-tool-git 51 项 + engineering-context 133 项 + @automation-suite/version-control 54 项 + engineering-graph 128 项 + pdf-drawing 38 项 + plcsim-advanced 24 项 + ui-plc-source 47 项 + ui-tia-console 23 项 + ui-versions 15 项 + ui-hardware 9 项 + ui-prompt-guide 25 项 + ui-changes 48 项 + ui-project-dashboard 35 项 + tia-todo-bridge 18 项
 pnpm -r build
 pnpm -r typecheck
 ```
@@ -167,6 +167,7 @@ pnpm -r typecheck
 | `@automation-suite/tia-openness-v17` | `node:test` | `node --test test/*.test.mjs` |
 | `@automation-suite/dsh-tool-git` | `vitest` | `vitest run` |
 | `@automation-suite/engineering-context` | `node:test` | `node scripts/run-tests.mjs`（**先构建再跑**，因为它不提交 `lib/`） |
+| `@automation-suite/version-control` | `node:test` | `node scripts/run-tests.mjs`（**先构建再跑**；历史/提交/差异 + 服务层真实 git 仓库；54 项） |
 | `@automation-suite/engineering-graph` | `node:test` | `node scripts/run-tests.mjs`（**先构建再跑**，同上） |
 | `@automation-suite/pdf-drawing` | `node:test` | `node scripts/run-tests.mjs`（**先构建再跑**；PDF 索引/检索模型 + 字典，浏览器半侧靠真实图纸验收） |
 | `@automation-suite/plcsim-advanced` | `node:test` | `node --test --test-reporter=spec "test/*.test.mjs"`（纯协议与工具面，控制器不在时降级） |
@@ -232,8 +233,8 @@ profile 组合的端到端验收：
 dsh --profile dsh-automation-suite --dump-config
 ```
 
-预期结尾出现 **15 个插件行**（14 个本地插件 + 公共的 `dsh-opencode-go`），顺序与蓝图的
-`dsh.profile.bundles` 一致；其中 `engineering-context` 带 `disabled: true`（它整行搬进了 `leader` preset）：
+预期结尾出现 **16 个插件行**（15 个本地插件 + 公共的 `dsh-opencode-go`），顺序与蓝图的
+`dsh.profile.bundles` 一致；其中 `engineering-context` 带 `disabled: true`（它的入口由 preset 分别挂载），`version-control` 的宿主行保持启用（提供 `versionControl` 服务）：
 
 ```yaml
 # == @automation-suite/tia-openness-v17
@@ -246,6 +247,9 @@ dsh --profile dsh-automation-suite --dump-config
 - id: engineering-context
   name: '@automation-suite/engineering-context'
   disabled: true
+# == @automation-suite/version-control
+- id: version-control
+  name: '@automation-suite/version-control'
 # == @automation-suite/engineering-graph
 - id: engineering-graph
   name: '@automation-suite/engineering-graph'
@@ -302,7 +306,13 @@ dsh --profile dsh-automation-suite --dump-config
 > 🔁 **2026-11-24 在当前宿主（DSH 0.2.2-rc.3）上重测**（`ui-brandmark` 已下线）：
 > 前两条为 **1236 / 2117**。**不要拿它们去减上表的 1229 / 2098** —— 宿主已从 0.2.1-rc.2 升到
 > 0.2.2-rc.3，官方 `web` 组合本身就多了 7 行。**去掉 `ui-brandmark` 这一个 bundle 行的净效果是 −3 行**
+>
 > （`# ==` 注释 + `id` + `name`），可用 `--dump-config | Select-String ui-brandmark` 应为 0 条来验证。
+>
+> 🔁 **2026-11-25 加入 `@automation-suite/version-control` 后重测**（同宿主 0.2.2-rc.3）：
+> 第二条（`web` + 本蓝图 patch）为 **2119**；因为该模式**不应用 bundle 自己的 patch**，两个宿主行都不出现，
+> 只适合比政策层。把 `engineering-context` 与 `version-control` 两个 bundle patch 也加上时为 **2125**
+> （多出的 6 行 = 两个宿主行各 3 行）。**物化 profile 的那条没有重测**，下次 `start-env` 时确认。
 
 装 tarball 的验收链路：
 

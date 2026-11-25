@@ -1605,4 +1605,46 @@ scope 下并重新整理名字。改前是两种身份（6 个 `@voltarenyah/*` 
 **重审条件**：`version-control` 拆包时，`resolveDeviceFromDisk` 与 `commit.ts` 一起搬走，`engineering-context`
 只剩 `resolveDeviceFromTia`；届时 `project_commit` 的 TIA 交叉校验应当变成跨包调用（或随包消失）。
 
+---
 
+## D42 · 版本管理独立成包：③ 层真的有了自己的包 ✅
+
+**决定**：把版本管理从 `engineering-context` 里整体搬出来，成为
+`@automation-suite/version-control`（包名**不带** `engineering-` 前缀——它属 ③ 管理与协作层，不是工程作用域）。
+`engineering-context` 从 19 个工具收窄到 9 个（作用域 + 接引 + 交接 + 翻译）。
+
+**边界（三条，写进代码注释与包 README）**：
+
+1. **不碰 TIA**：版本历史只读 `source/<device>/`、`source/_dsh-engineering-context.json` 与
+   `_evidence.json` 这些**已经落盘的事实**；设备解析走磁盘（`resolveDeviceFromDisk`），
+   所以 `project_commit` 在 TIA 关着、甚至接口插件没装时也能工作（D41 的前提落地）。
+2. **git 只经 `gitContext`**：提交、历史、差异都不自己 spawn git。**首版例外**：`src/git.ts`
+   是从 context 拷来的同一套实现（用户 2026-11-25 的选择：先求行为一致，单通道重构单列一项），
+   `commit`/`history` 的读取仍走它；`project_diff` 走 `gitContext`。**这是一笔明确的技术债**。
+3. **不决定 layout**：`stateDirName` / `sourceDirName` 由调用方在请求里给（service），
+   或由本包自己的 config 给（工具）；两个插件的默认值相同，profile 若改了一处必须同时改另一处。
+
+**工具面：10 个，三条行，按权限切，不按能力切**（D23 的延续）：
+
+| 行 | 工具 | 谁挂 |
+|---|---|---|
+| `/record` | `project_commit`、`project_version_reindex`、`project_version_annotate`、`project_doc_index` | auditor |
+| `/read` | `project_history`、`project_version_verify`、`project_doc_search`、`project_problem`、`project_version_query` | leader + auditor + expert |
+| `/diff` | `project_diff` | auditor + expert |
+
+**服务**：宿主行提供 `versionControl`（`planBaseline` / `recordBaseline`）。它是 create 唯一的写通道；
+`planBaseline` 在 **dry run 阶段**就拒绝"工作区在别人的仓库里"，所以拒绝仍然发生在任何写入之前。
+
+**fail-soft（关键）**：没有这个插件时，`create_engineering_project` **照常成功**——工程、源树、账本都在盘上，
+只有历史缺席，结果里 `data.git` 全为 null 并给一句警告。理由：版本历史是 ③ 层能力，不是导入的前置条件。
+
+**兼容性**：`repo.json` 里的 `createdBy` 仍是 `engineering-context`。它是**磁盘上的工作流身份**，不是包名；
+改字符串会让拆分前创建的每个工作区被当成"外人的仓库"而拒绝提交。改名需要迁移，不是改字面量。
+
+**验证**：`version-control` 54 项（含服务层驱动**真实 git 仓库**的基线提交：init/trailers/store/投影、复用、
+外部仓库拒绝、不可归属仓库拒绝、提交失败、无 gitContext、调用方 layout）；`engineering-context` 133 项
+（10 个 git 用例搬走后，留下 5 个"调用契约"用例）；`dsh --profile web + 两个 bundle patch --dump-config`
+2125 行、两个宿主行与 6 条 preset 行都对。
+
+**未做**：工具面按工作流合并（10 → 7）与 TIA 那 39 个一起做；`git.ts` 单通道重构；
+真机"开工程 → sync → 关 TIA → commit"端到端（挪到 S2 之后一次做，见 D41）。

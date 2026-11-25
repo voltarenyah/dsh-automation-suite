@@ -6,6 +6,7 @@
   "dependencies": {
     "@automation-suite/pdf-drawing": "workspace:^",
     "@automation-suite/engineering-context": "workspace:^",
+    "@automation-suite/version-control": "workspace:^",
     "@automation-suite/engineering-graph": "workspace:^",
     "@automation-suite/plcsim-advanced": "workspace:^",
     "@automation-suite/tia-openness-v17": "workspace:^",
@@ -28,6 +29,7 @@
         "@automation-suite/tia-openness-v17",
         "@automation-suite/plcsim-advanced",
         "@automation-suite/engineering-context",
+        "@automation-suite/version-control",
         "@automation-suite/engineering-graph",
         "@automation-suite/pdf-drawing",
         "@automation-suite/dsh-tool-git",

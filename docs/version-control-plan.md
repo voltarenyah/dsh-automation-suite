@@ -1,6 +1,6 @@
 # versionControl 插件规划（拆包 + 工作流 + preset 重排）
 
-> **状态：规划稿，未动代码。** 前置审计见 [`plugin-consolidation-audit.md`](plugin-consolidation-audit.md) §9.2。
+> **状态：S0–S4 已全部落地（2026-11-25）。** 前置审计见 [`plugin-consolidation-audit.md`](plugin-consolidation-audit.md) §9.2。
 > 本文只回答四件事：**为什么必须先在 context 里做 R1**、新包长什么样、preset 怎么重排、按什么顺序迁。
 
 ---
@@ -19,7 +19,7 @@
         └───────────────┬──────────────────────────────────────────────┘
                         │ 文件契约 + 软服务 versionControl
         ┌───────────────▼──────────────────────────────────────────────┐
-        │ ③ 管理与协作  @automation-suite/engineering-version-control  │
+        │ ③ 管理与协作  @automation-suite/version-control            │
         │   git 提交协议、版本账本、投影、差异                            │
         └───────────────┬───────────────────────────────▲──────────────┘
                         │ versions-view.json            │ gitContext（唯一 git 通道）
@@ -89,7 +89,7 @@
 
 ## 3. 新包形态
 
-**包名**：`@automation-suite/engineering-version-control`（与 `engineering-context`/`engineering-graph` 同族；短名 `version-control` 亦可）
+**包名**：**`@automation-suite/version-control`**（2026-11-25 定名：它属 ③ 层，不带 `engineering-` 前缀；与 `engineering-context`/`engineering-graph` 不构成同族）
 **目录**：`packages/dsh-engineering-version-control`
 
 | Loader 行 | 入口 | 工具 | 挂给谁 |
@@ -186,11 +186,11 @@ interface VersionControlLike {
 | **S0** ✅ | context 里做 R1a/R1b/R1c（device 解析脱 TIA；`resolveDevice` 拆成「磁盘 / TIA」两个入口） | 新增"无 engineeringAccess"用例；断网不装 TIA 也能 commit 一个现有工作区 | 单 commit 回滚 |
 | **S1** ✅ | 建包骨架：`package.json`、`cordis.patch.yml`（宿主行 0 工具）、build/test 脚手架、`dsh-runtime.d.ts`、Config | `tsc --noEmit` 绿；5 项骨架测试 | 删目录 |
 | **S2a** ✅ | 把 10 个工具（commit / diff / version 全套）与它们需要的支撑模块搬进新包；拆成 `/record`(4) `/read`(5) `/diff`(1) 三条行 | 新包 46 项全绿、`tsc` 干净；`engineering-context` 177 项不受影响 | `git revert 62a69c9` |
-| **S2b** ⬜ | `versionControl` 服务（`planBaseline` / `recordBaseline`）+ `create_engineering_project` 改为软调用 + `repo.json` 归属 + 删掉 context 的副本 + 改编 `02` 里 10 个 git 断言 | 两边全绿；无版本包时 create 仍成功并报"未建版本库" | 恢复到 S2a |
-| **S3** ⬜ | preset 重排（6 条行换归属）+ 蓝图 bundle 行；`dsh --profile … --dump-config` 对行数与顺序；确认 leader 工具数 12 → 9 | dump-config 行数落在新基线；三个 preset 的工具名逐个核对 | 改回 6 条旧行 |
-| **S4** ⬜ | 文档与清单：`architecture.md` §8、`roadmap.md` §1、根 README/AGENTS 的包数与期望、`releases.md`、`tia-todo-bridge` 工具名核对、把 `10-project-diff` 里的 preset 守卫搬到合适的位置 | `pnpm test` 全仓；`--dump-config-schema` 能看到新包 Config | 文档回滚 |
+| **S2b** ✅ | `versionControl` 服务（`planBaseline` / `recordBaseline`）+ `create_engineering_project` 改为软调用 + `repo.json` 归属 + 删掉 context 的副本 + 改编 `02` 里 10 个 git 断言 | 两边全绿；无版本包时 create 仍成功并报"未建版本库" | 恢复到 S2a |
+| **S3** ✅ | preset 重排（6 条行换归属）+ 蓝图 bundle 行；`dsh --profile … --dump-config` 对行数与顺序；确认 leader 工具数 12 → 9 | dump-config 行数落在新基线；三个 preset 的工具名逐个核对 | 改回 6 条旧行 |
+| **S4** ✅ | 文档与清单：`architecture.md` §8、`roadmap.md` §1、根 README/AGENTS 的包数与期望、`releases.md`、`tia-todo-bridge` 工具名核对、把 `10-project-diff` 里的 preset 守卫搬到合适的位置 | `pnpm test` 全仓；`--dump-config-schema` 能看到新包 Config | 文档回滚 |
 
-> **S2b 为什么单独列出来（2026-11-24 实测更正）**：原估"3–4 h 一口气做完"，实际卡在**基线提交归谁**这一个决定上。
+> **S2b 为什么当时单独列出来（2026-11-24 的实测更正；2026-11-25 已按下面的顺序做完）**：原估"3–4 h 一口气做完"，实际卡在**基线提交归谁**这一个决定上。
 > `create_engineering_project` 的 baseline 逻辑（`preflightRepository` 的三种拒绝、`createBaseline` 的 marker-先写、
 > trailer 文案、`git_failed` 的 details）与 `02-create-project.test.mjs` 里**10 个 git 断言**（虚拟 `gitContext`、
 > `data.plan.git` 的形状、三种 `workspace_is_repository`）绑在一起。把 baseline 交给 `version-control` 意味着
@@ -198,7 +198,8 @@ interface VersionControlLike {
 > **S2a 的中间态是刻意的**：新包自成一体并全绿，context 仍持有自己的副本、蓝图也没动，所以**运行时零变化**——
 > 这样在 S2b 完成前停下是安全的（`git revert 62a69c9` 即可回到 S1）。
 
-**S3 之后才动工作流合并**（见 §8），不要同一轮做两件事。
+**S3 已做完（2026-11-25）**：`--dump-config` 2125 行、两个宿主行、6 条 preset 行（leader 4+5=9、auditor 6+4+5+1+3=19、expert 5+1=6），
+**S4 的文档也在同一天落账**。下一轮才是工作流合并（见 §8），不要和这次混在一轮里。
 
 ---
 
