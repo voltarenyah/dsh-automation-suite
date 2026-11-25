@@ -555,6 +555,10 @@ export async function recordCommitAfterWrite(input: {
       store.close()
       closed = true
       await reindexVersionStore({ root, config, device, log })
+      // The replay path used to return without refreshing the projection, so the
+      // Versions tab stayed empty until the next commit (a baseline is exactly
+      // "the first thing recorded", so it would be the one version never shown).
+      await writeVersionView(config, root)
       return { events: 0, replayed: true }
     }
 

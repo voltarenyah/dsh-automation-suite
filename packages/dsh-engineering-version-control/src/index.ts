@@ -14,7 +14,9 @@
  * **The host row registers no model tools.** A tool registered here would be
  * inherited by every agent, including subagents; the tools live on the `/record`,
  * `/read` and `/diff` rows so a preset can hand out "read the history" without
- * handing out "record a version" (root AGENTS.md §1, D23).
+ * handing out "record a version" (root AGENTS.md §1, D23). What the host row does
+ * provide is the `versionControl` service: the one call `engineering-context`
+ * makes when it imports a project and needs a baseline commit.
  *
  * @module dsh-engineering-version-control
  */
@@ -22,6 +24,7 @@
 import type { Context } from '@deepseek-ai/cordis'
 
 import { Config, resolveConfig, type PluginConfig } from './config.js'
+import { createVersionControlService, VERSION_CONTROL_SERVICE } from './service.js'
 
 /** Plugin identity; the loader uses it as the entry id in the profile tree. */
 export const name = 'version-control'
@@ -29,24 +32,26 @@ export const name = 'version-control'
 export { Config }
 
 /**
- * Prepare the host row.
+ * Provide the `versionControl` service.
  *
- * Nothing is registered yet: the store, the service and the three tool entries
- * arrive in the next step of the split (root `docs/version-control-plan.md` §7).
- * The row exists now so the profile, the doctor and the packaging all have a
- * package to point at while the code moves.
+ * The service writes history, so it is the **only** write channel another plugin
+ * gets: `planBaseline` (a preflight that refuses foreign repositories) and
+ * `recordBaseline` (marker → init or reuse → one commit → replay into the store).
+ * It does not register model tools; those are on the three `/…` rows.
  *
  * @param ctx - the plugin context.
  * @param config - the validated profile config, or undefined.
  */
 export function apply(ctx: Context, config?: Partial<PluginConfig>): void {
   const settings = resolveConfig(config)
-  ctx
-    .logger(name)
-    .info(
-      `version-control host row ready: history in <workspace>/${settings.stateDirName}/, ` +
-        `source trees read from <workspace>/${settings.sourceDirName}/; no model tools are registered on this row.`,
-    )
+  const log = ctx.logger(name)
+
+  ctx.provide(VERSION_CONTROL_SERVICE, createVersionControlService(ctx, settings))
+
+  log.info(
+    `Provided the ${VERSION_CONTROL_SERVICE} service: history in <workspace>/${settings.stateDirName}/, ` +
+      `source trees read from <workspace>/${settings.sourceDirName}/; no model tools are registered on this row.`,
+  )
 }
 
 /** Exposed for the tests. */

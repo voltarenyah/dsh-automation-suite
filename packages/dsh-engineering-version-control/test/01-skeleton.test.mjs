@@ -20,9 +20,10 @@ import { test } from 'node:test'
 import { Config, apply, name } from '../lib/index.js'
 import { configDefaults, resolveConfig } from '../lib/config.js'
 
-/** A context that fails loudly if the host row registers anything. */
+/** A context that fails loudly if the host row registers a model tool. */
 function fakeContext() {
   const logs = []
+  const provided = []
   const ctx = {
     logger(scope) {
       return {
@@ -33,14 +34,14 @@ function fakeContext() {
     },
     tools: {
       register() {
-        throw new Error('the host row must not register model tools; use a /tools row')
+        throw new Error('the host row must not register model tools; use a /record, /read or /diff row')
       },
     },
-    provide() {
-      throw new Error('the host row registers no service yet (S2 adds versionControl)')
+    provide(serviceName, value) {
+      provided.push({ serviceName, value })
     },
   }
-  return { ctx, logs }
+  return { ctx, logs, provided }
 }
 
 test('the loader row identifies itself and carries a config schema', () => {
@@ -49,14 +50,20 @@ test('the loader row identifies itself and carries a config schema', () => {
   assert.equal(typeof Config, 'function', 'schemastery returns a schema function')
 })
 
-test('the host row registers no model tool and no service', () => {
-  const { ctx, logs } = fakeContext()
+test('the host row registers no model tool, and provides versionControl', () => {
+  const { ctx, logs, provided } = fakeContext()
 
   apply(ctx, {})
+
+  assert.equal(provided.length, 1, 'exactly one service is provided')
+  assert.equal(provided[0].serviceName, 'versionControl')
+  assert.equal(typeof provided[0].value.planBaseline, 'function')
+  assert.equal(typeof provided[0].value.recordBaseline, 'function')
 
   const info = logs.filter((entry) => entry.level === undefined)
   assert.equal(info.length, 1, 'one line saying the row is ready')
   assert.match(info[0].message, /no model tools are registered on this row/u)
+  assert.match(info[0].message, /versionControl/u)
   assert.equal(info[0].scope, 'version-control')
 })
 

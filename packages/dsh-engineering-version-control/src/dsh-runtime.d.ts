@@ -58,6 +58,11 @@ declare module '@deepseek-ai/cordis' {
      * and must be treated as absent when this returns `undefined`.
      */
     get(name: string): unknown
+    /**
+     * Register a service other plugins look up with `ctx.get`. The value is
+     * whatever this plugin's consumers agreed on; cordis does not validate it.
+     */
+    provide(name: string, value: unknown): void
     /** The optional skill registry; absent when the profile has no dsh-skill. */
     readonly skills?: DshSkillRegistry
     /** Run `callback` once the named optional services exist. */
