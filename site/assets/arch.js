@@ -43,14 +43,33 @@
       work: { en: '<span class="work-alone">Works alone</span>', zh: '<span class="work-alone">独立可用</span>' }
     },
     {
+      group: "host",
+      name: "@automation-suite/tia-todo-bridge",
+      role: { en: "Session · Todo fallback", zh: "会话 · Todo 兜底" },
+      tools: "—",
+      version: "0.1.0",
+      work: { en: '<span class="work-alone">Works alone</span>', zh: '<span class="work-alone">独立可用</span>' }
+    },
+    {
       group: "workflow",
       name: "@automation-suite/engineering-context",
-      role: { en: "Project scope and version workflow", zh: "工程作用域与版本工作流" },
-      tools: { en: "core + diff + version", zh: "核心 + diff + 版本" },
+      role: { en: "Project scope, handoff, text translation", zh: "工程作用域、交接、文本翻译" },
+      tools: "9",
       version: "0.1.0",
       work: {
-        en: '<code>TIA plugin</code> · <code>git</code> · <code>graph</code> <em class="work-optional">(optional)</em>',
-        zh: '<code>TIA 插件</code> · <code>git</code> · <code>graph</code> <em class="work-optional">（可选）</em>'
+        en: '<code>TIA plugin</code> · <code>version-control</code> <em class="work-optional">(optional)</em> · <code>graph</code> <em class="work-optional">(optional)</em>',
+        zh: '<code>TIA 插件</code> · <code>version-control</code> <em class="work-optional">（可选）</em> · <code>graph</code> <em class="work-optional">（可选）</em>'
+      }
+    },
+    {
+      group: "workflow",
+      name: "@automation-suite/version-control",
+      role: { en: "Engineering history · commits, diffs, ledger", zh: "工程历史 · 提交、差异、账本" },
+      tools: "10",
+      version: "0.1.0",
+      work: {
+        en: '<code>git</code> · <span class="work-alone">TIA not required</span>',
+        zh: '<code>git</code> · <span class="work-alone">不需要 TIA</span>'
       }
     },
     {
@@ -90,8 +109,19 @@
       tools: "—",
       version: "0.1.0",
       work: {
-        en: '<code>engineering-context</code>',
-        zh: '<code>engineering-context</code>'
+        en: '<code>version-control</code>',
+        zh: '<code>version-control</code>'
+      }
+    },
+    {
+      group: "view",
+      name: "@automation-suite/ui-changes",
+      role: { en: "Sidebar · Changes", zh: "右侧栏 · Changes" },
+      tools: "—",
+      version: "0.1.0",
+      work: {
+        en: '<code>git</code>',
+        zh: '<code>git</code>'
       }
     },
     {
@@ -143,8 +173,8 @@
     en: {
       "arch.head.eyebrow": "Architecture",
       "arch.head.title1": "One distribution,",
-      "arch.head.title2": "twelve bundles",
-      "arch.head.lead": "The suite is a DeepSeek Harness profile over twelve independently installable bundles. The profile decides which packages compose, which services connect them, and which tools each preset can see.",
+      "arch.head.title2": "fifteen bundles",
+      "arch.head.lead": "The suite is a DeepSeek Harness profile over fifteen independently installable bundles. The profile decides which packages compose, which services connect them, and which tools each preset can see.",
       "arch.w.title": "Why a distribution",
       "arch.w.note": "DSH installs bundles; the profile composes them and sets policy.",
       "arch.w1.title": "Bundle = capability",
@@ -153,7 +183,7 @@
       "arch.w2.desc": "A profile is the composition layer: it declares bundles, presets and policy. It is not a bundle: <code>dsh plugin add</code> rejects it as <code>not-a-bundle</code>.",
       "arch.w3.title": "Release = a tested combination",
       "arch.w3.desc": "The GitHub release ships the blueprint, per-package tarball URLs and an installer. It pins the combination that was verified together — not a mega-package.",
-      "arch.w.assembly": '<span class="assembly__node"><b>12</b> bundles</span><span class="assembly__arrow" aria-hidden="true">→</span><span class="assembly__node assembly__node--accent">profile · bundles + presets + policy</span><span class="assembly__arrow" aria-hidden="true">→</span><span class="assembly__node">dsh --profile …</span><span class="assembly__note">one tested combination</span>',
+      "arch.w.assembly": '<span class="assembly__node"><b>15</b> bundles</span><span class="assembly__arrow" aria-hidden="true">→</span><span class="assembly__node assembly__node--accent">profile · bundles + presets + policy</span><span class="assembly__arrow" aria-hidden="true">→</span><span class="assembly__node">dsh --profile …</span><span class="assembly__note">one tested combination</span>',
       "arch.w.foot": "The packages stay independent; the profile is what makes them one product.",
       "arch.p.title": "Principles",
       "arch.p.note": "Four rules that decide how the pieces are assembled.",
@@ -166,7 +196,7 @@
       "arch.p4.title": "Policy is configuration",
       "arch.p4.desc": "Personae, the default preset, disabled built-ins and subagent limits live in the profile. Changing them does not rebuild a plugin.",
       "arch.c.title": "Components",
-      "arch.c.note": "Twelve bundles. “Work with” names the other bundles each one needs; “Version” is the package version.",
+      "arch.c.note": "Fifteen bundles. “Work with” names the other bundles each one needs; “Version” is the package version.",
       "arch.c.legend": "“Work with” lists the bundles this one needs; “Works alone” means no other bundle is required. Versions are package versions; the suite release is versioned separately.",
       "arch.c.foot": "The profile blueprint is not a component: it is the assembly layer above these packages. Package versions are independent of the suite release.",
       "arch.s.title": "Preset surfaces",
@@ -181,8 +211,8 @@
     zh: {
       "arch.head.eyebrow": "架构",
       "arch.head.title1": "一个发行版，",
-      "arch.head.title2": "十二个 bundle",
-      "arch.head.lead": "这套发行版是一个 DSH profile，叠加在十二个可独立安装的 bundle 之上。profile 决定组合哪些包、服务怎么接、每个 preset 能看到哪些工具。",
+      "arch.head.title2": "十五个 bundle",
+      "arch.head.lead": "这套发行版是一个 DSH profile，叠加在十五个可独立安装的 bundle 之上。profile 决定组合哪些包、服务怎么接、每个 preset 能看到哪些工具。",
       "arch.w.title": "为什么要做成发行版",
       "arch.w.note": "DSH 安装的是 bundle；profile 负责组合它们并设定政策。",
       "arch.w1.title": "Bundle = 能力",
@@ -191,7 +221,7 @@
       "arch.w2.desc": "profile 是组合层：它声明 bundle、preset 与政策。它不是 bundle：<code>dsh plugin add</code> 会以 <code>not-a-bundle</code> 拒绝它。",
       "arch.w3.title": "Release = 已验证的组合",
       "arch.w3.desc": "GitHub Release 交付蓝图、各包 tarball 的 URL 和安装器，钉住一套一起验收过的组合，而不是一个巨型包。",
-      "arch.w.assembly": '<span class="assembly__node"><b>12</b> 个 bundle</span><span class="assembly__arrow" aria-hidden="true">→</span><span class="assembly__node assembly__node--accent">profile · bundle + preset + 政策</span><span class="assembly__arrow" aria-hidden="true">→</span><span class="assembly__node">dsh --profile …</span><span class="assembly__note">一套已验证的组合</span>',
+      "arch.w.assembly": '<span class="assembly__node"><b>15</b> 个 bundle</span><span class="assembly__arrow" aria-hidden="true">→</span><span class="assembly__node assembly__node--accent">profile · bundle + preset + 政策</span><span class="assembly__arrow" aria-hidden="true">→</span><span class="assembly__node">dsh --profile …</span><span class="assembly__note">一套已验证的组合</span>',
       "arch.w.foot": "包保持独立；让它们成为一个产品的是 profile。",
       "arch.p.title": "设计原则",
       "arch.p.note": "四条规则，决定这套东西怎么被组装。",
@@ -204,7 +234,7 @@
       "arch.p4.title": "政策是配置",
       "arch.p4.desc": "persona、默认 preset、禁用的内置 preset、子 agent 上限都在 profile 里；改政策不需要重新构建插件。",
       "arch.c.title": "组件",
-      "arch.c.note": "十二个 bundle。“配合”列出它需要的其他插件；“版本”是各包自己的版本。",
+      "arch.c.note": "十五个 bundle。“配合”列出它需要的其他插件；“版本”是各包自己的版本。",
       "arch.c.legend": "“配合”列出它需要的其他插件；“独立可用”表示不需要其他插件。版本是各包自己的版本；发行版版本单独维护。",
       "arch.c.foot": "profile 蓝图不是一个组件，而是这些包之上的组装层。各包版本与发行版版本相互独立。",
       "arch.s.title": "Preset 工具面",

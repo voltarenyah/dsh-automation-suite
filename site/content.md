@@ -77,8 +77,8 @@ Note: Six families, one profile. Statuses follow the repository roadmap — noth
 
 ### Page head
 - Eyebrow: Architecture
-- Title: One distribution, twelve bundles
-- Lead: The suite is a DeepSeek Harness profile over twelve independently installable bundles. The profile decides which packages compose, which services connect them, and which tools each preset can see.
+- Title: One distribution, fifteen bundles
+- Lead: The suite is a DeepSeek Harness profile over fifteen independently installable bundles. The profile decides which packages compose, which services connect them, and which tools each preset can see.
 
 ### Why a distribution
 Note: DSH installs bundles; the profile composes them and sets policy.
@@ -96,7 +96,7 @@ Note: Four rules that decide how the pieces are assembled.
 4. **Policy is configuration** — Personae, the default preset, disabled built-ins and subagent limits live in the profile. Changing them does not rebuild a plugin.
 
 ### Components
-Note: Twelve bundles. “Work with” names the other bundles each one needs; “Version” is the package version.
+Note: Fifteen bundles. “Work with” names the other bundles each one needs; “Version” is the package version.
 
 | Package | Role | Tools | Work with | Version |
 | --- | --- | --- | --- | --- |
@@ -104,12 +104,15 @@ Note: Twelve bundles. “Work with” names the other bundles each one needs; �
 | `@automation-suite/plcsim-advanced` | PLCSIM Advanced runtime | 4 | Works alone | 0.1.0 |
 | `@automation-suite/engineering-graph` | Knowledge graph · SQLite + C# engine | 9 | Works alone | 0.1.0 |
 | `@automation-suite/dsh-tool-git` | Guard-railed Git | 12 | Works alone | 0.1.3 |
-| `@automation-suite/engineering-context` | Project scope and version workflow | core + diff + version | TIA plugin · git · graph (optional) | 0.1.0 |
+| `@automation-suite/engineering-context` | Project scope, handoff, text translation | 9 | TIA plugin · version-control (optional) · graph (optional) | 0.1.0 |
+| `@automation-suite/version-control` | Engineering history · commits, diffs, ledger | 10 | git · TIA not required | 0.1.0 |
 | `@automation-suite/pdf-drawing` | PDF drawing index + sidebar | 5 | Works alone | 0.1.0 |
 | `@automation-suite/ui-plc-source` | Sidebar · PLC Blocks | — | engineering-context | 0.1.0 |
 | `@automation-suite/ui-tia-console` | Composer · TIA console | — | TIA plugin | 0.1.0 |
-| `@automation-suite/ui-versions` | Sidebar · Versions | — | engineering-context | 0.1.0 |
+| `@automation-suite/ui-versions` | Sidebar · Versions | — | version-control | 0.1.0 |
 | `@automation-suite/ui-hardware` | Sidebar · Hardware | — | TIA plugin | 0.1.0 |
+| `@automation-suite/ui-changes` | Sidebar · Changes | — | git | 0.1.0 |
+| `@automation-suite/tia-todo-bridge` | Session · Todo fallback | — | Works alone | 0.1.0 |
 | `@automation-suite/ui-prompt-guide` | Main · Prompt Guide | — | Works alone | 0.1.0 |
 | `@automation-suite/ui-project-dashboard` | Sidebar · Project dashboard | — | Works alone | 0.1.0 |
 
@@ -268,7 +271,7 @@ The starter builds the packages, materializes the profile in `%USERPROFILE%\dsh-
 $ dsh plugin --profile web add <tarball-url>
 ```
 
-TIA, PLCSIM, graph and git expose model tools only after a `/tools` row is added; engineering-context also needs TIA and git at runtime. The Architecture page has the surface matrix.
+TIA, PLCSIM, graph, git and version-control expose model tools only after a `/tools` or entry row is added; engineering-context also needs TIA at runtime, and version-control needs only git (TIA may be closed). The Architecture page has the surface matrix.
 
 Note: These three paths assume DeepSeek Harness is already installed: the zip installer exits with an error if it cannot find `dsh.cmd`. Only the desktop setup can fetch the runtime for you.
 
@@ -345,7 +348,7 @@ Links: [Releases](https://github.com/voltarenyah/dsh-automation-suite/releases) 
 
 ### Architecture
 - Title: Architecture — dsh-automation-suite
-- Description: How twelve bundles become one DSH distribution: package boundaries, plugin dependencies, and preset-scoped tools.
+- Description: How fifteen bundles become one DSH distribution: package boundaries, plugin dependencies, and preset-scoped tools.
 
 ### Roadmap
 - Title: Roadmap — dsh-automation-suite

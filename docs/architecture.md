@@ -357,7 +357,7 @@
 | 接口插件族 | `packages/dsh-tia-openness-v17-min`（V17；能力不拆包，更多能力写在同一包里由 preset 装配，见 D31；族内后续成员按 TIA 版本增加 —— V18 起包名为 `@automation-suite/tia-openness-v18`（**不带 `-min`**），形态与落地清单见 [`tia-version-members.md`](tia-version-members.md) / D36） |
 | 工程上下文插件 | `packages/dsh-engineering-context`；`packages/dsh-tool-git`（12 个结构化 git 工具）是可能被复用的**通用底座** |
 | 工程知识图谱插件 | `packages/dsh-engineering-graph` |
-| 版本历史插件 | `packages/dsh-engineering-version-control`（包名**没有** `engineering-` 前缀：它是 ③ 层，不属于工程作用域域） |
+| 版本历史插件 | `packages/dsh-engineering-version-control`（**目录**带 `engineering-` 是历史原因；**包名** `@automation-suite/version-control` 没有前缀——它是 ③ 层，不属于工程作用域域） |
 
 > 进度不在这张表里维护 —— 那是 [`roadmap.md`](roadmap.md) §1 与根 `README.md` §2 的职责。
 

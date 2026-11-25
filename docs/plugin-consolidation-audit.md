@@ -379,7 +379,7 @@
 | `/read` | `project_history`、`project_version_verify`、`project_doc_search`、`project_problem`、`project_version_query` | leader、auditor、expert |
 | `/diff` | `project_diff` | auditor、expert |
 
-> **顺带修掉一个错配**：现在 leader 挂的 `engineering-context/version` 含 `reindex`/`annotate`/`doc_index`
+> **顺带修掉一个错配**（已于 2026-11-25 落地：leader 只挂 `version-control/read`）：原来 leader 挂的 `engineering-context/version` 含 `reindex`/`annotate`/`doc_index`
 > 三个写工具。拆包后 leader 只挂 `/read`(5)——**少 3 个写工具**，与 D30"慢活交给 auditor"一致。
 
 **三条新契约**（缺一条拆完就是半残）：
@@ -402,9 +402,19 @@
 | R4 | `versions.db` 的 4 张 graph 表与 `engineering-graph` 同构 | `src/version/schema.ts:6-9` 自述"same four tables dsh-engineering-graph uses" | **不阻塞拆包**；拆完评估这些跳转（version ↔ block ↔ problem ↔ doc）能否改查 `knowledgeGraph`，少一份图实现 |
 | R5 | 两个大测试夹着跨包断言 | `02-create-project`(72.7)、`09-status-sync`(47.4) | 改成假 `versionControl` 服务，正好验证契约 1 的 fail-soft |
 
-**命名**：`@automation-suite/engineering-version-control`（与 `engineering-context`/`engineering-graph` 同族），
-或短的 `@automation-suite/version-control`。入口 id：`/record`、`/read`、`/diff`。
+**命名（已定，2026-11-25）**：`@automation-suite/version-control`（③ 层，不带 `engineering-` 前缀；目录仍叫
+`dsh-engineering-version-control`）。入口：`/record`、`/read`、`/diff`。
 
 **净效果**：包数 **14 → 15**（+`version-control`；`ui-brandmark` 已于 D40 下线，所以与下线合并看仍是 15 个），
 Loader 入口 6 → 6，模型工具 19 → 9 + 10，leader 少 3 个写工具。
 **包数没怎么变，但 ③ 层从"混在作用域包里"变成一个真实的包。**
+
+
+---
+
+## 10. 落地结果（2026-11-25）
+
+§9.2 的方案已实施，**包名与行名以实际交付为准**：`@automation-suite/version-control`，
+宿主行（只提供服务 `versionControl`）+ `/record`(4) + `/read`(5) + `/diff`(1)；
+`engineering-context` 收窄到 9 个工具、三个入口；preset 分配见 `decisions.md` D42 与
+`profile/dsh-automation-suite/cordis.patch.yml`。
