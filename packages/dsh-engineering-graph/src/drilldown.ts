@@ -231,7 +231,9 @@ export function networkStatement(blockId: string, networkIndex: number): string 
     "  (SELECT value FROM graph_node_properties p WHERE p.node_id = knowledge_networks.network_id\n" +
     "     AND p.name = 'tiaNetworkIndex') AS tia_network_index,\n" +
     "  (SELECT value FROM graph_node_properties p WHERE p.node_id = knowledge_networks.network_id\n" +
-    "     AND p.name = 'enclosingControl') AS enclosing_control\n" +
+    "     AND p.name = 'enclosingControl') AS enclosing_control,\n" +
+    "  (SELECT value FROM graph_node_properties p WHERE p.node_id = knowledge_networks.network_id\n" +
+    "     AND p.name = 'ladderText') AS ladder_text\n" +
     `FROM knowledge_networks\nWHERE block_id = ${sqlText(blockId)} AND network_index = ${Math.trunc(networkIndex)}\n` +
     'LIMIT 1'
   )

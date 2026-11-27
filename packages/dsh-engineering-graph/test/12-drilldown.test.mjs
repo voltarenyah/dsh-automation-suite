@@ -737,3 +737,105 @@ test('knowledge_block reports the block total, not the page size', async () => {
   assert.match(outcome.summary, /Main \(FB\): 72 network\(s\), first 2 listed, 2 commented out/)
   assert.match(outcome.details.join('\n'), /Networks: 2 of 72 \(first page; raise max_networks to see the rest\), 2 commented out/)
 })
+test('knowledge_network view=ladder serves the rung view derived from the topology', async () => {
+  const ladder =
+    '  (S) G.%X2   <-  Disable_VocDoorFunction\n' +
+    '  (S) G.%X2   <-  Mvt_VocDoor_DN.FullOpen AND NOT Manu_Loading'
+  const { byName } = await harness((sql) => {
+    if (sql.includes("FROM graph_nodes\nWHERE kind IN ('OB', 'FB', 'FC')")) {
+      return frame(rowsPayload(['id', 'kind', 'name'], [['block:Main', 'FB', 'Main']]))
+    }
+    if (sql.includes('AND network_index = 4')) {
+      return frame(
+        rowsPayload(
+          ['network_id', 'title', 'language', 'compile_unit_id', 'source_file', 'logic_statements',
+            'commented_logic', 'commented', 'region_path', 'segment_kind', 'tia_network_index',
+            'enclosing_control', 'ladder_text'],
+          [['network:Main:4', 'Step 11', 'LAD', 'cu:4', null, 'G := TRUE;', null, null, null, 'network', null, null, ladder]],
+        ),
+      )
+    }
+    return frame(rowsPayload(['access', 'variable_name'], []))
+  })
+
+  const outcome = await executeTool(
+    byName['knowledge_network'],
+    { block: 'Main', index: 4, view: 'ladder', db_path: DB },
+    execIn('C:\\ws'),
+  )
+
+  const details = outcome.details.join('\n')
+  assert.match(details, /Rungs \(one line per path/)
+  assert.match(details, /\(S\) G\.%X2/)
+  assert.match(details, /NOT Manu_Loading/)
+  assert.ok(!details.includes('G := TRUE;'), 'the rung view must replace the statement text, not repeat it')
+})
+
+test('knowledge_network view=ladder says so when the rung view is absent', async () => {
+  const { byName } = await harness((sql) => {
+    if (sql.includes("FROM graph_nodes\nWHERE kind IN ('OB', 'FB', 'FC')")) {
+      return frame(rowsPayload(['id', 'kind', 'name'], [['block:Main', 'FC', 'Main']]))
+    }
+    if (sql.includes('AND network_index = 1')) {
+      return frame(rowsPayload(['network_id', 'title', 'language', 'compile_unit_id', 'source_file', 'logic_statements'], [
+        ['network:Main:1', null, 'SCL', null, null, 'x := 1;'],
+      ]))
+    }
+    return frame(rowsPayload(['access', 'variable_name'], []))
+  })
+
+  const outcome = await executeTool(
+    byName['knowledge_network'],
+    { block: 'Main', index: 1, view: 'ladder', db_path: DB },
+    execIn('C:\\ws'),
+  )
+
+  const details = outcome.details.join('\n')
+  assert.match(details, /Ladder view: not available/)
+  assert.match(details, /x := 1;/, 'the fallback must still show the logic')
+})
+
+/** One access row in the engine's wire shape, for the usage tool. */
+function usageRow(block, index, access, variable) {
+  return [`network:${block}:${index}`, `block:${block}`, index, `NW ${index}`, `Blocks/${block}.xml`, access, variable]
+}
+
+/** A harness whose only answer for the usage tool is the given access rows. */
+async function usageHarness(rows) {
+  return harness((sql) => {
+    if (sql.includes("kind = 'Variable'")) {
+      return frame(rowsPayload(['id', 'name'], [['variable:Main.X', 'Main.X']]))
+    }
+    if (sql.includes('FROM knowledge_network_accesses a JOIN knowledge_networks w')) {
+      return frame(
+        rowsPayload(
+          ['network_id', 'block_id', 'network_index', 'title', 'source_file', 'access', 'variable_name'],
+          rows,
+        ),
+      )
+    }
+    return frame(rowsPayload(['node_id'], []))
+  })
+}
+
+test('knowledge_variable_usage says a read after the write sees this scan value', async () => {
+  const { byName } = await usageHarness([usageRow('Main', 3, 'WRITES', 'Main.X'), usageRow('Main', 12, 'READS', 'Main.X')])
+  const outcome = await executeTool(byName['knowledge_variable_usage'], { variable: 'Main.X', db_path: DB }, execIn('C:\\ws'))
+  const details = outcome.details.join('\n')
+  assert.match(details, /Scan order/)
+  assert.match(details, /read at 12 runs after write at 3 — same scan/)
+})
+
+test('knowledge_variable_usage says a read before the write sees the previous scan', async () => {
+  const { byName } = await usageHarness([usageRow('Main', 5, 'READS', 'Main.X'), usageRow('Main', 12, 'WRITES', 'Main.X')])
+  const outcome = await executeTool(byName['knowledge_variable_usage'], { variable: 'Main.X', db_path: DB }, execIn('C:\\ws'))
+  const details = outcome.details.join('\n')
+  assert.match(details, /read at 5 runs before write at 12 — it sees the PREVIOUS scan's value/)
+})
+
+test('knowledge_variable_usage says a variable with readers but no writer comes from elsewhere', async () => {
+  const { byName } = await usageHarness([usageRow('Main', 5, 'READS', 'Main.X')])
+  const outcome = await executeTool(byName['knowledge_variable_usage'], { variable: 'Main.X', db_path: DB }, execIn('C:\\ws'))
+  const details = outcome.details.join('\n')
+  assert.match(details, /read at 5 but never written in this database/)
+})

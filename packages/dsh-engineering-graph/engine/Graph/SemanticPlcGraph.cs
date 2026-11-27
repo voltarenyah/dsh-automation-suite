@@ -286,6 +286,10 @@ public static class TiaXmlSemanticGraphImporter
 
         var parsed = ProgramSemanticReferenceBuilder.Parse(xml, component, deviceName);
         var networkLogicBySegmentKey = ProgramBlockLogicYamlWriter.GetNetworkLogicBySegmentKey(xml, component);
+        // Phase 4 of docs/lad-understanding-plan.md: the rung view, derived from the network's own
+        // topology (not from the translated statements), stored as a node property so a reader can
+        // ask for it per network without re-parsing the export.
+        var ladderTextByCompileUnitId = LadderText.GetByCompileUnitId(xml);
         ProgramNetworkRecord? previousNetwork = null;
         foreach (var network in parsed.Networks)
         {
@@ -314,6 +318,12 @@ public static class TiaXmlSemanticGraphImporter
             if (!string.IsNullOrWhiteSpace(network.EnclosingControl))
             {
                 networkProperties["enclosingControl"] = network.EnclosingControl;
+            }
+
+            if (ladderTextByCompileUnitId.TryGetValue(network.CompileUnitId, out string? ladderText) &&
+                !string.IsNullOrWhiteSpace(ladderText))
+            {
+                networkProperties["ladderText"] = ladderText;
             }
 
             if (networkLogicBySegmentKey.TryGetValue(network.LogicKey, out var logic))

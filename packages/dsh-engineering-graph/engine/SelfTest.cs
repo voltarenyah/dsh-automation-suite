@@ -14,6 +14,7 @@
 // every check that ran succeeded.
 using System.Security.Cryptography;
 using System.Text.Json.Nodes;
+using System.Xml.Linq;
 using Microsoft.Data.Sqlite;
 
 namespace EngineeringGraph.Engine;
@@ -25,6 +26,25 @@ internal static class SelfTest
         var failures = 0;
 
         failures += CheckSqliteRoundTrip();
+        failures += CheckFlgGraphDiagnostics();
+        failures += CheckRungReducer();
+        failures += CheckRungEquivalenceSynthetic();
+
+        // The fixtures are copied next to the executable by the csproj (engine/bin/fixtures).
+        // They are not part of the shipped build (package.json excludes engine/bin/fixtures),
+        // so a build without them skips the fixture-based checks instead of failing them.
+        var fixturesDir = Path.Combine(AppContext.BaseDirectory, "fixtures");
+        var haveFixtures = Directory.Exists(fixturesDir);
+
+        if (haveFixtures)
+        {
+            failures += CheckFlgGraph(fixturesDir, "fixtures");
+            failures += CheckRungEquivalence(fixturesDir, "fixtures");
+        }
+        else
+        {
+            Console.WriteLine("[skip] LAD element graph (no fixtures next to the executable)");
+        }
 
         if (string.IsNullOrWhiteSpace(deviceDir))
         {
@@ -34,13 +54,819 @@ internal static class SelfTest
         {
             failures += CheckExportCrawl(deviceDir);
             failures += CheckOperations(deviceDir);
-            failures += CheckIncrementalUpdate(deviceDir);
+            failures += CheckFlgGraph(deviceDir, "export");
+            failures += CheckRungEquivalence(deviceDir, "export");
+            if (haveFixtures)
+            {
+                failures += CheckIncrementalUpdate(fixturesDir);
+            }
+            else
+            {
+                Console.WriteLine("[skip] incremental update (no fixtures next to the executable)");
+            }
         }
 
         Console.WriteLine(failures == 0
             ? "self-test: OK"
             : $"self-test: {failures} check(s) FAILED");
         return failures == 0 ? 0 : 1;
+    }
+
+    /// <summary>
+    /// Phase 1 negative cases (plan T1-c): the graph's diagnostics have to fire on the shapes they
+    /// exist for, otherwise a later refactor can turn them into dead code and every network will
+    /// silently look clean. Each case is an inline FlgNet so it does not depend on fixture files.
+    /// </summary>
+    private static int CheckFlgGraphDiagnostics()
+    {
+        static XElement Parse(string body) =>
+            XElement.Parse(
+                "<FlgNet xmlns=\"http://www.siemens.com/automation/Openness/SW/NetworkSource/FlgNet/v4\">" +
+                body +
+                "</FlgNet>");
+
+        const string Elements =
+            "<Parts>" +
+            "  <Access Scope=\"LocalVariable\" UId=\"1\"><Symbol><Component Name=\"A\" /></Symbol></Access>" +
+            "  <Access Scope=\"LocalVariable\" UId=\"11\"><Symbol><Component Name=\"Q\" /></Symbol></Access>" +
+            "  <Part Name=\"Contact\" UId=\"2\" />" +
+            "  <Part Name=\"Coil\" UId=\"3\" />" +
+            "</Parts>";
+
+        var failures = new List<string>();
+
+        // 1. A legal branch: one wire, two targets. No diagnostics, and the fan-out is preserved.
+        {
+            FlgNetworkGraph graph = FlgNetworkGraph.Build(Parse(
+                Elements +
+                "<Wires>" +
+                "  <Wire UId=\"4\"><Powerrail /><NameCon UId=\"2\" Name=\"in\" /></Wire>" +
+                "  <Wire UId=\"5\"><IdentCon UId=\"1\" /><NameCon UId=\"2\" Name=\"operand\" /></Wire>" +
+                "  <Wire UId=\"6\"><NameCon UId=\"2\" Name=\"out\" /><NameCon UId=\"3\" Name=\"in\" /></Wire>" +
+                "  <Wire UId=\"7\"><IdentCon UId=\"11\" /><NameCon UId=\"3\" Name=\"operand\" /></Wire>" +
+                "</Wires>"));
+
+            if (graph.Diagnostics.Count != 0)
+            {
+                failures.Add($"fan-out case produced diagnostics: {string.Join(" | ", graph.Diagnostics)}");
+            }
+
+            if (graph.Wires.All(wire => wire.Targets.Count != 1) &&
+                graph.Wires.All(wire => wire.Targets.Count != 2))
+            {
+                failures.Add("fan-out case lost its targets");
+            }
+        }
+
+        // 2. Two wires feeding one pin: TIA rejects this shape, so the graph must report it.
+        {
+            FlgNetworkGraph graph = FlgNetworkGraph.Build(Parse(
+                Elements +
+                "<Wires>" +
+                "  <Wire UId=\"4\"><Powerrail /><NameCon UId=\"2\" Name=\"in\" /></Wire>" +
+                "  <Wire UId=\"5\"><IdentCon UId=\"1\" /><NameCon UId=\"2\" Name=\"operand\" /></Wire>" +
+                "  <Wire UId=\"6\"><IdentCon UId=\"1\" /><NameCon UId=\"2\" Name=\"operand\" /></Wire>" +
+                "  <Wire UId=\"7\"><NameCon UId=\"2\" Name=\"out\" /><NameCon UId=\"3\" Name=\"in\" /></Wire>" +
+                "  <Wire UId=\"8\"><IdentCon UId=\"11\" /><NameCon UId=\"3\" Name=\"operand\" /></Wire>" +
+                "</Wires>"));
+
+            if (!graph.Diagnostics.Any(diagnostic => diagnostic.StartsWith("flg_multi_source", StringComparison.Ordinal)))
+            {
+                failures.Add("a pin fed by two wires did not raise flg_multi_source");
+            }
+        }
+
+        // 3. A wire pointing at a UId the network does not define.
+        {
+            FlgNetworkGraph graph = FlgNetworkGraph.Build(Parse(
+                Elements +
+                "<Wires>" +
+                "  <Wire UId=\"4\"><IdentCon UId=\"99\" /><NameCon UId=\"2\" Name=\"operand\" /></Wire>" +
+                "</Wires>"));
+
+            if (!graph.Diagnostics.Any(diagnostic => diagnostic.StartsWith("flg_dangling_uid", StringComparison.Ordinal)))
+            {
+                failures.Add("an unknown IdentCon UId did not raise flg_dangling_uid");
+            }
+        }
+
+        // 4. A Wire reusing a Part's UId: one namespace per network.
+        {
+            FlgNetworkGraph graph = FlgNetworkGraph.Build(Parse(
+                Elements +
+                "<Wires>" +
+                "  <Wire UId=\"2\"><Powerrail /><NameCon UId=\"2\" Name=\"in\" /></Wire>" +
+                "</Wires>"));
+
+            if (!graph.Diagnostics.Any(diagnostic => diagnostic.StartsWith("flg_duplicate_uid", StringComparison.Ordinal)))
+            {
+                failures.Add("a Wire reusing a Part UId did not raise flg_duplicate_uid");
+            }
+        }
+
+        // 5. An open branch end: <OpenCon> is not an element reference and must not be a problem.
+        {
+            FlgNetworkGraph graph = FlgNetworkGraph.Build(Parse(
+                Elements +
+                "<Wires>" +
+                "  <Wire UId=\"4\"><Powerrail /><NameCon UId=\"2\" Name=\"in\" /></Wire>" +
+                "  <Wire UId=\"5\"><IdentCon UId=\"1\" /><NameCon UId=\"2\" Name=\"operand\" /></Wire>" +
+                "  <Wire UId=\"6\"><OpenCon UId=\"40\" /><NameCon UId=\"3\" Name=\"en\" /></Wire>" +
+                "</Wires>"));
+
+            if (graph.Diagnostics.Count != 0)
+            {
+                failures.Add($"open-end case produced diagnostics: {string.Join(" | ", graph.Diagnostics)}");
+            }
+
+            if (!graph.Wires.Any(wire => wire.IsOpen))
+            {
+                failures.Add("open-end case did not mark the wire open");
+            }
+        }
+
+        if (failures.Count > 0)
+        {
+            foreach (string failure in failures)
+            {
+                Console.WriteLine($"  [problem] {failure}");
+            }
+
+            Console.WriteLine("[FAIL] LAD element graph diagnostics");
+            return 1;
+        }
+
+        Console.WriteLine("[ok] LAD element graph diagnostics: 5 synthetic cases");
+        return 0;
+    }
+
+    /// <summary>
+    /// Phase 3 (plan section 3): the rung reducer and the statement translator are independent
+    /// implementations of the same network, so they must agree on every network both can express.
+    /// Agreement is checked over all input combinations (or a deterministic sample above the cap),
+    /// not by comparing text: two different-looking formulas that compute the same thing are fine,
+    /// and two identical-looking formulas that compute different things would be the bug.
+    /// </summary>
+    private static int CheckRungEquivalence(string root, string label)
+    {
+        string[] files;
+        try
+        {
+            files = Directory
+                .EnumerateFiles(root, "*.xml", SearchOption.AllDirectories)
+                .OrderBy(path => path, StringComparer.Ordinal)
+                .ToArray();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[FAIL] rung equivalence ({label}): {ex.GetType().Name}: {ex.Message}");
+            return 1;
+        }
+
+        long networks = 0;
+        long coils = 0;
+        long skippedBox = 0;
+        long skippedUnstructured = 0;
+        long skippedStatements = 0;
+        long skippedUnresolved = 0;
+        long sampled = 0;
+        var mismatches = new List<string>();
+
+        foreach (string file in files)
+        {
+            XDocument document;
+            try
+            {
+                document = XDocument.Load(file);
+            }
+            catch
+            {
+                continue;
+            }
+
+            int networkIndex = 0;
+            foreach (XElement unit in document.Descendants().Where(element => element.Name.LocalName == "SW.Blocks.CompileUnit"))
+            {
+                if (!unit.Descendants().Any(element => element.Name.LocalName == "FlgNet"))
+                {
+                    continue;
+                }
+
+                networkIndex++;
+                networks++;
+
+                FlgNetworkGraph graph = FlgNetworkGraph.Build(unit.Descendants().First(element => element.Name.LocalName == "FlgNet"));
+                RungModel rung = SeriesParallelReducer.Reduce(graph);
+
+                if (!rung.IsStructured)
+                {
+                    skippedUnstructured++;
+                    continue;
+                }
+
+                // A box or a call has semantics that live in another network; treating it as a
+                // variable would compare two different abstractions.
+                if (graph.Elements.Any(element => element.Kind is FlgElementKind.Box or FlgElementKind.Call))
+                {
+                    skippedBox++;
+                    continue;
+                }
+
+                IReadOnlyList<string> statements = ProgramBlockLogicYamlWriter.TranslateStatementsOf(unit);
+                var byTarget = new Dictionary<string, string>(StringComparer.Ordinal);
+                bool unsupported = false;
+                foreach (string raw in statements)
+                {
+                    string statement = raw.Trim();
+                    if (statement.Length == 0 || statement.StartsWith("//", StringComparison.Ordinal))
+                    {
+                        continue;
+                    }
+
+                    var match = System.Text.RegularExpressions.Regex.Match(
+                        statement,
+                        @"^(?<target>[^:=]+?)\s*:=\s*(?<value>.+);$");
+                    if (!match.Success)
+                    {
+                        unsupported = true;
+                        break;
+                    }
+
+                    byTarget[match.Groups["target"].Value.Trim()] = match.Groups["value"].Value.Trim();
+                }
+
+                if (unsupported)
+                {
+                    skippedStatements++;
+                    continue;
+                }
+
+                bool comparedAny = false;
+                foreach (RungCoil coil in rung.Coils)
+                {
+                    // Only plain coils: the translator writes S/R coils as conditional statements.
+                    if (coil.Kind != FlgElementKind.Coil || string.IsNullOrWhiteSpace(coil.Operand))
+                    {
+                        continue;
+                    }
+
+                    if (!byTarget.TryGetValue(coil.Operand!, out string? value))
+                    {
+                        skippedUnresolved++;
+                        continue;
+                    }
+
+                    if (!BooleanExpression.TryParse(value, out BooleanExpression? translated) || translated == null)
+                    {
+                        skippedStatements++;
+                        continue;
+                    }
+
+                    bool resolved = coil.Paths.All(path =>
+                        path.Steps.All(step => step.Kind == FlgElementKind.Contact && !string.IsNullOrWhiteSpace(step.Operand)));
+
+                    if (!resolved)
+                    {
+                        skippedUnresolved++;
+                        continue;
+                    }
+
+                    BooleanExpression reduced = RungModel.ValueExpression(coil);
+
+                    var variables = new List<string>();
+                    variables.AddRange(reduced.Variables);
+                    variables.AddRange(translated.Variables);
+                    string[] distinct = variables
+                        .Distinct(StringComparer.Ordinal)
+                        .OrderBy(name => name, StringComparer.Ordinal)
+                        .ToArray();
+
+                    var mismatch = false;
+                    if (distinct.Length <= 12)
+                    {
+                        int combinations = 1 << distinct.Length;
+                        for (int mask = 0; mask < combinations && !mismatch; mask++)
+                        {
+                            bool[] flags = new bool[distinct.Length];
+                            for (int bit = 0; bit < distinct.Length; bit++)
+                            {
+                                flags[bit] = (mask & (1 << bit)) != 0;
+                            }
+
+                            bool Activate(string name)
+                            {
+                                int at = Array.IndexOf(distinct, name);
+                                return at >= 0 && flags[at];
+                            }
+
+                            if (reduced.Evaluate(Activate) != translated!.Evaluate(Activate))
+                            {
+                                mismatch = true;
+                                mismatches.Add(
+                                    $"{Path.GetFileName(file)} network {networkIndex}: coil '{coil.Operand}' disagrees; " +
+                                    $"translated='{value}' rung='{RungModel.ConditionOf(coil.Paths[0])}'" +
+                                    (coil.Paths.Count > 1 ? $" (+{coil.Paths.Count - 1} more path(s))" : string.Empty));
+                            }
+                        }
+                    }
+                    else
+                    {
+                        sampled++;
+                        var random = new Random(networkIndex);
+                        for (int trial = 0; trial < 512 && !mismatch; trial++)
+                        {
+                            var assignment = new Dictionary<string, bool>(StringComparer.Ordinal);
+                            foreach (string name in distinct)
+                            {
+                                assignment[name] = random.Next(2) == 0;
+                            }
+
+                            bool Activate(string name) => assignment.TryGetValue(name, out bool flag) && flag;
+
+                            if (reduced.Evaluate(Activate) != translated!.Evaluate(Activate))
+                            {
+                                mismatch = true;
+                                mismatches.Add(
+                                    $"{Path.GetFileName(file)} network {networkIndex}: coil '{coil.Operand}' disagrees " +
+                                    $"(sampled); translated='{value}'");
+                            }
+                        }
+                    }
+
+                    coils++;
+                    comparedAny = true;
+                }
+
+                if (!comparedAny)
+                {
+                    skippedUnresolved++;
+                }
+            }
+        }
+
+        if (mismatches.Count > 0)
+        {
+            foreach (string mismatch in mismatches.Take(10))
+            {
+                Console.WriteLine($"  [problem] {mismatch}");
+            }
+
+            Console.WriteLine($"[FAIL] rung equivalence ({label}): {mismatches.Count} disagreement(s)");
+            return 1;
+        }
+
+        if (coils == 0)
+        {
+            Console.WriteLine($"[skip] rung equivalence ({label}): no comparable coil under {root}");
+            return 0;
+        }
+
+        Console.WriteLine(
+            $"[ok] rung equivalence ({label}): coils={coils} networks={networks} " +
+            $"skipped(box={skippedBox} unstructured={skippedUnstructured} statements={skippedStatements} " +
+            $"unresolved={skippedUnresolved}) sampled={sampled}");
+        return 0;
+    }
+
+    /// <summary>
+    /// Phase 2 (plan T2-a): the reducer turns the element graph into the rungs a reader thinks in,
+    /// and the shapes it must get right are exactly the ones M0 proved legal: a plain chain, a
+    /// negated contact, an OR merge, a fan-out feeding two coils, a box in series, and a network
+    /// without a power rail (which must be reported, not guessed at).
+    /// </summary>
+    private static int CheckRungReducer()
+    {
+        static XElement Parse(string body) =>
+            XElement.Parse(
+                "<FlgNet xmlns=\"http://www.siemens.com/automation/Openness/SW/NetworkSource/FlgNet/v4\">" +
+                body +
+                "</FlgNet>");
+
+        const string AccessA = "<Access Scope=\"LocalVariable\" UId=\"1\"><Symbol><Component Name=\"A\" /></Symbol></Access>";
+        const string AccessB = "<Access Scope=\"LocalVariable\" UId=\"2\"><Symbol><Component Name=\"B\" /></Symbol></Access>";
+        const string AccessQ = "<Access Scope=\"LocalVariable\" UId=\"3\"><Symbol><Component Name=\"Q\" /></Symbol></Access>";
+        const string AccessQ2 = "<Access Scope=\"LocalVariable\" UId=\"4\"><Symbol><Component Name=\"Q2\" /></Symbol></Access>";
+
+        var failures = new List<string>();
+
+        // 1. Chain: rail -> [A] -> (=) Q.
+        {
+            RungModel model = SeriesParallelReducer.Reduce(FlgNetworkGraph.Build(Parse(
+                "<Parts>" + AccessA + AccessQ + "<Part Name=\"Contact\" UId=\"10\" /><Part Name=\"Coil\" UId=\"11\" /></Parts>" +
+                "<Wires>" +
+                "  <Wire UId=\"20\"><Powerrail /><NameCon UId=\"10\" Name=\"in\" /></Wire>" +
+                "  <Wire UId=\"21\"><IdentCon UId=\"1\" /><NameCon UId=\"10\" Name=\"operand\" /></Wire>" +
+                "  <Wire UId=\"22\"><NameCon UId=\"10\" Name=\"out\" /><NameCon UId=\"11\" Name=\"in\" /></Wire>" +
+                "  <Wire UId=\"23\"><IdentCon UId=\"3\" /><NameCon UId=\"11\" Name=\"operand\" /></Wire>" +
+                "</Wires>")));
+
+            if (!model.IsStructured || model.Coils.Count != 1 || model.Coils[0].Paths.Count != 1)
+            {
+                failures.Add($"chain: expected 1 coil with 1 path, got structured={model.IsStructured} coils={model.Coils.Count}");
+            }
+            else if (RungModel.ConditionOf(model.Coils[0].Paths[0]) != "A")
+            {
+                failures.Add($"chain: condition was '{RungModel.ConditionOf(model.Coils[0].Paths[0])}', expected 'A'");
+            }
+        }
+
+        // 2. Negated contact: rail -> [/A] -> (=) Q, condition must read NOT A.
+        {
+            RungModel model = SeriesParallelReducer.Reduce(FlgNetworkGraph.Build(Parse(
+                "<Parts>" + AccessA + AccessQ +
+                "<Part Name=\"Contact\" UId=\"10\"><Negated Name=\"operand\" /></Part><Part Name=\"Coil\" UId=\"11\" /></Parts>" +
+                "<Wires>" +
+                "  <Wire UId=\"20\"><Powerrail /><NameCon UId=\"10\" Name=\"in\" /></Wire>" +
+                "  <Wire UId=\"21\"><IdentCon UId=\"1\" /><NameCon UId=\"10\" Name=\"operand\" /></Wire>" +
+                "  <Wire UId=\"22\"><NameCon UId=\"10\" Name=\"out\" /><NameCon UId=\"11\" Name=\"in\" /></Wire>" +
+                "  <Wire UId=\"23\"><IdentCon UId=\"3\" /><NameCon UId=\"11\" Name=\"operand\" /></Wire>" +
+                "</Wires>")));
+
+            string? condition = model.Coils.Count == 1 && model.Coils[0].Paths.Count == 1
+                ? RungModel.ConditionOf(model.Coils[0].Paths[0])
+                : null;
+            if (condition != "NOT A")
+            {
+                failures.Add($"negated contact: condition was '{condition ?? "(none)"}', expected 'NOT A'");
+            }
+        }
+
+        // 3. OR merge: [A] and [B] into an O box, then the coil. Two paths, the box is not a condition.
+        {
+            RungModel model = SeriesParallelReducer.Reduce(FlgNetworkGraph.Build(Parse(
+                "<Parts>" + AccessA + AccessB + AccessQ +
+                "<Part Name=\"Contact\" UId=\"10\" /><Part Name=\"Contact\" UId=\"11\" />" +
+                "<Part Name=\"O\" UId=\"12\"><TemplateValue Name=\"Card\" Type=\"Cardinality\">2</TemplateValue></Part>" +
+                "<Part Name=\"Coil\" UId=\"13\" /></Parts>" +
+                "<Wires>" +
+                "  <Wire UId=\"20\"><Powerrail /><NameCon UId=\"10\" Name=\"in\" /><NameCon UId=\"11\" Name=\"in\" /></Wire>" +
+                "  <Wire UId=\"21\"><IdentCon UId=\"1\" /><NameCon UId=\"10\" Name=\"operand\" /></Wire>" +
+                "  <Wire UId=\"22\"><IdentCon UId=\"2\" /><NameCon UId=\"11\" Name=\"operand\" /></Wire>" +
+                "  <Wire UId=\"23\"><NameCon UId=\"10\" Name=\"out\" /><NameCon UId=\"12\" Name=\"in1\" /></Wire>" +
+                "  <Wire UId=\"24\"><NameCon UId=\"11\" Name=\"out\" /><NameCon UId=\"12\" Name=\"in2\" /></Wire>" +
+                "  <Wire UId=\"25\"><NameCon UId=\"12\" Name=\"out\" /><NameCon UId=\"13\" Name=\"in\" /></Wire>" +
+                "  <Wire UId=\"26\"><IdentCon UId=\"3\" /><NameCon UId=\"13\" Name=\"operand\" /></Wire>" +
+                "</Wires>")));
+
+            if (!model.IsStructured || model.Coils.Count != 1 || model.Coils[0].Paths.Count != 2)
+            {
+                failures.Add($"or-merge: expected 1 coil with 2 paths, got structured={model.IsStructured} " +
+                    $"coils={model.Coils.Count} paths={(model.Coils.Count > 0 ? model.Coils[0].Paths.Count : 0)}");
+            }
+            else
+            {
+                string[] conditions = model.Coils[0].Paths.Select(RungModel.ConditionOf).OrderBy(text => text, StringComparer.Ordinal).ToArray();
+                if (conditions.Length != 2 || conditions[0] != "A" || conditions[1] != "B")
+                {
+                    failures.Add($"or-merge: conditions were [{string.Join(", ", conditions)}], expected [A, B]");
+                }
+            }
+        }
+
+        // 4. Fan-out: [A] splits to (=) Q and [B] -> (=) Q2. Two coils, one path each (M0/E4).
+        {
+            RungModel model = SeriesParallelReducer.Reduce(FlgNetworkGraph.Build(Parse(
+                "<Parts>" + AccessA + AccessB + AccessQ + AccessQ2 +
+                "<Part Name=\"Contact\" UId=\"10\" /><Part Name=\"Coil\" UId=\"11\" />" +
+                "<Part Name=\"Contact\" UId=\"12\" /><Part Name=\"Coil\" UId=\"13\" /></Parts>" +
+                "<Wires>" +
+                "  <Wire UId=\"20\"><Powerrail /><NameCon UId=\"10\" Name=\"in\" /></Wire>" +
+                "  <Wire UId=\"21\"><IdentCon UId=\"1\" /><NameCon UId=\"10\" Name=\"operand\" /></Wire>" +
+                "  <Wire UId=\"22\"><NameCon UId=\"10\" Name=\"out\" /><NameCon UId=\"11\" Name=\"in\" /><NameCon UId=\"12\" Name=\"in\" /></Wire>" +
+                "  <Wire UId=\"23\"><IdentCon UId=\"3\" /><NameCon UId=\"11\" Name=\"operand\" /></Wire>" +
+                "  <Wire UId=\"24\"><IdentCon UId=\"2\" /><NameCon UId=\"12\" Name=\"operand\" /></Wire>" +
+                "  <Wire UId=\"25\"><NameCon UId=\"12\" Name=\"out\" /><NameCon UId=\"13\" Name=\"in\" /></Wire>" +
+                "  <Wire UId=\"26\"><IdentCon UId=\"4\" /><NameCon UId=\"13\" Name=\"operand\" /></Wire>" +
+                "</Wires>")));
+
+            if (!model.IsStructured || model.Coils.Count != 2)
+            {
+                failures.Add($"fan-out: expected 2 coils, got structured={model.IsStructured} coils={model.Coils.Count}");
+            }
+            else if (model.Coils.Any(coil => coil.Paths.Count != 1))
+            {
+                failures.Add("fan-out: a coil did not get exactly one path");
+            }
+        }
+
+        // 5. Box in series: rail -> Move -> (=) Q. Structured, and the box is a step.
+        {
+            RungModel model = SeriesParallelReducer.Reduce(FlgNetworkGraph.Build(Parse(
+                "<Parts>" + AccessQ +
+                "<Part Name=\"Move\" UId=\"10\" /><Part Name=\"Coil\" UId=\"11\" /></Parts>" +
+                "<Wires>" +
+                "  <Wire UId=\"20\"><Powerrail /><NameCon UId=\"10\" Name=\"en\" /></Wire>" +
+                "  <Wire UId=\"21\"><NameCon UId=\"10\" Name=\"eno\" /><NameCon UId=\"11\" Name=\"in\" /></Wire>" +
+                "  <Wire UId=\"22\"><IdentCon UId=\"3\" /><NameCon UId=\"11\" Name=\"operand\" /></Wire>" +
+                "</Wires>")));
+
+            if (!model.IsStructured || model.Coils.Count != 1)
+            {
+                failures.Add($"box series: expected 1 structured coil, got structured={model.IsStructured} coils={model.Coils.Count}");
+            }
+            else if (!model.Coils[0].Paths[0].Steps.Any(step => step.Kind == FlgElementKind.Box))
+            {
+                failures.Add("box series: the box is missing from the path");
+            }
+        }
+
+        // 6. No power rail: must be reported, never guessed.
+        {
+            RungModel model = SeriesParallelReducer.Reduce(FlgNetworkGraph.Build(Parse(
+                "<Parts>" + AccessA + AccessQ + "<Part Name=\"Contact\" UId=\"10\" /><Part Name=\"Coil\" UId=\"11\" /></Parts>" +
+                "<Wires>" +
+                "  <Wire UId=\"21\"><IdentCon UId=\"1\" /><NameCon UId=\"10\" Name=\"operand\" /></Wire>" +
+                "</Wires>")));
+
+            if (model.IsStructured || model.UnstructuredReason != "no-powerrail")
+            {
+                failures.Add($"no-powerrail: expected an unstructured model with reason 'no-powerrail', got " +
+                    $"structured={model.IsStructured} reason={model.UnstructuredReason ?? "(none)"}");
+            }
+        }
+
+        if (failures.Count > 0)
+        {
+            foreach (string failure in failures)
+            {
+                Console.WriteLine($"  [problem] {failure}");
+            }
+
+            Console.WriteLine("[FAIL] rung reducer");
+            return 1;
+        }
+
+        Console.WriteLine("[ok] rung reducer: 6 synthetic cases");
+        return 0;
+    }
+
+    /// <summary>
+    /// Phase 3 self-check with known answers: a network the reducer and the translator must agree
+    /// on, evaluated exhaustively. Without this, the equivalence check could pass by comparing
+    /// nothing (the fixtures hold no comparable plain coil).
+    /// </summary>
+    private static int CheckRungEquivalenceSynthetic()
+    {
+        const string AccessA = "<Access Scope=\"LocalVariable\" UId=\"1\"><Symbol><Component Name=\"A\" /></Symbol></Access>";
+        const string AccessB = "<Access Scope=\"LocalVariable\" UId=\"2\"><Symbol><Component Name=\"B\" /></Symbol></Access>";
+        const string AccessQ = "<Access Scope=\"LocalVariable\" UId=\"3\"><Symbol><Component Name=\"Q\" /></Symbol></Access>";
+
+        static XElement CompileUnit(string parts, string wires) =>
+            XElement.Parse(
+                "<SW.Blocks.CompileUnit ID=\"1\"><AttributeList><NetworkSource>" +
+                "<FlgNet xmlns=\"http://www.siemens.com/automation/Openness/SW/NetworkSource/FlgNet/v4\">" +
+                parts + wires +
+                "</FlgNet></NetworkSource></AttributeList></SW.Blocks.CompileUnit>");
+
+        var failures = new List<string>();
+
+        // [A] AND [B] -> (=) Q, and the same network with B negated. Both must agree with the
+        // translator on all four input combinations.
+        foreach (bool negateB in new[] { false, true })
+        {
+            string negated = negateB ? "<Negated Name=\"operand\" />" : string.Empty;
+            XElement unit = CompileUnit(
+                "<Parts>" + AccessA + AccessB + AccessQ +
+                "<Part Name=\"Contact\" UId=\"10\" /><Part Name=\"Contact\" UId=\"11\">" + negated + "</Part>" +
+                "<Part Name=\"Coil\" UId=\"12\" /></Parts>",
+                "<Wires>" +
+                "  <Wire UId=\"20\"><Powerrail /><NameCon UId=\"10\" Name=\"in\" /></Wire>" +
+                "  <Wire UId=\"21\"><IdentCon UId=\"1\" /><NameCon UId=\"10\" Name=\"operand\" /></Wire>" +
+                "  <Wire UId=\"22\"><NameCon UId=\"10\" Name=\"out\" /><NameCon UId=\"11\" Name=\"in\" /></Wire>" +
+                "  <Wire UId=\"23\"><IdentCon UId=\"2\" /><NameCon UId=\"11\" Name=\"operand\" /></Wire>" +
+                "  <Wire UId=\"24\"><NameCon UId=\"11\" Name=\"out\" /><NameCon UId=\"12\" Name=\"in\" /></Wire>" +
+                "  <Wire UId=\"25\"><IdentCon UId=\"3\" /><NameCon UId=\"12\" Name=\"operand\" /></Wire>" +
+                "</Wires>");
+
+            IReadOnlyList<string> statements = ProgramBlockLogicYamlWriter.TranslateStatementsOf(unit);
+            if (statements.Count != 1)
+            {
+                failures.Add($"synthetic equivalence (negate={negateB}): expected 1 statement, got {statements.Count}");
+                continue;
+            }
+
+            var match = System.Text.RegularExpressions.Regex.Match(statements[0], @"^Q\s*:=\s*(?<value>.+);$");
+            if (!match.Success)
+            {
+                failures.Add($"synthetic equivalence (negate={negateB}): unexpected statement '{statements[0]}'");
+                continue;
+            }
+
+            if (!BooleanExpression.TryParse(match.Groups["value"].Value, out BooleanExpression? translated) || translated == null)
+            {
+                failures.Add($"synthetic equivalence (negate={negateB}): cannot parse '{match.Groups["value"].Value}'");
+                continue;
+            }
+
+            FlgNetworkGraph graph = FlgNetworkGraph.Build(unit.Descendants().First(element => element.Name.LocalName == "FlgNet"));
+            RungModel rung = SeriesParallelReducer.Reduce(graph);
+            if (!rung.IsStructured || rung.Coils.Count != 1)
+            {
+                failures.Add($"synthetic equivalence (negate={negateB}): reducer gave no single coil");
+                continue;
+            }
+
+            BooleanExpression reduced = RungModel.ValueExpression(rung.Coils[0]);
+
+            for (int mask = 0; mask < 4; mask++)
+            {
+                bool a = (mask & 1) != 0;
+                bool b = (mask & 2) != 0;
+                bool Activate(string name) => name switch
+                {
+                    "A" => a,
+                    "B" => b,
+                    _ => false
+                };
+
+                if (reduced.Evaluate(Activate) != translated.Evaluate(Activate))
+                {
+                    failures.Add($"synthetic equivalence (negate={negateB}): disagreement on A={a} B={b}");
+                    break;
+                }
+            }
+        }
+
+        if (failures.Count > 0)
+        {
+            foreach (string failure in failures)
+            {
+                Console.WriteLine($"  [problem] {failure}");
+            }
+
+            Console.WriteLine("[FAIL] rung equivalence (synthetic)");
+            return 1;
+        }
+
+        Console.WriteLine("[ok] rung equivalence (synthetic): 2 networks, 4 combinations each");
+        return 0;
+    }
+
+    /// <summary>
+    /// Phase 1 of docs/lad-understanding-plan.md: the LAD element graph must represent every
+    /// element and every negation the XML holds. A parser that silently drops a contact still
+    /// produces plausible output, so the check is conservation, not plausibility:
+    ///   * elements built == Access + Part + Call entries counted,
+    ///   * negated pins counted == raw &lt;Negated&gt; occurrences,
+    ///   * no wire endpoint points at a UId the network does not define,
+    ///   * no pin is fed by two wires (TIA rejects that shape: M0/E3a).
+    /// </summary>
+    private static int CheckFlgGraph(string root, string label)
+    {
+        string[] files;
+        try
+        {
+            files = Directory
+                .EnumerateFiles(root, "*.xml", SearchOption.AllDirectories)
+                .OrderBy(path => path, StringComparer.Ordinal)
+                .ToArray();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[FAIL] LAD element graph ({label}): {ex.GetType().Name}: {ex.Message}");
+            return 1;
+        }
+
+        long networks = 0;
+        long elements = 0;
+        long wires = 0;
+        long negated = 0;
+        long withBox = 0;
+        long reduced = 0;
+        long unreduced = 0;
+        long coils = 0;
+        long withLadderText = 0;
+        var unreducedReasons = new SortedDictionary<string, int>(StringComparer.Ordinal);
+        var problems = new List<string>();
+
+        foreach (string file in files)
+        {
+            XDocument document;
+            try
+            {
+                document = XDocument.Load(file);
+            }
+            catch
+            {
+                // Not SimaticML (or not XML we can read): the crawl has its own accounting for
+                // unreadable exports, so this check stays silent about them.
+                continue;
+            }
+
+            foreach (XElement unit in document.Descendants().Where(element => element.Name.LocalName == "SW.Blocks.CompileUnit"))
+            {
+                XElement? flgNet = unit.Descendants().FirstOrDefault(element => element.Name.LocalName == "FlgNet");
+                if (flgNet == null)
+                {
+                    continue;
+                }
+
+                networks++;
+
+                int rawNegated = flgNet.Descendants().Count(element => element.Name.LocalName == "Negated");
+                FlgNetworkGraph graph = FlgNetworkGraph.Build(flgNet);
+
+                elements += graph.Elements.Count;
+                wires += graph.Wires.Count;
+                negated += graph.Counts.Negated;
+                if (graph.Elements.Any(element => element.Kind == FlgElementKind.Box))
+                {
+                    withBox++;
+                }
+
+                string where = $"{Path.GetFileName(file)}";
+
+                // Phase 2: reducing must never throw, and the share of networks it can express is a
+                // number a reader cares about (a regression that drops it would otherwise be silent).
+                try
+                {
+                    RungModel rung = SeriesParallelReducer.Reduce(graph);
+                    if (rung.IsStructured)
+                    {
+                        reduced++;
+                        coils += rung.Coils.Count;
+                        // Phase 4: the rung text the tool surface serves has to be produced for the
+                        // networks it claims to describe, not just for hand-picked samples.
+                        if (LadderText.Render(graph, rung).Length > 0)
+                        {
+                            withLadderText++;
+                        }
+                    }
+                    else
+                    {
+                        unreduced++;
+                        string reason = rung.UnstructuredReason ?? "(none)";
+                        unreducedReasons[reason] = unreducedReasons.TryGetValue(reason, out int seen) ? seen + 1 : 1;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    if (problems.Count < 20)
+                    {
+                        problems.Add($"{where}: the reducer threw {ex.GetType().Name}: {ex.Message}");
+                    }
+                }
+
+                // Elements: a mismatch is only legitimate when the parse reported why (a missing
+                // or duplicated UId), which is itself a problem worth printing.
+                var hardDiagnostics = graph.Diagnostics
+                    .Where(diagnostic =>
+                        diagnostic.StartsWith("flg_dangling_uid", StringComparison.Ordinal) ||
+                        diagnostic.StartsWith("flg_multi_source", StringComparison.Ordinal) ||
+                        diagnostic.StartsWith("flg_duplicate_uid", StringComparison.Ordinal) ||
+                        diagnostic.StartsWith("flg_no_source", StringComparison.Ordinal))
+                    .ToArray();
+
+                foreach (string diagnostic in hardDiagnostics)
+                {
+                    if (problems.Count < 20)
+                    {
+                        problems.Add($"{where}: {diagnostic}");
+                    }
+                }
+
+                if (graph.Elements.Count != graph.Counts.Elements &&
+                    !graph.Diagnostics.Any(diagnostic => diagnostic.StartsWith("flg_missing_uid", StringComparison.Ordinal) ||
+                        diagnostic.StartsWith("flg_duplicate_uid", StringComparison.Ordinal)))
+                {
+                    problems.Add($"{where}: built {graph.Elements.Count} element(s) but counted {graph.Counts.Elements}");
+                }
+
+                if (graph.Counts.Negated != rawNegated)
+                {
+                    problems.Add($"{where}: counted {graph.Counts.Negated} negated pin(s) but the XML has {rawNegated}");
+                }
+            }
+        }
+
+        if (problems.Count > 0)
+        {
+            foreach (string problem in problems)
+            {
+                Console.WriteLine($"  [problem] {problem}");
+            }
+
+            Console.WriteLine($"[FAIL] LAD element graph ({label}): {problems.Count} problem(s) over {networks} network(s)");
+            return 1;
+        }
+
+        if (networks == 0)
+        {
+            Console.WriteLine($"[skip] LAD element graph ({label}): no FlgNet network under {root}");
+            return 0;
+        }
+
+        Console.WriteLine(
+            $"[ok] LAD element graph ({label}): networks={networks} elements={elements} " +
+            $"wires={wires} negated={negated} withBox={withBox}");
+        Console.WriteLine(
+            $"[ok] rung text ({label}): {withLadderText}/{reduced} structured network(s) render a rung view");
+        Console.WriteLine(
+            $"[ok] rung reducer ({label}): structured={reduced} unstructured={unreduced} coils={coils}" +
+            (unreducedReasons.Count > 0
+                ? " reasons=" + string.Join(",", unreducedReasons.Select(pair => $"{pair.Key}:{pair.Value}"))
+                : string.Empty));
+        return 0;
     }
 
     private static int CheckSqliteRoundTrip()
@@ -226,6 +1052,54 @@ internal static class SelfTest
             }
 
             Console.WriteLine($"[ok] LAD logic: {ladWithLogic}/{lad} LAD network(s) carry translated logic");
+
+            // Phase 4 of docs/lad-understanding-plan.md: the rung view has to reach the database,
+            // not merely be computable in memory. The first end-to-end check of this was a manual
+            // ingest+query; a regression that stopped storing ladderText would have left every other
+            // check green, so it is asserted here.
+            var ladderQuery = Program.Execute(
+                "self-test",
+                OperationCatalog.Query,
+                new JsonObject
+                {
+                    ["dbPath"] = dbPath,
+                    ["sql"] =
+                        "SELECT " +
+                        "SUM(CASE WHEN language = 'LAD' THEN 1 ELSE 0 END) AS lad, " +
+                        "SUM(CASE WHEN EXISTS (SELECT 1 FROM graph_node_properties p " +
+                        "  WHERE p.node_id = knowledge_networks.network_id AND p.name = 'ladderText') " +
+                        "  THEN 1 ELSE 0 END) AS with_ladder " +
+                        "FROM knowledge_networks;",
+                },
+                NullProgressSink.Instance);
+
+            var ladderError = DescribeError(ladderQuery);
+            if (ladderError is not null)
+            {
+                Console.WriteLine($"[FAIL] ladder text: {ladderError}");
+                return 1;
+            }
+
+            var ladderRow = (ladderQuery["data"] as JsonObject)?["rows"] as JsonArray;
+            var ladderFirst = ladderRow is { Count: > 0 } ? ladderRow[0] as JsonArray : null;
+            var ladNetworks = ladderFirst?[0]?.GetValue<int>() ?? 0;
+            var withLadder = ladderFirst?[1]?.GetValue<int>() ?? 0;
+            if (ladNetworks > 0 && withLadder == 0)
+            {
+                Console.WriteLine(
+                    $"[FAIL] ladder text: {ladNetworks} LAD network(s) but none carries a stored rung view — " +
+                    "LadderText is not reaching the property store");
+                return 1;
+            }
+
+            // The gap is expected: a LAD-labelled network with no FlgNet source (an empty or
+            // comment-only network) has nothing to draw, and a network with neither a coil nor an
+            // open end renders nothing. The guard above is about the view not reaching the store at
+            // all, which would zero the numerator.
+            int withoutView = ladNetworks - withLadder;
+            Console.WriteLine(
+                $"[ok] ladder text: {withLadder}/{ladNetworks} LAD network(s) carry a stored rung view" +
+                (withoutView > 0 ? $" ({withoutView} have no FlgNet source, or no coil and no open end)" : string.Empty));
 
             // The read-only guard must refuse a write even though the caller is the
             // engine itself: it is the backstop, not a convenience.

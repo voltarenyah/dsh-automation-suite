@@ -505,7 +505,12 @@ function networkTool(dependencies: DrilldownDependencies): ToolDefinition {
     'Call it when the block and the 1-based index are already known (knowledge_block lists them); do not list a whole ' +
     'block first when the index is known. The logic is returned in chunks: when the reply says it has more, call again ' +
     'with the returned nextOffset until hasMore is false — never treat a partial chunk as the whole network. Fails with ' +
-    'BLOCK_NOT_FOUND or NETWORK_NOT_FOUND.',
+    'BLOCK_NOT_FOUND or NETWORK_NOT_FOUND. PASS view=\'ladder\' FOR QUESTIONS ABOUT LOGIC: it returns one line per path ' +
+    'to each coil, so several lines for one coil mean the conditions are alternatives (OR) and AND inside a line means ' +
+    'series. Coils read (=) assign, (S) set, (R) reset, (/)(=) inverted; a line marked "-- (no coil)" ends without ' +
+    'writing. The rung view does not see inside boxes (Move, comparisons, timers, calls): their condition lives in their ' +
+    'own network. When read/write timing matters, follow up with knowledge_variable_usage, which states whether a read ' +
+    'sees this scan\'s value or the previous one. The reading guide is docs/LAD-READING.md in this package.',
   parameters: {
     block: {
       type: 'string',
@@ -524,6 +529,16 @@ function networkTool(dependencies: DrilldownDependencies): ToolDefinition {
     max_chars: {
       type: 'integer',
       description: `Characters of logic to return (default ${DEFAULT_LOGIC_CHARS}, hard maximum 6000).`,
+    },
+    view: {
+      type: 'string',
+      enum: ['logic', 'ladder'],
+      description:
+        "How to present the network. 'logic' (default) is the translated SCL-like statements. 'ladder' is the rung " +
+        'view derived from the network topology: one line per path to a coil, showing the conditions that must hold ' +
+        'and whether the coil sets, resets or assigns. Prefer ladder when the question is about which combination of ' +
+        'contacts reaches a coil; prefer logic when it is about data flow. Falls back to logic when the network has ' +
+        'no rung view (SCL regions, or a database built before the view existed).',
     },
     db_path: DB_PATH_PARAMETER,
   },
@@ -579,7 +594,9 @@ function networkTool(dependencies: DrilldownDependencies): ToolDefinition {
           const segmentKind = textCell(row, 9)
           const tiaNetworkIndex = intCell(row, 10)
           const enclosingControl = textCell(row, 11)
+          const ladderText = textCell(row, 12)
           const isRegion = (segmentKind ?? '').toLowerCase() === 'region'
+          const wantsLadder = args.view === 'ladder' && ladderText !== null && ladderText.trim().length > 0
 
           const accessResult = await runQuery(dependencies, dbPath, networkAccessStatement(networkId, HARD_ROWS + 1), HARD_ROWS + 1, exec.signal)
           if (refused(accessResult)) return localFailure(tool, accessResult.code, accessResult.message, accessResult.remediation)
@@ -594,6 +611,7 @@ function networkTool(dependencies: DrilldownDependencies): ToolDefinition {
 
           const maxChars = clampChars(args.max_chars)
           const chunk = chunkLogic(logic, args.offset ?? 0, maxChars)
+          const ladderChunk = wantsLadder ? chunkLogic(ladderText, args.offset ?? 0, maxChars) : null
 
           const lead = [
             `Database: ${dbPath}`,
@@ -611,24 +629,38 @@ function networkTool(dependencies: DrilldownDependencies): ToolDefinition {
               : []),
             `Writes (${writes.length}): ${summarizeNames(writes)}`,
             `Reads (${reads.length}): ${summarizeNames(reads)}`,
-            `Logic: characters ${chunk.offset}–${chunk.offset + chunk.text.length} of ${renderCount(chunk.totalChars)}`,
+            ladderChunk === null
+              ? `Logic: characters ${chunk.offset}–${chunk.offset + chunk.text.length} of ${renderCount(chunk.totalChars)}`
+              : `Rungs: characters ${ladderChunk.offset}–${ladderChunk.offset + ladderChunk.text.length} of ${renderCount(ladderChunk.totalChars)}`,
+            ...(args.view === 'ladder' && !wantsLadder
+              ? ['Ladder view: not available for this network (an SCL region, or a database built before the rung view existed); showing translated logic.']
+              : []),
           ]
           const fitted = fitDetails(lead, LEAD_CHARS)
           const details = [...fitted.lines]
           if (fitted.omitted > 0) details.push(`… ${fitted.omitted} more line(s) not shown`)
-          details.push(chunk.text.length === 0 ? 'Logic: (empty)' : chunk.text)
+          if (ladderChunk === null) {
+            details.push(chunk.text.length === 0 ? 'Logic: (empty)' : chunk.text)
+          } else {
+            // One line per path: several lines for the same coil are alternatives (OR), which is how
+            // a parallel branch reads.
+            details.push('Rungs (one line per path; several lines for one coil are alternatives):')
+            details.push(ladderChunk.text.length === 0 ? 'Rungs: (empty)' : ladderChunk.text)
+          }
           if (commentedOut && commentedLogic !== null) {
             const commented = fitDetails(commentedLogic.split('\n').map((line) => `  ${line}`), AUX_CHARS)
             details.push('Commented-out source (kept for review, NOT executed):')
             details.push(...commented.lines)
             if (commented.omitted > 0) details.push(`  … ${commented.omitted} more commented line(s) in data.commentedSource`)
           }
-          if (chunk.hasMore) {
+          const activeChunk = ladderChunk ?? chunk
+          if (activeChunk.hasMore) {
             // A machine-readable next action, so the reply is not "read the last
             // line of the detail list" but an instruction the model can copy.
             details.push(
               `NEXT: knowledge_network(block=${JSON.stringify(resolved.name)}, index=${args.index}, ` +
-                `offset=${chunk.nextOffset}, max_chars=${maxChars})`,
+                (ladderChunk === null ? '' : "view='ladder', ") +
+                `offset=${activeChunk.nextOffset}, max_chars=${maxChars})`,
             )
           }
 
@@ -640,9 +672,10 @@ function networkTool(dependencies: DrilldownDependencies): ToolDefinition {
             commentedOut
               ? `${label}: no executable logic — the source is commented out.`
               : `${label}: ${writes.length} write(s), ${reads.length} read(s)` +
-                (chunk.hasMore
-                  ? `, PARTIAL ${chunk.offset}–${chunk.offset + chunk.text.length} of ${renderCount(chunk.totalChars)} logic char(s).`
-                  : `, ${renderCount(chunk.totalChars)} logic char(s).`),
+                (activeChunk.hasMore
+                  ? `, PARTIAL ${activeChunk.offset}–${activeChunk.offset + activeChunk.text.length} of ` +
+                    `${renderCount(activeChunk.totalChars)} ${ladderChunk === null ? 'logic' : 'rung'} char(s).`
+                  : `, ${renderCount(activeChunk.totalChars)} ${ladderChunk === null ? 'logic' : 'rung'} char(s).`),
             details,
             {
               dbPath,
@@ -688,6 +721,83 @@ function networkTool(dependencies: DrilldownDependencies): ToolDefinition {
 
 const VARIABLE_TOOL = 'knowledge_variable_usage'
 
+/** `3, 5, 12` — a compact index list for the scan-order notes. */
+function indexList(values: readonly number[]): string {
+  return values.map((value) => String(value)).join(', ')
+}
+
+/**
+ * What the scan order implies for one variable, per block.
+ *
+ * A PLC runs a block's networks top to bottom, once per scan, so network order decides whether a
+ * read sees this scan's value or the previous scan's. That is the single fact readers get wrong
+ * most often when they look at a write and a read in isolation, and it cannot be recovered from
+ * either site alone — only from their order. Cross-block order needs the call graph, which this
+ * data set does not resolve, so it is stated as unresolved rather than guessed.
+ */
+function scanOrderNotes(sites: Iterable<{ block: string; index: number | null; directions: Set<string> }>): string[] {
+  const byBlock = new Map<string, { writes: number[]; reads: number[] }>()
+  for (const site of sites) {
+    if (site.index === null) continue
+    const entry = byBlock.get(site.block) ?? { writes: [], reads: [] }
+    if (site.directions.has('write')) entry.writes.push(site.index)
+    if (site.directions.has('read')) entry.reads.push(site.index)
+    byBlock.set(site.block, entry)
+  }
+
+  const notes: string[] = []
+  for (const [block, entry] of [...byBlock.entries()].sort((left, right) => left[0].localeCompare(right[0], 'en'))) {
+    const writes = [...new Set(entry.writes)].sort((left, right) => left - right)
+    const reads = [...new Set(entry.reads)].sort((left, right) => left - right)
+
+    if (writes.length === 0) {
+      if (reads.length > 0) {
+        notes.push(
+          `${block}: read at ${indexList(reads)} but never written in this database — the value comes from elsewhere ` +
+            '(HMI, hardware, or a block that is not in this database).',
+        )
+      }
+      continue
+    }
+
+    if (writes.length > 1) {
+      notes.push(`${block}: written at ${indexList(writes)} — the later network in a scan wins.`)
+    }
+
+    for (const read of reads) {
+      if (writes.includes(read)) {
+        notes.push(
+          `${block}: read and written in the same network ${read} — the read sees the value from before this network's ` +
+            'write unless a Set/Reset coil on the same operand makes it order-dependent inside the network.',
+        )
+        continue
+      }
+
+      const before = writes.filter((write) => write < read)
+      if (before.length > 0) {
+        notes.push(`${block}: read at ${read} runs after write at ${indexList(before)} — same scan, it sees the new value.`)
+        continue
+      }
+
+      const after = writes.filter((write) => write > read)
+      if (after.length > 0) {
+        notes.push(
+          `${block}: read at ${read} runs before write at ${indexList(after)} — it sees the PREVIOUS scan's value.`,
+        )
+      }
+    }
+  }
+
+  if (byBlock.size > 1) {
+    notes.push(
+      `Sites span ${byBlock.size} blocks: cross-block order follows the call graph and is not resolved here — ` +
+        'check which block calls which before assuming one runs first.',
+    )
+  }
+
+  return notes
+}
+
 function variableTool(dependencies: DrilldownDependencies): ToolDefinition {
   return defineTool({
   name: VARIABLE_TOOL,
@@ -696,7 +806,9 @@ function variableTool(dependencies: DrilldownDependencies): ToolDefinition {
     'is authoritative) plus the READS/WRITES graph edges, each labeled read, write or mention with its block and network ' +
     'index. Prefer it over chaining search + query + network for "where is X read/written" or "how is X processed" ' +
     'questions. Pass the full dotted path (for example \'Cav_A.Cavity.CAB\') or a leaf name; the leaf name also matches ' +
-    'dotted paths that end in it. Fails with VARIABLE_NOT_FOUND when the database knows no such variable.',
+    'dotted paths that end in it. It also states what the scan order implies: whether a read sees this scan\'s value or ' +
+    'the previous scan\'s, which write wins when several do, and when nothing in this database writes the variable. ' +
+    'Fails with VARIABLE_NOT_FOUND when the database knows no such variable.',
   parameters: {
     variable: {
       type: 'string',
@@ -834,6 +946,16 @@ function variableTool(dependencies: DrilldownDependencies): ToolDefinition {
           }
           if (mentions === 0) {
             details.push('No network text mentions this name; the read/write rows come from graph edges only.')
+          }
+
+          const scanNotes = scanOrderNotes(sites.values())
+          if (scanNotes.length > 0) {
+            const scanFitted = fitDetails(
+              ['Scan order (a block runs its networks top to bottom once per scan):', ...scanNotes.map((note) => `  ${note}`)],
+              AUX_CHARS,
+            )
+            details.push(...scanFitted.lines)
+            if (scanFitted.omitted > 0) details.push(`  … ${scanFitted.omitted} more scan note(s) not shown.`)
           }
 
           const warnings: string[] = []

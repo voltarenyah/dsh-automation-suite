@@ -148,6 +148,24 @@ sidecar（否则 `D:\exports\PLC_1` 会在盘符根目录造一个 `.dsh/`），
 （`engine_not_found` / `engine_handshake_timeout` / `engine_timeout` / `engine_exited` /
 `engine_protocol_mismatch` / `engine_spawn_failed` / `engine_write_failed` / `engine_cancelled`）。
 
+## 2.1.1 读 LAD：阶梯视图与扫描时序
+
+LAD 的 `logicStatements` 是"这段逻辑算出什么"的抽取物，串并联结构在抽取时被压平。要回答
+"什么条件让这个线圈动作"，用阶梯视图；要回答"这个值什么时候是新的"，用扫描时序。
+
+- `knowledge_network(view='ladder')`：每条**路径一行**，同一线圈多行 = 这些条件互为或；行内 `AND` = 串联；
+  `NOT x` = 常闭；`(=)` 赋值、`(S)` 置位、`(R)` 复位、`(/)(=)` 取反线圈；`-- (no coil)` = 该路径不通向线圈。
+  盒指令（`Move`、比较、计时器、`Call`）以方括号出现（`[Eq]`）：它的条件在**它自己的网络**里，不在此处展开。
+  无阶梯视图时（SCL 区域、旧库）自动回退到语句文本并说明原因。
+- `knowledge_variable_usage` 的 `Scan order` 段：同一块内网络自上而下执行一次，所以能直接说出
+  "读到的是本拍新值 / 上一拍的值"、"多处写入时谁生效"、"这个库里根本没人写它"。
+  跨块顺序依赖调用链，**明确标注未解析**，不猜。
+
+数据来源：阶梯文本在 ingest 时由引擎从**网络自身拓扑**算出，存为 network 节点属性 `ladderText`；
+与既有 `logicStatements` 的一致性由引擎自检的等价校验保证（reference 工程 1323 个纯布尔线圈零分歧）。
+读法指南见 [`docs/LAD-READING.md`](docs/LAD-READING.md)，规则实测记录见
+[`docs/research/tia-lad-structure-rules.md`](../../docs/research/tia-lad-structure-rules.md)。
+
 ## 2.2 两行与 `includeIngest` 开关
 
 DSH 按**声明作用域**解析工具可见性：一行插件注册的工具会落在宿主（全局）层，被**包括子 agent 在内**

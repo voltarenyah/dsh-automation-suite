@@ -279,6 +279,27 @@ public static class ProgramBlockLogicYamlWriter
             "Unsupported network language or missing FlgNet source.");
     }
 
+    /// <summary>
+    /// The SCL-like statements of one CompileUnit's network.
+    /// </summary>
+    /// <remarks>
+    /// Exposed for the phase-3 equivalence check (docs/lad-understanding-plan.md): the rung reducer
+    /// and this translator are independent implementations of the same network, so evaluating both
+    /// on the same inputs is a real cross-check rather than a restatement of one algorithm.
+    /// </remarks>
+    internal static IReadOnlyList<string> TranslateStatementsOf(XElement compileUnit)
+    {
+        if (compileUnit == null)
+        {
+            throw new ArgumentNullException(nameof(compileUnit));
+        }
+
+        var flgNet = compileUnit.Descendants().FirstOrDefault(element => element.Name.LocalName == "FlgNet");
+        return flgNet == null
+            ? Array.Empty<string>()
+            : TranslateFlgNet(flgNet, 0, "equivalence", string.Empty, "LAD").Statements;
+    }
+
     private static LogicNetwork TranslateFlgNet(
         XElement flgNet,
         int networkIndex,
@@ -409,7 +430,7 @@ public static class ProgramBlockLogicYamlWriter
         return MatchesAny(partName, "CoilTON", "CoilTOF", "CoilTP", "CoilTONR", "PtCoil", "ResetIECTimerCoil");
     }
 
-    private static bool MatchesAny(string value, params string[] candidates)
+    internal static bool MatchesAny(string value, params string[] candidates)
     {
         return candidates.Any(candidate => string.Equals(value, candidate, StringComparison.OrdinalIgnoreCase));
     }
@@ -681,7 +702,10 @@ public static class ProgramBlockLogicYamlWriter
             ?? string.Empty;
     }
 
-    private sealed class FlgNetContext
+    // internal (not private) since 2026-11-27: FlgNetworkGraph reuses GetUid/GetAccessValue so
+    // the element graph and the statement translator read symbols through one implementation.
+    // See docs/lad-understanding-plan.md phase 1.
+    internal sealed class FlgNetContext
     {
         private readonly Dictionary<PartPin, PartPin> _inputSources;
         private readonly Dictionary<PartPin, string> _pinAccesses;
@@ -1659,7 +1683,7 @@ public static class ProgramBlockLogicYamlWriter
 
         // Same names as IsInputPin but without its default-true fallthrough, so pins of
         // unlisted instructions land on PinRole.Unknown instead of being forced to input.
-        private static bool IsExplicitInputPin(string pinName)
+        internal static bool IsExplicitInputPin(string pinName)
         {
             if (pinName.StartsWith("in", StringComparison.OrdinalIgnoreCase))
             {
@@ -1712,7 +1736,7 @@ public static class ProgramBlockLogicYamlWriter
                 "K");
         }
 
-        private static bool IsInputPin(string pinName)
+        internal static bool IsInputPin(string pinName)
         {
             if (pinName.StartsWith("in", StringComparison.OrdinalIgnoreCase))
             {
@@ -1770,7 +1794,7 @@ public static class ProgramBlockLogicYamlWriter
             return !IsOutputPin(pinName) && !MatchesAny(pinName, "operand", "bit");
         }
 
-        private static bool IsOutputPin(string pinName)
+        internal static bool IsOutputPin(string pinName)
         {
             return IsMoveOutputPin(pinName) ||
                 MatchesAny(pinName, "eno", "q", "Q", "ET", "CV", "QU", "QD", "RET_VAL", "STATUS", "ERROR", "BUSY");
@@ -2167,7 +2191,7 @@ public static class ProgramBlockLogicYamlWriter
             return components.Length == 0 ? string.Empty : string.Join(".", components);
         }
 
-        private static string GetAccessValue(XElement access)
+        internal static string GetAccessValue(XElement access)
         {
             var symbol = access
                 .Descendants()
@@ -2252,13 +2276,13 @@ public static class ProgramBlockLogicYamlWriter
             return value;
         }
 
-        private static string GetUid(XElement element)
+        internal static string GetUid(XElement element)
         {
             return ((string?)element.Attribute("UId"))?.Trim() ?? string.Empty;
         }
     }
 
-    private sealed class LogicBlock
+    internal sealed class LogicBlock
     {
         public LogicBlock(string name, string kind, string sourceFile, string programmingLanguage, IReadOnlyList<LogicNetwork> networks)
         {
@@ -2280,7 +2304,7 @@ public static class ProgramBlockLogicYamlWriter
         public IReadOnlyList<LogicNetwork> Networks { get; }
     }
 
-    private sealed class LogicNetwork
+    internal sealed class LogicNetwork
     {
         public LogicNetwork(
             int networkIndex,
@@ -2348,7 +2372,7 @@ public static class ProgramBlockLogicYamlWriter
         }
     }
 
-    private sealed class PartNode
+    internal sealed class PartNode
     {
         private readonly HashSet<string> _negatedPins;
 
@@ -2378,7 +2402,7 @@ public static class ProgramBlockLogicYamlWriter
         }
     }
 
-    private sealed class DirectAssignment
+    internal sealed class DirectAssignment
     {
         public DirectAssignment(PartPin source, string target, int order)
         {
@@ -2394,7 +2418,7 @@ public static class ProgramBlockLogicYamlWriter
         public int Order { get; }
     }
 
-    private sealed class AccessNode
+    internal sealed class AccessNode
     {
         public AccessNode(string uid, string value, string scope)
         {
@@ -2410,7 +2434,7 @@ public static class ProgramBlockLogicYamlWriter
         public string Scope { get; }
     }
 
-    private sealed class CallNode
+    internal sealed class CallNode
     {
         public CallNode(string uid, string name, int order, IReadOnlyList<CallParameter> parameters)
         {
@@ -2429,7 +2453,7 @@ public static class ProgramBlockLogicYamlWriter
         public IReadOnlyList<CallParameter> Parameters { get; }
     }
 
-    private sealed class CallParameter
+    internal sealed class CallParameter
     {
         public CallParameter(string name, string section)
         {
@@ -2442,7 +2466,7 @@ public static class ProgramBlockLogicYamlWriter
         public string Section { get; }
     }
 
-    private readonly struct PartPin : IEquatable<PartPin>
+    internal readonly struct PartPin : IEquatable<PartPin>
     {
         public PartPin(string partUid, string pinName)
         {
