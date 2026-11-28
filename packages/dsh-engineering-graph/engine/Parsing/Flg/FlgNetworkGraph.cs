@@ -103,18 +103,24 @@ public sealed class FlgNetworkGraph
     private readonly Dictionary<string, Dictionary<string, FlgPinRole>> _declaredPins;
     private readonly Dictionary<(string ElementId, string PinName), List<FlgWire>> _incoming;
 
+    // Part or Call UId -> the UId of its Instance element. The instance owns pins of its own, so a
+    // box's operands can sit on either element (see BoxDescription).
+    private readonly Dictionary<string, string> _instanceOf;
+
     private FlgNetworkGraph(
         IReadOnlyList<FlgElement> elements,
         IReadOnlyList<FlgWire> wires,
         IReadOnlyList<string> diagnostics,
         FlgCounts counts,
-        Dictionary<string, Dictionary<string, FlgPinRole>> declaredPins)
+        Dictionary<string, Dictionary<string, FlgPinRole>> declaredPins,
+        Dictionary<string, string> instanceOf)
     {
         Elements = elements;
         Wires = wires;
         Diagnostics = diagnostics;
         Counts = counts;
         _declaredPins = declaredPins;
+        _instanceOf = instanceOf;
 
         _elements = new Dictionary<string, FlgElement>(StringComparer.OrdinalIgnoreCase);
         foreach (FlgElement element in elements)
@@ -215,6 +221,147 @@ public sealed class FlgNetworkGraph
         return Find(wire.SourceElementId)?.Operand;
     }
 
+    /// <summary>
+    /// True when the element is an edge contact, i.e. its <c>bit</c> pin is wired to a memory bit.
+    /// Plain contacts have only an <c>operand</c> pin.
+    /// </summary>
+    internal bool HasEdgeBit(string elementId) => PinSourceOperand(elementId, "bit") != null;
+
+    /// <summary>
+    /// <c>PContact(operand, mem=bit)</c> or <c>PBox(operand, mem=bit)</c>. The instruction name is
+    /// kept whole on purpose: TIA has PContact, NContact, PBox and NBox, and "P" alone would not say
+    /// which one owns the memory bit. The operand keeps its full symbol, indexes included (N4).
+    /// </summary>
+    internal string EdgeText(string elementId)
+    {
+        string? operand = OperandOf(elementId);
+        string? bit = PinSourceOperand(elementId, "bit");
+        string name = Find(elementId)?.Name ?? "Contact";
+
+        if (string.IsNullOrWhiteSpace(bit))
+        {
+            return string.IsNullOrWhiteSpace(operand) ? name : $"{name}({operand})";
+        }
+
+        return string.IsNullOrWhiteSpace(operand)
+            ? $"{name}(mem={bit})"
+            : $"{name}({operand}, mem={bit})";
+    }
+
+    /// <summary>The variable wired to one pin, or null when the pin is unconnected or not a variable.</summary>
+    private string? PinSourceOperand(string elementId, string pinName)
+    {
+        if (!TryGetInputSource(elementId, pinName, out FlgWire wire) || wire.SourceElementId == null)
+        {
+            return null;
+        }
+
+        FlgElement? source = Find(wire.SourceElementId);
+        return source is { Kind: FlgElementKind.Access } && !string.IsNullOrWhiteSpace(source.Operand)
+            ? source.Operand
+            : null;
+    }
+
+    /// <summary>
+    /// The text that tells one box from another on a rung (defect 3): the instruction name, the
+    /// instance for a timer or call (<c>TON S_IEC_Timer[0]</c>), then <c>in -> out</c> so the
+    /// direction is visible: <c>Move S_HMI_Control.TargetPos -> IO_MotionPara[9].TargetPos</c>.
+    /// A box fed by another box is not expanded — its operands live in its own network. The EN pin
+    /// is the enable, not data, so it is left out.
+    /// </summary>
+    internal string BoxDescription(string elementId)
+    {
+        FlgElement? element = Find(elementId);
+        if (element == null)
+        {
+            return elementId;
+        }
+
+        var owners = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { elementId };
+        string? instanceId = _instanceOf.TryGetValue(elementId, out string? found) ? found : null;
+        if (instanceId != null)
+        {
+            owners.Add(instanceId);
+        }
+
+        string? instanceText = element.Kind == FlgElementKind.Call
+            ? element.Operand
+            : instanceId == null ? null : Find(instanceId)?.Operand;
+
+        var inputs = new List<string>();
+        var outputs = new List<string>();
+        foreach (FlgWire wire in Wires)
+        {
+            if (wire.SourceElementId == null)
+            {
+                continue;
+            }
+
+            FlgElement? source = Find(wire.SourceElementId);
+            if (source is not { Kind: FlgElementKind.Access } || string.IsNullOrWhiteSpace(source.Operand))
+            {
+                continue;
+            }
+
+            // Direction comes from the PIN, not the wire: a box's out pin is the TARGET of a wire
+            // whose source is the variable being written (N3), and its in pin is the target of a
+            // wire whose source is the variable being read.
+            foreach (FlgWireTarget target in wire.Targets)
+            {
+                if (!owners.Contains(target.ElementId) ||
+                    string.Equals(target.PinName, "en", StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                if (RoleOf(target.ElementId, target.PinName) == FlgPinRole.Output)
+                {
+                    Add(outputs, source.Operand!);
+                }
+                else
+                {
+                    Add(inputs, source.Operand!);
+                }
+            }
+        }
+
+        string name = element.Name;
+        var parts = new List<string>();
+        if (!string.IsNullOrWhiteSpace(instanceText))
+        {
+            parts.Add(name + " " + instanceText);
+        }
+        else
+        {
+            parts.Add(name);
+        }
+
+        if (inputs.Count > 0 && outputs.Count > 0)
+        {
+            parts.Add(string.Join(", ", inputs) + " -> " + string.Join(", ", outputs));
+        }
+        else if (inputs.Count > 0)
+        {
+            parts.Add(string.Join(", ", inputs));
+        }
+        else if (outputs.Count > 0)
+        {
+            parts.Add("-> " + string.Join(", ", outputs));
+        }
+
+        // Not truncated: an operand cut off by a length cap is the loss the rung view exists to
+        // prevent (invariant I2). A long box makes a long line; it does not make a wrong one.
+        return string.Join(" ", parts);
+
+        static void Add(List<string> list, string value)
+        {
+            if (!list.Contains(value))
+            {
+                list.Add(value);
+            }
+        }
+    }
+
     /// <summary>Parses one <c>&lt;FlgNet&gt;</c> element. Never throws on odd input: problems land in Diagnostics.</summary>
     public static FlgNetworkGraph Build(XElement flgNet)
     {
@@ -288,7 +435,7 @@ public sealed class FlgNetworkGraph
                 instanceCount++;
                 kind = FlgElementKind.Instance;
                 name = "Instance";
-                operand = FirstComponentName(item.Element);
+                operand = InstanceText(item.Element);
 
                 // A call's instance is itself a pin owner ("in"/"en" land on it), and the same
                 // declarations apply to it.
@@ -448,12 +595,37 @@ public sealed class FlgNetworkGraph
             wires.Add(new FlgWire(wireId, sourceId, sourcePin, fromPowerRail, isOpen, targets));
         }
 
+        // A Part or Call owns its Instance element's pins. A call's instance sits under CallInfo, so
+        // the search is by descendant, not by child.
+        var instanceOf = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var item in ordered)
+        {
+            if (item.Element.Name.LocalName is not ("Part" or "Call"))
+            {
+                continue;
+            }
+
+            XElement? instanceElement = item.Element.Descendants().FirstOrDefault(element => element.Name.LocalName == "Instance");
+            if (instanceElement == null)
+            {
+                continue;
+            }
+
+            string ownerUid = ProgramBlockLogicYamlWriter.FlgNetContext.GetUid(item.Element);
+            string instanceUid = ProgramBlockLogicYamlWriter.FlgNetContext.GetUid(instanceElement);
+            if (ownerUid.Length > 0 && instanceUid.Length > 0)
+            {
+                instanceOf[ownerUid] = instanceUid;
+            }
+        }
+
         var graph = new FlgNetworkGraph(
             elements,
             wires,
             diagnostics,
             new FlgCounts(accessCount, partCount, callCount, instanceCount, wireCount, negatedCount),
-            declaredPins);
+            declaredPins,
+            instanceOf);
 
         // A pin fed by two wires is not a legal LAD connection; TIA would have rejected the
         // network. Report it so the reducer never has to guess between two sources.
@@ -508,18 +680,17 @@ public sealed class FlgNetworkGraph
     private static string? NameOfChildInstance(XElement call)
     {
         XElement? instance = call.Descendants().FirstOrDefault(element => element.Name.LocalName == "Instance");
-        return instance == null ? null : FirstComponentName(instance);
+        return instance == null ? null : InstanceText(instance);
     }
 
-    private static string? FirstComponentName(XElement element)
+    /// <summary>
+    /// The full instance name with array indexes and every component segment (defect 1 and N2).
+    /// Uses the same function as the logic text, so the two views cannot disagree about a name.
+    /// </summary>
+    private static string? InstanceText(XElement element)
     {
-        string? name = element
-            .Descendants()
-            .FirstOrDefault(child => child.Name.LocalName == "Component")
-            ?.Attribute("Name")
-            ?.Value
-            ?.Trim();
-        return string.IsNullOrWhiteSpace(name) ? null : name;
+        string text = ProgramBlockLogicYamlWriter.FlgNetContext.FormatInstance(element);
+        return string.IsNullOrWhiteSpace(text) ? null : text;
     }
 
     private static FlgElementKind ClassifyPart(string partName)

@@ -919,15 +919,23 @@ public static class ProgramBlockLogicYamlWriter
             {
                 if (call.Parameters.Count == 0 || HasEnableInput(call.Uid))
                 {
-                    return BuildCallStatement(call.Uid, call.Name, string.Empty, notes);
+                    return BuildCallStatement(call.Uid, CalleeName(call), string.Empty, notes);
                 }
 
-                notes.Add($"Skipped call {call.Name} because no parameters could be resolved by symbol name.");
+                notes.Add($"Skipped call {CalleeName(call)} because no parameters could be resolved by symbol name.");
                 return string.Empty;
             }
 
-            return BuildCallStatement(call.Uid, call.Name, string.Join(", ", bindings), notes);
+            return BuildCallStatement(call.Uid, CalleeName(call), string.Join(", ", bindings), notes);
         }
+
+        /// <summary>
+        /// How a call is named in the logic text: the instance DB when the call runs on one
+        /// (<c>Switch_FrontLightCurtain(…)</c>), otherwise the block type (<c>058_PosSpdControl(…)</c>).
+        /// Before N1 the instance was dropped, so two calls of one block read identically.
+        /// </summary>
+        private static string CalleeName(CallNode call) =>
+            string.IsNullOrWhiteSpace(call.InstanceName) ? call.Name : call.InstanceName;
 
         public string TryBuildLatchCoilStatement(PartNode coil, List<string> notes)
         {
@@ -1318,14 +1326,14 @@ public static class ProgramBlockLogicYamlWriter
             return statements;
         }
 
-        private string BuildCallStatement(string callUid, string callName, string bindings, List<string> notes)
+        private string BuildCallStatement(string callUid, string calleeName, string bindings, List<string> notes)
         {
             var enable = EvaluateInput(callUid, "en", notes);
             var prefix = string.IsNullOrWhiteSpace(enable) || string.Equals(enable, "TRUE", StringComparison.OrdinalIgnoreCase)
                 ? string.Empty
                 : $"IF {enable} THEN ";
             var suffix = string.IsNullOrWhiteSpace(prefix) ? string.Empty : " END_IF;";
-            return $"{prefix}{callName}({bindings});{suffix}";
+            return $"{prefix}{calleeName}({bindings});{suffix}";
         }
 
         private bool HasEnableInput(string partUid)
@@ -2137,10 +2145,11 @@ public static class ProgramBlockLogicYamlWriter
         private static CallNode CreateCallNode(XElement call, int order)
         {
             var callInfo = call.Elements().FirstOrDefault(element => element.Name.LocalName == "CallInfo");
-            var name = ((string?)callInfo?.Attribute("Name"))?.Trim() ?? string.Empty;
-            if (string.IsNullOrWhiteSpace(name) && callInfo != null)
+            var typeName = ((string?)callInfo?.Attribute("Name"))?.Trim() ?? string.Empty;
+            var instanceName = callInfo == null ? string.Empty : GetInstanceDb(callInfo);
+            if (string.IsNullOrWhiteSpace(typeName))
             {
-                name = GetInstanceDb(callInfo);
+                typeName = instanceName;
             }
 
             var parameters = callInfo?
@@ -2152,43 +2161,41 @@ public static class ProgramBlockLogicYamlWriter
                 .Where(parameter => !string.IsNullOrWhiteSpace(parameter.Name))
                 .ToArray() ?? Array.Empty<CallParameter>();
 
-            return new CallNode(GetUid(call), name, order, parameters);
+            return new CallNode(GetUid(call), typeName, order, parameters, instanceName);
         }
 
         private static string GetInstanceDb(XElement callInfo)
         {
             var instance = callInfo.Elements().FirstOrDefault(element => element.Name.LocalName == "Instance");
-            if (instance == null)
-            {
-                return string.Empty;
-            }
-
-            var components = instance
-                .Descendants()
-                .Where(element => element.Name.LocalName == "Component")
-                .Select(SclTextRenderer.FormatComponentName)
-                .Where(value => !string.IsNullOrWhiteSpace(value))
-                .ToArray();
-
-            return components.Length == 0 ? string.Empty : string.Join(".", components);
+            return instance == null ? string.Empty : FormatInstance(instance);
         }
 
         private static string GetInstanceName(XElement part)
         {
             var instance = part.Elements().FirstOrDefault(element => element.Name.LocalName == "Instance");
-            if (instance == null)
+            return instance == null ? string.Empty : FormatInstance(instance);
+        }
+
+        /// <summary>
+        /// The full name of a block instance, with every array index: <c>S_IEC_Timer[0]</c>, or
+        /// <c>PC.T_Acces_Request</c> when the instance has several sibling components (21 of 1570
+        /// instances in the reference project). This is the single implementation shared by the
+        /// logic text and the ladder view (docs/reviews/2026-11-28-ladder-projection-defects.md,
+        /// defect 1 and N2). Two copies of it diverged once already.
+        /// </summary>
+        internal static string FormatInstance(XElement instance) => FormatComponentChain(instance);
+
+        private static string FormatComponentChain(XElement parent)
+        {
+            var segments = new List<string>();
+            foreach (var component in parent.Elements().Where(element => element.Name.LocalName == "Component"))
             {
-                return string.Empty;
+                var segment = FormatSymbolComponent(component);
+                var rest = FormatComponentChain(component);
+                segments.Add(rest.Length == 0 ? segment : segment + "." + rest);
             }
 
-            var components = instance
-                .Descendants()
-                .Where(element => element.Name.LocalName == "Component")
-                .Select(SclTextRenderer.FormatComponentName)
-                .Where(value => !string.IsNullOrWhiteSpace(value))
-                .ToArray();
-
-            return components.Length == 0 ? string.Empty : string.Join(".", components);
+            return string.Join(".", segments);
         }
 
         internal static string GetAccessValue(XElement access)
@@ -2436,17 +2443,27 @@ public static class ProgramBlockLogicYamlWriter
 
     internal sealed class CallNode
     {
-        public CallNode(string uid, string name, int order, IReadOnlyList<CallParameter> parameters)
+        public CallNode(
+            string uid,
+            string name,
+            int order,
+            IReadOnlyList<CallParameter> parameters,
+            string instanceName = "")
         {
             Uid = uid;
             Name = name;
             Order = order;
             Parameters = parameters;
+            InstanceName = instanceName;
         }
 
         public string Uid { get; }
 
+        /// <summary>The block type (<c>CallInfo/@Name</c>): what the call graph keys on.</summary>
         public string Name { get; }
+
+        /// <summary>The instance DB the call runs on, empty for a data-block call.</summary>
+        public string InstanceName { get; }
 
         public int Order { get; }
 

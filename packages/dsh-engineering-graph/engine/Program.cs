@@ -40,6 +40,8 @@ internal static class Program
                     return SelfTest.Run(args.Length > 1 ? args[1] : null);
                 case "--call":
                     return CallOnce(args);
+                case "--rung-invariants":
+                    return RungInvariants.RunCli(args.Length > 1 ? args[1] : null);
                 default:
                     Console.Error.WriteLine($"unknown argument '{args[0]}' (try --help)");
                     return 2;
@@ -90,6 +92,7 @@ internal static class Program
         Console.WriteLine("  EngineeringGraph.Engine                 serve the NDJSON protocol on stdio");
         Console.WriteLine("  EngineeringGraph.Engine --call <Op> [json]");
         Console.WriteLine("  EngineeringGraph.Engine --self-test [deviceDir]");
+        Console.WriteLine("  EngineeringGraph.Engine --rung-invariants <exportRoot>");
         Console.WriteLine("  EngineeringGraph.Engine --version | --help");
         Console.WriteLine();
         Console.WriteLine("Operations: " + string.Join(", ", OperationCatalog.All));

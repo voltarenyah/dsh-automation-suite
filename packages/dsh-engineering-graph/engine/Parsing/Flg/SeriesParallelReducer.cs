@@ -27,11 +27,17 @@ using System.Linq;
 namespace EngineeringGraph.Engine;
 
 /// <summary>One element on the way from the power rail to a terminal.</summary>
+/// <param name="Display">
+/// Text to show instead of the bare operand, for elements whose meaning is not just the operand
+/// (an edge contact also has a memory bit). Only the rendering uses it: the boolean expression
+/// keeps <paramref name="Operand"/>, so a display change cannot alter the equivalence check.
+/// </param>
 public sealed record RungStep(
     string ElementId,
     FlgElementKind Kind,
     string? Operand,
-    bool Negated);
+    bool Negated,
+    string? Display = null);
 
 /// <summary>One complete route from the power rail to a terminal (a coil, an open end, ...).</summary>
 public sealed record RungPath(
@@ -132,6 +138,12 @@ public sealed class RungModel
 
     public static string StepName(RungStep step)
     {
+        // A step that carries its own display text (an edge contact with its memory bit) uses it.
+        if (!string.IsNullOrWhiteSpace(step.Display))
+        {
+            return step.Display!;
+        }
+
         // A box or a call is opaque here: its condition lives in another network. Bracketing it
         // keeps it visibly different from a boolean operand — without the brackets a rendered
         // condition reads "A AND Eq AND B", which looks like a term but is not one.
@@ -275,28 +287,32 @@ public static class SeriesParallelReducer
                 element.Id,
                 element.Kind,
                 OperandFor(graph, element),
-                element.Negated));
+                element.Negated,
+                DisplayFor(graph, element)));
         }
 
         FlgWireTarget[] next = Outgoing(graph, element);
 
-        // Legal since M0/E1 (plain coil) and M0/E5 (reset coil): the rung continues past the coil.
-        // Record it, because such a coil writes but is not the terminal of the path it sits on.
-        if (next.Length > 0 && IsCoil(element.Kind))
+        // A coil writes the rung that reaches it, whether or not the rung continues past it. Legal
+        // since M0/E1 (plain coil) and M0/E5 (reset coil). Before defect 2 was fixed, a coil with
+        // elements after it produced no path of its own, so a chain of coils showed only its last
+        // coil (docs/reviews/2026-11-28-ladder-projection-defects.md).
+        if (IsCoil(element.Kind))
         {
-            notes.Add($"coil '{element.Id}' passes the rung on; the path terminates further right.");
+            results.Add(new RungPath(steps, element.Id, element.Kind, OperandFor(graph, element), false));
+            if (next.Length > 0)
+            {
+                notes.Add($"coil '{element.Id}' passes the rung on; the rung continues past it.");
+            }
+        }
+        else if (next.Length == 0)
+        {
+            // Terminal, not a coil: an open end (EN chain, alarm wiring).
+            results.Add(new RungPath(steps, element.Id, element.Kind, OperandFor(graph, element), true));
         }
 
         if (next.Length == 0)
         {
-            // Terminal. A coil here writes; anything else is an open end (EN chain, alarm wiring).
-            results.Add(new RungPath(
-                steps,
-                element.Id,
-                element.Kind,
-                OperandFor(graph, element),
-                IsCoil(element.Kind) ? false : true));
-
             visited.Remove(elementId);
             return;
         }
@@ -361,8 +377,25 @@ public static class SeriesParallelReducer
     /// </summary>
     private static string? OperandFor(FlgNetworkGraph graph, FlgElement element) =>
         element.Kind is FlgElementKind.Box or FlgElementKind.Call
-            ? element.Name
+            ? graph.BoxDescription(element.Id)
             : graph.OperandOf(element.Id);
+
+    /// <summary>
+    /// Elements whose meaning is more than their operand. An edge contact (PContact/NContact) and
+    /// an edge box (PBox/NBox) both carry a <c>bit</c> pin holding the edge memory bit, and that bit
+    /// is not the operand, so it would vanish from the rung. The instruction name is kept whole
+    /// rather than shortened to a <c>P</c>, because TIA has several edge instructions and a single
+    /// letter would not say which one wrote the memory bit.
+    /// </summary>
+    private static string? DisplayFor(FlgNetworkGraph graph, FlgElement element)
+    {
+        if (element.Kind is not (FlgElementKind.Contact or FlgElementKind.Box) || !graph.HasEdgeBit(element.Id))
+        {
+            return null;
+        }
+
+        return graph.EdgeText(element.Id);
+    }
 
     private static bool IsCoil(FlgElementKind kind) =>
         kind is FlgElementKind.Coil or FlgElementKind.SetCoil or FlgElementKind.ResetCoil;

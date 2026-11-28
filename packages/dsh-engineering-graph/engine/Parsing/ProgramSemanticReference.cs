@@ -858,37 +858,34 @@ public static class ProgramSemanticReferenceBuilder
         return GetInstanceDb(callInfo);
     }
 
+    /// <summary>
+    /// The instance DB a call runs on, with array indexes and every component segment.
+    /// Delegates to the one implementation the logic text and the ladder view share: this file
+    /// used to carry a third copy that dropped indexes and pulled in the components of the index
+    /// expression itself (docs/reviews/2026-11-28-ladder-projection-defects.md, defect 1).
+    /// </summary>
     private static string GetInstanceDb(XElement callInfo)
     {
         var instance = callInfo.Elements().FirstOrDefault(element => element.Name.LocalName == "Instance");
-        if (instance == null)
-        {
-            return string.Empty;
-        }
-
-        var components = instance
-            .Descendants()
-            .Where(element => element.Name.LocalName == "Component")
-            .Select(element => ((string?)element.Attribute("Name"))?.Trim())
-            .Where(value => !string.IsNullOrWhiteSpace(value))
-            .ToArray();
-
-        return components.Length == 0 ? string.Empty : string.Join(".", components);
+        return instance == null ? string.Empty : ProgramBlockLogicYamlWriter.FlgNetContext.FormatInstance(instance);
     }
 
+    /// <summary>
+    /// The symbol text behind an Access, with array indexes: <c>IO_MotionPara[9].PositionValid</c>.
+    /// Delegates to the one symbol renderer the logic text uses. Keeping the index is what makes
+    /// the ten elements of an array ten nodes instead of one: without it the reference graph
+    /// merged <c>IO_MotionPara[9].ExecuteMotion</c> into <c>IO_MotionPara.ExecuteMotion</c>, so
+    /// "who writes this element" answered for the whole array
+    /// (docs/reviews/2026-11-28-ladder-projection-defects.md, defect 1).
+    /// </summary>
     private static string GetSymbolName(XElement access)
     {
-        var components = access
+        // Only a Symbol is a variable reference; a constant or a label is not one, and the callers
+        // rely on an empty result to skip those.
+        bool hasSymbol = access
             .Descendants()
-            .Where(element => element.Name.LocalName == "Symbol")
-            .Take(1)
-            .Descendants()
-            .Where(element => element.Name.LocalName == "Component")
-            .Select(element => ((string?)element.Attribute("Name"))?.Trim())
-            .Where(value => !string.IsNullOrWhiteSpace(value))
-            .ToArray();
-
-        return components.Length == 0 ? string.Empty : string.Join(".", components);
+            .Any(element => element.Name.LocalName == "Symbol");
+        return hasSymbol ? ProgramBlockLogicYamlWriter.FlgNetContext.GetAccessValue(access) : string.Empty;
     }
 
     private static string GetUid(XElement element)

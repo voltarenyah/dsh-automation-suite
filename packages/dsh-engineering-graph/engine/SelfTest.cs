@@ -29,6 +29,7 @@ internal static class SelfTest
         failures += CheckFlgGraphDiagnostics();
         failures += CheckRungReducer();
         failures += CheckRungEquivalenceSynthetic();
+        failures += RungInvariants.SelfCheck();
 
         // The fixtures are copied next to the executable by the csproj (engine/bin/fixtures).
         // They are not part of the shipped build (package.json excludes engine/bin/fixtures),
@@ -1100,6 +1101,99 @@ internal static class SelfTest
             Console.WriteLine(
                 $"[ok] ladder text: {withLadder}/{ladNetworks} LAD network(s) carry a stored rung view" +
                 (withoutView > 0 ? $" ({withoutView} have no FlgNet source, or no coil and no open end)" : string.Empty));
+
+            // Acceptance item 7 of docs/reviews/2026-11-28-ladder-projection-defects.md: a target
+            // the access table calls WRITES must be visible as a written target in the rung text.
+            // Before defect 2 was fixed this disagreed, because a coil in the middle of a chain was
+            // written by the PLC but never rendered, and a reader had no way to tell which of the
+            // two views was lying.
+            var writeQuery = Program.Execute(
+                "self-test",
+                OperationCatalog.Query,
+                new JsonObject
+                {
+                    ["dbPath"] = dbPath,
+                    ["sql"] =
+                        "SELECT a.access, COUNT(*) AS total, " +
+                        "SUM(CASE WHEN EXISTS (SELECT 1 FROM graph_node_properties p " +
+                        "  WHERE p.node_id = n.network_id AND p.name = 'ladderText' " +
+                        "  AND instr(p.value, a.variable_name) > 0) THEN 1 ELSE 0 END) AS visible " +
+                        "FROM knowledge_network_accesses a " +
+                        "JOIN knowledge_networks n ON n.network_id = a.network_id " +
+                        "WHERE n.language = 'LAD' " +
+                        "GROUP BY a.access ORDER BY a.access;",
+                },
+                NullProgressSink.Instance);
+
+            var writeError = DescribeError(writeQuery);
+            if (writeError is not null)
+            {
+                Console.WriteLine($"[FAIL] rung targets: {writeError}");
+                return 1;
+            }
+
+            var writeRows = (writeQuery["data"] as JsonObject)?["rows"] as JsonArray ?? new JsonArray();
+            long writeTotal = 0;
+            long writeVisible = 0;
+            var invisibleExamples = new List<string>();
+            foreach (JsonNode? row in writeRows)
+            {
+                if (row is not JsonArray cells || cells.Count < 3)
+                {
+                    continue;
+                }
+
+                if (!string.Equals(cells[0]?.GetValue<string>(), "WRITES", StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                writeTotal = cells[1]?.GetValue<long>() ?? 0;
+                writeVisible = cells[2]?.GetValue<long>() ?? 0;
+            }
+
+            if (writeTotal > 0)
+            {
+                var missingQuery = Program.Execute(
+                    "self-test",
+                    OperationCatalog.Query,
+                    new JsonObject
+                    {
+                        ["dbPath"] = dbPath,
+                        ["sql"] =
+                            "SELECT a.variable_name FROM knowledge_network_accesses a " +
+                            "JOIN knowledge_networks n ON n.network_id = a.network_id " +
+                            "WHERE n.language = 'LAD' AND a.access = 'WRITES' " +
+                            "AND NOT EXISTS (SELECT 1 FROM graph_node_properties p " +
+                            "  WHERE p.node_id = n.network_id AND p.name = 'ladderText' " +
+                            "  AND instr(p.value, a.variable_name) > 0) " +
+                            "LIMIT 5;",
+                    },
+                    NullProgressSink.Instance);
+                var missingRows = (missingQuery["data"] as JsonObject)?["rows"] as JsonArray;
+                if (missingRows != null)
+                {
+                    invisibleExamples.AddRange(missingRows
+                        .OfType<JsonArray>()
+                        .Where(cells => cells.Count > 0)
+                        .Select(cells => cells[0]?.GetValue<string>() ?? string.Empty)
+                        .Where(name => name.Length > 0));
+                }
+            }
+
+            if (writeTotal > 0 && writeVisible < writeTotal)
+            {
+                Console.WriteLine(
+                    $"[FAIL] rung targets: {writeTotal - writeVisible}/{writeTotal} WRITES target(s) are absent " +
+                    "from their network's rung text" +
+                    (invisibleExamples.Count > 0 ? " — e.g. " + string.Join(", ", invisibleExamples) : string.Empty));
+                return 1;
+            }
+
+            if (writeTotal > 0)
+            {
+                Console.WriteLine($"[ok] rung targets: {writeVisible}/{writeTotal} WRITES target(s) appear in their rung text");
+            }
 
             // The read-only guard must refuse a write even though the caller is the
             // engine itself: it is the backstop, not a convenience.
