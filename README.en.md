@@ -404,8 +404,10 @@ so nothing needs to be compiled before installing.
 
 `scripts/start-env.ps1` turns "materialize the profile from the blueprint + install the plugins +
 start the service + open the browser with a token" into one command, and it **never touches your
-daily `~/.dsh`** (by default it uses its own `DSH_HOME=%USERPROFILE%\dsh-suite-env`; delete that
-directory to roll back completely):
+daily `~/.dsh`** (by default it uses its own
+`DSH_HOME=%USERPROFILE%\Documents\dsh-automation-suite-test`, kept strictly separate from the
+desktop release home `%USERPROFILE%\dsh-automation-suite-home`; delete that directory to roll back
+completely):
 
 ```powershell
 pwsh -NoProfile -File scripts\start-env.ps1
@@ -414,7 +416,7 @@ pwsh -NoProfile -File scripts\start-env.ps1
 It does four things: `pnpm -r build` → materialize the profile directory from the blueprint → link
 the local plugins into the profile by name (default `-Mode link`, which validates **the current
 working tree**; `-Mode pack` instead runs `pnpm pack` to build tarballs and validates **the real
-deliverables**) → start `dsh --profile dsh-automation-suite --port 3092`.
+deliverables**) → start `dsh --profile dsh-automation-suite --port 3095`.
 
 **Which plugins to deploy is not hard-coded in the script**: it reads the blueprint's
 `dsh.profile.bundles`, and any entry that can be matched under `packages/` by `package.json`'s `name`
@@ -429,17 +431,17 @@ pwsh -NoProfile -File scripts\start-env.ps1 -Restart              # stop an old 
 pwsh -NoProfile -File scripts\start-env.ps1 -Port 0               # random port
 pwsh -NoProfile -File scripts\start-env.ps1 -Mode pack            # validate real deliverables
 pwsh -NoProfile -File scripts\start-env.ps1 -DshHome C:\temp\e2e  # use a different isolated home
-pwsh -NoProfile -File scripts\start-env.ps1 -Reset -NoOpen        # delete and recreate first, and don't open a browser
+pwsh -NoProfile -File scripts\start-env.ps1 -Reset -NoOpen        # archive the old profile, recreate, and don't open a browser
 ```
 
 | Parameter | Default | Description |
 |---|---|---|
-| `-DshHome` | `%USERPROFILE%\dsh-suite-env` | isolated DSH_HOME; delete it to roll back |
+| `-DshHome` | `%USERPROFILE%\Documents\dsh-automation-suite-test` | isolated DSH_HOME; delete it to roll back |
 | `-Profile` | `dsh-automation-suite` | profile name, which also selects the blueprint |
-| `-Port` | `3092` | `0` = let the system pick a free port |
+| `-Port` | `3095` | `0` = let the system pick a free port |
 | `-Mode` | `link` | `link` validates the working tree / `pack` validates tarballs |
 | `-SkipBuild` | off | skip `pnpm -r build` |
-| `-Reset` | off | delete the profile directory and recreate it (asks for confirmation first) |
+| `-Reset` | off | rename the existing profile aside as a backup (no deletion), then recreate it (asks for confirmation first) |
 | `-Restart` | off | stop **DeepSeek Harness** if it occupies the port; if another process does, exit with an error instead of killing it |
 | `-NoOpen` | off | do not open a browser automatically |
 
@@ -493,12 +495,12 @@ and only shows folders you add inside this app.
 
 **Development and release builds coexist**: the development profile keeps the plain
 `dsh-automation-suite` name (`scripts/start-env.ps1` materializes it in the isolated
-`%USERPROFILE%\dsh-suite-env`), while each release gets its own versioned profile in
-`%USERPROFILE%\dsh-automation-suite-home`. Workspaces, sessions, settings, and credentials are fully
-separate, so both can run at once (`start.cmd` picks its own port). To keep one stable name and
-upgrade it in place, pass `-Profile dsh-automation-suite-release -Force`; the installer backs up
-that profile's `package.json` and `cordis.patch.yml` first. It always refuses to write through a
-junction/symlink.
+`%USERPROFILE%\Documents\dsh-automation-suite-test`), while each release gets its own versioned
+profile in `%USERPROFILE%\dsh-automation-suite-home`. Workspaces, sessions, settings, and
+credentials are fully separate, so both can run at once (`start.cmd` picks its own port). To keep
+one stable name and upgrade it in place, pass `-Profile dsh-automation-suite-release -Force`; the
+installer backs up that profile's `package.json` and `cordis.patch.yml` first. It always refuses to
+write through a junction/symlink.
 
 To generate the release directory (tarballs + profile + `install.cmd` / `start.cmd` + sha256
 manifest), maintainers run:
@@ -1025,9 +1027,9 @@ Every item below has a real accident record (see
   `Remove-Item -Force` (**without** `-Recurse`).
 - ✅ Clean build artifacts with `pnpm run clean:build`: it checks only `lib/` and `dist/`, and
   unlinks links instead of descending into them.
-- ✅ When using `-Reset` or deleting the isolated `DSH_HOME` by hand, you **must** use
-  `cmd /c rmdir /s /q`: it contains `link:` entries and pnpm junctions pointing at the repo and the
-  pnpm store, and following recursive deletion would destroy the targets.
+- ✅ `-Reset` now only renames the profile aside (no deletion); when deleting the isolated `DSH_HOME`
+  by hand you **must** use `cmd /c rmdir /s /q`: it contains `link:` entries and pnpm junctions
+  pointing at the repo and the pnpm store, and following recursive deletion would destroy the targets.
 - ✅ To relink the runtime, use `pnpm --filter <pkg> run link:runtime -- --force`: if the target is a
   link, it is only unlinked, never descended into.
 

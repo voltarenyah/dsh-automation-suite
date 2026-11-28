@@ -15,8 +15,11 @@
   所以新增插件只需在 packages\ 建目录并把包名写进蓝图的 bundles，本脚本无需改动。
 
 .PARAMETER DshHome
-  独立 DSH_HOME 的路径。默认 %USERPROFILE%\dsh-automation-suite-home（当前维护的那套，3082/3095 之外的
-  本地发行版环境；旧的 %USERPROFILE%\dsh-suite-env 已于 2026-11-04 删除）。
+  独立 DSH_HOME 的路径。默认 %USERPROFILE%\Documents\dsh-automation-suite-test（**仅供开发/测试**）。
+  它必须与桌面发布版的 home 分开：安装器把发布版 home 写在
+  %LOCALAPPDATA%\dsh-automation-suite\install.json 里（当前是 %USERPROFILE%\dsh-automation-suite-home），
+  本脚本会拒绝把 -DshHome 指到那个 home+profile，避免重写发布版的 profile。
+  旧的 %USERPROFILE%\dsh-suite-env 已于 2026-11-04 删除。
 
 .PARAMETER Profile
   profile 名，同时决定用哪个蓝图（profile\<名字>\）。默认 dsh-automation-suite。
@@ -33,7 +36,8 @@
   跳过 pnpm -r build。link 模式下构建产物 lib/ 是插件入口，一般不要跳。
 
 .PARAMETER Reset
-  先删掉现有的 profile 目录再按蓝图重建（会先请你确认）。
+  先把现有的 profile 目录改名归档（不删除），再按蓝图重建（会先请你确认）。归档目录形如
+  `<profile>.reset-<时间戳>`，确认不再需要后由你手动清理。
 
 .PARAMETER Restart
   若目标端口上已经跑着一个 DeepSeek Harness 实例，先停掉它再启动 —— 开发循环用这个：
@@ -49,7 +53,7 @@
 #>
 [CmdletBinding()]
 param(
-  [string]$DshHome = "$env:USERPROFILE\dsh-automation-suite-home",
+  [string]$DshHome = "$env:USERPROFILE\Documents\dsh-automation-suite-test",
   [string]$Profile = 'dsh-automation-suite',
   [int]$Port = 3095,
   [ValidateSet('link', 'pack')][string]$Mode = 'link',
@@ -73,6 +77,43 @@ $repo = Split-Path -Parent $PSScriptRoot
 $blueprint = Join-Path $repo "profile\$Profile"
 $profileDir = Join-Path $DshHome "profiles\$Profile"
 $manifest = Join-Path $profileDir 'package.json'
+
+<#
+  测试环境和桌面发布版**不能共用 home**。
+
+  安装器把发布版 profile 写进它 install.json 记录的 dshHome；本脚本会重写同一个
+  profile（link: 依赖、bundles、cordis.patch.yml）。2026-11-25 的真机验收就是因为
+  两者都指向 %USERPROFILE%\dsh-automation-suite-home，把桌面 0.2.6 的发布包换成了
+  仓库 link 安装（图谱引擎随之变成 framework-dependent 的 net10 开发版），用户侧
+  知识图谱刷新报 engine_exited。
+
+  这里按「home + profile 名」精确拦截，不是拦整个 home：同一个发布版 home 里换一个
+  profile 名仍然允许。
+#>
+$resolvedHome = [System.IO.Path]::GetFullPath($DshHome).TrimEnd('\')
+$releaseStates = @()
+foreach ($installRoot in @(
+    (Join-Path $env:LOCALAPPDATA 'dsh-automation-suite'),
+    (Join-Path $env:LOCALAPPDATA 'dsh-automation-suite-release')
+  )) {
+  $stateFile = Join-Path $installRoot 'install.json'
+  if (-not (Test-Path -LiteralPath $stateFile)) { continue }
+  try {
+    $state = Get-Content -LiteralPath $stateFile -Raw | ConvertFrom-Json
+    if ($state.dshHome) {
+      $releaseStates += [pscustomobject]@{
+        Home    = [System.IO.Path]::GetFullPath([string]$state.dshHome).TrimEnd('\')
+        Profile = [string]$state.profile
+      }
+    }
+  } catch { }
+}
+foreach ($release in $releaseStates) {
+  if (($release.Home -eq $resolvedHome) -and ($release.Profile -eq $Profile)) {
+    Fail "DSH_HOME 是桌面发布版的 home：$resolvedHome（profile '$Profile'）" `
+      '测试环境必须用独立 home（默认 %USERPROFILE%\Documents\dsh-automation-suite-test）；不要覆盖发布版 profile。'
+  }
+}
 
 if (-not (Test-Path $blueprint)) { Fail "找不到蓝图目录: $blueprint" 'profile\<名字> 必须存在；-Profile 决定用哪个蓝图。' }
 
@@ -156,11 +197,16 @@ if (-not $SkipBuild) {
 
 # ----------------------------------------------------------------- 部署蓝图
 if ($Reset -and (Test-Path $profileDir)) {
-  Say "将要删除: $profileDir"
-  $answer = Read-Host '确认删除并重建？输入 y 继续'
+  # 只归档、不删除：profile 里可能有应用回写的设置，也可能是带 junction 的 link 安装；
+  # 改名是同卷移动，不会跟进链接目标。这样脚本正文也不含递归删除，dsh-delete-guard
+  # 不会在正常启动时把整个脚本拦下。
+  $archiveDir = "$profileDir.reset-$(Get-Date -Format yyyyMMdd-HHmmss)"
+  Say "将要归档（不删除）: $profileDir"
+  Say "              -> $archiveDir"
+  $answer = Read-Host '确认归档并重建？输入 y 继续'
   if ($answer -ne 'y') { Fail '已取消' }
-  # rmdir 只删链接本身，不会跟进 junction 目标（node_modules 里有指向 pnpm store 的链接）。
-  cmd /c rmdir /s /q "$profileDir"
+  Move-Item -LiteralPath $profileDir -Destination $archiveDir
+  Say "旧 profile 已归档: $archiveDir（确认不再需要后，可手动删除这个目录）"
 }
 
 if (-not (Test-Path $manifest)) {
@@ -258,6 +304,17 @@ if ($Port -ne 0) {
       Fail "端口 $Port 已被占用（pid $holder $($who.ProcessName)）" $hint
     }
   }
+}
+
+# ----------------------------------------------------------------- .NET 10（开发版引擎）
+# 仓库里的图谱引擎是 framework-dependent 的 net10 构建：apphost 默认只查
+# C:\Program Files\dotnet（本机只有 8.0.34），而仓库构建/测试用的 .NET 10 在
+# %USERPROFILE%\.dotnet10。把 DOTNET_ROOT 传给 dsh，引擎子进程才会找到 10.0.x；
+# 发布版不需要这段（它的引擎是 self-contained）。
+$dotnet10 = Join-Path $env:USERPROFILE '.dotnet10'
+if (-not $env:DOTNET_ROOT -and (Test-Path -LiteralPath (Join-Path $dotnet10 'shared\Microsoft.NETCore.App'))) {
+  $env:DOTNET_ROOT = $dotnet10
+  Say "DOTNET_ROOT: $dotnet10（开发版图谱引擎用 .NET 10）"
 }
 
 # ----------------------------------------------------------------- 启动

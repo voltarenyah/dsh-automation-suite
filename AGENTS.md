@@ -383,8 +383,12 @@ Config 字段（如 `opennessDir`，或 git 插件的 `destructivePolicy`），�
 pwsh -NoProfile -File scripts\start-env.ps1
 ```
 
-- 默认 `DSH_HOME=%USERPROFILE%\dsh-automation-suite-home`（**当前维护的那套**），**不碰日常 `~/.dsh`**；
-  删掉该目录即完全回退。旧的 `%USERPROFILE%\dsh-suite-env`（3092）已于 2026-11-04 删除，别再起它。
+- 默认 `DSH_HOME=%USERPROFILE%\Documents\dsh-automation-suite-test`（**仅供开发/测试**），**不碰日常 `~/.dsh`**；
+  它和桌面发布版的 home（`%USERPROFILE%\dsh-automation-suite-home`，由安装器的 `install.json` 记录）
+  **必须分开**。脚本会拒绝把 `-DshHome` 指到安装器记录的那个 home + profile —— 2026-11-25 就是因为两者
+  共用 home，一次真机验收把桌面 0.2.6 的发布包换成了仓库 link 安装（见
+  [`docs/reviews/2026-11-25-commit-without-tia.md`](docs/reviews/2026-11-25-commit-without-tia.md) 的 P3）。
+  删掉测试 home 即完全回退。旧的 `%USERPROFILE%\dsh-suite-env`（3092）已于 2026-11-04 删除，别再起它。
 - 默认 `-Mode link`：把**蓝图里指到 `packages/` 的每个本地插件**以 `link:` 链进 profile，验的是
   **当前工作树**（每次启动会先 `pnpm -r build`，所以改完 `src/` 直接重启即可）；
   `-Mode pack` 改为逐个 `pnpm pack` 出 tarball 再装，验**真实交付物**。
@@ -394,6 +398,9 @@ pwsh -NoProfile -File scripts\start-env.ps1
 - 本机 `pnpm` 与 `dsh` **都不在 PATH 上**（`node` 在），脚本自己从 DSH 安装目录解析它们；
   可用 `$env:DSH_APP_ROOT` 覆盖安装目录。
 - 其它开关：`-DshHome`、`-Port`（默认 3095，`0` 为随机）、`-Restart`、`-NoOpen`、`-Reset`、`-SkipBuild`。
+- 开发版图谱引擎是 framework-dependent 的 net10 构建：`start-env.ps1` 发现
+  `%USERPROFILE%\.dotnet10\shared\Microsoft.NETCore.App` 且 `DOTNET_ROOT` 未设时，会把它传给 dsh
+  （apphost 默认只查 `C:\Program Files\dotnet`，本机只有 8.0.34）。发布版引擎是 self-contained，不依赖这段。
 - 启动后 `dsh` 会打印带 token 的 URL；**不加 `--no-open` 时它会自动用默认浏览器打开**。
   token 每次启动都换、不落盘，裸地址会 401。
 - 首次进入要由使用者自己配模型：**设置 → Models 填 API key**（或首次运行弹窗
@@ -403,7 +410,7 @@ pwsh -NoProfile -File scripts\start-env.ps1
   工程知识图谱插件**也有同名配置**（默认也是 300000），它管的是**单台设备建库**的截止时间：
   实测 1376 个源文件约 30 s、库约 450 MB —— 所以大项目要么留够 300 s，要么把这一项一起调大；
   这一步现在由 `create_engineering_project` 自动触发（见 §7）。
-- ⚠️ 用 `-Reset` 或手删该 home 时，**必须**用 `cmd /c rmdir /s /q`：里面 `link:` 与 pnpm 的
+- ⚠️ `-Reset` 现在只把 profile 改名归档（`<profile>.reset-<时间戳>`，不删除）；手删该 home 时**必须**用 `cmd /c rmdir /s /q`：里面 `link:` 与 pnpm 的
   junction 指向仓库和 pnpm store，跟进式递归删除会毁掉目标（见第 3 节）。
 
 ### 触发约定
@@ -413,6 +420,8 @@ pwsh -NoProfile -File scripts\start-env.ps1
 ```powershell
 pwsh -NoProfile -File scripts\start-env.ps1 -Restart
 ```
+
+这里的「App」指**测试环境**（新 home / 默认 3095），不是开始菜单里的桌面发布版；两者的 home 已分开。
 
 `-Restart` 让这条命令**永远可用**：端口上已有实例就先停掉它再起，所以"改完代码 → 启动 App"
 是一步，不需要手工先停。它只停 `DeepSeek Harness` —— 占用者不是它就报错退出，不会误杀别的进程。
@@ -444,9 +453,10 @@ Get-NetTCPConnection -State Listen -LocalPort 3095 -ErrorAction SilentlyContinue
 
 ### 3095 测试会话在哪、怎么按 sessionID 找
 
-使用者给的 sessionID 来自哪套 home，决定了它在磁盘上的位置。**测试（3095）的会话只在
-`%USERPROFILE%\dsh-automation-suite-home` 里** —— 不在日常 `~/.dsh`，也不在已删除的
-`%USERPROFILE%\dsh-suite-env`（2026-11-04 删）。在 `~/.dsh` 里搜不到就断言"没有这个会话"，
+使用者给的 sessionID 来自哪套 home，决定了它在磁盘上的位置。**2026-11-28 起，测试（3095）的会话在
+`%USERPROFILE%\Documents\dsh-automation-suite-test` 里**；更早的测试会话仍在
+`%USERPROFILE%\dsh-automation-suite-home`（该目录现在是桌面发布版的 home）。两者都不在日常 `~/.dsh`，
+也不在已删除的 `%USERPROFILE%\dsh-suite-env`（2026-11-04 删）。在 `~/.dsh` 里搜不到就断言"没有这个会话"，
 是 2026-11-03 的真实误判，别再犯。
 
 - **会话目录按工作区 cwd 编码**：`<home>\sessions\--<cwd 编码>--\`，编码规则是去掉盘符的冒号、
@@ -458,7 +468,7 @@ Get-NetTCPConnection -State Listen -LocalPort 3095 -ErrorAction SilentlyContinue
 - **只知道 sessionID 时先按 id 找**（不依赖 cwd 拼目录；只记得 uuid 后半段时用 `-Filter '*<uuid>*'`）：
 
   ```powershell
-  $home_ = "$env:USERPROFILE\dsh-automation-suite-home"
+  $home_ = "$env:USERPROFILE\Documents\dsh-automation-suite-test"   # 2026-11-28 起；更早的测试会话在 dsh-automation-suite-home
   Get-ChildItem "$home_\sessions" -Recurse -Directory -Filter '<sessionID>' |
     Select-Object -ExpandProperty FullName
   ```
@@ -468,7 +478,7 @@ Get-NetTCPConnection -State Listen -LocalPort 3095 -ErrorAction SilentlyContinue
   `subagentCatalog`。它是**派生缓存**，老会话可能没有对应文件；没有就直接走下面的 jsonl 解压。路径：
 
   ```powershell
-  $home_ = "$env:USERPROFILE\dsh-automation-suite-home"
+  $home_ = "$env:USERPROFILE\Documents\dsh-automation-suite-test"   # 2026-11-28 起；更早的测试会话在 dsh-automation-suite-home
   Get-Item "$home_\storages\session_projcache\sessions\<sessionID>.json"
   ```
 

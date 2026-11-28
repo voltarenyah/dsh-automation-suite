@@ -18,6 +18,15 @@ GitHub Releases 与 git tag `v<version>` 对齐（发布流程见 [`docs/release
 
 ### Changed
 
+- **测试环境与桌面发布版的 DSH_HOME 彻底分开**：`scripts/start-env.ps1` 的默认 home 从
+  `%USERPROFILE%\dsh-automation-suite-home` 改为 `%USERPROFILE%\Documents\dsh-automation-suite-test`，
+  并拒绝把 `-DshHome` 指到安装器 `install.json` 记录的发布版 home + profile。起因是 2026-11-25 的
+  真机验收用同一个 home 重写了桌面 0.2.6 的 profile（发布包被换成仓库 `link:` 安装，图谱引擎变成
+  framework-dependent 的 net10 开发版），用户侧 `knowledge_ingest` 因此报 `engine_exited`。脚本现在
+  还会在存在 `%USERPROFILE%\.dotnet10` 时给 dsh 设 `DOTNET_ROOT`，让开发版引擎在只有 .NET 8 的
+  apphost 上也能启动（发布版引擎是 self-contained，不受影响）。同一个改动里 `-Reset` 从"递归删除
+  profile"改为"改名归档为 `<profile>.reset-<时间戳>`"：旧设置可恢复，脚本正文也不再含递归删除，
+  `dsh-delete-guard` 不会在正常启动时把整个脚本拦下。
 - **15 个插件统一到 npm 组织 `automation-suite` 的 scope 下，并重新整理名字**（D39）：`@voltarenyah/*`
   与裸名 `dsh-*` 全部改为 `@automation-suite/<域名>`（`dsh-tool-git` 是例外，保留 `dsh-` 以对照上游 fork）。
   两处语义变化：`dsh-tia-openness-v17-min` → `@automation-suite/tia-openness-v17`（去掉 `-min`，

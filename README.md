@@ -371,8 +371,8 @@ Openness 不能直接从 Node 调用，所以插件分成两层，中间是**一
 ### 6.1 一条命令起独立环境（推荐）
 
 `scripts/start-env.ps1` 把"按蓝图物化 profile + 装插件 + 起服务 + 带 token 开浏览器"收成一条命令，
-并且**不碰你日常的 `~/.dsh`**（默认用自己的 `DSH_HOME=%USERPROFILE%\dsh-suite-env`，
-删掉该目录即完全回退）：
+并且**不碰你日常的 `~/.dsh`**（默认用自己的 `DSH_HOME=%USERPROFILE%\Documents\dsh-automation-suite-test`，
+与桌面发布版的 `%USERPROFILE%\dsh-automation-suite-home` 严格分开；删掉该目录即完全回退）：
 
 ```powershell
 pwsh -NoProfile -File scripts\start-env.ps1
@@ -380,7 +380,7 @@ pwsh -NoProfile -File scripts\start-env.ps1
 
 它做四件事：`pnpm -r build` → 按蓝图物化 profile 目录 → 把本地插件按名字链进 profile
 （默认 `-Mode link`，验的是**当前工作树**；`-Mode pack` 改为 `pnpm pack` 出 tarball，验**真实交付物**）
-→ 启动 `dsh --profile dsh-automation-suite --port 3092`。
+→ 启动 `dsh --profile dsh-automation-suite --port 3095`。
 
 **要部署哪些插件不写死在脚本里**：它读蓝图的 `dsh.profile.bundles`，
 凡是能在 `packages/` 下按 `package.json` 的 `name` 匹配到的条目都算本地插件
@@ -393,17 +393,17 @@ pwsh -NoProfile -File scripts\start-env.ps1 -Restart              # 端口上有
 pwsh -NoProfile -File scripts\start-env.ps1 -Port 0               # 随机端口
 pwsh -NoProfile -File scripts\start-env.ps1 -Mode pack            # 验真实交付物
 pwsh -NoProfile -File scripts\start-env.ps1 -DshHome C:\temp\e2e  # 换一个独立 home
-pwsh -NoProfile -File scripts\start-env.ps1 -Reset -NoOpen        # 先删掉重建，且不开浏览器
+pwsh -NoProfile -File scripts\start-env.ps1 -Reset -NoOpen        # 先归档旧 profile 再重建，且不开浏览器
 ```
 
 | 参数 | 默认 | 说明 |
 |---|---|---|
-| `-DshHome` | `%USERPROFILE%\dsh-suite-env` | 独立 DSH_HOME；删掉即回退 |
+| `-DshHome` | `%USERPROFILE%\Documents\dsh-automation-suite-test` | 独立 DSH_HOME；删掉即回退 |
 | `-Profile` | `dsh-automation-suite` | profile 名，同时决定用哪个蓝图 |
-| `-Port` | `3092` | `0` = 系统挑空闲端口 |
+| `-Port` | `3095` | `0` = 系统挑空闲端口 |
 | `-Mode` | `link` | `link` 验工作树 / `pack` 验 tarball |
 | `-SkipBuild` | 关 | 跳过 `pnpm -r build` |
-| `-Reset` | 关 | 先删 profile 目录再重建（会先请你确认） |
+| `-Reset` | 关 | 先把现有 profile 改名归档（不删除），再重建（会先请你确认） |
 | `-Restart` | 关 | 端口上已有 **DeepSeek Harness** 就先停掉它；占用者是别的进程则报错退出，不误杀 |
 | `-NoOpen` | 关 | 不自动打开浏览器 |
 
@@ -450,7 +450,7 @@ pwsh -NoProfile -File install.ps1
 并互相回写同一份注册表；独立 home 后，发布版的 workspace 列表从空开始，只包含你在这个 App 里添加的工程。
 
 **开发版与发布版并存**：开发版用 `dsh-automation-suite`（`scripts/start-env.ps1` 默认在隔离的
-`%USERPROFILE%\dsh-suite-env` 里物化），发布版用带版本号的 profile（默认落在
+`%USERPROFILE%\Documents\dsh-automation-suite-test` 里物化），发布版用带版本号的 profile（默认落在
 `%USERPROFILE%\dsh-automation-suite-home`）；两者在 workspace、会话、设置、凭据上完全隔离，
 可以同时启动（`start.cmd` 会自动错开端口）。想用一个固定名字原地升级，可显式传
 `-Profile dsh-automation-suite-release -Force`——覆盖前会先备份该 profile 的 `package.json` 与
@@ -1002,7 +1002,7 @@ TIA 排障第一步永远是让模型调：
 - ❌ **禁止**去掉根 `package.json` 的 `private`。
 - ✅ 拆 junction 只用 `cmd /c rmdir "<路径>"`（只删链接本身）或 `Remove-Item -Force`（**不加** `-Recurse`）。
 - ✅ 清构建产物用 `pnpm run clean:build`：它只检查 `lib/`、`dist/`，遇链接只 unlink、不下降。
-- ✅ 用 `-Reset` 或手删独立 `DSH_HOME` 时**必须**用 `cmd /c rmdir /s /q`：里面 `link:` 与 pnpm 的
+- ✅ `-Reset` 现在只把 profile 改名归档（不删除）；手删独立 `DSH_HOME` 时**必须**用 `cmd /c rmdir /s /q`：里面 `link:` 与 pnpm 的
   junction 指向仓库和 pnpm store，跟进式递归删除会毁掉目标。
 - ✅ 重新链接运行时用 `pnpm --filter <pkg> run link:runtime -- --force`：目标若是链接只 unlink，不下降。
 

@@ -244,7 +244,7 @@ DSH Web 默认监听 **3080**；被别的进程占用时（本机实测是 Windo
 
 | 版本 | 默认 profile 名 | 默认 DSH_HOME | 怎么起 |
 |---|---|---|---|
-| 开发版（当前工作树） | `dsh-automation-suite` | `%USERPROFILE%\dsh-suite-env`（`start-env.ps1` 默认） | `pwsh scripts\start-env.ps1 -Restart` |
+| 开发版（当前工作树） | `dsh-automation-suite` | `%USERPROFILE%\Documents\dsh-automation-suite-test`（`start-env.ps1` 默认） | `pwsh scripts\start-env.ps1 -Restart` |
 | 发布版（Release 资产） | `dsh-automation-suite-v<version>` | `%USERPROFILE%\dsh-automation-suite-home` | 双击 `start.cmd` |
 
 两者在 workspace、会话、设置、凭据上**完全隔离**，可以同时运行（`start.cmd` 会自动错开端口）。
