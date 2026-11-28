@@ -309,4 +309,41 @@ network 6:  (=) S_HMI_Control.SemiFunction_Enable <- SinaPos_Instance.AxisEnable
 - `engine/bin/` 已重建（含全部修复）。测试环境（3095）残留进程已停止。
 - 工作区改动已提交（见提交信息）。
 
-## 附：修复后的验收回填（已由第 8 节替代）
+## 9. 可达性与可理解性复核（2026-11-28 晚）
+
+> 问题：agent 是否会在正确的时候用上阶梯视图？除工具描述外还需要什么？符号表达是否可理解？
+
+### 9.1 四个可达性缺口（均已修）
+
+| # | 缺口 | 证据 | 修法 |
+|---|---|---|---|
+| R1 | **expert persona 说 LAD 触点/线圈接线"看不见"**，让 agent 去问用户——正好否定了新能力 | `profile/.../cordis.patch.yml` expert 段旧文本："LAD contact and coil wiring, or an enable condition, because the translation is statement-level" | 改为：这些接线**就在** `view='ladder'` 里；真正缺的只剩"盒内算出的条件"和"运行时值"。这类错误有先例（同文件 D29：一句 brief 让三个子 agent 绕开图谱去读 XML） |
+| R2 | **leader persona 完全没提阶梯视图**，只说"有 `knowledge_block`/`knowledge_network`" | 同文件 leader 段 | 补一句：问"哪些触点通向这个线圈"时传 `view='ladder'` |
+| R3 | **读法指南没随包发布** | `package.json` 的 `files` 只有 `lib`/`cordis.patch.yml`/`engine/bin`/`README.md`，`docs/` 不在其中；而描述写着 "The reading guide is docs/LAD-READING.md in this package" | ① `files` 加 `docs`；② **符号表直接写进工具描述**，不再依赖文件可达 |
+| R4 | **默认视图是 logic，短网络没有任何提示** | `NEXT:` 提示只在分块（`hasMore`）时出现 | 回 `logic` 且该网络有阶梯文本时，追加一行 `Also available: view='ladder' — …` |
+
+### 9.2 符号可理解性：实测，不是推断
+
+用不知情子 agent 做盲测：只给「工具描述 + 真实阶梯文本」，禁止读文件、禁止搜索，回答可判定对错的问题。
+
+**第一轮（修正前的说明）**：7 问中 5 问正确（数据流向 `->`、计时器实例与 `PT`、`in1` 在左、"看不到盒内条件"），2 处失败/存疑，且**都是我文档写错**：
+
+| 暴露的问题 | 事实 | 已修 |
+|---|---|---|
+| 它问：`-- (no coil)` 行上的 `[Move]` 到底写不写？ | **写**。该行只是不写线圈，盒子在 RLO 为真时照样执行。原文"ends without writing"是错的 | 描述与文档改为"writes no coil, but a box on it still executes" |
+| `[InRange a, b, c]` 谁是"被比较值"？ | 中间那个（引脚序 `min`/`in`/`max`）。原文没写 | 描述与文档写明"tests the middle operand" / "下限、被比较值、上限" |
+
+**第二轮（修正后）**：5/5 全对，包括两处原先答错的（`-- (no coil)` 行上的 Move 会写；InRange 的中间操作数），以及"看不到运行时真值"的边界判断。
+
+结论：**可理解**，前提是符号表就在描述里。剩余未标注、但盲测未造成误解的两处：
+- 计时器 `[TON Inst PT]` 里除实例外只有一个操作数，靠位置识别（本轮无歧义，因为 TON 只有 `IN`/`PT` 两个输入且 `IN` 已被 RLO 占用）；
+- 块调用 `[058_PosSpdControl Inst, a, b]` 的实参**不带引脚名**，只按引脚顺序。若以后出现同名类型实参顺序被误读的案例，可升级为 `[Inst pin=value, …]`。
+
+### 9.3 生效前提（重要）
+
+persona 的改动在**蓝图**里，而运行用的是**物化副本**：
+
+- 物化副本 `<DSH_HOME>/profiles/dsh-automation-suite/cordis.patch.yml`（2026-11-28 12:33 版本）里仍是旧文本：旧断言命中 1 次、`view='ladder'` 命中 0 次。
+- **不要用 `-Reset` 同步**：该副本里有 `requestTimeoutMs: 600000`，蓝图里没有（蓝图是默认 300000），Reset 会把它丢掉。应按 AGENTS §1 注意 4 的方式**合并**persona 段落。
+
+## 附：修复后的验收回填（已由第 8、9 节替代）

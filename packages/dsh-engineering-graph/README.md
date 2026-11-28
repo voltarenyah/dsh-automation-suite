@@ -155,16 +155,20 @@ LAD 的 `logicStatements` 是"这段逻辑算出什么"的抽取物，串并联�
 
 - `knowledge_network(view='ladder')`：每条**路径一行**，同一线圈多行 = 这些条件互为或；行内 `AND` = 串联；
   `NOT x` = 常闭；`(=)` 赋值、`(S)` 置位、`(R)` 复位、`(/)(=)` 取反线圈；`-- (no coil)` = 该路径不通向线圈。
-  盒指令（`Move`、比较、计时器、`Call`）以方括号出现（`[Eq]`）：它的条件在**它自己的网络**里，不在此处展开。
+  盒指令与调用以方括号出现，**操作数按引脚顺序、并带数据流向**：`[Eq ActMode, 7]`（等价 `ActMode = 7`）、
+  `[Move src -> dst]`（`->` 右边是被写目标）、`[TON T[0] T#500ms]`、`[InRange min, x, max]`。
+  边沿指令保留记忆位：`PContact(operand, mem=bit)`、`PBox(mem=bit)`。
+  方括号给的是**操作数与流向，不是盒内算出的条件**——那个条件在盒自己的网络里，要再读一次。
   无阶梯视图时（SCL 区域、旧库）自动回退到语句文本并说明原因。
 - `knowledge_variable_usage` 的 `Scan order` 段：同一块内网络自上而下执行一次，所以能直接说出
   "读到的是本拍新值 / 上一拍的值"、"多处写入时谁生效"、"这个库里根本没人写它"。
   跨块顺序依赖调用链，**明确标注未解析**，不猜。
 
 数据来源：阶梯文本在 ingest 时由引擎从**网络自身拓扑**算出，存为 network 节点属性 `ladderText`；
-与既有 `logicStatements` 的一致性由引擎自检的等价校验保证（reference 工程 1323 个纯布尔线圈零分歧）。
-读法指南见 [`docs/LAD-READING.md`](docs/LAD-READING.md)，规则实测记录见
-[`docs/research/tia-lad-structure-rules.md`](../../docs/research/tia-lad-structure-rules.md)。
+正确性由两类检查保证：与既有 `logicStatements` 的等价校验（reference 工程 1338 个纯布尔线圈零分歧），
+以及四条全量不变量（每个线圈成行、操作数不丢、实例下标保留、同名盒可区分；reference 4058 个网络全为 0）。
+读法指南（含完整符号表）见 [`docs/LAD-READING.md`](docs/LAD-READING.md)，随包发布；
+规则实测记录见 [`docs/research/tia-lad-structure-rules.md`](../../docs/research/tia-lad-structure-rules.md)。
 
 ## 2.2 两行与 `includeIngest` 开关
 

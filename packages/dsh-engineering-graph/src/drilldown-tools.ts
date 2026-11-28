@@ -507,10 +507,17 @@ function networkTool(dependencies: DrilldownDependencies): ToolDefinition {
     'with the returned nextOffset until hasMore is false — never treat a partial chunk as the whole network. Fails with ' +
     'BLOCK_NOT_FOUND or NETWORK_NOT_FOUND. PASS view=\'ladder\' FOR QUESTIONS ABOUT LOGIC: it returns one line per path ' +
     'to each coil, so several lines for one coil mean the conditions are alternatives (OR) and AND inside a line means ' +
-    'series. Coils read (=) assign, (S) set, (R) reset, (/)(=) inverted; a line marked "-- (no coil)" ends without ' +
-    'writing. The rung view does not see inside boxes (Move, comparisons, timers, calls): their condition lives in their ' +
-    'own network. When read/write timing matters, follow up with knowledge_variable_usage, which states whether a read ' +
-    'sees this scan\'s value or the previous one. The reading guide is docs/LAD-READING.md in this package.',
+    'series. Notation: (=) assigns, (S) sets, (R) resets, (/)(=) is an inverted coil, and NOT is a normally-closed ' +
+    'contact. A line marked "-- (no coil)" reaches an open end instead of a coil (an EN chain or alarm wiring): it ' +
+    'writes no coil, but a box on it still executes when the rung is true, so its [Move] still writes. A box or a call ' +
+    'is bracketed with its operands in pin order, left to right — [Eq a, b] compares in1 with in2, [InRange min, value, ' +
+    'max] tests the middle operand, [Move src -> dst] writes dst, [TON Timer[0] T#500ms] is a timer on instance ' +
+    'Timer[0] with that PT — and an edge instruction keeps its memory bit as PContact(operand, mem=bit) or ' +
+    'PBox(mem=bit). The rung view shows a box\'s operands and data direction but NOT what it computes inside: the ' +
+    'timer\'s Q or a block\'s result is produced by the instruction (or by that block\'s own network), so read that ' +
+    'too before concluding. When read/write timing matters, follow up with knowledge_variable_usage, which states ' +
+    'whether a read sees this scan\'s value or the previous one (it is an expert tool; delegate when your surface does ' +
+    'not include it). The longer guide is docs/LAD-READING.md in this package.',
   parameters: {
     block: {
       type: 'string',
@@ -654,6 +661,16 @@ function networkTool(dependencies: DrilldownDependencies): ToolDefinition {
             if (commented.omitted > 0) details.push(`  … ${commented.omitted} more commented line(s) in data.commentedSource`)
           }
           const activeChunk = ladderChunk ?? chunk
+
+          // Discoverability: the default view is 'logic', so an agent that never read the tool
+          // description would not learn that a rung view exists for this very network. State it
+          // where the decision is made, without changing what the default returns.
+          if (!wantsLadder && ladderText !== null && ladderText.trim().length > 0) {
+            details.push(
+              "Also available: view='ladder' — one line per path to a coil, showing the contacts and branches that reach it.",
+            )
+          }
+
           if (activeChunk.hasMore) {
             // A machine-readable next action, so the reply is not "read the last
             // line of the detail list" but an instruction the model can copy.

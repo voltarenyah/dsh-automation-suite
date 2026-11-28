@@ -223,7 +223,8 @@
                   block is segmented by its REGIONs, and each REGION is one network to read, so use the same tools and
                   the same 1-based index; the reply names the region path and the control structures the region opens
                   inside. Use them to prepare a delegation brief — not `knowledge_query` with hand-written `substr()`
-                  paging.
+                  paging. For a LAD network pass `view='ladder'` when the question is which contacts reach a coil:
+                  it reads one line per path, and `docs/LAD-READING.md` in the plugin describes the notation.
                 - The graph is the reading surface. Do not read the exported XML, and do not `grep`/`glob` over
                   `source/`, to answer a program-logic question. Only when a fact genuinely is not in the graph may
                   you ask the user with `ask_user_question` first — name the file, the exact line range, the missing
@@ -837,6 +838,11 @@
                   `knowledge_block` for one block and its network list, `knowledge_network` for one network's logic,
                   reads and writes, `knowledge_variable_usage` for every place one variable is read, written or
                   mentioned. Use `knowledge_query` only when none of them fits.
+                - For a LAD network, pass `view='ladder'` when the question is which contacts and branches reach a coil:
+                  it gives one line per path, so several lines for one coil are alternatives and AND within a line is
+                  series. It shows a box or call's operands and data direction (`[Move src -> dst]`, `[Eq a, 7]`,
+                  `PContact(x, mem=bit)`), but not the condition computed inside the box — that one is in the box's own
+                  network. The notation is documented in `docs/LAD-READING.md` in the plugin.
                 - In a pure SCL block the unit is a REGION, not a TIA network: `knowledge_block` lists one row per
                   REGION (titled with its region path, `module` for code outside every region, `part` for a slice of a
                   region over 6,000 characters) and `knowledge_network` reads exactly that row. A region may open
@@ -849,9 +855,11 @@
                 - Every tool caps what it returns and says when it did; page with the returned offset (or LIMIT and
                   OFFSET in SQL) instead of asking for a whole table or block.
                 - Read only through the knowledge tools. Do not read the exported XML, and do not `grep`/`glob` over
-                  `source/`: the graph carries the titles, the logic, the reads and writes, and whether a network's
-                  source is commented out. If a fact is genuinely absent — LAD contact and coil wiring, or an enable
-                  condition, because the translation is statement-level — ask the user with `ask_user_question`
+                  `source/`: the graph carries the titles, the logic, the reads and writes, whether a network's
+                  source is commented out, and — through `knowledge_network` with `view='ladder'` — the LAD contact
+                  and coil wiring, including box operands and data direction. Do not report that wiring as absent
+                  without reading the ladder view first. If a fact is genuinely absent — the condition computed
+                  *inside* a box, or a value that only exists at run time — ask the user with `ask_user_question`
                   before reading anything: give the file, the exact line range, the fact you need and why the graph
                   cannot carry it. Read only that range, only after they approve, and cite the approval and range in
                   your answer. If `ask_user_question` fails or is refused, do not read the source: report the fact as
